@@ -1,0 +1,701 @@
+export type AppLanguage = 'en' | 'zh';
+
+type Primitive = string | number | boolean | null | undefined;
+export type I18nParams = Record<string, Primitive>;
+export type I18nKey = keyof typeof enUS;
+
+export const DEFAULT_LANGUAGE: AppLanguage = 'en';
+
+export const isAppLanguage = (value: unknown): value is AppLanguage => value === 'en' || value === 'zh';
+
+export const sanitizeLanguage = (value: unknown): AppLanguage => {
+  const normalized = String(value || '').trim().toLowerCase();
+  if (normalized === 'zh' || normalized === 'zh-cn' || normalized === 'zh_cn' || normalized.startsWith('zh-')) {
+    return 'zh';
+  }
+  if (normalized === 'en' || normalized === 'en-us' || normalized === 'en_us' || normalized.startsWith('en-')) {
+    return 'en';
+  }
+  return DEFAULT_LANGUAGE;
+};
+
+export const enUS = {
+  'language.english': 'English',
+  'language.chinese': '中文',
+  'language.selector.label': 'Language',
+  'language.selector.description': 'Choose the display language for pages, prompts, and API messages.',
+  'language.selector.defaultBadge': 'Default',
+
+  'common.close': 'Close',
+  'common.cancel': 'Cancel',
+  'common.confirm': 'Confirm',
+  'common.default': 'Default',
+  'common.restoreDefault': 'Restore defaults',
+  'common.loading': 'Loading…',
+  'common.unknown': 'Unknown',
+  'common.enabled': 'Enabled',
+  'common.disabled': 'Disabled',
+  'common.open': 'Open',
+  'common.download': 'Download',
+  'common.install': 'Install',
+  'common.notChecked': 'Not checked',
+  'common.hideToBackground': 'Hide to background',
+
+  'sidebar.tools': 'Tools',
+  'sidebar.settings': 'Settings',
+  'sidebar.newConnection': 'New connection',
+  'sidebar.newQuery': 'New query',
+  'sidebar.sqlLog': 'SQL execution log',
+  'sidebar.resizeHandle': 'Drag to resize',
+  'ai.assistant': 'AI Assistant',
+  'tab.menu.closeOther': 'Close other tabs',
+  'tab.menu.closeLeft': 'Close tabs to the left',
+  'tab.menu.closeRight': 'Close tabs to the right',
+  'tab.menu.closeAll': 'Close all tabs',
+
+  'tools.center.title': 'Tools Center',
+  'tools.center.description': 'Manage connection config, sync, drivers, data location, and shortcuts.',
+  'tools.import.title': 'Import connections',
+  'tools.import.description': 'Restore the connection list from a local file.',
+  'tools.export.title': 'Export connections',
+  'tools.export.description': 'Export current connections and visible config fields.',
+  'tools.sync.title': 'Data Sync',
+  'tools.sync.description': 'Enter the cross-source sync workflow.',
+  'tools.drivers.title': 'Driver Manager',
+  'tools.drivers.description': 'Install, update, or remove database drivers.',
+  'tools.dataRoot.title': 'Data directory',
+  'tools.dataRoot.description': 'View, switch, or migrate the local data storage location.',
+  'tools.shortcuts.title': 'Shortcut manager',
+  'tools.shortcuts.description': 'View and adjust global shortcut bindings.',
+  'tools.security.title': 'Security update',
+  'tools.security.status': 'Current status: {status}',
+  'tools.security.description': 'View the security update status for saved config.',
+
+  'settings.center.title': 'Settings Center',
+  'settings.center.description': 'Manage proxy, language, theme, AI, and app information in one place.',
+  'settings.language.title': 'Language',
+  'settings.language.description': 'Switch between English and Chinese. English is the default.',
+  'settings.language.current': 'Current language',
+  'settings.language.applied': 'Language changed to {language}.',
+  'settings.themeAppearance.title': 'Theme & Appearance',
+  'settings.themeAppearance.description': 'Switch light/dark mode and tune the interface.',
+  'settings.proxy.title': 'Global Proxy',
+  'settings.proxy.description': 'Configure update checks, driver management, and shared network access.',
+  'settings.ai.title': 'AI Settings',
+  'settings.ai.description': 'Manage model providers, keys, and default behavior.',
+  'settings.about.title': 'About JavaNavi',
+  'settings.about.description': 'View version, repository, and update status.',
+  'settings.dataRoot.title': 'Data Storage Location',
+  'settings.dataRoot.description': 'Manage the root directory for connections, proxy, AI config, drivers, and file data.',
+  'settings.dataRoot.currentDirectory': 'Current directory',
+  'settings.dataRoot.defaultDirectory': 'Default directory',
+  'settings.dataRoot.driverDirectory': 'Driver directory',
+  'settings.dataRoot.target': 'Target directory',
+  'settings.dataRoot.placeholder': 'Select a new data directory',
+  'settings.dataRoot.select': 'Select directory',
+  'settings.dataRoot.openCurrent': 'Open current directory',
+  'settings.dataRoot.restoreDefault': 'Restore default directory',
+  'settings.dataRoot.applyMode': 'Apply mode',
+  'settings.dataRoot.switchOnly': 'Switch to selected directory',
+  'settings.dataRoot.migrateAndSwitch': 'Migrate existing data and switch',
+  'settings.dataRoot.hint': 'Restart the app after switching so AI and other long-lived modules fully move to the new directory. Sensitive passwords remain in the system secret store and are not migrated with files.',
+
+  'about.version': 'Version',
+  'about.author': 'Author',
+  'about.updateStatus': 'Update status',
+  'about.community': 'Community',
+  'about.projectLinks': 'Project links',
+  'about.downloadProgress': 'Download progress',
+  'about.muteThisVersion': 'Do not remind again for this version',
+  'about.checkUpdates': 'Check for updates',
+  'about.downloadUpdate': 'Download update',
+  'about.openInstallDirectory': 'Open install directory',
+  'about.installUpdate': 'Install update',
+  'about.communityName': 'AI Full Book',
+
+  'theme.modal.themeTitle': 'Theme Settings',
+  'theme.modal.appearanceTitle': 'Appearance Settings',
+  'theme.modal.themeDescription': 'Switch light/dark mode while keeping the visual system consistent.',
+  'theme.modal.appearanceDescription': 'Adjust scale, font size, transparency, and blur.',
+  'theme.nav.title': 'Settings navigation',
+  'theme.nav.theme': 'Theme mode',
+  'theme.nav.themeDescription': 'Switch between light and dark.',
+  'theme.nav.appearance': 'Appearance',
+  'theme.nav.appearanceDescription': 'Scale, font, and transparency.',
+  'theme.light.label': 'Light theme',
+  'theme.light.description': 'Best for bright environments with lighter visual hierarchy.',
+  'theme.dark.label': 'Dark theme',
+  'theme.dark.description': 'Best for low light with a calmer interface.',
+  'appearance.scale': 'UI Scale',
+  'appearance.scaleHint': '* 85%-95% is recommended on small screens.',
+  'appearance.fontSize': 'Font Size',
+  'appearance.transparency': 'Transparency & Blur',
+  'appearance.enableTransparency': 'Enable transparency and blur',
+  'appearance.enableTransparencyDescription': 'When disabled, current values are kept and restored when enabled again.',
+  'appearance.opacity': 'Opacity',
+  'appearance.blur': 'Blur',
+  'appearance.windowsAcrylic': 'Windows uses the system Acrylic effect; blur strength is controlled by the OS.',
+  'appearance.blurHint': '* Controls only in-app overlay blur.',
+  'appearance.dataTableDisplay': 'Data table display',
+  'appearance.showVerticalBorders': 'Show vertical borders in data tables',
+  'appearance.showVerticalBordersDescription': 'Only affects DataGrid pages, not other table components.',
+  'appearance.columnWidthMode': 'Data table column width mode',
+  'appearance.columnWidthModeDescription': 'Standard defaults to 200px; Compact defaults to 140px. Manually resized columns are preserved.',
+  'appearance.macWindowControls': 'macOS window controls',
+  'appearance.useNativeMacControls': 'Use native macOS window controls',
+  'appearance.useNativeMacControlsDescription': 'Prefer native macOS fullscreen behavior when available; Tauri desktop uses the system title bar by default.',
+  'appearance.useNativeMacControlsHint': '* Only affects compatible macOS runtime control sync; Tauri no longer renders the custom frontend close-button row.',
+  'appearance.startupWindow': 'Startup window',
+  'appearance.startFullscreen': 'Start in fullscreen',
+  'appearance.startFullscreenWindows': 'Start maximized on Windows',
+  'appearance.startFullscreenHint': '* Takes effect next launch.',
+  'appearance.startFullscreenWindowsHint': '* On Windows this starts maximized instead of true fullscreen, and takes effect next launch.',
+
+  'shortcuts.title': 'Shortcut Manager',
+  'shortcuts.description': 'View, record, and enable common shortcuts in one place.',
+  'shortcuts.help': 'Press the shortcut after clicking “Record”. Press Esc to cancel. Global shortcuts should include a modifier; AI chat send supports Enter-related combinations only, while Shift+Enter keeps inserting a newline.',
+  'shortcuts.pressShortcut': 'Press shortcut…',
+  'shortcuts.record': 'Record',
+  'shortcuts.recordCancel': 'Cancel',
+  'shortcuts.aiUnsupported': 'AI chat send shortcut only supports Enter / Ctrl+Enter / Cmd+Enter / Alt+Enter; Shift+Enter keeps inserting a newline.',
+  'shortcuts.requiresModifier': 'Shortcut must include at least one of Ctrl / Alt / Shift / Meta.',
+  'shortcuts.conflict': 'Conflicts with “{action}”. Choose another shortcut.',
+  'shortcuts.restored': 'Default shortcuts restored.',
+
+  'connection.package.exportTitle': 'Export connections',
+  'connection.package.importTitle': 'Enter import password',
+  'connection.package.startExport': 'Start export',
+  'connection.package.startImport': 'Start import',
+  'connection.package.exportPasswords': 'Export connection passwords',
+  'connection.package.useFilePassword': 'Set file protection password',
+  'connection.package.exportPasswordPlaceholder': 'Enter file protection password (optional)',
+  'connection.package.importPasswordPlaceholder': 'Enter restore package password',
+  'connection.package.exportNoSecretsHelp': 'Only connection config will be exported; passwords are excluded.',
+  'connection.package.exportPasswordHelp': 'Share the password through a separate channel; do not send it together with the file.',
+  'connection.package.exportPasswordRecommendedHelp': 'Passwords are encrypted. For public transfer, setting a file protection password is recommended.',
+  'connection.package.passwordRequired': 'Restore package password is required.',
+  'connection.package.filePasswordRequired': 'File protection password is required.',
+  'connection.package.exportSuccess': 'Export completed.',
+  'connection.package.importSuccess': 'Imported {count} connection(s).',
+  'connection.package.importPartialPasswordWarning': 'Imported {count} connection(s). Some connections do not include passwords; edit them and enter passwords before saving.',
+  'connection.package.noConnections': 'No connections to export.',
+  'connection.package.invalidFormat': 'Invalid file format: only JavaNavi restore packages, legacy JSON connection arrays, or MySQL Workbench XML are supported.',
+  'connection.package.importRefreshFailed': 'Import succeeded, but refreshing connections failed: backend did not return a connection list.',
+  'connection.package.importUnsupported': 'Import failed: backend does not provide the new import capability.',
+  'connection.package.importNoList': 'Import failed: backend did not return a connection list.',
+  'connection.package.importFailed': 'Import failed',
+  'connection.package.exportUnsupported': 'Export failed: backend does not provide the new export capability.',
+  'connection.package.importPayloadMissing': 'Import failed: restore package content was not found.',
+  'connection.package.exportFailed': 'Export failed',
+
+  'update.status.checking': 'Checking for updates…',
+  'update.status.checkFailed': 'Update check failed: {message}',
+  'update.status.downloadReady': 'Update package is ready ({version}).',
+  'update.status.downloadReadyWithPath': 'Update package is ready ({version}), path: {path}',
+  'update.status.downloadComplete': 'Update download completed.',
+  'update.status.downloadCompleteWithPath': 'Update download completed. Package path: {path}',
+  'update.status.downloadFailed': 'Update download failed: {message}',
+  'update.status.openInstallDirFailed': 'Failed to open install directory: {message}',
+  'update.status.installFailed': 'Update installation failed: {message}',
+  'update.status.newVersion': 'New version {version} found.',
+  'update.status.newVersionDownloaded': 'New version {version} found (downloaded; click “Download progress” to install).',
+  'update.status.newVersionNotDownloaded': 'New version {version} found (not downloaded).',
+  'update.status.latest': 'You are already on the latest version ({version}).',
+  'update.status.openInstallDirectorySuccess': 'Install directory opened. Please replace manually.',
+  'update.status.downloadedSuffix': '{label} (downloaded)',
+  'update.download.title': 'Download update',
+  'update.download.titleWithVersion': 'Download update {version}',
+
+  'security.stage.retry': 'Checking update result',
+  'security.stage.update': 'Updating secure storage',
+  'security.capabilityUnavailable': 'Security update capability is unavailable.',
+  'security.updateIncomplete': 'Security update did not finish. Try again later.',
+  'security.savedConfigCompleted': 'Saved config security update completed.',
+  'security.needsAttention': 'Update is not complete. A few config items need your attention.',
+  'security.rolledBack': 'This update did not finish. Current usable config was kept.',
+  'security.postponeFailed': 'Unable to postpone this security update for now.',
+  'security.savedConfigUpdateAvailable': 'A security update is available for saved config',
+  'security.savedConfigUpdateTitle': 'Saved config security update',
+  'security.savedConfigUpdateSubtitle': 'A local config update is required before using the new secure storage.',
+  'security.savedConfigUpdateBody': 'To move saved connections, proxy, and related service config to the new secure storage, JavaNavi needs to run one local config update. A local backup is created first; if the update does not finish, the current usable config is kept and you can continue later.',
+  'security.updatePendingDetail': 'The current usable config is kept while the update runs. Please wait.',
+  'security.updateNow': 'Update now',
+  'security.remindLater': 'Remind me later',
+  'security.checkAgain': 'Check again',
+  'security.restartUpdate': 'Restart update',
+  'security.startUpdate': 'Start update',
+  'security.manageTitle': 'Security update',
+  'security.manageSubtitle': 'Manage the security update status and pending items for saved config.',
+  'security.currentStatus': 'Current status: {status}',
+  'security.impactScope': 'Impact scope',
+  'security.total': 'Total',
+  'security.updated': 'Updated',
+  'security.pending': 'Pending',
+  'security.skipped': 'Skipped',
+  'security.failed': 'Failed',
+  'security.pendingItems': 'Pending items',
+  'security.noPendingItems': 'No pending items.',
+  'security.itemStatus': 'Status: {status}',
+  'security.itemLevel': 'Level: {level}',
+  'security.itemNeedsAction': 'This item needs further handling before the security update can finish.',
+  'security.recentResult': 'Latest result',
+  'security.backupPath': 'Backup path: ',
+  'security.lastError': 'Latest error: ',
+
+  'proxy.invalidWarning': 'Global proxy is enabled, but host or port is invalid. It is being treated as disabled.',
+  'proxy.syncFailed': 'Global proxy config sync failed: {message}',
+  'proxy.modal.title': 'Global Proxy Settings',
+  'proxy.modal.description': 'Configure update checks, driver management, and shared network access for connections without their own proxy.',
+  'proxy.label': 'Global proxy',
+  'proxy.enable': 'Enable global proxy',
+  'proxy.type': 'Proxy type',
+  'proxy.port': 'Port',
+  'proxy.host': 'Proxy host',
+  'proxy.hostPlaceholder': 'Example: 127.0.0.1',
+  'proxy.usernameOptional': 'Username (optional)',
+  'proxy.passwordOptional': 'Password (optional)',
+  'proxy.scopeHint': '* Applies to update checks, driver-manager network requests, and database connections without their own proxy.',
+
+  'message.unknownError': 'Unknown error',
+  'message.loadDataRootFailed': 'Failed to load data root information',
+  'message.loadDataRootFailedWithMessage': 'Failed to load data root information: {message}',
+  'message.selectDataRootFailed': 'Failed to select data root',
+  'message.selectDataRootFailedWithMessage': 'Failed to select data root: {message}',
+  'message.applyDataRootFailed': 'Failed to apply data root',
+  'message.applyDataRootFailedWithMessage': 'Failed to apply data root: {message}',
+  'message.openDataRootFailed': 'Failed to open data root',
+  'message.openDataRootFailedWithMessage': 'Failed to open data root: {message}',
+  'message.selectValidDataRoot': 'Select a valid data directory first.',
+  'message.dataRootUpdated': 'Data root updated.',
+  'message.appInfoFailed': 'Failed to get app info: {message}',
+
+
+  'generic.fallback.renderError.title': 'Render error',
+  'generic.fallback.renderError.description': 'The data grid failed to render, possibly because of the data format.',
+  'generic.fallback.retry': 'Retry',
+  'generic.fallback.loadingWorkspace': 'Loading workspace…',
+  'generic.fallback.newQuery': 'New query',
+  'generic.fallback.commandDb': 'Command - db{db}',
+  'generic.fallback.monitorDb': 'Monitor - db{db}',
+  'generic.fallback.sqlDirectory': 'SQL directory',
+  'generic.fallback.savedQuery': 'Saved query',
+  'generic.fallback.queryName': 'Query-{index}',
+  'generic.fallback.connectionName': 'Connection-{index}',
+  'generic.fallback.tagName': 'Tag-{index}',
+  'generic.frontend.defaultChineseNotice': 'This text is available in Chinese only in the current compatibility slice.',
+  'generic.frontend.defaultEnglishNotice': 'English is the default language for UI, API prompts, and backend errors.',
+  'generic.frontend.migratedSurfaceNotice': 'Core shell, settings, update, connection-package, security, API bridge, backend envelope, and backend exception surfaces are language-aware.',
+  'generic.frontend.remainingSurfaceNotice': 'Some deep workbench labels are still displayed through compatibility fallback until their owning screens are migrated.',
+
+  'backend.fallback.ok': 'OK',
+  'backend.fallback.applyChanges': 'Transaction committed successfully',
+  'backend.fallback.queryCancelled': 'Query cancelled',
+  'backend.fallback.tablesLoaded': 'Tables loaded',
+  'backend.fallback.queryExecuted': 'Query executed',
+  'backend.fallback.queryBatchExecuted': 'Query batch executed',
+  'backend.fallback.dataRootLoaded': 'Data root loaded',
+  'backend.fallback.emptyResponse': 'Empty response',
+  'backend.fallback.requestFailed': 'Request failed',
+} as const;
+
+export const zhCN: Record<I18nKey, string> = {
+  'language.english': 'English',
+  'language.chinese': '中文',
+  'language.selector.label': '语言',
+  'language.selector.description': '选择页面、提示和 API 消息的显示语言。',
+  'language.selector.defaultBadge': '默认',
+
+  'common.close': '关闭',
+  'common.cancel': '取消',
+  'common.confirm': '确认',
+  'common.default': '默认',
+  'common.restoreDefault': '恢复默认',
+  'common.loading': '加载中…',
+  'common.unknown': '未知',
+  'common.enabled': '已启用',
+  'common.disabled': '已停用',
+  'common.open': '打开',
+  'common.download': '下载',
+  'common.install': '安装',
+  'common.notChecked': '未检查',
+  'common.hideToBackground': '隐藏到后台',
+
+  'sidebar.tools': '工具',
+  'sidebar.settings': '设置',
+  'sidebar.newConnection': '新建连接',
+  'sidebar.newQuery': '新建查询',
+  'sidebar.sqlLog': 'SQL 执行日志',
+  'sidebar.resizeHandle': '拖动调整宽度',
+  'ai.assistant': 'AI 助手',
+  'tab.menu.closeOther': '关闭其他页',
+  'tab.menu.closeLeft': '关闭左侧',
+  'tab.menu.closeRight': '关闭右侧',
+  'tab.menu.closeAll': '关闭所有',
+
+  'tools.center.title': '工具中心',
+  'tools.center.description': '集中处理连接配置、同步、驱动、数据目录和快捷键相关操作。',
+  'tools.import.title': '导入连接配置',
+  'tools.import.description': '从本地文件恢复连接列表。',
+  'tools.export.title': '导出连接配置',
+  'tools.export.description': '导出当前连接与可见配置字段。',
+  'tools.sync.title': '数据同步',
+  'tools.sync.description': '进入跨源同步工作流。',
+  'tools.drivers.title': '驱动管理',
+  'tools.drivers.description': '安装、更新或移除数据库驱动。',
+  'tools.dataRoot.title': '数据目录',
+  'tools.dataRoot.description': '查看、切换或迁移本地数据存储位置。',
+  'tools.shortcuts.title': '快捷键管理',
+  'tools.shortcuts.description': '查看并调整全局快捷键绑定。',
+  'tools.security.title': '安全更新',
+  'tools.security.status': '当前状态：{status}',
+  'tools.security.description': '查看已保存配置的安全更新状态。',
+
+  'settings.center.title': '设置中心',
+  'settings.center.description': '集中处理代理、语言、主题、AI 与关于等通用配置入口。',
+  'settings.language.title': '语言',
+  'settings.language.description': '在中文和英文之间切换。默认语言为英文。',
+  'settings.language.current': '当前语言',
+  'settings.language.applied': '语言已切换为{language}。',
+  'settings.themeAppearance.title': '主题与外观',
+  'settings.themeAppearance.description': '切换亮暗主题并调整界面观感。',
+  'settings.proxy.title': '全局代理',
+  'settings.proxy.description': '统一配置更新检查、驱动管理和公共网络出口。',
+  'settings.ai.title': 'AI 设置',
+  'settings.ai.description': '管理模型供应商、密钥和默认行为。',
+  'settings.about.title': '关于 JavaNavi',
+  'settings.about.description': '查看版本信息、仓库地址和更新状态。',
+  'settings.dataRoot.title': '数据存储位置',
+  'settings.dataRoot.description': '统一管理连接、代理、AI 配置与驱动等文件型数据的根目录。',
+  'settings.dataRoot.currentDirectory': '当前目录',
+  'settings.dataRoot.defaultDirectory': '默认目录',
+  'settings.dataRoot.driverDirectory': '驱动目录',
+  'settings.dataRoot.target': '切换目标',
+  'settings.dataRoot.placeholder': '选择新的数据目录',
+  'settings.dataRoot.select': '选择目录',
+  'settings.dataRoot.openCurrent': '打开当前目录',
+  'settings.dataRoot.restoreDefault': '恢复默认目录',
+  'settings.dataRoot.applyMode': '应用方式',
+  'settings.dataRoot.switchOnly': '仅切换到所选目录',
+  'settings.dataRoot.migrateAndSwitch': '迁移现有数据并切换',
+  'settings.dataRoot.hint': '切换后建议重启应用，以确保 AI 与其他长生命周期模块完全切换到新目录。敏感密码仍保存在系统 secret store，不会随文件目录迁移。',
+
+  'about.version': '版本',
+  'about.author': '作者',
+  'about.updateStatus': '更新状态',
+  'about.community': '技术圈',
+  'about.projectLinks': '项目入口',
+  'about.downloadProgress': '下载进度',
+  'about.muteThisVersion': '本次不再提示',
+  'about.checkUpdates': '检查更新',
+  'about.downloadUpdate': '下载更新',
+  'about.openInstallDirectory': '打开安装目录',
+  'about.installUpdate': '安装更新',
+  'about.communityName': 'AI全书',
+
+  'theme.modal.themeTitle': '主题设置',
+  'theme.modal.appearanceTitle': '外观设置',
+  'theme.modal.themeDescription': '切换亮暗主题，保持整体视觉风格统一。',
+  'theme.modal.appearanceDescription': '统一调整缩放、字体、透明度与模糊效果。',
+  'theme.nav.title': '设置导航',
+  'theme.nav.theme': '主题模式',
+  'theme.nav.themeDescription': '亮色与暗色切换',
+  'theme.nav.appearance': '外观参数',
+  'theme.nav.appearanceDescription': '缩放、字体与透明度',
+  'theme.light.label': '亮色主题',
+  'theme.light.description': '适合明亮环境，层次更轻。',
+  'theme.dark.label': '暗色主题',
+  'theme.dark.description': '适合低光环境，视觉更沉稳。',
+  'appearance.scale': '界面缩放 (UI Scale)',
+  'appearance.scaleHint': '* 建议小屏设备设置为 85%-95%',
+  'appearance.fontSize': '基础字体大小 (Font Size)',
+  'appearance.transparency': '透明与模糊效果',
+  'appearance.enableTransparency': '启用透明与模糊',
+  'appearance.enableTransparencyDescription': '关闭后保留当前阈值，重新开启时直接恢复之前的设置。',
+  'appearance.opacity': '背景不透明度 (Opacity)',
+  'appearance.blur': '高斯模糊 (Blur)',
+  'appearance.windowsAcrylic': 'Windows 使用系统 Acrylic 效果，模糊程度由系统控制',
+  'appearance.blurHint': '* 仅控制应用内覆盖层的模糊效果',
+  'appearance.dataTableDisplay': '数据表显示',
+  'appearance.showVerticalBorders': '显示数据表竖向分隔线',
+  'appearance.showVerticalBordersDescription': '仅作用于数据表页面 DataGrid，不影响其他表格组件。',
+  'appearance.columnWidthMode': '数据表列宽模式',
+  'appearance.columnWidthModeDescription': '标准模式默认列宽 200px；紧凑模式默认列宽 140px。已手动拖拽调整的列宽优先保留。',
+  'appearance.macWindowControls': 'macOS 窗口控制',
+  'appearance.useNativeMacControls': '使用 macOS 原生窗口控制',
+  'appearance.useNativeMacControlsDescription': '启用后优先使用 macOS 原生全屏行为；Tauri 桌面默认使用系统标题栏。',
+  'appearance.useNativeMacControlsHint': '* 该选项仅影响兼容运行时的 macOS 原生控制同步；Tauri 桌面不再渲染前端自定义关闭按钮行',
+  'appearance.startupWindow': '启动窗口',
+  'appearance.startFullscreen': '启动时全屏',
+  'appearance.startFullscreenWindows': '启动时全屏（Windows 按最大化处理）',
+  'appearance.startFullscreenHint': '* 修改后下次启动生效',
+  'appearance.startFullscreenWindowsHint': '* Windows 下该选项按“启动时最大化”处理，修改后下次启动生效',
+
+  'shortcuts.title': '快捷键管理',
+  'shortcuts.description': '统一查看、录制与启停常用快捷键，保持操作习惯一致。',
+  'shortcuts.help': '点击“录制”后按下快捷键。按 Esc 可取消录制。全局快捷键建议包含修饰键；AI 聊天发送仅支持 Enter 相关组合，Shift+Enter 保留换行。',
+  'shortcuts.pressShortcut': '请按下快捷键...',
+  'shortcuts.record': '录制',
+  'shortcuts.recordCancel': '取消',
+  'shortcuts.aiUnsupported': 'AI 聊天发送快捷键仅支持 Enter / Ctrl+Enter / Cmd+Enter / Alt+Enter，Shift+Enter 保留换行',
+  'shortcuts.requiresModifier': '快捷键至少包含 Ctrl / Alt / Shift / Meta 之一',
+  'shortcuts.conflict': '与「{action}」冲突，请换一个快捷键',
+  'shortcuts.restored': '已恢复默认快捷键',
+
+  'connection.package.exportTitle': '导出连接',
+  'connection.package.importTitle': '输入导入密码',
+  'connection.package.startExport': '开始导出',
+  'connection.package.startImport': '开始导入',
+  'connection.package.exportPasswords': '导出连接密码',
+  'connection.package.useFilePassword': '设置文件保护密码',
+  'connection.package.exportPasswordPlaceholder': '请输入文件保护密码（可选）',
+  'connection.package.importPasswordPlaceholder': '请输入恢复包密码',
+  'connection.package.exportNoSecretsHelp': '将仅导出连接配置，不包含密码。',
+  'connection.package.exportPasswordHelp': '请通过单独渠道将密码告知接收方，不要和文件一起发送。',
+  'connection.package.exportPasswordRecommendedHelp': '密码已加密保护。如需通过公网传输，建议设置文件保护密码。',
+  'connection.package.passwordRequired': '恢复包密码不能为空',
+  'connection.package.filePasswordRequired': '文件保护密码不能为空',
+  'connection.package.exportSuccess': '导出成功',
+  'connection.package.importSuccess': '成功导入 {count} 个连接',
+  'connection.package.importPartialPasswordWarning': '成功导入 {count} 个连接，部分连接未包含密码，请编辑对应连接并输入密码后保存',
+  'connection.package.noConnections': '没有连接可导出',
+  'connection.package.invalidFormat': '文件格式错误：仅支持 JavaNavi 恢复包、历史 JSON 连接数组或 MySQL Workbench XML',
+  'connection.package.importRefreshFailed': '导入成功，但刷新连接列表失败：后端未返回连接列表',
+  'connection.package.importUnsupported': '导入失败：当前后端未提供新版导入能力',
+  'connection.package.importNoList': '导入失败：后端未返回连接列表',
+  'connection.package.importFailed': '导入失败',
+  'connection.package.exportUnsupported': '导出失败：当前后端未提供新版导出能力',
+  'connection.package.importPayloadMissing': '导入失败：未找到待导入的恢复包内容',
+  'connection.package.exportFailed': '导出失败',
+
+  'update.status.checking': '正在检查更新...',
+  'update.status.checkFailed': '检查更新失败: {message}',
+  'update.status.downloadReady': '更新包已就绪（{version}）',
+  'update.status.downloadReadyWithPath': '更新包已就绪（{version}），路径：{path}',
+  'update.status.downloadComplete': '更新下载完成',
+  'update.status.downloadCompleteWithPath': '更新下载完成，更新包路径：{path}',
+  'update.status.downloadFailed': '更新下载失败: {message}',
+  'update.status.openInstallDirFailed': '打开安装目录失败: {message}',
+  'update.status.installFailed': '更新安装失败: {message}',
+  'update.status.newVersion': '发现新版本 {version}',
+  'update.status.newVersionDownloaded': '发现新版本 {version}（已下载，请点击“下载进度”后安装）',
+  'update.status.newVersionNotDownloaded': '发现新版本 {version}（未下载）',
+  'update.status.latest': '当前已是最新版本（{version}）',
+  'update.status.openInstallDirectorySuccess': '已打开安装目录，请手动完成替换',
+  'update.status.downloadedSuffix': '{label}（已下载）',
+  'update.download.title': '下载更新',
+  'update.download.titleWithVersion': '下载更新 {version}',
+
+  'security.stage.retry': '正在校验更新结果',
+  'security.stage.update': '正在更新安全存储',
+  'security.capabilityUnavailable': '安全更新能力不可用',
+  'security.updateIncomplete': '安全更新未完成，请稍后重试',
+  'security.savedConfigCompleted': '已保存配置已完成安全更新',
+  'security.needsAttention': '更新尚未完成，有少量配置需要你处理',
+  'security.rolledBack': '本次更新未完成，系统已保留当前可用配置',
+  'security.postponeFailed': '暂时无法延后本次安全更新',
+  'security.savedConfigUpdateAvailable': '已保存配置可进行安全更新',
+  'security.savedConfigUpdateTitle': '已保存配置安全更新',
+  'security.savedConfigUpdateSubtitle': '使用新的安全存储方式前，需要先完成一次本地配置更新。',
+  'security.savedConfigUpdateBody': '为了让已保存的连接、代理和相关服务配置使用新的安全存储方式，本次更新需要进行一次本地配置更新。更新前会自动创建本地备份；如果本次未完成，系统会保留当前可用配置，你也可以稍后继续。',
+  'security.updatePendingDetail': '更新过程中会保留当前可用配置，请稍候。',
+  'security.updateNow': '立即更新',
+  'security.remindLater': '稍后提醒我',
+  'security.checkAgain': '重新检查',
+  'security.restartUpdate': '重新开始更新',
+  'security.startUpdate': '开始更新',
+  'security.manageTitle': '安全更新',
+  'security.manageSubtitle': '管理已保存配置的安全更新状态与待处理项。',
+  'security.currentStatus': '当前状态：{status}',
+  'security.impactScope': '影响范围',
+  'security.total': '总计',
+  'security.updated': '已更新',
+  'security.pending': '待处理',
+  'security.skipped': '已跳过',
+  'security.failed': '失败',
+  'security.pendingItems': '待处理清单',
+  'security.noPendingItems': '当前没有待处理项',
+  'security.itemStatus': '状态：{status}',
+  'security.itemLevel': '级别：{level}',
+  'security.itemNeedsAction': '当前项需要进一步处理后才能完成安全更新。',
+  'security.recentResult': '最近一次结果',
+  'security.backupPath': '备份位置：',
+  'security.lastError': '最近错误：',
+
+  'proxy.invalidWarning': '全局代理已开启，但地址或端口无效，当前按未启用处理',
+  'proxy.syncFailed': '全局代理配置失败: {message}',
+  'proxy.modal.title': '全局代理设置',
+  'proxy.modal.description': '统一配置更新检查、驱动管理与未单独指定代理的连接网络出口。',
+  'proxy.label': '全局代理',
+  'proxy.enable': '启用全局代理',
+  'proxy.type': '代理类型',
+  'proxy.port': '端口',
+  'proxy.host': '代理地址',
+  'proxy.hostPlaceholder': '例如：127.0.0.1',
+  'proxy.usernameOptional': '用户名（可选）',
+  'proxy.passwordOptional': '密码（可选）',
+  'proxy.scopeHint': '* 作用于更新检查、驱动管理网络请求，以及未单独配置代理的数据库连接',
+
+  'message.unknownError': '未知错误',
+  'message.loadDataRootFailed': '加载数据目录信息失败',
+  'message.loadDataRootFailedWithMessage': '加载数据目录信息失败: {message}',
+  'message.selectDataRootFailed': '选择数据目录失败',
+  'message.selectDataRootFailedWithMessage': '选择数据目录失败: {message}',
+  'message.applyDataRootFailed': '应用数据目录失败',
+  'message.applyDataRootFailedWithMessage': '应用数据目录失败: {message}',
+  'message.openDataRootFailed': '打开数据目录失败',
+  'message.openDataRootFailedWithMessage': '打开数据目录失败: {message}',
+  'message.selectValidDataRoot': '请先选择有效的数据目录',
+  'message.dataRootUpdated': '数据目录已更新',
+  'message.appInfoFailed': '获取应用信息失败: {message}',
+
+
+  'generic.fallback.renderError.title': '渲染错误',
+  'generic.fallback.renderError.description': '数据表格渲染时发生错误，可能是数据格式问题。',
+  'generic.fallback.retry': '重试',
+  'generic.fallback.loadingWorkspace': '正在加载工作区...',
+  'generic.fallback.newQuery': '新建查询',
+  'generic.fallback.commandDb': '命令 - db{db}',
+  'generic.fallback.monitorDb': '监控 - db{db}',
+  'generic.fallback.sqlDirectory': 'SQL目录',
+  'generic.fallback.savedQuery': '已存查询',
+  'generic.fallback.queryName': '查询-{index}',
+  'generic.fallback.connectionName': '连接-{index}',
+  'generic.fallback.tagName': '标签-{index}',
+  'generic.frontend.defaultChineseNotice': '当前兼容切片中的这段文本仅提供中文。',
+  'generic.frontend.defaultEnglishNotice': '英文是界面、API 提示和后端异常的默认语言。',
+  'generic.frontend.migratedSurfaceNotice': '核心外壳、设置、更新、连接包、安全更新、API 桥、后端响应体与后端异常已接入语言感知链路。',
+  'generic.frontend.remainingSurfaceNotice': '部分深层工作台标签在所属页面完成迁移前仍通过兼容兜底展示。',
+
+  'backend.fallback.ok': '成功',
+  'backend.fallback.applyChanges': '事务提交成功',
+  'backend.fallback.queryCancelled': '查询已取消',
+  'backend.fallback.tablesLoaded': '表已加载',
+  'backend.fallback.queryExecuted': '查询已执行',
+  'backend.fallback.queryBatchExecuted': '批量查询已执行',
+  'backend.fallback.dataRootLoaded': '数据目录已加载',
+  'backend.fallback.emptyResponse': '响应为空',
+  'backend.fallback.requestFailed': '请求失败',
+};
+
+const bundles: Record<AppLanguage, Record<I18nKey, string>> = {
+  en: enUS,
+  zh: zhCN,
+};
+
+export const appLanguageOptions: Array<{ value: AppLanguage; labelKey: I18nKey }> = [
+  { value: 'en', labelKey: 'language.english' },
+  { value: 'zh', labelKey: 'language.chinese' },
+];
+
+export const interpolate = (template: string, params?: I18nParams): string => {
+  if (!params) return template;
+  return template.replace(/\{([A-Za-z0-9_.-]+)\}/g, (match, key) => {
+    const value = params[key];
+    return value === null || value === undefined ? '' : String(value);
+  });
+};
+
+export const translate = (language: AppLanguage, key: I18nKey, params?: I18nParams): string => {
+  const bundle = bundles[sanitizeLanguage(language)] || enUS;
+  const template = bundle[key] || enUS[key] || key;
+  return interpolate(template, params);
+};
+
+export const translateBackendFallback = (language: AppLanguage, fallback: string): string => {
+  const normalized = String(fallback || '').trim();
+  if (!normalized) return translate(language, 'backend.fallback.ok');
+  const fallbackMap: Record<string, I18nKey> = {
+    OK: 'backend.fallback.ok',
+    '事务提交成功': 'backend.fallback.applyChanges',
+    'Transaction committed successfully': 'backend.fallback.applyChanges',
+    '查询已取消': 'backend.fallback.queryCancelled',
+    'Query cancelled': 'backend.fallback.queryCancelled',
+    'Tables loaded': 'backend.fallback.tablesLoaded',
+    'Query executed': 'backend.fallback.queryExecuted',
+    'Query batch executed': 'backend.fallback.queryBatchExecuted',
+    'Data root loaded': 'backend.fallback.dataRootLoaded',
+    'Empty response': 'backend.fallback.emptyResponse',
+    'Request failed': 'backend.fallback.requestFailed',
+  };
+  const key = fallbackMap[normalized];
+  return key ? translate(language, key) : normalized;
+};
+
+
+export const containsCjk = (value: unknown): boolean => /[\u4e00-\u9fff]/.test(String(value ?? ''));
+
+export const localizeCjkFallback = (
+  language: AppLanguage,
+  value: string,
+  englishFallback: string = translate(language, 'generic.frontend.defaultChineseNotice'),
+): string => {
+  const text = String(value ?? '');
+  return sanitizeLanguage(language) === 'zh' || !containsCjk(text) ? text : englishFallback;
+};
+
+export const currentLanguageHeaderValue = (language: AppLanguage): string => (sanitizeLanguage(language) === 'zh' ? 'zh-CN' : 'en');
+
+export const currentHtmlLangValue = (language: AppLanguage): string => (sanitizeLanguage(language) === 'zh' ? 'zh-CN' : 'en');
+
+export const languageStorageKey = 'javanavi.language';
+
+export const setRuntimeLanguage = (language: AppLanguage): void => {
+  const sanitized = sanitizeLanguage(language);
+  if (typeof window !== 'undefined') {
+    (window as unknown as { __javanaviLanguage?: AppLanguage }).__javanaviLanguage = sanitized;
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      localStorage.setItem(languageStorageKey, sanitized);
+    } catch {
+      // Ignore storage failures; the Zustand store remains the authoritative source.
+    }
+  }
+};
+
+export const getRuntimeLanguage = (): AppLanguage => {
+  if (typeof window !== 'undefined') {
+    const runtimeLanguage = (window as unknown as { __javanaviLanguage?: unknown }).__javanaviLanguage;
+    if (isAppLanguage(runtimeLanguage)) {
+      return runtimeLanguage;
+    }
+  }
+  if (typeof localStorage !== 'undefined') {
+    try {
+      const storedLanguage = localStorage.getItem(languageStorageKey);
+      if (storedLanguage) {
+        return sanitizeLanguage(storedLanguage);
+      }
+      const persisted = localStorage.getItem('lite-db-storage');
+      if (persisted) {
+        const parsed = JSON.parse(persisted);
+        const state = parsed?.state && typeof parsed.state === 'object' ? parsed.state : parsed;
+        return sanitizeLanguage(state?.language);
+      }
+    } catch {
+      // Ignore storage failures and continue to the persisted app store fallback.
+    }
+  }
+  return DEFAULT_LANGUAGE;
+};
+
+const MESSAGE_FALLBACKS = {
+  text: 'This text is available in Chinese only in the current compatibility slice.',
+  jsx: '[Chinese-only UI text]',
+  message: 'This message is available in Chinese only.',
+} as const;
+
+export const installCompatibilityI18nFallback = (): void => {
+  if (typeof window === 'undefined') return;
+  const target = globalThis as typeof globalThis & {
+    __javanaviI18nCompatText?: (text: string, kind?: string) => string;
+  };
+  target.__javanaviI18nCompatText = (text: string, kind = 'text') => {
+    if (getRuntimeLanguage() === 'zh' || !containsCjk(text)) {
+      return text;
+    }
+    if (kind === 'jsx') return MESSAGE_FALLBACKS.jsx;
+    if (kind === 'message') return MESSAGE_FALLBACKS.message;
+    return MESSAGE_FALLBACKS.text;
+  };
+};

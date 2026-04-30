@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>JavaNavi Startup Error</title>
+    <style>
+      body { margin: 0; font-family: system-ui, sans-serif; background: #1f2937; color: #f9fafb; }
+      main { max-width: 860px; margin: 56px auto; padding: 32px; }
+      h1 { color: #fca5a5; }
+      code, pre { background: #111827; border-radius: 8px; color: #d1d5db; padding: 12px; display: block; white-space: pre-wrap; overflow-wrap: anywhere; }
+      .hint { color: #cbd5e1; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>JavaNavi desktop could not start</h1>
+      <p class="hint">The Java/Spring Boot sidecar failed before the desktop window could load the app.</p>
+      <h2>Details</h2>
+      <pre id="message"></pre>
+      <h2>Log path</h2>
+      <code id="logPath"></code>
+      <p class="hint">JavaNavi normally uses its bundled Java runtime. If this package was damaged or intentionally staged without one, install Java 17+ or set <code>JAVA_HOME</code> / <code>JAVANAVI_DESKTOP_JAVA</code>, then restart JavaNavi Desktop.</p>
+    </main>
+    <script>
+      const params = new URLSearchParams(location.search);
+      document.getElementById('message').textContent = params.get('message') || 'Unknown startup failure';
+      document.getElementById('logPath').textContent = params.get('log') || 'No log file was created';
+    </script>
+  </body>
+</html>

@@ -1,0 +1,26 @@
+spring:
+  application:
+    name: javanavi-backend
+  datasource:
+    url: jdbc:h2:mem:javanavi;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  servlet:
+    multipart:
+      max-file-size: 256MB
+      max-request-size: 512MB
+
+server:
+  address: 127.0.0.1
+  port: 8080
+
+javanavi:
+  security:
+    local-session-required: true
+    session-header: X-JavaNavi-Session
+    session-cookie: JAVANAVI_SESSION
+    allowed-origins:
+      - http://localhost:5173
+      - http://127.0.0.1:5173
+    data-directory: ${JAVANAVI_DATA_DIR:${user.home}/.javanavi}

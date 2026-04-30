@@ -1,0 +1,37 @@
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+
+# Java / Maven
+backend/target/
+*.class
+*.log
+
+# Generated Java Web package static assets
+backend/src/main/resources/static/
+
+# Node / Vite
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+
+# Local env
+.env
+.env.*
+!.env.example
+
+# Project-local Maven cache
+.m2/
+/.omx/
+/*.iml
+
+# Tauri desktop generated artifacts
+/src-tauri/resources/javanavi-backend.jar
+/src-tauri/resources/java-runtime/
+/src-tauri/target/
+/node_modules/
+
+# Root-level release/package artifacts
+/dist/

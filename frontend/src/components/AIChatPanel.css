@@ -1,0 +1,497 @@
+.ai-chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+    border-left: 1px solid rgba(128, 128, 128, 0.12);
+    position: relative;
+}
+
+/* Resize Handle */
+.ai-resize-handle {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    cursor: col-resize;
+    z-index: 10;
+    transition: background 0.15s ease;
+}
+
+.ai-resize-handle:hover,
+.ai-resize-handle.active {
+    background: rgba(22, 119, 255, 0.5);
+}
+
+/* Header */
+.ai-chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    border-bottom: 1px solid rgba(128, 128, 128, 0.1);
+    flex-shrink: 0;
+}
+
+.ai-chat-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.ai-chat-header-left .ai-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    display: grid;
+    place-items: center;
+    font-size: 16px;
+    font-weight: 700;
+    flex-shrink: 0;
+}
+
+.ai-chat-header-left .ai-title {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.01em;
+}
+
+.ai-chat-header-right {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Messages Area */
+.ai-chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
+
+.ai-chat-messages::-webkit-scrollbar {
+    width: 5px;
+}
+
+.ai-chat-messages::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ai-chat-messages::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.3);
+    border-radius: 3px;
+}
+
+/* Welcome */
+.ai-chat-welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 16px;
+    padding: 40px 20px;
+    text-align: center;
+    flex: 1;
+}
+
+.ai-chat-welcome .welcome-icon {
+    width: 56px;
+    height: 56px;
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    font-size: 28px;
+}
+
+.ai-chat-welcome .welcome-title {
+    font-size: 18px;
+    font-weight: 700;
+    margin-bottom: 4px;
+}
+
+.ai-chat-welcome .quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 8px;
+}
+
+.ai-chat-welcome .quick-action-btn {
+    padding: 6px 14px;
+    border-radius: 20px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border: 1px solid;
+}
+
+.ai-chat-welcome .quick-action-btn:hover {
+    background: rgba(99, 102, 241, 0.12) !important;
+    border-color: rgba(99, 102, 241, 0.3) !important;
+    color: #818cf8 !important;
+}
+
+/* IDE Style Messages */
+.ai-ide-message {
+    padding: 12px 16px;
+    animation: ai-msg-in 0.2s ease-out;
+}
+
+@keyframes ai-msg-in {
+    from {
+        opacity: 0;
+        transform: translateY(8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.ai-ide-message-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    margin-bottom: 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.ai-ide-message-content {
+    font-size: 13px;
+    line-height: 1.6;
+    word-break: break-word;
+    /* Remove pre-wrap here, as it conflicts with ReactMarkdown's block rendering */
+}
+
+/* Markdown Styles Override */
+.ai-markdown-content {
+    white-space: normal;
+}
+.ai-markdown-content p {
+    margin: 0 0 10px;
+}
+.ai-markdown-content p:last-child {
+    margin-bottom: 0;
+}
+.ai-markdown-content h1,
+.ai-markdown-content h2,
+.ai-markdown-content h3,
+.ai-markdown-content h4,
+.ai-markdown-content h5,
+.ai-markdown-content h6 {
+    margin: 16px 0 8px;
+    line-height: 1.4;
+    font-weight: 600;
+}
+.ai-markdown-content h1:first-child,
+.ai-markdown-content h2:first-child,
+.ai-markdown-content h3:first-child,
+.ai-markdown-content h4:first-child,
+.ai-markdown-content h5:first-child,
+.ai-markdown-content h6:first-child {
+    margin-top: 0;
+}
+.ai-markdown-content pre {
+    margin: 10px 0;
+    border-radius: 4px;
+    padding: 10px;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    font-size: 12px;
+    overflow-x: auto;
+    border: 1px solid rgba(128, 128, 128, 0.15);
+    background: rgba(0, 0, 0, 0.2);
+}
+.ai-markdown-content code {
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+    background: rgba(128, 128, 128, 0.15);
+    padding: 2px 4px;
+    border-radius: 3px;
+    font-size: 0.95em;
+}
+.ai-markdown-content ul, .ai-markdown-content ol {
+    margin: 0 0 10px;
+    padding-left: 20px;
+}
+.ai-markdown-content li {
+    margin-bottom: 4px;
+}
+
+/* Advanced Typing/Blinker indicator */
+.ai-blinking-cursor {
+    display: inline-block;
+    width: 6px;
+    height: 14px;
+    background-color: currentColor;
+    border-radius: 1px;
+    vertical-align: middle;
+    margin-left: 4px;
+    animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0; }
+}
+
+@keyframes ai-dot-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+}
+
+/* History Drawer Styles */
+.ai-history-list::-webkit-scrollbar {
+    width: 4px;
+}
+.ai-history-list::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.2);
+    border-radius: 4px;
+}
+.ai-history-list:hover::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.4);
+}
+
+.ai-history-item:hover {
+    background: rgba(128, 128, 128, 0.08) !important;
+}
+
+.ai-history-item .ai-history-delete-btn {
+    opacity: 0;
+    transition: opacity 0.2s, background 0.2s;
+}
+
+.ai-history-item:hover .ai-history-delete-btn,
+.ai-history-item.active .ai-history-delete-btn {
+    opacity: 1;
+}
+
+/* Input Area */
+.ai-chat-input-area {
+    padding: 12px 16px 16px;
+    border-top: 1px solid rgba(128, 128, 128, 0.1);
+    flex-shrink: 0;
+}
+
+/* Textarea scrollbar */
+.ai-chat-input-wrapper textarea {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(128, 128, 128, 0.3) transparent;
+}
+
+.ai-chat-input-wrapper textarea::-webkit-scrollbar {
+    width: 4px;
+}
+
+.ai-chat-input-wrapper textarea::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.ai-chat-input-wrapper textarea::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.3);
+    border-radius: 2px;
+}
+
+.ai-chat-input-wrapper {
+    display: flex;
+    align-items: flex-end;
+    gap: 8px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    border-bottom-color: rgba(128, 128, 128, 0.4);
+    padding: 6px 10px;
+    transition: all 0.2s ease;
+    background: transparent !important;
+    box-shadow: none !important;
+}
+
+.ai-chat-input-wrapper:focus-within {
+    border-color: var(--ant-primary-color, #1677ff) !important;
+    background: rgba(128, 128, 128, 0.05) !important;
+}
+
+.ai-chat-input-wrapper textarea {
+    width: 100%;
+    border: none;
+    outline: none;
+    background: transparent;
+    resize: none;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 28px;
+    max-height: 200px;
+    padding: 0;
+    font-family: inherit;
+    overflow-y: auto;
+}
+
+.ai-chat-input-wrapper textarea::placeholder {
+    opacity: 0.4;
+}
+
+.ai-chat-send-btn {
+    width: 26px;
+    height: 26px;
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    border: none;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: transform 0.15s ease, opacity 0.15s ease;
+}
+
+.ai-chat-send-btn:hover {
+    transform: scale(1.06);
+}
+
+.ai-chat-send-btn:active {
+    transform: scale(0.96);
+}
+
+.ai-chat-send-btn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.ai-ide-message:hover .ai-message-actions {
+    opacity: 1 !important;
+}
+
+/* Markdown 额外样式增强: Table & Blockquote */
+.ai-markdown-content table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  margin: 12px 0;
+  font-size: 13px;
+}
+
+/* 让消息内容区域成为表格的滚动约束容器 */
+.ai-ide-message-content {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* 表格滚动容器 - 不限定直接子元素 */
+.ai-markdown-content table {
+  display: block;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  max-width: 100%;
+}
+
+.ai-markdown-content table::-webkit-scrollbar {
+  height: 4px;
+}
+
+.ai-markdown-content table::-webkit-scrollbar-thumb {
+  background: rgba(128, 128, 128, 0.3);
+  border-radius: 2px;
+}
+
+.ai-markdown-content th,
+.ai-markdown-content td {
+  border: 1px solid rgba(125, 125, 125, 0.2);
+  padding: 6px 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ai-markdown-content th {
+  background: rgba(125, 125, 125, 0.1);
+  font-weight: 600;
+}
+
+.ai-markdown-content blockquote {
+  margin: 12px 0;
+  padding: 8px 14px;
+  border-left: 4px solid rgba(125, 125, 125, 0.4);
+  background: rgba(125, 125, 125, 0.05);
+  color: inherit;
+  opacity: 0.85;
+  border-radius: 0 6px 6px 0;
+  font-style: italic;
+}
+
+/* 覆盖 code 块容器样式避免和 syntax highlighter 冲突 */
+.ai-markdown-content > pre {
+    background: transparent !important;
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* ===== 新版 AI 状态流转动画 ===== */
+
+/* 1. 连接脉冲动画 (connecting) */
+.ai-wave-pulse {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.ai-wave-pulse span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background-color: currentColor;
+    animation: wave-pulse-anim 1.2s ease-in-out infinite;
+}
+.ai-wave-pulse span:nth-child(1) { animation-delay: 0s; }
+.ai-wave-pulse span:nth-child(2) { animation-delay: 0.15s; }
+.ai-wave-pulse span:nth-child(3) { animation-delay: 0.3s; }
+
+@keyframes wave-pulse-anim {
+    0%, 100% { transform: translateY(0) scale(0.8); opacity: 0.4; }
+    50% { transform: translateY(-4px) scale(1.1); opacity: 1; }
+}
+
+/* 2. 平滑高度与透明度过渡 (针对 ThinkingBlock 和 面板折叠) */
+.ai-expand-transition {
+    display: grid;
+    transition: grid-template-rows 0.3s ease-out, opacity 0.3s ease-out;
+}
+.ai-expand-transition.expanded {
+    grid-template-rows: 1fr;
+    opacity: 1;
+}
+.ai-expand-transition.collapsed {
+    grid-template-rows: 0fr;
+    opacity: 0;
+}
+.ai-expand-transition > div {
+    overflow: hidden;
+}
+
+/* 3. Agent风格旋转Loading环 */
+.ai-spinning-ring {
+    width: 14px;
+    height: 14px;
+    border: 2px solid rgba(22, 119, 255, 0.2);
+    border-top-color: #1677ff;
+    border-radius: 50%;
+    animation: ai-spin-anim 0.8s linear infinite;
+    flex-shrink: 0;
+}
+
+@keyframes ai-spin-anim {
+    to { transform: rotate(360deg); }
+}
+
+/* 面板/弹窗内部 toast 定位覆盖：从 fixed（视口顶部）改为 absolute（容器内部顶部） */
+.ai-chat-panel .ant-message,
+.ai-settings-body .ant-message {
+    position: absolute !important;
+    top: 16px !important;
+    left: 50% !important;
+    transform: translateX(-50%) !important;
+    right: auto !important;
+    width: max-content;
+    z-index: 100;
+}

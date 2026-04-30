@@ -1,0 +1,11 @@
+{
+  "event": "sqlfile:progress",
+  "payload": {
+    "jobId": "sqlfile-demo-001",
+    "status": "running",
+    "currentStatement": 12,
+    "totalStatements": 50,
+    "percent": 24,
+    "message": "Executing statement 12 of 50"
+  }
+}

@@ -1,0 +1,41 @@
+import * as compatibilityApp from './compat/javanaviApp'
+import * as compatibilityAI from './compat/aiService'
+import * as compatibilityRuntime from './compat/runtime'
+
+if (typeof window !== 'undefined' && !(window as any).runtime) {
+    (window as any).runtime = compatibilityRuntime;
+}
+
+if (typeof window !== 'undefined' && !(window as any).go) {
+    const appBridge = {
+        ...compatibilityApp,
+        CheckUpdate: compatibilityApp.CheckForUpdates,
+        OpenConnection: compatibilityApp.DBConnect,
+        CloseConnection: compatibilityApp.CloseConnection,
+        DeleteConnection: async (id: string) => {
+            await compatibilityApp.DeleteConnection(id);
+            return null;
+        },
+        GetDatabases: compatibilityApp.DBGetDatabases,
+        GetTables: compatibilityApp.DBGetTables,
+        GetTableColumns: compatibilityApp.DBGetColumns,
+        ExecuteQuery: compatibilityApp.DBQuery,
+    };
+
+    (window as any).go = {
+        app: {
+            App: appBridge,
+        },
+        aiservice: {
+            Service: compatibilityAI,
+        },
+    };
+}
+
+void import('./bootstrap').catch((error) => {
+    console.error('JavaNavi UI bootstrap failed', error);
+    const root = document.getElementById('root');
+    if (root) {
+        root.innerHTML = '<div style="font-family: sans-serif; padding: 24px; color: #b00020;">JavaNavi UI 启动失败，请查看控制台日志。</div>';
+    }
+});

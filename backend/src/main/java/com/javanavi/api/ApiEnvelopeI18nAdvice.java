@@ -1,0 +1,78 @@
+package com.javanavi.api;
+
+import com.javanavi.i18n.I18nMessages;
+import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.ApiError;
+import org.springframework.core.MethodParameter;
+import org.springframework.http.MediaType;
+import org.springframework.http.converter.HttpMessageConverter;
+import org.springframework.http.server.ServerHttpRequest;
+import org.springframework.http.server.ServerHttpResponse;
+import org.springframework.web.bind.annotation.ControllerAdvice;
+import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
+
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+
+@ControllerAdvice
+public class ApiEnvelopeI18nAdvice implements ResponseBodyAdvice<Object> {
+    private static final Set<String> LOCALIZED_VALUE_KEYS = Set.of(
+            "message",
+            "schemaSummary",
+            "stage",
+            "installSourceLabel",
+            "installSourceDetail",
+            "displayLabel",
+            "packageSizeText"
+    );
+
+    private final I18nMessages messages;
+
+    public ApiEnvelopeI18nAdvice(I18nMessages messages) {
+        this.messages = messages;
+    }
+
+    @Override
+    public boolean supports(MethodParameter returnType, Class<? extends HttpMessageConverter<?>> converterType) {
+        return true;
+    }
+
+    @Override
+    public Object beforeBodyWrite(
+            Object body,
+            MethodParameter returnType,
+            MediaType selectedContentType,
+            Class<? extends HttpMessageConverter<?>> selectedConverterType,
+            ServerHttpRequest request,
+            ServerHttpResponse response
+    ) {
+        if (!(body instanceof ApiEnvelope<?> envelope)) {
+            return body;
+        }
+        ApiError error = envelope.error();
+        ApiError localizedError = error == null ? null : new ApiError(error.code(), messages.localizeFallback(error.message()));
+        return new ApiEnvelope<>(envelope.success(), localizeData(envelope.data()), localizedError);
+    }
+
+    @SuppressWarnings("unchecked")
+    private Object localizeData(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            map.forEach((rawKey, rawValue) -> {
+                String key = String.valueOf(rawKey);
+                if (rawValue instanceof String text && LOCALIZED_VALUE_KEYS.contains(key)) {
+                    copy.put(key, messages.localizeFallback(text));
+                } else {
+                    copy.put(key, localizeData(rawValue));
+                }
+            });
+            return copy;
+        }
+        if (value instanceof List<?> list) {
+            return list.stream().map(this::localizeData).toList();
+        }
+        return value;
+    }
+}

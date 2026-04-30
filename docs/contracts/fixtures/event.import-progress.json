@@ -1,0 +1,11 @@
+{
+  "event": "import:progress",
+  "payload": {
+    "jobId": "import-demo-001",
+    "status": "running",
+    "processedRows": 1500,
+    "totalRows": 5000,
+    "percent": 30,
+    "message": "Imported 1500 rows"
+  }
+}

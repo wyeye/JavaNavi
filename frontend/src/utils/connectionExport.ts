@@ -1,0 +1,197 @@
+import type { ConnectionConfig, SavedConnection } from '../types';
+
+export type ConnectionImportKind = 'app-managed-package' | 'encrypted-package' | 'legacy-json' | 'mysql-workbench-xml' | 'invalid';
+export type ConnectionPackageDialogSnapshot = {
+  open: boolean;
+  mode: 'export' | 'import';
+  includeSecrets: boolean;
+  useFilePassword: boolean;
+  password: string;
+  error: string;
+  confirmLoading: boolean;
+};
+export type ConnectionPackageDialogUpdater = (
+  current: ConnectionPackageDialogSnapshot,
+) => ConnectionPackageDialogSnapshot;
+
+export type ConnectionPackageExportResult =
+  | { kind: 'canceled'; nextDialog: ConnectionPackageDialogUpdater }
+  | { kind: 'succeeded' }
+  | { kind: 'failed'; error: string };
+
+type JsonObject = Record<string, unknown>;
+
+const CONNECTION_PACKAGE_KIND = 'javanavi_connection_package';
+const CONNECTION_PACKAGE_SCHEMA_VERSION_V2 = 2;
+const CONNECTION_PACKAGE_PROTECTION_APP_MANAGED = 1;
+const CONNECTION_PACKAGE_PROTECTION_FILE_PASSWORD = 2;
+const CANCELED_MESSAGE = '已取消';
+const CONNECTION_PACKAGE_PASSWORD_REQUIRED_MESSAGE = '恢复包密码不能为空';
+
+const isJsonObject = (value: unknown): value is JsonObject => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
+
+const isConnectionPackageKDF = (value: unknown): value is JsonObject => (
+  isJsonObject(value)
+  && typeof value.name === 'string'
+  && typeof value.memoryKiB === 'number'
+  && typeof value.timeCost === 'number'
+  && typeof value.parallelism === 'number'
+  && typeof value.salt === 'string'
+);
+
+const isConnectionPackageEnvelope = (value: unknown): value is JsonObject => (
+  isJsonObject(value)
+  && typeof value.schemaVersion === 'number'
+  && value.kind === CONNECTION_PACKAGE_KIND
+  && typeof value.cipher === 'string'
+  && isConnectionPackageKDF(value.kdf)
+  && typeof value.nonce === 'string'
+  && typeof value.payload === 'string'
+);
+
+const isConnectionPackageV2Envelope = (value: unknown): value is JsonObject => (
+  isJsonObject(value)
+  && value.kind === CONNECTION_PACKAGE_KIND
+  && value.v === CONNECTION_PACKAGE_SCHEMA_VERSION_V2
+  && typeof value.p === 'number'
+);
+
+const isConnectionPackageKDFV2 = (value: unknown): value is JsonObject => (
+  isJsonObject(value)
+  && typeof value.n === 'string'
+  && typeof value.m === 'number'
+  && typeof value.t === 'number'
+  && typeof value.l === 'number'
+  && typeof value.s === 'string'
+);
+
+const isConnectionPackageV2AppManagedEnvelope = (value: unknown): value is JsonObject => (
+  isConnectionPackageV2Envelope(value)
+  && value.p === CONNECTION_PACKAGE_PROTECTION_APP_MANAGED
+  && Array.isArray(value.connections)
+);
+
+const isConnectionPackageV2ProtectedEnvelope = (value: unknown): value is JsonObject => (
+  isConnectionPackageV2Envelope(value)
+  && value.p === CONNECTION_PACKAGE_PROTECTION_FILE_PASSWORD
+  && isConnectionPackageKDFV2(value.kdf)
+  && typeof value.nc === 'string'
+  && typeof value.d === 'string'
+);
+
+const isLegacyConnectionConfig = (value: unknown): value is JsonObject => (
+  isJsonObject(value)
+  && typeof value.type === 'string'
+);
+
+const isLegacyConnectionItem = (value: unknown): value is JsonObject => (
+  isJsonObject(value)
+  && typeof value.id === 'string'
+  && typeof value.name === 'string'
+  && isLegacyConnectionConfig(value.config)
+);
+
+const parseConnectionImportRaw = (raw: unknown): unknown => {
+  if (typeof raw !== 'string') {
+    return raw;
+  }
+
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return undefined;
+  }
+};
+
+const isMySQLWorkbenchXML = (raw: string): boolean => (
+  raw.includes('<data') && raw.includes('grt_format') && raw.includes('db.mgmt.Connection')
+);
+
+export const detectConnectionImportKind = (raw: unknown): ConnectionImportKind => {
+  if (typeof raw === 'string' && isMySQLWorkbenchXML(raw)) {
+    return 'mysql-workbench-xml';
+  }
+
+  const parsed = parseConnectionImportRaw(raw);
+
+  if (isConnectionPackageV2AppManagedEnvelope(parsed)) {
+    return 'app-managed-package';
+  }
+
+  if (isConnectionPackageV2ProtectedEnvelope(parsed)) {
+    return 'encrypted-package';
+  }
+
+  if (isConnectionPackageV2Envelope(parsed)) {
+    return 'invalid';
+  }
+
+  if (Array.isArray(parsed) && parsed.every((item) => isLegacyConnectionItem(item))) {
+    return 'legacy-json';
+  }
+
+  if (isConnectionPackageEnvelope(parsed)) {
+    return 'encrypted-package';
+  }
+
+  return 'invalid';
+};
+
+export const normalizeConnectionPackagePassword = (value: string): string => value.trim();
+
+export const isConnectionPackagePasswordRequiredError = (value: unknown): boolean => {
+  if (typeof value === 'string') {
+    return value.trim() === CONNECTION_PACKAGE_PASSWORD_REQUIRED_MESSAGE;
+  }
+
+  if (value instanceof Error) {
+    return value.message.trim() === CONNECTION_PACKAGE_PASSWORD_REQUIRED_MESSAGE;
+  }
+
+  return isJsonObject(value)
+    && typeof value.message === 'string'
+    && value.message.trim() === CONNECTION_PACKAGE_PASSWORD_REQUIRED_MESSAGE;
+};
+
+export const isConnectionPackageExportCanceled = (result: unknown): boolean => (
+  isJsonObject(result)
+  && result.success === false
+  && result.message === CANCELED_MESSAGE
+);
+
+export const resolveConnectionPackageExportResult = (
+  _currentDialog: ConnectionPackageDialogSnapshot,
+  result: unknown,
+): ConnectionPackageExportResult => {
+  if (isConnectionPackageExportCanceled(result)) {
+    return {
+      kind: 'canceled',
+      nextDialog: (current) => ({
+        ...current,
+        confirmLoading: false,
+        error: '',
+      }),
+    };
+  }
+
+  if (isJsonObject(result) && result.success === true) {
+    return { kind: 'succeeded' };
+  }
+
+  return {
+    kind: 'failed',
+    error: isJsonObject(result) && typeof result.message === 'string' && result.message.trim()
+      ? result.message
+      : '导出失败',
+  };
+};
+
+const legacyExportRemovedError = (): never => {
+  throw new Error('Legacy connection JSON export has been removed. Use the recovery package flow instead.');
+};
+
+export const sanitizeConnectionConfigForExport = (_config: ConnectionConfig): never => legacyExportRemovedError();
+
+export const buildExportableConnections = (_connections: SavedConnection[]): never => legacyExportRemovedError();
