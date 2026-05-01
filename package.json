@@ -1,7 +1,7 @@
 {
   "name": "javanavi-desktop-workspace",
   "private": true,
-  "version": "0.1.0",
+  "version": "0.1.1",
   "type": "module",
   "scripts": {
     "verify:quick": "npm --prefix frontend test && npm --prefix frontend run build && npm run scan:source-health && cd backend && mvn -q test && cd ../src-tauri && mkdir -p resources/java-runtime && touch resources/javanavi-backend.jar && cargo check",
