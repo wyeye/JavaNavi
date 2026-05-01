@@ -1,0 +1,12 @@
+# Generated build outputs and dependency caches shared by rg/source scans
+.omx/
+node_modules/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+backend/target/
+src-tauri/target/
+src-tauri/resources/javanavi-backend.jar
+src-tauri/resources/java-runtime/
+dist/
+.m2/

@@ -1,3 +1,4 @@
+import { resolveEffectiveSSLMode } from './sslMode';
 import { connection } from '@compat/models';
 
 export type RpcConnectionConfig = connection.ConnectionConfig & { id?: string };
@@ -128,7 +129,7 @@ export function buildRpcConnectionConfig(
     password: toStringValue(merged.password),
     database: toStringValue(merged.database),
     useSSL: merged.useSSL === true,
-    sslMode: toOptionalStringValue(merged.sslMode),
+    sslMode: resolveEffectiveSSLMode(merged.sslMode, merged.useSSL === true),
     useSSH: merged.useSSH === true,
     ssh: normalizeSSHConfig(merged.ssh),
     useProxy: merged.useProxy === true,

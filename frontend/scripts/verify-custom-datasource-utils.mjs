@@ -29,6 +29,7 @@ await mkdir(tempDir, { recursive: true });
 try {
   const customDataSources = await transpileToModule('src/utils/customDataSources.ts', 'customDataSources.mjs');
   const presentation = await transpileToModule('src/utils/connectionModalPresentation.ts', 'connectionModalPresentation.mjs');
+  const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs');
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
@@ -59,6 +60,39 @@ try {
   });
   assert.equal(source.version, '上传-1.0');
   assert.equal(source.driverVersion, '上传-1.0');
+
+  assert.equal(sslMode.normalizeSSLMode(undefined), 'required');
+  assert.equal(sslMode.normalizeSSLMode('preferred'), 'preferred');
+  assert.equal(sslMode.resolveEffectiveSSLMode(undefined, false), 'disable');
+  assert.equal(sslMode.resolveEffectiveSSLMode('disable', true), 'required');
+  assert.equal(sslMode.resolveEffectiveSSLMode('preferred', true), 'preferred');
+  assert.equal(sslMode.isInsecureSSLMode('preferred'), true);
+  assert.equal(sslMode.isInsecureSSLMode('required'), false);
+
+  const frontendFallback = customDataSources.createCustomDataSource({
+    name: '本地缓存源',
+    driverType: 'custom-demo',
+    version: '0.9',
+    runtimeStatus: { connectionTested: true },
+  });
+  const mergedAuthoritative = customDataSources.mergeBackendCustomDataSourceDefinitions(
+    [frontendFallback],
+    [{
+      driverType: 'custom-demo',
+      driverName: '后端权威源',
+      version: latin1DecodedUploadVersion,
+      driverClassName: 'com.example.Driver',
+      jarFileNames: ['demo.jar'],
+      definitionUsable: true,
+    }],
+    { backendAuthoritative: true },
+  );
+  assert.equal(mergedAuthoritative.length, 1);
+  assert.equal(mergedAuthoritative[0].name, '本地缓存源');
+  assert.equal(mergedAuthoritative[0].version, '上传-1.0');
+  assert.equal(mergedAuthoritative[0].driverClassName, 'com.example.Driver');
+  assert.equal(mergedAuthoritative[0].runtimeStatus.connectionTested, true);
+  assert.equal(mergedAuthoritative[0].runtimeStatus.definitionUsable, true);
 
   const customLayout = presentation.resolveConnectionConfigLayout('custom');
   assert.deepEqual(

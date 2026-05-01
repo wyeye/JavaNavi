@@ -632,6 +632,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const nextSources = mergeBackendCustomDataSourceDefinitions(
         latestSources,
         extractBackendCustomDataSourceDefinitions(res),
+        { backendAuthoritative: true },
       );
       setCustomDataSources(nextSources);
       return nextSources;

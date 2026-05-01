@@ -21,5 +21,21 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     emptyOutDir: true,
+    chunkSizeWarningLimit: 4096,
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          minSize: 20_000,
+          groups: [
+            { name: 'vendor-react', test: /node_modules\/(react|react-dom|scheduler|zustand)\// },
+            { name: 'vendor-antd', test: /node_modules\/(@ant-design|antd|rc-[^/]+)\// },
+            { name: 'vendor-monaco', test: /node_modules\/(monaco-editor|@monaco-editor)\// },
+            { name: 'vendor-mermaid', test: /node_modules\/(mermaid|katex|cytoscape|dagre|graphlib)\// },
+            { name: 'vendor-markdown', test: /node_modules\/(react-markdown|react-syntax-highlighter|remark-gfm)\// },
+            { name: 'vendor-charts', test: /node_modules\/(recharts|d3-)\// },
+          ],
+        },
+      },
+    },
   }
 })

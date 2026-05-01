@@ -72,6 +72,8 @@ export const CUSTOM_DATA_SOURCES_V1_STORAGE_KEY = 'javanavi.customDataSources.v1
 export const CUSTOM_DATA_SOURCES_STORAGE_KEY = CUSTOM_DATA_SOURCES_V1_STORAGE_KEY;
 export const CUSTOM_DATA_SOURCES_V2_STORAGE_KEY = 'javanavi.customDataSources.v2';
 
+export type CustomDataSourceStorageMode = 'cache' | 'fallback';
+
 const isBrowserStorageAvailable = (): boolean => {
   try {
     return typeof window !== 'undefined' && !!window.localStorage;
@@ -298,7 +300,7 @@ const parseStoredSources = (raw: string | null): CustomDataSource[] => {
   }
 };
 
-const mergeSources = (preferred: CustomDataSource[], fallback: CustomDataSource[]): CustomDataSource[] => {
+export const mergeCustomDataSourceLists = (preferred: CustomDataSource[], fallback: CustomDataSource[]): CustomDataSource[] => {
   const sources: CustomDataSource[] = [];
   const ids = new Set<string>();
   const driverTypes = new Set<string>();
@@ -328,11 +330,11 @@ export const loadCustomDataSources = (): CustomDataSource[] => {
   }
   const v2Sources = parseStoredSources(window.localStorage.getItem(CUSTOM_DATA_SOURCES_V2_STORAGE_KEY));
   const v1Sources = parseStoredSources(window.localStorage.getItem(CUSTOM_DATA_SOURCES_V1_STORAGE_KEY));
-  return mergeSources(v2Sources, v1Sources);
+  return mergeCustomDataSourceLists(v2Sources, v1Sources);
 };
 
-export const saveCustomDataSources = (sources: CustomDataSource[]): CustomDataSource[] => {
-  const normalized = mergeSources(
+export const saveCustomDataSources = (sources: CustomDataSource[], mode: CustomDataSourceStorageMode = 'fallback'): CustomDataSource[] => {
+  const normalized = mergeCustomDataSourceLists(
     sources.map(normalizeDataSource).filter((item): item is CustomDataSource => Boolean(item)),
     [],
   );
@@ -341,7 +343,12 @@ export const saveCustomDataSources = (sources: CustomDataSource[]): CustomDataSo
   }
   window.localStorage.setItem(
     CUSTOM_DATA_SOURCES_V2_STORAGE_KEY,
-    JSON.stringify({ schemaVersion: 2, sources: normalized }),
+    JSON.stringify({
+      schemaVersion: 2,
+      storageMode: mode,
+      backendAuthoritative: mode === 'cache',
+      sources: normalized,
+    }),
   );
   return normalized;
 };
@@ -488,7 +495,17 @@ export const extractBackendCustomDataSourceDefinition = (payload: any): BackendC
 export const mergeBackendCustomDataSourceDefinitions = (
   sources: CustomDataSource[],
   definitions: BackendCustomDataSourceDefinition[],
+  options: { backendAuthoritative?: boolean } = {},
 ): CustomDataSource[] => {
+  if (options.backendAuthoritative && definitions.length > 0) {
+    const backendSources = definitions
+      .map((definition) => createCustomDataSourceFromBackendDefinition(definition, sources.find(
+        (source) => normalizeText(source.driverType || source.driver).toLowerCase() === normalizeText(definition.driverType).toLowerCase(),
+      )))
+      .filter((item): item is CustomDataSource => Boolean(item));
+    return saveCustomDataSources(backendSources, 'cache');
+  }
+
   const byId = new Map(sources.map((source) => [source.id, source]));
   const byDriverType = new Map(
     sources
@@ -507,7 +524,7 @@ export const mergeBackendCustomDataSourceDefinitions = (
     byId.set(merged.id, merged);
     byDriverType.set(driverType, merged);
   });
-  return saveCustomDataSources(Array.from(byId.values()));
+  return saveCustomDataSources(Array.from(byId.values()), definitions.length > 0 ? 'cache' : 'fallback');
 };
 
 export const upsertCustomDataSource = (

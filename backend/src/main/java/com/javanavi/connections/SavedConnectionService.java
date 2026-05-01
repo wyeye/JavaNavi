@@ -169,13 +169,16 @@ public class SavedConnectionService {
         Optional<String> password = config.password() == null || config.password().isBlank()
                 ? secretStore.get(secretKey(sanitizedId, "primaryPassword"))
                 : Optional.empty();
+        Optional<String> mongoReplicaPassword = config.mongoReplicaPassword() == null || config.mongoReplicaPassword().isBlank()
+                ? secretStore.get(secretKey(sanitizedId, "mongoReplicaPassword"))
+                : Optional.empty();
         Optional<String> uri = config.uri() == null || config.uri().isBlank()
                 ? secretStore.get(secretKey(sanitizedId, "opaqueURI"))
                 : Optional.empty();
         Optional<String> dsn = config.dsn() == null || config.dsn().isBlank()
                 ? secretStore.get(secretKey(sanitizedId, "opaqueDSN"))
                 : Optional.empty();
-        if (password.isEmpty() && uri.isEmpty() && dsn.isEmpty()) {
+        if (password.isEmpty() && mongoReplicaPassword.isEmpty() && uri.isEmpty() && dsn.isEmpty()) {
             return config;
         }
         return new ConnectionConfigDto(
@@ -202,7 +205,7 @@ public class SavedConnectionService {
                 config.mongoSrv(),
                 config.mongoAuthMechanism(),
                 config.mongoReplicaUser(),
-                config.mongoReplicaPassword()
+                mongoReplicaPassword.orElse(config.mongoReplicaPassword())
         );
     }
 

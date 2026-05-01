@@ -1,3 +1,4 @@
+import { resolveEffectiveSSLMode } from '../utils/sslMode';
 import { connection, sync, app, jvm, redis } from './models';
 import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
@@ -86,7 +87,7 @@ function toConnectionPayload(config: any = {}): Record<string, any> {
     mongoReplicaUser: config?.mongoReplicaUser,
     mongoReplicaPassword: config?.mongoReplicaPassword,
     useSSL: config?.useSSL,
-    sslMode: config?.sslMode,
+    sslMode: resolveEffectiveSSLMode(config?.sslMode, config?.useSSL === true),
     useSSH: config?.useSSH,
     useProxy: config?.useProxy,
     useHttpTunnel: config?.useHttpTunnel,

@@ -66,6 +66,7 @@ public class MongoCompatibilityService {
     };
     private static final int OP_MSG = 2013;
     private static final int DEFAULT_PORT = 27017;
+    static final String DEFAULT_SSL_MODE = "required";
     private static final int DEFAULT_TIMEOUT_MS = 1500;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
@@ -1389,12 +1390,14 @@ public class MongoCompatibilityService {
             String password = firstText(config == null ? null : config.password(), uriPassword(config == null ? null : config.uri()));
             String authSource = firstText(config == null ? null : config.authSource(), text(option(config, "authSource")), uriParams.get("authSource"), username.isBlank() ? "" : "admin");
             String mechanism = firstText(config == null ? null : config.mongoAuthMechanism(), text(option(config, "mongoAuthMechanism")), uriParams.get("authMechanism"));
-            String sslMode = normalizeSslMode(firstText(config == null ? null : config.sslMode(), text(option(config, "sslMode")), uriParams.get("tls"), uriParams.get("ssl")));
+            String sslModeRaw = firstText(config == null ? null : config.sslMode(), text(option(config, "sslMode")), uriParams.get("tls"), uriParams.get("ssl"));
+            String sslMode = normalizeSslMode(sslModeRaw);
+            boolean sslModeExplicit = !sslModeRaw.isBlank();
             boolean useSsl = booleanValue(config == null ? null : config.useSSL(), false)
                     || srv
                     || tlsQueryEnabled(uriParams.get("tls"))
                     || tlsQueryEnabled(uriParams.get("ssl"));
-            if (Set.of("required", "skip-verify").contains(sslMode)) {
+            if (sslModeExplicit && Set.of("required", "skip-verify").contains(sslMode)) {
                 useSsl = true;
             }
             return new MongoConnectionProfile(
@@ -1531,8 +1534,9 @@ public class MongoCompatibilityService {
         return switch (value) {
             case "required", "require", "true", "1", "yes", "on", "mandatory", "strict" -> "required";
             case "skip-verify", "skipverify", "skip_verify", "insecure", "insecure-skip-verify" -> "skip-verify";
+            case "preferred", "prefer", "compat", "compatibility" -> "preferred";
             case "disable", "disabled", "false", "0", "no", "off", "none" -> "disable";
-            default -> "preferred";
+            default -> DEFAULT_SSL_MODE;
         };
     }
 

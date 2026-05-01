@@ -4,6 +4,8 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "verify:quick": "npm --prefix frontend test && npm --prefix frontend run build && cd backend && mvn -q test && cd ../src-tauri && cargo check",
+    "scan:source-health": "node scripts/scan-source-health.mjs",
     "desktop:stage": "./scripts/package-desktop-sidecar.sh",
     "desktop:dev": "npm run desktop:stage && tauri dev",
     "desktop:build": "npm run desktop:stage && tauri build",

@@ -9,11 +9,8 @@ name: Desktop release packages
       - develop
     tags:
       - 'v*'
-  pull_request:
-    branches:
-      - main
-      - master
-      - develop
+  # Pull requests use quick-verify.yml; full desktop packaging is expensive and
+  # remains available on pushes, tags, and manual dispatch.
 
 permissions:
   contents: read
@@ -98,6 +95,7 @@ jobs:
             libwebkit2gtk-4.1-dev \
             libxdo-dev \
             patchelf \
+            pkg-config \
             librsvg2-dev \
             wget
 

@@ -12,6 +12,27 @@ JAVANAVI_DESKTOP_BUNDLE_JRE="${JAVANAVI_DESKTOP_BUNDLE_JRE:-1}"
 # Spring Boot's configuration binder uses java.beans.PropertyEditorSupport from java.desktop.
 JAVANAVI_DESKTOP_JLINK_MODULES="${JAVANAVI_DESKTOP_JLINK_MODULES:-java.base,java.logging,java.naming,java.management,java.instrument,java.sql,java.xml,java.net.http,jdk.crypto.ec,jdk.unsupported,java.security.sasl,java.security.jgss,jdk.charsets,java.desktop}"
 
+safe_rm_under_root() {
+  local target
+  for target in "$@"; do
+    if [[ -z "$target" ]]; then
+      echo "Refusing to remove an empty path" >&2
+      exit 1
+    fi
+    local parent resolved
+    parent="$(dirname "$target")"
+    mkdir -p "$parent"
+    resolved="$(cd "$parent" && pwd -P)/$(basename "$target")"
+    case "$resolved" in
+      "$ROOT_DIR"/*) rm -rf "$resolved" ;;
+      *)
+        echo "Refusing to remove path outside repository: $target" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
 MAVEN_PROFILES="$DESKTOP_PACKAGE_PROFILE" "$ROOT_DIR/scripts/package-web.sh"
 
 if [[ ! -f "$SOURCE_JAR" ]]; then
@@ -41,7 +62,7 @@ copy_prebuilt_runtime() {
     echo "Prebuilt Java runtime is missing $java_path" >&2
     exit 1
   fi
-  rm -rf "$RESOURCE_RUNTIME_DIR"
+  safe_rm_under_root "$RESOURCE_RUNTIME_DIR"
   mkdir -p "$RESOURCE_RUNTIME_DIR"
   (cd "$source_dir" && tar cf - .) | (cd "$RESOURCE_RUNTIME_DIR" && tar xf -)
 }
@@ -116,7 +137,7 @@ build_jlink_runtime() {
     echo "java not found at $java" >&2
     exit 1
   fi
-  rm -rf "$RESOURCE_RUNTIME_DIR"
+  safe_rm_under_root "$RESOURCE_RUNTIME_DIR"
   local options=(
     --add-modules "$JAVANAVI_DESKTOP_JLINK_MODULES"
     --no-header-files
@@ -156,14 +177,14 @@ if [[ "$JAVANAVI_DESKTOP_BUNDLE_JRE" != "0" && "$JAVANAVI_DESKTOP_BUNDLE_JRE" !=
   printf 'DESKTOP_BUNDLED_JRE=%s\n' "$RESOURCE_RUNTIME_DIR"
   printf 'DESKTOP_BUNDLED_JRE_SIZE_MB=%s\n' "$(du -sm "$RESOURCE_RUNTIME_DIR" | awk '{print $1}')"
 else
-  rm -rf "$RESOURCE_RUNTIME_DIR"
+  safe_rm_under_root "$RESOURCE_RUNTIME_DIR"
   printf 'DESKTOP_BUNDLED_JRE=disabled\n'
 fi
 
 # Tauri preserves read-only legal file permissions when copying resources into
 # target/release/resources. A later rebuild can then fail while overwriting those
 # stale files, so clear only the generated resource mirror before native build.
-rm -rf "$TAURI_RELEASE_RESOURCE_DIR/java-runtime" "$TAURI_RELEASE_RESOURCE_DIR/javanavi-backend.jar" 2>/dev/null || true
+safe_rm_under_root "$TAURI_RELEASE_RESOURCE_DIR/java-runtime" "$TAURI_RELEASE_RESOURCE_DIR/javanavi-backend.jar" 2>/dev/null || true
 
 printf 'DESKTOP_PACKAGE_PROFILE=%s\n' "$DESKTOP_PACKAGE_PROFILE"
 printf 'DESKTOP_JLINK_MODULES=%s\n' "$JAVANAVI_DESKTOP_JLINK_MODULES"

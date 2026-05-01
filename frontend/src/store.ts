@@ -31,6 +31,7 @@ import {
   type DataGridDisplaySettings,
 } from "./utils/dataGridDisplay";
 import { DEFAULT_LANGUAGE, sanitizeLanguage, setRuntimeLanguage, type AppLanguage } from "./i18n";
+import { resolveEffectiveSSLMode } from "./utils/sslMode";
 
 export interface AppearanceSettings extends DataGridDisplaySettings {
   enabled: boolean;
@@ -409,15 +410,8 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     typeof raw.savePassword === "boolean" ? raw.savePassword : true;
   const mongoSrv = !!raw.mongoSrv;
   const sslCapable = SSL_SUPPORTED_CONNECTION_TYPES.has(type);
-  const sslModeRaw = toTrimmedString(raw.sslMode, "preferred").toLowerCase();
-  const sslMode: "preferred" | "required" | "skip-verify" | "disable" =
-    sslModeRaw === "required"
-      ? "required"
-      : sslModeRaw === "skip-verify"
-        ? "skip-verify"
-        : sslModeRaw === "disable"
-          ? "disable"
-          : "preferred";
+  const useSSL = sslCapable && raw.useSSL === true;
+  const sslMode = resolveEffectiveSSLMode(raw.sslMode, useSSL);
 
   const sshRaw =
     raw.ssh && typeof raw.ssh === "object"
@@ -472,7 +466,7 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     password: savePassword ? toTrimmedString(raw.password) : "",
     savePassword,
     database: toTrimmedString(raw.database),
-    useSSL: sslCapable ? !!raw.useSSL : false,
+    useSSL,
     sslMode: sslCapable ? sslMode : "disable",
     sslCertPath: sslCapable ? toTrimmedString(raw.sslCertPath) : "",
     sslKeyPath: sslCapable ? toTrimmedString(raw.sslKeyPath) : "",

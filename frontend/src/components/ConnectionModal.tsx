@@ -62,6 +62,7 @@ import {
 } from "../utils/connectionModalPresentation";
 import { resolveConnectionSecretDraft } from "../utils/connectionSecretDraft";
 import { getCustomConnectionDsnValidationMessage } from "../utils/customConnectionDsn";
+import { DEFAULT_SSL_MODE, LEGACY_COMPAT_SSL_MODE, resolveEffectiveSSLMode, sslModeRiskDescription } from "../utils/sslMode";
 import {
   extractBackendCustomDataSourceDefinitions,
   loadCustomDataSources,
@@ -326,7 +327,7 @@ const ConnectionModal: React.FC<{
   const mongoTopology = Form.useWatch("mongoTopology", form) || "single";
   const mongoSrv = Form.useWatch("mongoSrv", form) || false;
   const redisTopology = Form.useWatch("redisTopology", form) || "single";
-  const sslMode = Form.useWatch("sslMode", form) || "preferred";
+  const sslMode = Form.useWatch("sslMode", form) || DEFAULT_SSL_MODE;
   const proxyType = Form.useWatch("proxyType", form) || "socks5";
   const mongoReadPreference =
     Form.useWatch("mongoReadPreference", form) || "primary";
@@ -763,6 +764,7 @@ const ConnectionModal: React.FC<{
       const merged = mergeBackendCustomDataSourceDefinitions(
         latest,
         extractBackendCustomDataSourceDefinitions(res),
+        { backendAuthoritative: true },
       );
       setCustomDataSources(merged);
       return merged;
@@ -1812,7 +1814,7 @@ const ConnectionModal: React.FC<{
         params.set("topology", "replica");
       }
       if (values.useSSL) {
-        const mode = String(values.sslMode || "preferred")
+        const mode = String(values.sslMode || DEFAULT_SSL_MODE)
           .trim()
           .toLowerCase();
         if (mode === "required") {
@@ -1859,7 +1861,7 @@ const ConnectionModal: React.FC<{
         : 0;
       const dbPath = `/${redisDB}`;
       if (values.useSSL) {
-        const mode = String(values.sslMode || "preferred")
+        const mode = String(values.sslMode || DEFAULT_SSL_MODE)
           .trim()
           .toLowerCase();
         if (mode === "skip-verify" || mode === "preferred") {
@@ -1914,7 +1916,7 @@ const ConnectionModal: React.FC<{
         params.set("authMechanism", authMechanism);
       }
       if (values.useSSL) {
-        const mode = String(values.sslMode || "preferred")
+        const mode = String(values.sslMode || DEFAULT_SSL_MODE)
           .trim()
           .toLowerCase();
         params.set("tls", "true");
@@ -1937,7 +1939,7 @@ const ConnectionModal: React.FC<{
     const dbPath = database ? `/${encodeURIComponent(database)}` : "";
     const params = new URLSearchParams();
     if (supportsSSLForType(type) && values.useSSL) {
-      const mode = String(values.sslMode || "preferred")
+      const mode = String(values.sslMode || DEFAULT_SSL_MODE)
         .trim()
         .toLowerCase();
       if (
@@ -2209,7 +2211,7 @@ const ConnectionModal: React.FC<{
           includeDatabases: initialValues.includeDatabases,
           includeRedisDatabases: initialValues.includeRedisDatabases,
           useSSL: !!config.useSSL,
-          sslMode: config.sslMode || "preferred",
+          sslMode: config.sslMode || DEFAULT_SSL_MODE,
           sslCertPath: config.sslCertPath || "",
           sslKeyPath: config.sslKeyPath || "",
           useSSH: config.useSSH,
@@ -3038,18 +3040,8 @@ const ConnectionModal: React.FC<{
         mergedValues.user = "";
       }
     }
-    const sslModeRaw = String(mergedValues.sslMode || "preferred")
-      .trim()
-      .toLowerCase();
-    const sslMode: "preferred" | "required" | "skip-verify" | "disable" =
-      sslModeRaw === "required"
-        ? "required"
-        : sslModeRaw === "skip-verify"
-          ? "skip-verify"
-          : sslModeRaw === "disable"
-            ? "disable"
-            : "preferred";
     const effectiveUseSSL = sslCapableType && !!mergedValues.useSSL;
+    const sslMode = resolveEffectiveSSLMode(mergedValues.sslMode, effectiveUseSSL);
     const sslCertPath = sslCapableType
       ? String(mergedValues.sslCertPath || "").trim()
       : "";
@@ -3435,7 +3427,7 @@ const ConnectionModal: React.FC<{
         password: "",
         database: "",
         useSSL: false,
-        sslMode: "preferred",
+        sslMode: DEFAULT_SSL_MODE,
         sslCertPath: "",
         sslKeyPath: "",
         useSSH: false,
@@ -3539,7 +3531,7 @@ const ConnectionModal: React.FC<{
         database: "",
         port: defaultPort,
         useSSL: sslCapableType ? false : undefined,
-        sslMode: sslCapableType ? "preferred" : undefined,
+        sslMode: sslCapableType ? DEFAULT_SSL_MODE : undefined,
         sslCertPath: sslCapableType ? "" : undefined,
         sslKeyPath: sslCapableType ? "" : undefined,
         useHttpTunnel: false,
@@ -5773,17 +5765,17 @@ const ConnectionModal: React.FC<{
                               {
                                 value: "preferred",
                                 label: "Preferred",
-                                description: "优先使用 SSL，失败后按驱动策略处理。",
+                                description: sslModeRiskDescription(LEGACY_COMPAT_SSL_MODE),
                               },
                               {
                                 value: "required",
                                 label: "Required",
-                                description: "必须使用 SSL，并进行证书校验。",
+                                description: sslModeRiskDescription("required"),
                               },
                               {
                                 value: "skip-verify",
                                 label: "Skip Verify",
-                                description: "必须使用 SSL，但跳过证书校验。",
+                                description: sslModeRiskDescription("skip-verify"),
                               },
                             ],
                           })}
@@ -6447,7 +6439,7 @@ const ConnectionModal: React.FC<{
           database: "",
           user: "root",
           useSSL: false,
-          sslMode: "preferred",
+          sslMode: DEFAULT_SSL_MODE,
           sslCertPath: "",
           sslKeyPath: "",
           useSSH: false,
@@ -6510,7 +6502,12 @@ const ConnectionModal: React.FC<{
           }
           if (changed.useSSL !== undefined) {
             setUseSSL(changed.useSSL);
-            if (changed.useSSL) setActiveNetworkConfig("ssl");
+            if (changed.useSSL) {
+              setActiveNetworkConfig("ssl");
+              if (form.getFieldValue("sslMode") === "disable") {
+                form.setFieldValue("sslMode", DEFAULT_SSL_MODE);
+              }
+            }
           }
           if (changed.useSSH !== undefined) {
             setUseSSH(changed.useSSH);

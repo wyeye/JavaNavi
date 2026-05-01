@@ -12,6 +12,46 @@ MAVEN_REPO="${MAVEN_REPO:-$ROOT_DIR/.m2/repository}"
 MAVEN_PROFILES="${MAVEN_PROFILES:-}"
 MAVEN_EXTRA_ARGS="${MAVEN_EXTRA_ARGS:-}"
 
+safe_rm_under_root() {
+  local target
+  for target in "$@"; do
+    if [[ -z "$target" ]]; then
+      echo "Refusing to remove an empty path" >&2
+      exit 1
+    fi
+    local parent resolved
+    parent="$(dirname "$target")"
+    mkdir -p "$parent"
+    resolved="$(cd "$parent" && pwd -P)/$(basename "$target")"
+    case "$resolved" in
+      "$ROOT_DIR"/*) rm -rf "$resolved" ;;
+      *)
+        echo "Refusing to remove path outside repository: $target" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
+read_maven_extra_args() {
+  if [[ -z "$MAVEN_EXTRA_ARGS" ]]; then
+    return 0
+  fi
+  local -a extra_args=()
+  local arg
+  read -r -a extra_args <<< "$MAVEN_EXTRA_ARGS"
+  for arg in "${extra_args[@]}"; do
+    case "$arg" in
+      -D*|-P*|--batch-mode|--offline|--no-transfer-progress|-U) printf '%s\0' "$arg" ;;
+      *)
+        echo "Unsupported MAVEN_EXTRA_ARGS entry: $arg" >&2
+        echo "Allowed prefixes: -D, -P, --batch-mode, --offline, --no-transfer-progress, -U" >&2
+        exit 1
+        ;;
+    esac
+  done
+}
+
 require_command() {
   if ! command -v "$1" >/dev/null 2>&1; then
     echo "Missing required command: $1" >&2
@@ -39,7 +79,7 @@ printf '\n== Build React static assets ==\n'
 )
 
 printf '\n== Stage React assets for Spring Boot ==\n'
-rm -rf "$STATIC_DIR" "$TARGET_STATIC_DIR"
+safe_rm_under_root "$STATIC_DIR" "$TARGET_STATIC_DIR"
 mkdir -p "$STATIC_DIR"
 cp -R "$FRONTEND_DIR/dist/." "$STATIC_DIR/"
 rm -f "$BACKEND_JAR" "$BACKEND_JAR.original"
@@ -52,9 +92,9 @@ printf '\n== Build Java Web package ==\n'
     MAVEN_ARGS+=("-P$MAVEN_PROFILES")
   fi
   if [[ -n "$MAVEN_EXTRA_ARGS" ]]; then
-    # shellcheck disable=SC2206
-    EXTRA_ARGS=($MAVEN_EXTRA_ARGS)
-    MAVEN_ARGS+=("${EXTRA_ARGS[@]}")
+    while IFS= read -r -d '' arg; do
+      MAVEN_ARGS+=("$arg")
+    done < <(read_maven_extra_args)
   fi
   mvn "${MAVEN_ARGS[@]}" package
 )

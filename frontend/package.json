@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:budget": "npm run build && node scripts/check-bundle-budget.mjs",
     "preview": "vite preview",
     "test": "node scripts/verify-custom-datasource-utils.mjs"
   },
