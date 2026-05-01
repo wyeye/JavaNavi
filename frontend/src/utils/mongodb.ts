@@ -74,21 +74,184 @@ const normalizeExtendedJSON = (raw: string): string => {
   text = text.replace(/ObjectId\s*\(\s*["']([0-9a-fA-F]{24})["']\s*\)/g, (_m, oid: string) => JSON.stringify({ $oid: oid }));
   text = text.replace(/ISODate\s*\(\s*["']([^"']+)["']\s*\)/g, (_m, dateText: string) => JSON.stringify(buildMongoExtendedDate(dateText)));
   text = text.replace(/NumberLong\s*\(\s*["']?([+-]?\d+)["']?\s*\)/g, '{"$numberLong":"$1"}');
-  text = text.replace(/NumberInt\s*\(\s*["']?([+-]?\d+)["']?\s*\)/g, '{"$numberInt":"$1"}');
+  text = text.replace(/ISODate\s*\(\s*\)/g, () => JSON.stringify(buildMongoExtendedDate()));
+  text = text.replace(/NumberInt\s*\(\s*["']?([+-]?\d+)["']?\s*\)/g, '$1');
   text = text.replace(/NumberDecimal\s*\(\s*["']?([+-]?(?:\d+(?:\.\d+)?|\.\d+))["']?\s*\)/g, '{"$numberDecimal":"$1"}');
   return text;
 };
 
+const quoteMongoLikeKeys = (raw: string): string => {
+  let out = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escape = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) {
+      out += ch;
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      out += ch;
+      escape = true;
+      continue;
+    }
+    if (inSingle) {
+      out += ch;
+      if (ch === "'") inSingle = false;
+      continue;
+    }
+    if (inDouble) {
+      out += ch;
+      if (ch === '"') inDouble = false;
+      continue;
+    }
+    if (ch === "'") {
+      out += ch;
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      out += ch;
+      inDouble = true;
+      continue;
+    }
+
+    const prefix = raw.slice(0, i);
+    const match = raw.slice(i).match(/^([A-Za-z_$][A-Za-z0-9_$.-]*)\s*:/);
+    if (match && /[{,]\s*$/.test(prefix)) {
+      out += JSON.stringify(match[1]) + ':';
+      i += match[0].length - 1;
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+};
+
+const normalizeMongoLikeJson = (raw: string): string => {
+  let text = normalizeExtendedJSON(raw);
+  text = quoteMongoLikeKeys(text);
+  return normalizeSingleQuotedStrings(text);
+};
+
+const normalizeSingleQuotedStrings = (raw: string): string => {
+  let out = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escape = false;
+  let singleValue = '';
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+
+    if (inSingle) {
+      if (escape) {
+        if (ch === "'" || ch === '"' || ch === '\\') singleValue += ch;
+        else if (ch === 'n') singleValue += '\n';
+        else if (ch === 'r') singleValue += '\r';
+        else if (ch === 't') singleValue += '\t';
+        else if (ch === 'b') singleValue += '\b';
+        else if (ch === 'f') singleValue += '\f';
+        else singleValue += ch;
+        escape = false;
+        continue;
+      }
+      if (ch === '\\') {
+        escape = true;
+        continue;
+      }
+      if (ch === "'") {
+        out += JSON.stringify(singleValue);
+        singleValue = '';
+        inSingle = false;
+        continue;
+      }
+      singleValue += ch;
+      continue;
+    }
+
+    if (escape) {
+      out += ch;
+      escape = false;
+      continue;
+    }
+    if (ch === '\\') {
+      out += ch;
+      escape = true;
+      continue;
+    }
+    if (inDouble) {
+      out += ch;
+      if (ch === '"') inDouble = false;
+      continue;
+    }
+    if (ch === '"') {
+      out += ch;
+      inDouble = true;
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      singleValue = '';
+      continue;
+    }
+    out += ch;
+  }
+
+  if (inSingle) {
+    throw new Error('Mongo literal contains an unterminated single-quoted string');
+  }
+  return out;
+};
+
+const executableSyntaxProbe = (raw: string): string => {
+  let out = '';
+  let inSingle = false;
+  let inDouble = false;
+  let escape = false;
+
+  for (let i = 0; i < raw.length; i++) {
+    const ch = raw[i];
+    if (escape) {
+      escape = false;
+      out += ' ';
+      continue;
+    }
+    if (ch === '\\') {
+      escape = true;
+      out += ' ';
+      continue;
+    }
+    if (inSingle) {
+      if (ch === "'") inSingle = false;
+      out += ' ';
+      continue;
+    }
+    if (inDouble) {
+      if (ch === '"') inDouble = false;
+      out += ' ';
+      continue;
+    }
+    if (ch === "'") {
+      inSingle = true;
+      out += ' ';
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      out += ' ';
+      continue;
+    }
+    out += ch;
+  }
+
+  return out;
+};
+
 const normalizeEvaluatedMongoValue = (value: unknown): unknown => {
-  if (value instanceof Date) {
-    return buildMongoExtendedDate(value);
-  }
-  if (value instanceof RegExp) {
-    return {
-      $regex: value.source,
-      ...(value.flags ? { $options: value.flags } : {}),
-    };
-  }
   if (Array.isArray(value)) {
     return value.map((item) => normalizeEvaluatedMongoValue(item));
   }
@@ -109,43 +272,11 @@ const normalizeEvaluatedMongoValue = (value: unknown): unknown => {
 const evalMongoLikeLiteral = (raw: string): unknown => {
   const expression = String(raw || '').trim();
   if (!expression) return {};
-
-  const ObjectId = (value: unknown) => {
-    const text = String(value ?? '').trim().replace(/^['"]|['"]$/g, '');
-    if (!HEX24_RE.test(text)) {
-      throw new Error(`ObjectId value must be 24 hex chars, got: ${text}`);
-    }
-    return { $oid: text.toLowerCase() };
-  };
-  const ISODate = (value?: unknown) => {
-    return buildMongoExtendedDate(value);
-  };
-  const NumberInt = (value: unknown) => {
-    const n = Number.parseInt(String(value ?? '').trim(), 10);
-    if (!Number.isFinite(n)) throw new Error(`NumberInt invalid value: ${String(value)}`);
-    return n;
-  };
-  const NumberLong = (value: unknown) => {
-    const text = String(value ?? '').trim();
-    if (!INTEGER_RE.test(text)) throw new Error(`NumberLong invalid value: ${text}`);
-    return { $numberLong: text };
-  };
-  const NumberDecimal = (value: unknown) => {
-    const text = String(value ?? '').trim();
-    if (!text) throw new Error('NumberDecimal invalid value');
-    return { $numberDecimal: text };
-  };
-
-  const parser = new Function(
-    'ObjectId',
-    'ISODate',
-    'NumberInt',
-    'NumberLong',
-    'NumberDecimal',
-    '"use strict"; return (' + expression + ');',
-  );
-  const evaluated = parser(ObjectId, ISODate, NumberInt, NumberLong, NumberDecimal);
-  return normalizeEvaluatedMongoValue(evaluated);
+  const syntaxProbe = executableSyntaxProbe(expression);
+  if (/[;=]|=>|\b(?:function|this|window|globalThis|document|constructor|prototype|__proto__|import|require|process)\b/.test(syntaxProbe)) {
+    throw new Error('Mongo literal contains unsupported executable syntax');
+  }
+  return normalizeEvaluatedMongoValue(JSON.parse(normalizeMongoLikeJson(expression)));
 };
 
 const parseMongoScalar = (column: string, rawValue: string): unknown => {
@@ -175,7 +306,7 @@ const parseMongoScalar = (column: string, rawValue: string): unknown => {
 const parseMongoJSONValue = (raw: string): unknown => {
   const text = String(raw || '').trim();
   if (!text) return {};
-  const normalized = normalizeExtendedJSON(text);
+  const normalized = normalizeMongoLikeJson(text);
   try {
     return JSON.parse(normalized);
   } catch {
@@ -307,6 +438,7 @@ const parseCollectionAndMethod = (raw: string): {
 
   let pos = 3; // skip "db."
   let collection = '';
+  let method = '';
 
   const restLower = input.slice(pos).toLowerCase();
   if (restLower.startsWith('getcollection')) {
@@ -320,20 +452,26 @@ const parseCollectionAndMethod = (raw: string): {
     collection = m[1];
     pos = nextPos;
   } else {
-    let end = pos;
-    while (end < input.length && /[A-Za-z0-9_$.-]/.test(input[end])) end++;
-    collection = input.slice(pos, end).trim();
-    pos = end;
+    const methodMatch = input.slice(pos).match(/\.(findOne|find|countDocuments|estimatedDocumentCount|count|aggregate|insertOne|insertMany|insert|replaceOne|updateOne|updateMany|update|deleteOne|deleteMany|remove)\s*\(/i);
+    if (!methodMatch || typeof methodMatch.index !== 'number') {
+      throw new Error('Syntax error: expected supported Mongo method call after collection');
+    }
+    collection = input.slice(pos, pos + methodMatch.index).trim();
+    pos += methodMatch.index + 1;
+    method = methodMatch[1].toLowerCase();
   }
 
   if (!collection) throw new Error('Syntax error: collection name not found');
-  if (input[pos] !== '.') throw new Error('Syntax error: expected method call after collection');
-  pos++;
-
-  let methodEnd = pos;
-  while (methodEnd < input.length && /[A-Za-z]/.test(input[methodEnd])) methodEnd++;
-  const method = input.slice(pos, methodEnd).trim();
-  pos = methodEnd;
+  if (!method) {
+    if (input[pos] !== '.') throw new Error('Syntax error: expected method call after collection');
+    pos++;
+    let methodEnd = pos;
+    while (methodEnd < input.length && /[A-Za-z]/.test(input[methodEnd])) methodEnd++;
+    method = input.slice(pos, methodEnd).trim().toLowerCase();
+    pos = methodEnd;
+  } else {
+    pos += method.length;
+  }
 
   while (pos < input.length && /\s/.test(input[pos])) pos++;
   if (input[pos] !== '(') throw new Error('Syntax error: missing "(" for method arguments');
@@ -1055,4 +1193,3 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
     };
   }
 };
-

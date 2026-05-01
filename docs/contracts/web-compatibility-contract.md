@@ -121,26 +121,27 @@ A disabled/deferred/unsupported status must render as disabled or clearly unavai
 
 ## Phase 2 local-session transport requirement
 
-Phase 2 uses `/api/v1/*` endpoints for the current compatibility shell while the broader `/api/compat/*` surface is still being expanded. Unsafe credential-bearing requests must include the process-local session token issued by:
+Phase 2 uses `/api/v1/*` endpoints for the current compatibility shell while the broader `/api/compat/*` surface is still being expanded. Unsafe credential-bearing requests must be protected by the per-client local session established by:
 
 ```text
 GET /api/v1/session
 ```
 
-The frontend compatibility adapter owns this handshake. Application components must not fetch or persist the token directly; they should continue calling adapter functions such as `DBQuery`, `DBConnect`, and `TestConnection`.
+The frontend compatibility adapter owns this handshake. Application components must not fetch or persist the token directly; they should continue calling adapter functions such as `DBQuery`, `DBConnect`, and `TestConnection`. Current backend responses set the session as an HttpOnly SameSite cookie; adapters only send the legacy session header when a token is explicitly returned for compatibility. The SSE bridge is also local-session scoped: a subscriber receives bridge-ready plus runtime/AI/job events published by requests authenticated with the same session, not events from other authenticated browser sessions.
 
 Current Java-backed shell endpoints:
 
 | Endpoint | Purpose | Local-session required |
 |---|---|---|
 | `GET /api/v1/health` | Backend health and contract version | No |
-| `GET /api/v1/capabilities` | Current capability metadata | No |
-| `GET /api/v1/session` | Process-local token metadata and secret-store status | No |
+| `GET /api/v1/capabilities` | Current capability metadata | Yes |
+| `GET /api/v1/session` | Local-session bootstrap, non-secret session id, token fingerprint, and secret-store status | No |
+| `GET /api/v1/events/stream` | Session-scoped server-sent compatibility event bridge for runtime/AI/job progress; uses HttpOnly local-session cookie | Yes |
 | `POST /api/v1/connections/test` | Demo/H2 connection test shape | Yes |
 | `POST /api/v1/connections/open` | Validate and open/reuse a managed MySQL/PostgreSQL JDBC pool; demo returns unpooled status | Yes |
-| `GET /api/v1/connections/pools` | Non-secret managed pool status for diagnostics | No |
+| `GET /api/v1/connections/pools` | Non-secret managed pool status for diagnostics | Yes |
 | `POST /api/v1/connections/close` | Close a managed JDBC pool by adapter-visible connection ID | Yes |
-| `GET /api/v1/schema/tables` | Demo schema listing | No |
+| `GET /api/v1/schema/tables` | Demo schema listing | Yes |
 | `POST /api/v1/schema/tables` | Connection-scoped table/view listing | Yes |
 | `POST /api/v1/schema/columns` | JavaNavi-compatible column definitions | Yes |
 | `POST /api/v1/schema/columns/all` | JavaNavi-compatible autocomplete column definitions across tables | Yes |
@@ -180,4 +181,4 @@ Current adapter paths to cover:
 - saved connections and secrets: `SaveConnection`, `GetSavedConnections`, `DuplicateConnection`, `DeleteConnection`, `ExportConnectionsPackage`, `SaveGlobalProxy`, `GetGlobalProxyConfig`;
 - SQL workspace: `SelectSQLDirectory`, `WriteSQLFile`, `ReadSQLFile`, `ListSQLDirectory`.
 
-The evidence path must verify that the frontend obtains a process-local session token itself, browser calls reach `/api/v1/*`, saved connection/global proxy passwords are redacted after entering `SecretStore`, and JavaNavi connection package export metadata is visible to the browser adapter.
+The evidence path must verify that the frontend establishes a local session through the adapter without persisting the token, browser calls reach `/api/v1/*`, SSE events do not cross local-session boundaries, saved connection/global proxy passwords are redacted after entering `SecretStore`, and JavaNavi connection package export metadata is visible to the browser adapter.

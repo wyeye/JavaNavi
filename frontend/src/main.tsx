@@ -36,6 +36,11 @@ void import('./bootstrap').catch((error) => {
     console.error('JavaNavi UI bootstrap failed', error);
     const root = document.getElementById('root');
     if (root) {
-        root.innerHTML = '<div style="font-family: sans-serif; padding: 24px; color: #b00020;">JavaNavi UI 启动失败，请查看控制台日志。</div>';
+        const fallback = document.createElement('div');
+        fallback.style.fontFamily = 'sans-serif';
+        fallback.style.padding = '24px';
+        fallback.style.color = '#b00020';
+        fallback.textContent = 'JavaNavi UI 启动失败，请查看控制台日志。';
+        root.replaceChildren(fallback);
     }
 });

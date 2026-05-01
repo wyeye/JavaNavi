@@ -21,10 +21,6 @@
       <code id="logPath"></code>
       <p class="hint">JavaNavi normally uses its bundled Java runtime. If this package was damaged or intentionally staged without one, install Java 17+ or set <code>JAVA_HOME</code> / <code>JAVANAVI_DESKTOP_JAVA</code>, then restart JavaNavi Desktop.</p>
     </main>
-    <script>
-      const params = new URLSearchParams(location.search);
-      document.getElementById('message').textContent = params.get('message') || 'Unknown startup failure';
-      document.getElementById('logPath').textContent = params.get('log') || 'No log file was created';
-    </script>
+    <script src="error.js"></script>
   </body>
 </html>

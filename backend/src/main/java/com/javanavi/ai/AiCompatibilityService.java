@@ -12,7 +12,10 @@ import com.javanavi.security.SecretStore;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.net.InetAddress;
+import java.net.Inet6Address;
 import java.net.URI;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
@@ -38,6 +41,7 @@ public class AiCompatibilityService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final TypeReference<List<Map<String, Object>>> LIST_OF_MAPS = new TypeReference<>() {};
     private static final String PROVIDER_SECRET_PREFIX = "ai-provider:";
+    private static final String ALLOW_PRIVATE_AI_ENDPOINTS_ENV = "JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS";
 
     private final ObjectMapper objectMapper;
     private final SecretStore secretStore;
@@ -315,7 +319,7 @@ public class AiCompatibilityService {
         }
         Map<String, Object> requestBody = openAiCompatibleChatRequestBody(provider, input, model, messages, false);
 
-        HttpRequest.Builder builder = HttpRequest.newBuilder(chatCompletionsUri(text(provider.get("baseUrl"))))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(chatCompletionsUri(text(provider.get("baseUrl")))))
                 .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
@@ -345,7 +349,7 @@ public class AiCompatibilityService {
     }
 
     private Map<String, Object> invokeOpenAiCompatibleHealthCheck(Map<String, Object> provider, String apiKey) throws IOException, InterruptedException {
-        HttpRequest.Builder builder = HttpRequest.newBuilder(modelsUri(text(provider.get("baseUrl"))))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(modelsUri(text(provider.get("baseUrl")))))
                 .timeout(Duration.ofSeconds(15))
                 .header("Accept", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
@@ -478,7 +482,7 @@ public class AiCompatibilityService {
             messages = List.of(orderedMap("role", "user", "content", firstText(text(input == null ? null : input.get("prompt")), "Hello")));
         }
         Map<String, Object> requestBody = openAiCompatibleChatRequestBody(provider, input, model, messages, true);
-        HttpRequest.Builder builder = HttpRequest.newBuilder(chatCompletionsUri(text(provider.get("baseUrl"))))
+        HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(chatCompletionsUri(text(provider.get("baseUrl")))))
                 .timeout(Duration.ofSeconds(60))
                 .header("Accept", "text/event-stream")
                 .header("Content-Type", "application/json")
@@ -735,6 +739,65 @@ public class AiCompatibilityService {
             return URI.create(normalized + "/models");
         }
         return URI.create(normalized + "/v1/models");
+    }
+
+    private static URI validatedProviderUri(URI uri) {
+        if (uri == null) {
+            throw new IllegalArgumentException("AI provider endpoint is required.");
+        }
+        String scheme = text(uri.getScheme()).toLowerCase(Locale.ROOT);
+        if (!"https".equals(scheme) && !"http".equals(scheme)) {
+            throw new IllegalArgumentException("AI provider endpoint must use http or https.");
+        }
+        String host = text(uri.getHost());
+        if (host.isBlank()) {
+            throw new IllegalArgumentException("AI provider endpoint host is required.");
+        }
+        if (!allowPrivateProviderEndpoints() && isPrivateProviderHost(host)) {
+            throw new IllegalArgumentException("AI provider endpoint targets a local or private network host; set "
+                    + ALLOW_PRIVATE_AI_ENDPOINTS_ENV + "=true only for trusted local testing.");
+        }
+        return uri;
+    }
+
+    private static boolean allowPrivateProviderEndpoints() {
+        return booleanValue(System.getenv(ALLOW_PRIVATE_AI_ENDPOINTS_ENV), false);
+    }
+
+    private static boolean isPrivateProviderHost(String host) {
+        String normalized = host.trim().toLowerCase(Locale.ROOT);
+        if (normalized.equals("localhost")
+                || normalized.equals("localhost.localdomain")
+                || normalized.endsWith(".localhost")
+                || normalized.equals("0.0.0.0")) {
+            return true;
+        }
+        try {
+            for (InetAddress address : InetAddress.getAllByName(normalized)) {
+                if (isPrivateProviderAddress(address)) {
+                    return true;
+                }
+            }
+            return false;
+        } catch (UnknownHostException error) {
+            return false;
+        }
+    }
+
+    private static boolean isPrivateProviderAddress(InetAddress address) {
+        if (address.isAnyLocalAddress()
+                || address.isLoopbackAddress()
+                || address.isLinkLocalAddress()
+                || address.isSiteLocalAddress()
+                || address.isMulticastAddress()) {
+            return true;
+        }
+        if (address instanceof Inet6Address inet6) {
+            byte[] bytes = inet6.getAddress();
+            int first = bytes.length > 0 ? bytes[0] & 0xff : 0;
+            return (first & 0xfe) == 0xfc;
+        }
+        return false;
     }
 
     private static String providerErrorMessage(Map<String, Object> payload) {

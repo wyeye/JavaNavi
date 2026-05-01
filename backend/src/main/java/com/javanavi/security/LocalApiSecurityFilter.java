@@ -15,10 +15,17 @@ import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Locale;
+import java.util.Optional;
 
 @Component
 public class LocalApiSecurityFilter extends OncePerRequestFilter {
+    private static final List<String> BOOTSTRAP_GET_PATHS = List.of(
+            "/api/v1/health",
+            "/api/v1/session"
+    );
+
     private final SecurityProperties properties;
     private final LocalSessionService localSessionService;
     private final ObjectMapper objectMapper;
@@ -58,12 +65,23 @@ public class LocalApiSecurityFilter extends OncePerRequestFilter {
             return;
         }
 
-        if (requiresLocalSession(request) && !hasValidLocalSession(request)) {
-            writeForbidden(response, "security.localSessionRequired");
-            return;
+        Optional<String> authenticatedSessionId = Optional.empty();
+        if (!properties.isLocalSessionRequired()) {
+            authenticatedSessionId = Optional.of(LocalSessionService.SECURITY_DISABLED_SESSION_ID);
+        } else if (requiresLocalSession(request)) {
+            authenticatedSessionId = localSessionId(request);
+            if (authenticatedSessionId.isEmpty()) {
+                writeForbidden(response, "security.localSessionRequired");
+                return;
+            }
         }
 
-        filterChain.doFilter(request, response);
+        authenticatedSessionId.ifPresent(localSessionService::bindCurrentSession);
+        try {
+            filterChain.doFilter(request, response);
+        } finally {
+            localSessionService.clearCurrentSession();
+        }
     }
 
     private boolean isAllowedOrigin(String origin, HttpServletRequest request) {
@@ -84,27 +102,32 @@ public class LocalApiSecurityFilter extends OncePerRequestFilter {
         }
         String method = request.getMethod().toUpperCase(Locale.ROOT);
         if ("GET".equals(method) || "HEAD".equals(method)) {
-            return false;
+            String path = request.getRequestURI();
+            return !BOOTSTRAP_GET_PATHS.contains(path);
         }
         String path = request.getRequestURI();
         return !path.equals("/api/v1/session");
     }
 
-    private boolean hasValidLocalSession(HttpServletRequest request) {
+    private Optional<String> localSessionId(HttpServletRequest request) {
         String headerToken = request.getHeader(properties.getSessionHeader());
-        if (localSessionService.matches(headerToken)) {
-            return true;
+        Optional<String> headerSessionId = localSessionService.authenticate(headerToken);
+        if (headerSessionId.isPresent()) {
+            return headerSessionId;
         }
         Cookie[] cookies = request.getCookies();
         if (cookies == null) {
-            return false;
+            return Optional.empty();
         }
         for (Cookie cookie : cookies) {
-            if (properties.getSessionCookie().equals(cookie.getName()) && localSessionService.matches(cookie.getValue())) {
-                return true;
+            if (properties.getSessionCookie().equals(cookie.getName())) {
+                Optional<String> cookieSessionId = localSessionService.authenticate(cookie.getValue());
+                if (cookieSessionId.isPresent()) {
+                    return cookieSessionId;
+                }
             }
         }
-        return false;
+        return Optional.empty();
     }
 
     private void writeForbidden(HttpServletResponse response, String code) throws IOException {

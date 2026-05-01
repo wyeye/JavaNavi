@@ -1,3 +1,5 @@
+import { ensureLocalSession } from './localSession';
+
 export interface Position { x: number; y: number; }
 export interface Size { w: number; h: number; }
 export interface EnvironmentInfo { buildType: string; platform: string; arch: string; }
@@ -62,7 +64,10 @@ export function StartEventBridge(): void {
   }
 
   eventBridgeState = 'connecting';
-  try {
+  void ensureLocalSession().then(() => {
+    if (eventBridgeSource || eventBridgeState !== 'connecting') {
+      return;
+    }
     const source = new EventSource(EVENT_STREAM_URL, { withCredentials: true });
     eventBridgeSource = source;
     source.onopen = () => { eventBridgeState = 'open'; };
@@ -73,11 +78,11 @@ export function StartEventBridge(): void {
     source.onerror = () => {
       eventBridgeState = source.readyState === EventSource.CLOSED ? 'closed' : 'error';
     };
-  } catch (error) {
+  }).catch((error) => {
     eventBridgeSource = null;
     eventBridgeState = 'error';
     console.warn('JavaNavi event bridge failed to start.', error);
-  }
+  });
 }
 
 export function StopEventBridge(): void {

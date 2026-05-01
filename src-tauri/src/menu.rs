@@ -41,15 +41,15 @@ pub fn handle(app: &AppHandle, menu_id: &str) {
 
 fn show_about(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.eval(
-            "alert('JavaNavi Desktop\\nTauri shell + Java/Spring Boot sidecar\\nBackend is managed on a dynamic loopback port.');",
+        let _ = window.set_title(
+            "JavaNavi — Tauri shell + Java/Spring Boot sidecar on a dynamic loopback port",
         );
     }
 }
 
 fn reload_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.eval("window.location.reload()");
+        let _ = window.reload();
     }
 }
 

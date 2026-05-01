@@ -121,15 +121,15 @@ disabled/deferred/unsupported 状态必须在 UI 中显示为 disabled 或明确
 
 ## Local-session 传输要求
 
-当前兼容 shell 对 `/api/v1/*` endpoint 使用 process-local session token。Unsafe credential-bearing request 必须包含以下 endpoint 颁发的 token：
+当前兼容 shell 对 `/api/v1/*` endpoint 使用 per-client local session。Unsafe credential-bearing request 必须受以下 endpoint 建立的 session 保护：
 
 ```text
 GET /api/v1/session
 ```
 
-前端兼容适配器负责该握手。应用组件不得直接 fetch 或持久化 token；应继续调用 `DBQuery`、`DBConnect`、`TestConnection` 等 adapter function。
+前端兼容适配器负责该握手。应用组件不得直接 fetch 或持久化 token；应继续调用 `DBQuery`、`DBConnect`、`TestConnection` 等 adapter function。当前后端通过 HttpOnly SameSite cookie 设置 session；仅当后端为兼容性显式返回 token 时，adapter 才发送 legacy session header。SSE bridge 同样按 local-session 隔离：subscriber 只接收 bridge-ready 以及同一 session 认证请求发布的 runtime/AI/job event，不接收其它已认证浏览器 session 的 event。
 
-当前 Java-backed shell endpoint 包括 health/session、connection test/open/close、schema metadata、query/multi/cancel、apply changes、DDL、SQL workspace read/write/list/select 等；新增 `/api/compat/*` 或 domain-native endpoint 必须保留相同 origin/session/redaction 控制，之后才能接收真实凭据。
+当前 Java-backed shell endpoint 包括 health/session、受 local-session cookie 保护且按 session 隔离的 SSE event stream、connection test/open/close、schema metadata、query/multi/cancel、apply changes、DDL、SQL workspace read/write/list/select 等；新增 `/api/compat/*` 或 domain-native endpoint 必须保留相同 origin/session/redaction 控制，之后才能接收真实凭据。
 
 ## 浏览器适配器证据
 
@@ -142,4 +142,4 @@ GET /api/v1/session
 - saved connections and secrets: `SaveConnection`、`GetSavedConnections`、`DuplicateConnection`、`DeleteConnection`、`ExportConnectionsPackage`、`SaveGlobalProxy`、`GetGlobalProxyConfig`；
 - SQL workspace: `SelectSQLDirectory`、`WriteSQLFile`、`ReadSQLFile`、`ListSQLDirectory`。
 
-证据路径必须验证前端会自行获得 process-local session token，浏览器调用能抵达 `/api/v1/*`，保存连接/global proxy 密码进入 `SecretStore` 后被脱敏，以及 JavaNavi connection package export metadata 可被浏览器 adapter 看到。
+证据路径必须验证前端会通过 adapter 建立 local session 且不持久化 token，浏览器调用能抵达 `/api/v1/*`，SSE event 不跨 local-session 边界，保存连接/global proxy 密码进入 `SecretStore` 后被脱敏，以及 JavaNavi connection package export metadata 可被浏览器 adapter 看到。

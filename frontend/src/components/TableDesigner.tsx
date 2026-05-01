@@ -2174,8 +2174,7 @@ END;`;
 	      if (!isNewTable) {
               fetchData();
           } else {
-              // TODO: Close tab or reload sidebar?
-              // Ideally, refresh sidebar node.
+              void fetchData();
           }
 	  };
 

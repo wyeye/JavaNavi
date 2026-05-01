@@ -51,11 +51,13 @@ Implemented on 2026-04-28:
 
 - `server.address` defaults to `127.0.0.1`.
 - `WebConfig` restricts CORS to configured local dev origins.
-- `LocalApiSecurityFilter` rejects disallowed `Origin` headers and requires a local-session token for unsafe credential-bearing API methods.
-- `GET /api/v1/session` issues the process-local token and reports the configured header/cookie names.
+- `LocalApiSecurityFilter` rejects disallowed `Origin` headers and requires a local-session token for unsafe methods plus sensitive GET/HEAD endpoints; only health/session bootstrap is public.
+- `GET /api/v1/session` issues a per-client local-session token as an HttpOnly SameSite cookie and reports the configured header/cookie names, non-secret session id, and token fingerprint.
 - `SecretRedactor` redacts common password/token/API-key and credential URI forms.
 - `EncryptedFileSecretStore` provides an AES-GCM local-file encrypted secret-store abstraction.
-- Browser adapter calls obtain and send the process-local session token through the JavaNavi compatibility adapter.
+- Browser adapter calls establish the local session through the JavaNavi compatibility adapter; modern flows rely on the HttpOnly SameSite cookie, while legacy header echo remains optional when explicitly returned by the backend.
+- The SSE compatibility event bridge binds each subscriber to the authenticated local-session id that opened the stream. Published runtime/AI/job events are delivered only to subscribers from the same request-bound local session, not to every authenticated client in the process.
+- Java-backed AI provider transport rejects localhost/private/link-local provider endpoints unless `JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true` is set for trusted local testing.
 - Secret redaction is implemented in backend runtime code and must be exercised through package/startup smoke or focused manual checks when credential paths change.
 
 This gate allows later implementation of real credential flows, but it does not itself mark any external database driver as complete.

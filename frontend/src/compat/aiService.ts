@@ -2,37 +2,10 @@
 // Provider/session/settings state is stored by the Java backend; streaming keeps
 // the existing compatibility event fixture until outbound provider transport lands.
 
+import { localSessionHeaders } from './localSession';
 import { EventsEmit } from './runtime';
 
 const API_BASE = '/api/v1';
-type LocalSession = { token: string; headerName: string };
-let localSessionPromise: Promise<LocalSession> | null = null;
-
-async function getLocalSession(): Promise<LocalSession> {
-  if (!localSessionPromise) {
-    localSessionPromise = fetch(`${API_BASE}/session`, { credentials: 'same-origin' })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.data?.token) {
-          throw new Error(payload?.error?.message || 'Unable to establish JavaNavi local session.');
-        }
-        return {
-          token: payload.data.token,
-          headerName: payload.data.headerName || 'X-JavaNavi-Session',
-        };
-      })
-      .catch((error) => {
-        localSessionPromise = null;
-        throw error;
-      });
-  }
-  return localSessionPromise;
-}
-
-async function localSessionHeaders(): Promise<Record<string, string>> {
-  const session = await getLocalSession();
-  return { [session.headerName]: session.token };
-}
 
 async function getJson(path: string): Promise<any> {
   const response = await fetch(`${API_BASE}${path}`, {

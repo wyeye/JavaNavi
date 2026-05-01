@@ -107,31 +107,63 @@ const AIToolResultItem: React.FC<{ resultMsg: AIChatMessage, darkMode: boolean, 
 
 const MermaidRenderer = ({ chart, darkMode }: { chart: string, darkMode: boolean }) => {
     const containerRef = React.useRef<HTMLDivElement>(null);
+    const [errorText, setErrorText] = React.useState('');
 
     React.useEffect(() => {
+        let active = true;
         if (containerRef.current) {
+            setErrorText('');
+            containerRef.current.replaceChildren();
             try {
                 mermaid.initialize({ startOnLoad: false, theme: darkMode ? 'dark' : 'default' });
                 const id = `mermaid-${Math.random().toString(36).substring(2)}`;
                 (async () => {
                     const result: any = await mermaid.render(id, chart);
-                    if (containerRef.current) {
-                        containerRef.current.innerHTML = result.svg || result;
+                    if (active && containerRef.current) {
+                        const rawSvg = String(result?.svg || result || '');
+                        const parsed = new DOMParser().parseFromString(rawSvg, 'image/svg+xml');
+                        const svg = parsed.documentElement;
+                        if (svg?.tagName.toLowerCase() !== 'svg' || svg.querySelector('parsererror')) {
+                            throw new Error('Mermaid did not return valid SVG');
+                        }
+                        svg.querySelectorAll('script, foreignObject').forEach((node) => node.remove());
+                        Array.from(svg.querySelectorAll('*')).forEach((node) => {
+                            Array.from(node.attributes).forEach((attr) => {
+                                if (
+                                    /^on/i.test(attr.name)
+                                    || /^\s*javascript:/i.test(attr.value)
+                                    || (attr.name.toLowerCase() === 'style' && /\b(?:url|expression)\s*\(/i.test(attr.value))
+                                ) {
+                                    node.removeAttribute(attr.name);
+                                }
+                            });
+                        });
+                        containerRef.current.replaceChildren(document.importNode(svg, true));
                     }
                 })().catch((e: any) => {
-                    if (containerRef.current) {
-                        containerRef.current.innerHTML = `<div style="color:#ef4444; padding:12px; background:rgba(239,68,68,0.1); border-radius:6px; font-size:12px">Mermaid 解析失败: ${e.message}</div>`;
+                    if (active) {
+                        setErrorText(`Mermaid 解析失败: ${String(e?.message || e)}`);
                     }
                 });
             } catch (e: any) {
-                if (containerRef.current) {
-                    containerRef.current.innerHTML = `<div style="color:#ef4444; padding:12px; background:rgba(239,68,68,0.1); border-radius:6px; font-size:12px">Mermaid 渲染异常: ${e.message}</div>`;
-                }
+                setErrorText(`Mermaid 渲染异常: ${String(e?.message || e)}`);
             }
         }
+        return () => {
+            active = false;
+        };
     }, [chart, darkMode]);
 
-    return <div ref={containerRef} className="ai-mermaid-container" style={{ margin: '16px 0', display: 'flex', justifyContent: 'flex-start', overflowX: 'auto' }} />;
+    return (
+        <>
+            <div ref={containerRef} className="ai-mermaid-container" style={{ margin: '16px 0', display: errorText ? 'none' : 'flex', justifyContent: 'flex-start', overflowX: 'auto' }} />
+            {errorText && (
+                <div style={{ color: '#ef4444', padding: 12, background: 'rgba(239,68,68,0.1)', borderRadius: 6, fontSize: 12 }}>
+                    {errorText}
+                </div>
+            )}
+        </>
+    );
 };
 
 const CodeCopyBtn = ({ text }: { text: string }) => {

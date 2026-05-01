@@ -5,6 +5,8 @@ import com.javanavi.model.ApiEnvelope;
 import com.javanavi.security.LocalSessionService;
 import com.javanavi.security.SecretStore;
 import com.javanavi.security.SecretStoreStatus;
+import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseCookie;
 import org.springframework.http.ResponseEntity;
@@ -33,18 +35,19 @@ public class SecurityController {
     }
 
     @GetMapping("/session")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> session() {
-        String token = localSessionService.issueToken();
-        ResponseCookie cookie = ResponseCookie.from(properties.getSessionCookie(), token)
-                .httpOnly(false)
+    public ResponseEntity<ApiEnvelope<Map<String, Object>>> session(HttpServletRequest request) {
+        LocalSessionService.IssuedSession issuedSession = localSessionService.sessionForToken(sessionCookieValue(request))
+                .orElseGet(localSessionService::issueSession);
+        ResponseCookie cookie = ResponseCookie.from(properties.getSessionCookie(), issuedSession.token())
+                .httpOnly(true)
                 .sameSite("Strict")
                 .path("/")
                 .maxAge(Duration.ofHours(12))
                 .build();
         SecretStoreStatus secretStoreStatus = secretStore.status();
         Map<String, Object> body = Map.of(
-                "token", token,
-                "tokenFingerprint", localSessionService.tokenFingerprint(),
+                "tokenFingerprint", issuedSession.tokenFingerprint(),
+                "sessionId", issuedSession.sessionId(),
                 "headerName", properties.getSessionHeader(),
                 "cookieName", properties.getSessionCookie(),
                 "localSessionRequired", properties.isLocalSessionRequired(),
@@ -53,5 +56,18 @@ public class SecurityController {
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
                 .body(ApiEnvelope.ok(body));
+    }
+
+    private String sessionCookieValue(HttpServletRequest request) {
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null) {
+            return null;
+        }
+        for (Cookie cookie : cookies) {
+            if (properties.getSessionCookie().equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+        return null;
     }
 }

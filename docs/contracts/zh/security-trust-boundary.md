@@ -51,11 +51,13 @@ SECURITY_SECRET_STORAGE=passed
 
 - `server.address` 默认 `127.0.0.1`。
 - `WebConfig` 将 CORS 限制到配置的本地 dev origin。
-- `LocalApiSecurityFilter` 拒绝不允许的 `Origin` header，并要求 unsafe credential-bearing API method 带 local-session token。
-- `GET /api/v1/session` 颁发 process-local token，并报告配置的 header/cookie 名称。
+- `LocalApiSecurityFilter` 拒绝不允许的 `Origin` header，并要求 unsafe method 以及敏感 GET/HEAD endpoint 带 local-session token；仅 health/session bootstrap 公开。
+- `GET /api/v1/session` 通过 HttpOnly SameSite cookie 颁发 per-client local-session token，并报告配置的 header/cookie 名称、非 secret session id 与 token fingerprint。
 - `SecretRedactor` 脱敏常见 password/token/API-key 与 credential URI 形式。
 - `EncryptedFileSecretStore` 提供 AES-GCM local-file encrypted secret-store 抽象。
-- 浏览器适配器调用通过 JavaNavi compatibility adapter 获取并发送 process-local session token。
+- 浏览器适配器调用通过 JavaNavi compatibility adapter 建立 local session；现代流程依赖 HttpOnly SameSite cookie，后端显式返回 token 时才保留 legacy header echo。
+- SSE compatibility event bridge 会把每个 subscriber 绑定到打开 stream 时已认证的 local-session id。Runtime/AI/job event 只发送给同一 request-bound local session 的 subscriber，不会广播给进程内所有已认证客户端。
+- Java-backed AI provider transport 默认拒绝 localhost/private/link-local provider endpoint；仅可信本地测试可设置 `JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true` 放行。
 - Secret redaction 已在后端 runtime 代码中实现；credential 路径变更时应通过 package/startup smoke 或 focused manual check 覆盖。
 
 该门禁允许后续实现真实凭据流，但它本身不代表任何外部数据库 driver 已完成。

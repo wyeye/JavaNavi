@@ -1,33 +1,10 @@
 import { connection, sync, app, jvm, redis } from './models';
+import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
 
 export type QueryResult = connection.QueryResult;
 
 const API_BASE = '/api/v1';
-
-type LocalSession = { token: string; headerName: string };
-let localSessionPromise: Promise<LocalSession> | null = null;
-
-async function getLocalSession(): Promise<LocalSession> {
-  if (!localSessionPromise) {
-    localSessionPromise = fetch(`${API_BASE}/session`, { credentials: 'same-origin' })
-      .then(async (response) => {
-        const payload = await response.json().catch(() => null);
-        if (!response.ok || !payload?.data?.token) {
-          throw new Error(payload?.error?.message || 'Unable to establish JavaNavi local session.');
-        }
-        return {
-          token: payload.data.token,
-          headerName: payload.data.headerName || 'X-JavaNavi-Session',
-        };
-      })
-      .catch((error) => {
-        localSessionPromise = null;
-        throw error;
-      });
-  }
-  return localSessionPromise;
-}
 
 
 function currentAppLanguage(): AppLanguage {
@@ -46,9 +23,12 @@ function currentAppLanguage(): AppLanguage {
 }
 
 async function localSessionHeaders(): Promise<Record<string, string>> {
-  const session = await getLocalSession();
   const language = currentAppLanguage();
-  return { [session.headerName]: session.token, 'X-JavaNavi-Language': currentLanguageHeaderValue(language), 'Accept-Language': currentLanguageHeaderValue(language) };
+  return {
+    ...(await baseLocalSessionHeaders()),
+    'X-JavaNavi-Language': currentLanguageHeaderValue(language),
+    'Accept-Language': currentLanguageHeaderValue(language),
+  };
 }
 
 function driverTypeOf(config: any): string {

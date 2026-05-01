@@ -1,6 +1,7 @@
 package com.javanavi.events;
 
 import com.javanavi.model.CompatEventDto;
+import com.javanavi.security.LocalSessionService;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
@@ -10,34 +11,55 @@ import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 import java.io.IOException;
 import java.time.Instant;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CopyOnWriteArraySet;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 
 @Component
 public class CompatEventPublisher {
     private static final Logger LOGGER = LoggerFactory.getLogger(CompatEventPublisher.class);
     private static final long SSE_TIMEOUT_MS = 0L;
 
-    private final Set<SseEmitter> emitters = new CopyOnWriteArraySet<>();
+    private final LocalSessionService localSessionService;
+    private final ConcurrentMap<SseEmitter, String> emitters = new ConcurrentHashMap<>();
+
+    public CompatEventPublisher(LocalSessionService localSessionService) {
+        this.localSessionService = localSessionService;
+    }
 
     public SseEmitter subscribe() {
+        String localSessionId = localSessionService.currentSessionId()
+                .orElseThrow(() -> new IllegalStateException("JavaNavi event stream requires an authenticated local session."));
         SseEmitter emitter = new SseEmitter(SSE_TIMEOUT_MS);
-        emitters.add(emitter);
+        emitters.put(emitter, localSessionId);
         emitter.onCompletion(() -> emitters.remove(emitter));
         emitter.onTimeout(() -> emitters.remove(emitter));
         emitter.onError(error -> emitters.remove(emitter));
-        send(emitter, bridgeReadyEvent());
+        send(emitter, bridgeReadyEvent(localSessionId));
         return emitter;
     }
 
     public CompatEventDto publish(CompatEventDto event) {
-        emitters.forEach(emitter -> send(emitter, event));
+        String localSessionId = localSessionService.currentSessionId()
+                .orElse(LocalSessionService.SECURITY_DISABLED_SESSION_ID);
+        emitters.forEach((emitter, subscriberSessionId) -> {
+            if (subscriberSessionId.equals(localSessionId)) {
+                send(emitter, event);
+            }
+        });
         return event;
     }
 
     public int subscriberCount() {
-        return emitters.size();
+        return localSessionService.currentSessionId()
+                .map(this::subscriberCount)
+                .orElseGet(emitters::size);
+    }
+
+    private int subscriberCount(String localSessionId) {
+        return (int) emitters.values().stream()
+                .filter(localSessionId::equals)
+                .count();
     }
 
     private void send(SseEmitter emitter, CompatEventDto event) {
@@ -52,17 +74,20 @@ public class CompatEventPublisher {
         }
     }
 
-    private CompatEventDto bridgeReadyEvent() {
+    private CompatEventDto bridgeReadyEvent(String localSessionId) {
         return new CompatEventDto(
                 UUID.randomUUID().toString(),
                 "runtime:bridge-ready",
                 "runtime",
                 "javanavi-backend",
-                "runtime",
+                localSessionId,
                 "connected",
                 "JavaNavi compatibility event bridge connected",
                 Instant.now(),
-                Map.of("subscriberCount", subscriberCount())
+                Map.of(
+                        "subscriberCount", subscriberCount(localSessionId),
+                        "localSessionScoped", true
+                )
         );
     }
 }
