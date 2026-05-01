@@ -5,7 +5,7 @@ import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
-import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, CloudDownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, FolderOpenOutlined, HddOutlined, SafetyCertificateOutlined } from '@ant-design/icons';
+import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, CloudDownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, FolderOpenOutlined, HddOutlined, SafetyCertificateOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, EventsOn, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
 import SecurityUpdateBanner from './components/SecurityUpdateBanner';
 import { DEFAULT_APPEARANCE, useStore } from './store';
@@ -2038,6 +2038,9 @@ function App() {
   const LOG_PANEL_MAX_HEIGHT = 800;
   const [logPanelHeight, setLogPanelHeight] = useState(Math.max(200, LOG_PANEL_MIN_HEIGHT));
   const [isLogPanelOpen, setIsLogPanelOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const SIDEBAR_COLLAPSED_WIDTH = 44;
+  const visibleSidebarWidth = isSidebarCollapsed ? SIDEBAR_COLLAPSED_WIDTH : sidebarWidth;
   const logResizeRef = React.useRef<{ startY: number, startHeight: number } | null>(null);
   const logGhostRef = React.useRef<HTMLDivElement>(null);
 
@@ -2257,6 +2260,9 @@ function App() {
 
   const handleSidebarMouseDown = (e: React.MouseEvent) => {
       e.preventDefault();
+      if (isSidebarCollapsed) {
+          return;
+      }
 
       if (ghostRef.current) {
           ghostRef.current.style.left = `${sidebarWidth}px`;
@@ -2608,129 +2614,191 @@ function App() {
         }}>
           <Layout style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
           <Sider
-            width={sidebarWidth}
+            width={visibleSidebarWidth}
+            collapsedWidth={SIDEBAR_COLLAPSED_WIDTH}
+            collapsed={isSidebarCollapsed}
+            trigger={null}
             style={{
                 borderRight: '1px solid rgba(128,128,128,0.2)',
                 position: 'relative',
                 background: bgMain
             }}
           >
-            <div style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-                <div style={{ padding: `12px ${sidebarHorizontalPadding}px 8px`, borderBottom: 'none', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: `repeat(${sidebarUtilityItems.length}, minmax(0, 1fr))`, gap: 8, width: '100%' }}>
-                        {sidebarUtilityItems.map((item) => (
-                            <Tooltip key={item.key} title={item.title}>
-                                <Button type="text" icon={item.icon} style={utilityButtonStyle} onClick={item.onClick} />
-                            </Tooltip>
-                        ))}
-                    </div>
-                </div>
-                <div style={{ padding: `0 ${sidebarHorizontalPadding}px 10px`, borderBottom: 'none', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: isSidebarCompact ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8, width: '100%' }}>
-                        <Button icon={<PlusOutlined />} onClick={handleCreateConnection} title={t('sidebar.newConnection')} style={sidebarCreateConnectionActionStyle}>
-                            {t('sidebar.newConnection')}
-                        </Button>
-                        <Button icon={<ConsoleSqlOutlined />} onClick={handleNewQuery} title={t('sidebar.newQuery')} style={sidebarQueryActionStyle}>
-                            {t('sidebar.newQuery')}
-                        </Button>
-                    </div>
-                </div>
-
-                <div style={{ flex: 1, overflow: 'hidden', paddingBottom: 58, position: 'relative' }}>
-                    <div style={{ height: '100%', opacity: connectionWorkbenchState.ready ? 1 : 0.72, pointerEvents: connectionWorkbenchState.ready ? 'auto' : 'none' }}>
-                        <Suspense fallback={<div style={{ display: 'grid', height: '100%', placeItems: 'center' }}><Spin size="small" /></div>}>
-                            <Sidebar onEditConnection={handleEditConnection} />
-                        </Suspense>
-                    </div>
-                    {!connectionWorkbenchState.ready && (
-                        <div
+            <div style={{ height: '100%', display: isSidebarCollapsed ? 'flex' : 'none', flexDirection: 'column', alignItems: 'center', gap: 10, padding: '12px 6px', overflow: 'hidden' }}>
+                    <Tooltip title={t('sidebar.expand')}>
+                        <Button
+                            type="text"
+                            aria-label={t('sidebar.expand')}
+                            icon={<MenuUnfoldOutlined />}
+                            onClick={() => setIsSidebarCollapsed(false)}
                             style={{
-                                position: 'absolute',
-                                inset: 0,
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                padding: 16,
-                                background: darkMode ? 'rgba(7, 12, 20, 0.42)' : 'rgba(255, 255, 255, 0.58)',
-                                backdropFilter: 'blur(4px)',
-                                zIndex: 1,
+                                width: 32,
+                                height: 32,
+                                borderRadius: 10,
+                                color: darkMode ? 'rgba(255,255,255,0.92)' : '#162033',
+                                border: `1px solid ${utilityButtonBorderColor}`,
+                                background: utilityButtonBgColor,
+                                boxShadow: utilityButtonShadow,
+                                backdropFilter: isOpaqueUtilityMode ? 'none' : blurFilter,
+                                WebkitBackdropFilter: isOpaqueUtilityMode ? 'none' : blurFilter,
+                                flexShrink: 0,
                             }}
-                        >
+                        />
+                    </Tooltip>
+                    <div style={{ width: 24, height: 1, background: darkMode ? 'rgba(255,255,255,0.14)' : 'rgba(16,24,40,0.12)' }} />
+                    <Tooltip title={t('sidebar.newConnection')}>
+                        <Button type="text" aria-label={t('sidebar.newConnection')} icon={<PlusOutlined />} onClick={handleCreateConnection} style={{ ...utilityButtonStyle, width: 32, paddingInline: 0, flexShrink: 0 }} />
+                    </Tooltip>
+                    <Tooltip title={t('sidebar.newQuery')}>
+                        <Button type="text" aria-label={t('sidebar.newQuery')} icon={<ConsoleSqlOutlined />} onClick={handleNewQuery} style={{ ...utilityButtonStyle, width: 32, paddingInline: 0, flexShrink: 0 }} />
+                    </Tooltip>
+                    <div style={{ flex: 1 }} />
+                    <Tooltip title={t('sidebar.sqlLog')}>
+                        <Button
+                            type={isLogPanelOpen ? "primary" : "text"}
+                            aria-label={t('sidebar.sqlLog')}
+                            icon={<BugOutlined />}
+                            onClick={() => setIsLogPanelOpen(!isLogPanelOpen)}
+                            style={{
+                                width: 32,
+                                height: 32,
+                                borderRadius: 10,
+                                border: isLogPanelOpen ? undefined : `1px solid ${floatingLogButtonBorderColor}`,
+                                color: isLogPanelOpen ? undefined : floatingLogButtonTextColor,
+                                background: isLogPanelOpen ? undefined : floatingLogButtonBgColor,
+                                boxShadow: floatingLogButtonShadow,
+                                backdropFilter: blurFilter,
+                                flexShrink: 0,
+                            }}
+                        />
+                    </Tooltip>
+                </div>
+                <div style={{ height: '100%', display: isSidebarCollapsed ? 'none' : 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                    <div style={{ padding: `12px ${sidebarHorizontalPadding}px 8px`, borderBottom: 'none', display: 'flex', alignItems: 'center', flexShrink: 0, gap: 8 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: `repeat(${sidebarUtilityItems.length}, minmax(0, 1fr))`, gap: 8, flex: 1, minWidth: 0 }}>
+                            {sidebarUtilityItems.map((item) => (
+                                <Tooltip key={item.key} title={item.title}>
+                                    <Button type="text" icon={item.icon} style={utilityButtonStyle} onClick={item.onClick} />
+                                </Tooltip>
+                            ))}
+                        </div>
+                        <Tooltip title={t('sidebar.collapse')}>
+                            <Button
+                                type="text"
+                                aria-label={t('sidebar.collapse')}
+                                icon={<MenuFoldOutlined />}
+                                onClick={() => setIsSidebarCollapsed(true)}
+                                style={{ ...utilityButtonStyle, width: Math.max(30, Math.round(32 * effectiveUiScale)), paddingInline: 0, flexShrink: 0 }}
+                            />
+                        </Tooltip>
+                    </div>
+                    <div style={{ padding: `0 ${sidebarHorizontalPadding}px 10px`, borderBottom: 'none', display: 'flex', alignItems: 'center', flexShrink: 0 }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: isSidebarCompact ? 'minmax(0, 1fr)' : 'minmax(0, 1fr) minmax(0, 1fr)', gap: 8, width: '100%' }}>
+                            <Button icon={<PlusOutlined />} onClick={handleCreateConnection} title={t('sidebar.newConnection')} style={sidebarCreateConnectionActionStyle}>
+                                {t('sidebar.newConnection')}
+                            </Button>
+                            <Button icon={<ConsoleSqlOutlined />} onClick={handleNewQuery} title={t('sidebar.newQuery')} style={sidebarQueryActionStyle}>
+                                {t('sidebar.newQuery')}
+                            </Button>
+                        </div>
+                    </div>
+
+                    <div style={{ flex: 1, overflow: 'hidden', paddingBottom: 58, position: 'relative' }}>
+                        <div style={{ height: '100%', opacity: connectionWorkbenchState.ready ? 1 : 0.72, pointerEvents: connectionWorkbenchState.ready ? 'auto' : 'none' }}>
+                            <Suspense fallback={<div style={{ display: 'grid', height: '100%', placeItems: 'center' }}><Spin size="small" /></div>}>
+                                <Sidebar onEditConnection={handleEditConnection} />
+                            </Suspense>
+                        </div>
+                        {!connectionWorkbenchState.ready && (
                             <div
                                 style={{
-                                    display: 'inline-flex',
+                                    position: 'absolute',
+                                    inset: 0,
+                                    display: 'flex',
                                     alignItems: 'center',
-                                    gap: 10,
-                                    padding: '10px 14px',
-                                    borderRadius: 999,
-                                    background: darkMode ? 'rgba(15, 23, 36, 0.86)' : 'rgba(255, 255, 255, 0.94)',
-                                    border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(22,32,51,0.08)',
-                                    boxShadow: darkMode ? '0 12px 24px rgba(0,0,0,0.26)' : '0 12px 24px rgba(15,23,42,0.08)',
-                                    color: darkMode ? 'rgba(255,255,255,0.88)' : '#162033',
-                                    fontSize: 12,
-                                    fontWeight: 500,
+                                    justifyContent: 'center',
+                                    padding: 16,
+                                    background: darkMode ? 'rgba(7, 12, 20, 0.42)' : 'rgba(255, 255, 255, 0.58)',
+                                    backdropFilter: 'blur(4px)',
+                                    zIndex: 1,
                                 }}
                             >
-                                <Spin size="small" />
-                                <span>{connectionWorkbenchState.message}</span>
+                                <div
+                                    style={{
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: 10,
+                                        padding: '10px 14px',
+                                        borderRadius: 999,
+                                        background: darkMode ? 'rgba(15, 23, 36, 0.86)' : 'rgba(255, 255, 255, 0.94)',
+                                        border: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(22,32,51,0.08)',
+                                        boxShadow: darkMode ? '0 12px 24px rgba(0,0,0,0.26)' : '0 12px 24px rgba(15,23,42,0.08)',
+                                        color: darkMode ? 'rgba(255,255,255,0.88)' : '#162033',
+                                        fontSize: 12,
+                                        fontWeight: 500,
+                                    }}
+                                >
+                                    <Spin size="small" />
+                                    <span>{connectionWorkbenchState.message}</span>
+                                </div>
                             </div>
-                        </div>
-                    )}
-                </div>
+                        )}
+                    </div>
 
-                {/* Floating SQL Log Toggle */}
-                <div
-                    style={{
-                        position: 'absolute',
-                        left: 10,
-                        right: 14,
-                        bottom: 10,
-                        zIndex: 20,
-                        pointerEvents: 'none'
-                    }}
-                >
-                    <Button
-                        type={isLogPanelOpen ? "primary" : "text"}
-                        icon={<BugOutlined />}
-                        onClick={() => setIsLogPanelOpen(!isLogPanelOpen)}
-                        style={isLogPanelOpen ? {
-                            width: '100%',
-                            height: floatingLogButtonHeight,
-                            borderRadius: 999,
-                            boxShadow: floatingLogButtonShadow,
-                            pointerEvents: 'auto'
-                        } : {
-                            width: '100%',
-                            height: floatingLogButtonHeight,
-                            borderRadius: 999,
-                            border: `1px solid ${floatingLogButtonBorderColor}`,
-                            color: floatingLogButtonTextColor,
-                            background: floatingLogButtonBgColor,
-                            boxShadow: floatingLogButtonShadow,
-                            backdropFilter: blurFilter,
-                            pointerEvents: 'auto'
+                    {/* Floating SQL Log Toggle */}
+                    <div
+                        style={{
+                            position: 'absolute',
+                            left: 10,
+                            right: 14,
+                            bottom: 10,
+                            zIndex: 20,
+                            pointerEvents: 'none'
                         }}
                     >
-                        {t('sidebar.sqlLog')}
-                    </Button>
+                        <Button
+                            type={isLogPanelOpen ? "primary" : "text"}
+                            icon={<BugOutlined />}
+                            onClick={() => setIsLogPanelOpen(!isLogPanelOpen)}
+                            style={isLogPanelOpen ? {
+                                width: '100%',
+                                height: floatingLogButtonHeight,
+                                borderRadius: 999,
+                                boxShadow: floatingLogButtonShadow,
+                                pointerEvents: 'auto'
+                            } : {
+                                width: '100%',
+                                height: floatingLogButtonHeight,
+                                borderRadius: 999,
+                                border: `1px solid ${floatingLogButtonBorderColor}`,
+                                color: floatingLogButtonTextColor,
+                                background: floatingLogButtonBgColor,
+                                boxShadow: floatingLogButtonShadow,
+                                backdropFilter: blurFilter,
+                                pointerEvents: 'auto'
+                            }}
+                        >
+                            {t('sidebar.sqlLog')}
+                        </Button>
+                    </div>
                 </div>
-            </div>
 
-            {/* Sidebar Resize Handle */}
-            <div
-                onMouseDown={handleSidebarMouseDown}
-                style={{
-                    position: 'absolute',
-                    right: 0,
-                    top: 0,
-                    bottom: 0,
-                    width: '5px',
-                    cursor: 'col-resize',
-                    zIndex: 100,
-                    // background: 'transparent' // transparent usually, visible on hover if desired
-                }}
-                title={t('sidebar.resizeHandle')}
-            />
+            {!isSidebarCollapsed && (
+                <div
+                    onMouseDown={handleSidebarMouseDown}
+                    style={{
+                        position: 'absolute',
+                        right: 0,
+                        top: 0,
+                        bottom: 0,
+                        width: '5px',
+                        cursor: 'col-resize',
+                        zIndex: 100,
+                        // background: 'transparent' // transparent usually, visible on hover if desired
+                    }}
+                    title={t('sidebar.resizeHandle')}
+                />
+            )}
           </Sider>
            <Content style={{ background: bgContent, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
              {securityUpdateEntryVisibility.showBanner && !isSecurityUpdateBannerDismissed && (
@@ -3740,7 +3808,7 @@ function App() {
               ref={logGhostRef}
               style={{
                   position: 'fixed',
-                  left: sidebarWidth, // Start from sidebar edge
+                  left: visibleSidebarWidth, // Start from visible sidebar edge
                   right: 0,
                   height: '4px',
                   background: resizeGuideColor,
