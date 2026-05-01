@@ -178,7 +178,7 @@ export const resolveConnectionConfigLayout = (
   if (type === 'custom') {
     return {
       kind: 'custom',
-      sections: ['identity', 'customDriver', 'customDsn'],
+      sections: ['identity', 'customDriver', 'customDsn', 'credentials'],
     };
   }
   if (fileDatabaseTypes.has(type)) {

@@ -6,7 +6,7 @@ import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-class DriverCompatibilityServiceTest {
+class MojibakeTextNormalizerTest {
     @Test
     void repairsUploadVersionDecodedAsLatin1() {
         String mojibake = new String("上传-1.0".getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1);
@@ -25,5 +25,13 @@ class DriverCompatibilityServiceTest {
     void keepsAsciiUploadVersionUnchanged() {
         assertThat(MojibakeTextNormalizer.normalize("1.2.3"))
                 .isEqualTo("1.2.3");
+    }
+
+    @Test
+    void keepsLegitimateLatinTextUnchanged() {
+        assertThat(MojibakeTextNormalizer.normalize("Café-1.0"))
+                .isEqualTo("Café-1.0");
+        assertThat(MojibakeTextNormalizer.normalize("Ångström-1.0"))
+                .isEqualTo("Ångström-1.0");
     }
 }
