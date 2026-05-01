@@ -3,6 +3,7 @@ package com.javanavi.db;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.driver.JdbcDriverRuntimeService;
 import com.javanavi.i18n.I18nMessages;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
 import javax.sql.DataSource;
@@ -23,6 +24,7 @@ public class JdbcConnectionFactory {
         this(null, new I18nMessages());
     }
 
+    @Autowired
     public JdbcConnectionFactory(JdbcDriverRuntimeService driverRuntimeService, I18nMessages messages) {
         this.driverRuntimeService = driverRuntimeService;
         this.messages = messages;
