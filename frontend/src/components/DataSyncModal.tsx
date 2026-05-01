@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Modal, Form, Select, Input, Button, message, Steps, Transfer, Card, Alert, Divider, Typography, Progress, Checkbox, Table, Drawer, Tabs, theme as antdTheme } from 'antd';
 import { DatabaseOutlined, RocketOutlined, SwapOutlined, TableOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
+import { translate, type I18nKey } from '../i18n';
 import { DBGetDatabases, DBGetTables, DataSync, DataSyncAnalyze, DataSyncPreview } from '@compat/javanaviApp';
 import { SavedConnection } from '../types';
 import { EventsOn } from '@compat/runtime';
@@ -196,6 +197,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const connections = useStore((state) => state.connections);
   const themeMode = useStore((state) => state.theme);
   const appearance = useStore((state) => state.appearance);
+  const language = useStore((state) => state.language);
+  const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
   const [currentStep, setCurrentStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const { token } = antdTheme.useToken();
@@ -385,7 +388,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 	                .map((r: any) => r?.Database || r?.database || r?.username)
 	                .filter((name: any) => typeof name === 'string' && name.trim() !== ''));
 	        }
-	      } catch(e) { message.error("Failed to fetch source databases"); }
+	      } catch(e) { message.error(t('dataSync.error.fetchSourceDatabases')); }
 	      setLoading(false);
 	  }
   };
@@ -404,15 +407,15 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 	                .map((r: any) => r?.Database || r?.database || r?.username)
 	                .filter((name: any) => typeof name === 'string' && name.trim() !== ''));
 	        }
-	      } catch(e) { message.error("Failed to fetch target databases"); }
+	      } catch(e) { message.error(t('dataSync.error.fetchTargetDatabases')); }
 	      setLoading(false);
 	  }
   };
 
   const nextToTables = async () => {
-      if (!sourceConnId || !targetConnId) return message.error("Select connections first");
-      if (!sourceDb) return message.error("Select source database");
-      if (!targetDb) return message.error("Select target database");
+      if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
+      if (!sourceDb) return message.error(t('dataSync.error.selectSourceDatabase'));
+      if (!targetDb) return message.error(t('dataSync.error.selectTargetDatabase'));
 
       setLoading(true);
       try {
@@ -441,7 +444,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                   message.error(res.message);
               }
           }
-      } catch (e) { message.error("Failed to fetch tables"); }
+      } catch (e) { message.error(t('dataSync.error.fetchTables')); }
       setLoading(false);
   };
 
@@ -454,9 +457,9 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 
   const analyzeDiff = async () => {
       const selectionError = validateDataSyncSelection({ sourceDatasetMode, selectedTables, sourceQuery, syncContent });
-      if (selectionError) return message.error(selectionError);
-      if (!sourceConnId || !targetConnId) return message.error("Select connections first");
-      if (!sourceDb || !targetDb) return message.error("Select databases first");
+      if (selectionError) return message.error(t(selectionError));
+      if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
+      if (!sourceDb || !targetDb) return message.error(t('dataSync.error.selectDatabasesFirst'));
 
       setLoading(true);
       setAnalyzing(true);
@@ -504,12 +507,12 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                   };
               });
               setTableOptions(init);
-              message.success("差异分析完成");
+              message.success(t('dataSync.diff.analysisComplete'));
           } else {
-              message.error(res.message || "差异分析失败");
+              message.error(res.message || t('dataSync.diff.analysisFailed'));
           }
       } catch (e: any) {
-          message.error("差异分析失败: " + (e?.message || ""));
+          message.error(t('dataSync.diff.analysisFailedWithMessage', { message: e?.message || '' }));
       }
 
       setLoading(false);
@@ -545,10 +548,10 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           if (res.success) {
               setPreviewData(res.data);
           } else {
-              message.error(res.message || "加载差异预览失败");
+              message.error(res.message || t('dataSync.preview.loadFailed'));
           }
       } catch (e: any) {
-          message.error("加载差异预览失败: " + (e?.message || ""));
+          message.error(t('dataSync.preview.loadFailedWithMessage', { message: e?.message || '' }));
       }
 
       setPreviewLoading(false);
@@ -557,20 +560,20 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const runSync = async () => {
       const selectionError = validateDataSyncSelection({ sourceDatasetMode, selectedTables, sourceQuery, syncContent });
       if (selectionError) {
-          message.error(selectionError);
+          message.error(t(selectionError));
           return;
       }
       if (syncContent !== 'schema' && diffTables.length === 0) {
-          message.error("请先对比差异，再开始同步");
+          message.error(t('dataSync.selection.compareBeforeSync'));
           return;
       }
       if (syncContent !== 'schema' && syncMode === 'full_overwrite') {
           const ok = await new Promise<boolean>((resolve) => {
               Modal.confirm({
-                  title: '确认全量覆盖',
-                  content: '全量覆盖会清空目标表数据后再插入，请确认已备份目标库。',
-                  okText: '继续执行',
-                  cancelText: '取消',
+                  title: t('dataSync.confirm.fullOverwriteTitle'),
+                  content: t('dataSync.confirm.fullOverwriteContent'),
+                  okText: t('dataSync.confirm.continue'),
+                  cancelText: t('common.cancel'),
                   onOk: () => resolve(true),
                   onCancel: () => resolve(false),
               });
@@ -595,7 +598,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           current: 0,
           total: selectedTables.length,
           table: '',
-          stage: '准备开始',
+          stage: t('dataSync.progress.preparing'),
       });
       
       const config = buildDataSyncRequest({
@@ -629,8 +632,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
               });
           }
       } catch (e) {
-          message.error("Sync execution failed");
-          setSyncResult({ success: false, message: "同步执行失败", logs: [] });
+          message.error(t('dataSync.error.executionFailed'));
+          setSyncResult({ success: false, message: t('dataSync.error.executionFailed'), logs: [] });
       }
       setLoading(false);
       setSyncing(false);
@@ -795,11 +798,11 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   return (
     <>
     <Modal
-        title={renderModalTitle(isMigrationWorkflow ? '跨库迁移工作台' : '数据同步工作台', isMigrationWorkflow ? '按源库 → 目标库完成建表、导入与风险预检。' : '按已有目标表完成差异对比、同步执行与结果确认。')}
+        title={renderModalTitle(isMigrationWorkflow ? t('dataSync.modal.migrationTitle') : t('dataSync.modal.syncTitle'), isMigrationWorkflow ? t('dataSync.modal.migrationDescription') : t('dataSync.modal.syncDescription'))}
         open={open}
         onCancel={() => {
             if (syncing) {
-                message.warning("同步执行中，暂不支持关闭");
+                message.warning(t('dataSync.close.syncRunning'));
                 return;
             }
             onClose();
@@ -1471,9 +1474,9 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                             onClick={async () => {
                                                 try {
                                                     await navigator.clipboard.writeText(previewSql.sqlText || '');
-                                                    message.success('SQL 已复制');
+                                                    message.success(t('dataSync.sql.copySuccess'));
                                                 } catch {
-                                                    message.error('复制失败，请手动复制');
+                                                    message.error(t('dataSync.sql.copyFailed'));
                                                 }
                                             }}
                                         >

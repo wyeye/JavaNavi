@@ -4170,7 +4170,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     }
 
     const statusBadge = node.type === 'connection' || node.type === 'database' ? (
-        <Badge status={status} style={{ marginLeft: 4, marginRight: 8 }} />
+        <Badge status={status} className="sidebar-tree-node-status" />
     ) : null;
 
     const displayTitle = String(node.title ?? '');
@@ -4205,15 +4205,11 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
     if (node.type === 'external-sql-root') {
         return (
-            <span
-                title={hoverTitle}
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, width: '100%' }}
-            >
-                <span style={{ minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                    {statusBadge}
-                    {displayTitle}
-                </span>
+            <span title={hoverTitle} className="sidebar-tree-node-title">
+                {statusBadge}
+                <span className="sidebar-tree-node-label">{displayTitle}</span>
                 <Button
+                    className="sidebar-tree-node-action"
                     size="small"
                     type="text"
                     icon={<PlusOutlined />}
@@ -4228,7 +4224,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         );
     }
 
-    return <span title={hoverTitle}>{statusBadge}{displayTitle}</span>;
+    return (
+        <span title={hoverTitle} className="sidebar-tree-node-title">
+            {statusBadge}
+            <span className="sidebar-tree-node-label">{displayTitle}</span>
+        </span>
+    );
   };
 
   const handleDrop = (info: any) => {

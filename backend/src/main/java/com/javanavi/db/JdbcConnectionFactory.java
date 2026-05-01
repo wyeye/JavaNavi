@@ -3,6 +3,7 @@ package com.javanavi.db;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.driver.JdbcDriverRuntimeService;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.i18n.LocalizedException;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 
@@ -32,7 +33,7 @@ public class JdbcConnectionFactory {
 
     private JdbcDriverRuntimeService requireDriverRuntimeService() {
         if (driverRuntimeService == null) {
-            throw new IllegalStateException("JDBC driver runtime service is not available in this verification context.");
+            throw new IllegalStateException(messages.message("connection.jdbcRuntimeUnavailable"));
         }
         return driverRuntimeService;
     }
@@ -200,7 +201,7 @@ public class JdbcConnectionFactory {
     private String customJdbcUrl(ConnectionConfigDto config) {
         String rawDsn = firstText(config.dsn(), config.uri(), option(config, "dsn"), option(config, "jdbcUrl"), option(config, "url"));
         if (rawDsn == null || rawDsn.isBlank()) {
-            throw new IllegalArgumentException("Custom JDBC connection string is required.");
+            throw new LocalizedException("connection.customDsnRequired");
         }
         String dsn = rawDsn.trim();
         String driver = normalizeDriver(config);
@@ -213,7 +214,7 @@ public class JdbcConnectionFactory {
         if ("duckdb".equals(driver)) {
             return duckDbJdbcUrlFromPath(dsn);
         }
-        throw new IllegalArgumentException("Custom JDBC connection string must be a jdbc: URL for driver '" + driver + "'.");
+        throw new LocalizedException("connection.customDsnJdbcUrlRequired", "driver", driver);
     }
 
     private static String sqliteJdbcUrl(ConnectionConfigDto config) {
@@ -225,7 +226,7 @@ public class JdbcConnectionFactory {
                 config == null ? null : config.database()
         );
         if (rawPath == null || rawPath.isBlank()) {
-            throw new IllegalArgumentException("SQLite connection file path is required.");
+            throw new LocalizedException("connection.sqlitePathRequired");
         }
 
         return sqliteJdbcUrlFromPath(rawPath);
@@ -233,7 +234,7 @@ public class JdbcConnectionFactory {
 
     private static String validateSqliteJdbcUrl(String url) {
         if (url.indexOf('\0') >= 0 || url.contains("\n") || url.contains("\r")) {
-            throw new IllegalArgumentException("SQLite JDBC URL contains unsupported control characters.");
+            throw new LocalizedException("connection.sqliteUrlControlChars");
         }
         return url;
     }
@@ -248,10 +249,10 @@ public class JdbcConnectionFactory {
             return "jdbc:sqlite::memory:";
         }
         if (pathText.indexOf('\0') >= 0 || pathText.contains("\n") || pathText.contains("\r")) {
-            throw new IllegalArgumentException("SQLite connection file path contains unsupported control characters.");
+            throw new LocalizedException("connection.sqlitePathControlChars");
         }
         if (pathText.contains("?") || pathText.contains("#")) {
-            throw new IllegalArgumentException("SQLite connection file path must not contain URL query or fragment control characters.");
+            throw new LocalizedException("connection.sqlitePathQueryFragment");
         }
         return "jdbc:sqlite:" + Path.of(pathText).toAbsolutePath().normalize();
     }
@@ -265,7 +266,7 @@ public class JdbcConnectionFactory {
                 config == null ? null : config.database()
         );
         if (rawPath == null || rawPath.isBlank()) {
-            throw new IllegalArgumentException("DuckDB connection file path is required.");
+            throw new LocalizedException("connection.duckdbPathRequired");
         }
 
         return duckDbJdbcUrlFromPath(rawPath);
@@ -273,7 +274,7 @@ public class JdbcConnectionFactory {
 
     private static String validateDuckDbJdbcUrl(String url) {
         if (url.indexOf('\0') >= 0 || url.contains("\n") || url.contains("\r")) {
-            throw new IllegalArgumentException("DuckDB JDBC URL contains unsupported control characters.");
+            throw new LocalizedException("connection.duckdbUrlControlChars");
         }
         return url;
     }
@@ -288,24 +289,24 @@ public class JdbcConnectionFactory {
             return "jdbc:duckdb:";
         }
         if (pathText.indexOf('\0') >= 0 || pathText.contains("\n") || pathText.contains("\r")) {
-            throw new IllegalArgumentException("DuckDB connection file path contains unsupported control characters.");
+            throw new LocalizedException("connection.duckdbPathControlChars");
         }
         if (pathText.contains("?") || pathText.contains("#")) {
-            throw new IllegalArgumentException("DuckDB connection file path must not contain URL query or fragment control characters.");
+            throw new LocalizedException("connection.duckdbPathQueryFragment");
         }
         return "jdbc:duckdb:" + Path.of(pathText).toAbsolutePath().normalize();
     }
 
     private static String validateGenericJdbcUrl(String url) {
         if (url.indexOf('\0') >= 0 || url.contains("\n") || url.contains("\r")) {
-            throw new IllegalArgumentException("Custom JDBC URL contains unsupported control characters.");
+            throw new LocalizedException("connection.customJdbcUrlControlChars");
         }
         return url;
     }
 
     private static String requireText(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Connection " + field + " is required for external JDBC drivers.");
+            throw new LocalizedException("connection.externalFieldRequired", "field", field);
         }
         return value.trim();
     }
@@ -348,7 +349,7 @@ public class JdbcConnectionFactory {
         }
         String database = value.trim();
         if (database.contains("?") || database.contains("#") || database.contains(";")) {
-            throw new IllegalArgumentException("Connection database contains unsupported URL control characters.");
+            throw new LocalizedException("connection.databaseControlChars");
         }
         return database;
     }

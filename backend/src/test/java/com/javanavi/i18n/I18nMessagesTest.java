@@ -62,4 +62,20 @@ class I18nMessagesTest {
             I18nContext.clear();
         }
     }
+    @Test
+    void localizesJdbcConnectionFactoryErrors() {
+        assertThat(messages.message(AppLanguage.EN, "connection.customDsnRequired"))
+                .isEqualTo("Custom JDBC connection string is required.");
+        assertThat(messages.message(AppLanguage.ZH, "connection.customDsnRequired"))
+                .isEqualTo("自定义 JDBC 连接字符串不能为空。");
+        assertThat(messages.message(AppLanguage.EN, "connection.customDsnJdbcUrlRequired", "driver", "example"))
+                .isEqualTo("Custom JDBC connection string must be a jdbc: URL for driver example.");
+        assertThat(messages.message(AppLanguage.ZH, "connection.customDsnJdbcUrlRequired", "driver", "example"))
+                .isEqualTo("自定义 JDBC 连接字符串必须是驱动 example 的 jdbc: URL。");
+        assertThat(messages.message(AppLanguage.EN, "connection.externalFieldRequired", "field", "host"))
+                .isEqualTo("Connection host is required for external JDBC drivers.");
+        assertThat(messages.message(AppLanguage.ZH, "connection.externalFieldRequired", "field", "host"))
+                .isEqualTo("外部 JDBC 驱动连接字段 host 不能为空。");
+    }
+
 }

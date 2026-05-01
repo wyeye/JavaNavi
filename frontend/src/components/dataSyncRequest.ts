@@ -1,3 +1,5 @@
+import type { I18nKey } from '../i18n';
+
 export type SourceDatasetMode = 'table' | 'query';
 
 type SyncContent = 'data' | 'schema' | 'both';
@@ -31,22 +33,22 @@ export const validateDataSyncSelection = ({
   selectedTables,
   sourceQuery,
   syncContent,
-}: ValidateDataSyncSelectionParams): string | null => {
+}: ValidateDataSyncSelectionParams): I18nKey | null => {
   if (sourceDatasetMode === 'query') {
     if (!String(sourceQuery || '').trim()) {
-      return '请输入源查询 SQL';
+      return 'dataSync.selection.sourceQueryRequired';
     }
     if (selectedTables.length !== 1) {
-      return 'SQL 结果集同步需要选择一个目标表';
+      return 'dataSync.selection.queryTargetTableRequired';
     }
     if (syncContent !== 'data') {
-      return 'SQL 结果集同步仅支持仅同步数据';
+      return 'dataSync.selection.queryDataOnly';
     }
     return null;
   }
 
   if (selectedTables.length === 0) {
-    return '请选择至少一张表';
+    return 'dataSync.selection.tableRequired';
   }
   return null;
 };

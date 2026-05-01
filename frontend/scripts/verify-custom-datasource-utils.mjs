@@ -30,6 +30,8 @@ try {
   const customDataSources = await transpileToModule('src/utils/customDataSources.ts', 'customDataSources.mjs');
   const presentation = await transpileToModule('src/utils/connectionModalPresentation.ts', 'connectionModalPresentation.mjs');
   const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs');
+  const dataGridValue = await transpileToModule('src/components/dataGridValue.ts', 'dataGridValue.mjs');
+  const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
@@ -68,6 +70,29 @@ try {
   assert.equal(sslMode.resolveEffectiveSSLMode('preferred', true), 'preferred');
   assert.equal(sslMode.isInsecureSSLMode('preferred'), true);
   assert.equal(sslMode.isInsecureSSLMode('required'), false);
+
+  assert.equal(dataGridValue.normalizeDateTimeString('2024-05-13T08:32:47.123Z'), '2024-05-13 08:32:47');
+  assert.equal(dataGridValue.normalizeDateTimeString('0000-00-00 00:00:00'), '0000-00-00 00:00:00');
+  assert.equal(dataGridValue.formatCellDisplayText({ id: 1, name: 'demo' }), '{"id":1,"name":"demo"}');
+  assert.equal(dataGridValue.isCellValueEqualForDiff(null, undefined), true);
+  assert.equal(dataGridValue.isCellValueEqualForDiff('2024-05-13T08:32:47Z', '2024-05-13 08:32:47'), true);
+
+  assert.equal(
+    dataSyncRequest.validateDataSyncSelection({ sourceDatasetMode: 'query', selectedTables: [], sourceQuery: '', syncContent: 'data' }),
+    'dataSync.selection.sourceQueryRequired',
+  );
+  assert.equal(
+    dataSyncRequest.validateDataSyncSelection({ sourceDatasetMode: 'query', selectedTables: ['target'], sourceQuery: 'select 1', syncContent: 'schema' }),
+    'dataSync.selection.queryDataOnly',
+  );
+  assert.equal(
+    dataSyncRequest.validateDataSyncSelection({ sourceDatasetMode: 'table', selectedTables: [], sourceQuery: '', syncContent: 'data' }),
+    'dataSync.selection.tableRequired',
+  );
+  assert.equal(
+    dataSyncRequest.validateDataSyncSelection({ sourceDatasetMode: 'table', selectedTables: ['users'], sourceQuery: '', syncContent: 'data' }),
+    null,
+  );
 
   const frontendFallback = customDataSources.createCustomDataSource({
     name: '本地缓存源',

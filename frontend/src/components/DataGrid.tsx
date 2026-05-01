@@ -64,6 +64,19 @@ import {
     type TemporalPickerType,
 } from './dataGridTemporal';
 import {
+    coerceJsonEditorValueForStorage,
+    formatCellDisplayText,
+    isCellValueEqualForDiff,
+    isCellValueEqualForRender,
+    isJsonViewValueEqual,
+    isPlainObject,
+    normalizeValueForJsonView,
+    looksLikeJsonText,
+    normalizeDateTimeString,
+    toEditableText,
+    toFormText,
+} from './dataGridValue';
+import {
     buildEffectiveFilterConditions,
     normalizeQuickWhereCondition,
     resolveWhereConditionSelectedValue,
@@ -81,6 +94,37 @@ import {
     type DataGridFindMatch,
     type DataGridFindNavigationDirection,
 } from '../utils/dataGridFind';
+
+const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
+    const ranges = findDataGridTextRanges(text, query);
+    if (ranges.length === 0) return text;
+
+    const nodes: React.ReactNode[] = [];
+    let cursor = 0;
+    ranges.forEach((range, index) => {
+        if (range.start > cursor) {
+            nodes.push(text.slice(cursor, range.start));
+        }
+        nodes.push(
+            <mark key={`${range.start}-${range.end}-${index}`} className="data-grid-find-highlight">
+                {text.slice(range.start, range.end)}
+            </mark>,
+        );
+        cursor = range.end;
+    });
+    if (cursor < text.length) {
+        nodes.push(text.slice(cursor));
+    }
+    return <>{nodes}</>;
+};
+
+const renderCellDisplayValue = (val: any, query: string): React.ReactNode => {
+    const text = formatCellDisplayText(val);
+    const content = renderHighlightedCellText(text, query);
+    if (val === null) return <span style={{ color: '#ccc' }}>{content}</span>;
+    return content;
+};
+
 
 // --- Error Boundary ---
 interface DataGridErrorBoundaryState {
@@ -133,10 +177,6 @@ export const JAVANAVI_ROW_KEY = '__javanavi_row_key__';
 // Cell key helpers for batch selection/fill.
 // Use a control character separator to avoid collisions with rowKey/columnName contents (e.g. `new-123`).
 const CELL_KEY_SEP = '\u0001';
-const DATE_TIME_CACHE_LIMIT = 2000;
-const TABLE_CELL_PREVIEW_MAX_CHARS = 240;
-const normalizedDateTimeCache = new Map<string, string>();
-const objectCellPreviewCache = new WeakMap<object, string>();
 const makeCellKey = (rowKey: string, colName: string) => `${rowKey}${CELL_KEY_SEP}${colName}`;
 const splitCellKey = (cellKey: string): { rowKey: string; colName: string } | null => {
     const sepIndex = cellKey.indexOf(CELL_KEY_SEP);
@@ -146,172 +186,6 @@ const splitCellKey = (cellKey: string): { rowKey: string; colName: string } | nu
         colName: cellKey.slice(sepIndex + CELL_KEY_SEP.length),
     };
 };
-
-const trimSimpleCache = (cache: Map<string, string>, limit: number) => {
-    if (cache.size < limit) return;
-    const firstKey = cache.keys().next().value;
-    if (typeof firstKey === 'string') {
-        cache.delete(firstKey);
-    }
-};
-
-const looksLikeDateTimeText = (val: string): boolean => {
-    if (!val) return false;
-    const len = val.length;
-    if (len < 19 || len > 48) return false;
-    const charCode0 = val.charCodeAt(0);
-    if (charCode0 < 48 || charCode0 > 57) return false;
-    return (
-        val[4] === '-' &&
-        val[7] === '-' &&
-        (val[10] === ' ' || val[10] === 'T') &&
-        val[13] === ':' &&
-        val[16] === ':'
-    );
-};
-
-// Normalize common datetime strings to `YYYY-MM-DD HH:mm:ss` for display/editing.
-// Handles RFC3339 and Go-style datetime text like `2024-05-13 08:32:47 +0800 CST`.
-// Also keep invalid datetime values like `0000-00-00 00:00:00` unchanged.
-const normalizeDateTimeString = (val: string) => {
-    if (!looksLikeDateTimeText(val)) {
-        return val;
-    }
-
-    const cached = normalizedDateTimeCache.get(val);
-    if (cached !== undefined) {
-        return cached;
-    }
-
-    // 检查是否为无效日期时间（0000-00-00 或类似格式）
-    if (/^0{4}-0{2}-0{2}/.test(val)) {
-        return val; // 保持原样显示，不尝试转换
-    }
-
-    const match = val.match(
-        /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.\d+)?(?:\s*(?:Z|[+-]\d{2}:?\d{2})(?:\s+[A-Za-z_\/+-]+)?)?$/
-    );
-    const normalized = match ? `${match[1]} ${match[2]}` : val;
-    trimSimpleCache(normalizedDateTimeCache, DATE_TIME_CACHE_LIMIT);
-    normalizedDateTimeCache.set(val, normalized);
-    return normalized;
-};
-
-// --- Helper: Format Value ---
-const formatCellDisplayText = (val: any): string => {
-    try {
-        if (val === null) return 'NULL';
-        if (typeof val === 'object') {
-            if (!Array.isArray(val) && !isPlainObject(val)) {
-                return String(val);
-            }
-            const cached = objectCellPreviewCache.get(val);
-            if (cached !== undefined) {
-                return cached;
-            }
-            const topLevelSize = Array.isArray(val) ? val.length : Object.keys(val || {}).length;
-            if (topLevelSize > 80) {
-                const summary = Array.isArray(val) ? `[Array(${topLevelSize})]` : `{Object(${topLevelSize})}`;
-                objectCellPreviewCache.set(val, summary);
-                return summary;
-            }
-            try {
-                const nextText = JSON.stringify(val);
-                const previewText = nextText.length > TABLE_CELL_PREVIEW_MAX_CHARS ? `${nextText.slice(0, TABLE_CELL_PREVIEW_MAX_CHARS)}…` : nextText;
-                objectCellPreviewCache.set(val, previewText);
-                return previewText;
-            } catch {
-                return '[Object]';
-            }
-        }
-        if (typeof val === 'string') {
-            const normalized = normalizeDateTimeString(val);
-            return normalized.length > TABLE_CELL_PREVIEW_MAX_CHARS ? `${normalized.slice(0, TABLE_CELL_PREVIEW_MAX_CHARS)}…` : normalized;
-        }
-        return String(val);
-    } catch (e) {
-        console.error('formatCellValue error:', e);
-        return '[Error]';
-    }
-};
-
-const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
-    const ranges = findDataGridTextRanges(text, query);
-    if (ranges.length === 0) return text;
-
-    const nodes: React.ReactNode[] = [];
-    let cursor = 0;
-    ranges.forEach((range, index) => {
-        if (range.start > cursor) {
-            nodes.push(text.slice(cursor, range.start));
-        }
-        nodes.push(
-            <mark key={`${range.start}-${range.end}-${index}`} className="data-grid-find-highlight">
-                {text.slice(range.start, range.end)}
-            </mark>,
-        );
-        cursor = range.end;
-    });
-    if (cursor < text.length) {
-        nodes.push(text.slice(cursor));
-    }
-    return <>{nodes}</>;
-};
-
-const renderCellDisplayValue = (val: any, query: string): React.ReactNode => {
-    const text = formatCellDisplayText(val);
-    const content = renderHighlightedCellText(text, query);
-    if (val === null) return <span style={{ color: '#ccc' }}>{content}</span>;
-    return content;
-};
-
-const formatCellValue = (val: any) => renderCellDisplayValue(val, '');
-
-const toEditableText = (val: any): string => {
-    if (val === null || val === undefined) return '';
-    if (typeof val === 'string') return val;
-    try {
-        return JSON.stringify(val, null, 2);
-    } catch {
-        return String(val);
-    }
-};
-
-const toFormText = (val: any): string => {
-    if (val === null || val === undefined) return '';
-    if (typeof val === 'string') return normalizeDateTimeString(val);
-    return toEditableText(val);
-};
-
-// 用于变更比较：NULL 与 undefined 视为同类空值；与空字符串严格区分。
-const isCellValueEqualForDiff = (left: any, right: any): boolean => {
-    if (left === right) return true;
-    const leftNullish = left === null || left === undefined;
-    const rightNullish = right === null || right === undefined;
-    if (leftNullish || rightNullish) return leftNullish && rightNullish;
-    return toFormText(left) === toFormText(right);
-};
-
-// 渲染阶段轻量比较：避免对象值在 shouldCellUpdate 中反复深度序列化导致卡顿。
-const isCellValueEqualForRender = (left: any, right: any): boolean => {
-    if (left === right) return true;
-    const leftNullish = left === null || left === undefined;
-    const rightNullish = right === null || right === undefined;
-    if (leftNullish || rightNullish) return leftNullish && rightNullish;
-
-    const leftType = typeof left;
-    const rightType = typeof right;
-    if (leftType === 'object' || rightType === 'object') {
-        // 对象仅按引用比较；真正的值差异在提交保存时再做严格比对。
-        return false;
-    }
-
-    if (leftType === 'string' || rightType === 'string') {
-        return normalizeDateTimeString(String(left)) === normalizeDateTimeString(String(right));
-    }
-    return left === right;
-};
-
 const INLINE_EDIT_MAX_CHARS = 2000;
 
 const shouldOpenModalEditor = (val: any): boolean => {
@@ -338,76 +212,6 @@ const setCellFieldValue = (form: any, fieldName: string | (string | number)[], v
         return;
     }
     form.setFieldsValue({ [fieldName]: value });
-};
-
-const looksLikeJsonText = (text: string): boolean => {
-    const raw = (text || '').trim();
-    if (!raw) return false;
-    const first = raw[0];
-    const last = raw[raw.length - 1];
-    return (first === '{' && last === '}') || (first === '[' && last === ']');
-};
-
-const isPlainObject = (value: any): value is Record<string, any> => {
-    return Object.prototype.toString.call(value) === '[object Object]';
-};
-
-const normalizeValueForJsonView = (value: any): any => {
-    if (value === null || value === undefined) return value;
-
-    if (typeof value === 'string') {
-        const normalizedText = normalizeDateTimeString(value);
-        if (!looksLikeJsonText(normalizedText)) return normalizedText;
-        try {
-            return normalizeValueForJsonView(JSON.parse(normalizedText));
-        } catch {
-            return normalizedText;
-        }
-    }
-
-    if (Array.isArray(value)) {
-        return value.map((item) => normalizeValueForJsonView(item));
-    }
-
-    if (isPlainObject(value)) {
-        const next: Record<string, any> = {};
-        Object.entries(value).forEach(([key, val]) => {
-            next[key] = normalizeValueForJsonView(val);
-        });
-        return next;
-    }
-
-    return value;
-};
-
-const isJsonViewValueEqual = (left: any, right: any): boolean => {
-    const leftNormalized = normalizeValueForJsonView(left);
-    const rightNormalized = normalizeValueForJsonView(right);
-
-    if (leftNormalized === rightNormalized) return true;
-    if (leftNormalized === null || rightNormalized === null) return leftNormalized === rightNormalized;
-    if (leftNormalized === undefined || rightNormalized === undefined) return leftNormalized === rightNormalized;
-
-    if (typeof leftNormalized !== 'object' && typeof rightNormalized !== 'object') {
-        return String(leftNormalized) === String(rightNormalized);
-    }
-
-    try {
-        return JSON.stringify(leftNormalized) === JSON.stringify(rightNormalized);
-    } catch {
-        return false;
-    }
-};
-
-const coerceJsonEditorValueForStorage = (currentValue: any, editedValue: any): any => {
-    if (typeof currentValue === 'string') {
-        const raw = currentValue.trim();
-        const parsedCurrent = looksLikeJsonText(raw);
-        if (parsedCurrent && (isPlainObject(editedValue) || Array.isArray(editedValue))) {
-            return JSON.stringify(editedValue);
-        }
-    }
-    return editedValue;
 };
 
 // --- Resizable Header (Native Implementation) ---

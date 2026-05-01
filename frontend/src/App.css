@@ -38,38 +38,74 @@ body, #root {
 }
 
 .sidebar-tree-scroll-shell {
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: hidden;
 }
 
-.sidebar-tree-scroll-content {
-  min-width: 100%;
-}
-
-.sidebar-tree-scroll-shell .ant-tree {
-  min-width: 100%;
-}
-
+.sidebar-tree-scroll-content,
+.sidebar-tree-scroll-shell .ant-tree,
 .sidebar-tree-scroll-shell .ant-tree .ant-tree-list-holder,
 .sidebar-tree-scroll-shell .ant-tree .ant-tree-list-holder-inner {
-  min-width: 100%;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .sidebar-tree-scroll-shell .ant-tree .ant-tree-treenode {
-  width: auto;
-  min-width: 100%;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.sidebar-tree-scroll-shell .ant-tree .ant-tree-indent,
+.sidebar-tree-scroll-shell .ant-tree .ant-tree-indent-unit,
+.sidebar-tree-scroll-shell .ant-tree .ant-tree-iconEle,
+.sidebar-tree-scroll-shell .ant-tree .ant-tree-switcher {
+  flex: 0 0 auto;
 }
 
 .sidebar-tree-scroll-shell .ant-tree .ant-tree-node-content-wrapper {
-  width: auto !important;
+  flex: 1 1 0;
+  width: 0 !important;
   min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .sidebar-tree-scroll-shell .ant-tree .ant-tree-title {
-  flex: 0 0 auto;
+  flex: 1 1 auto;
   min-width: 0;
-  overflow: visible;
-  text-overflow: clip;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-tree-node-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.sidebar-tree-node-status {
+  flex: 0 0 auto;
+  margin-inline: 2px;
+}
+
+.sidebar-tree-node-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebar-tree-node-action {
+  flex: 0 0 auto;
 }
 
 .redis-viewer-workbench .ant-tree {
