@@ -54,6 +54,7 @@ import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildExternalSQLDirectoryId, buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
 import JVMModeBadge from './jvm/JVMModeBadge';
+import { translate, type I18nKey, type I18nParams } from '../i18n';
 
 const { Search } = Input;
 
@@ -81,18 +82,13 @@ interface BatchObjectItem {
   dataRef: any;
 }
 
-const SEARCH_SCOPE_OPTIONS: Array<{ value: SearchScope; label: string }> = [
-  { value: 'smart', label: '智能' },
-  { value: 'object', label: '表对象' },
-  { value: 'database', label: '库' },
-  { value: 'host', label: 'Host' },
-  { value: 'tag', label: '标签' },
+const SEARCH_SCOPE_OPTIONS: Array<{ value: SearchScope; labelKey: I18nKey }> = [
+  { value: 'smart', labelKey: 'sidebar.searchScope.smart' },
+  { value: 'object', labelKey: 'sidebar.searchScope.object' },
+  { value: 'database', labelKey: 'sidebar.searchScope.database' },
+  { value: 'host', labelKey: 'sidebar.searchScope.host' },
+  { value: 'tag', labelKey: 'sidebar.searchScope.tag' },
 ];
-
-const SEARCH_SCOPE_LABEL_MAP: Record<SearchScope, string> = SEARCH_SCOPE_OPTIONS.reduce((acc, option) => {
-  acc[option.value] = option.label;
-  return acc;
-}, {} as Record<SearchScope, string>);
 
 
 const SEARCH_SCOPE_ICON_MAP: Record<SearchScope, React.ReactNode> = {
@@ -146,6 +142,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const recordTableAccess = useStore(state => state.recordTableAccess);
   const setTableSortPreference = useStore(state => state.setTableSortPreference);
   const addSqlLog = useStore(state => state.addSqlLog);
+  const language = useStore(state => state.language);
+  const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
   const darkMode = theme === 'dark';
   const resolvedAppearance = resolveAppearanceValues(appearance);
   const opacity = normalizeOpacityForPlatform(resolvedAppearance.opacity);
@@ -3179,10 +3177,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
   const searchScopeSummary = useMemo(() => {
       if (searchScopes.includes('smart')) {
-          return '智能';
+          return t('sidebar.searchScope.smart');
       }
-      return searchScopes.map((scope) => SEARCH_SCOPE_LABEL_MAP[scope]).join(' + ');
-  }, [searchScopes]);
+      return searchScopes.map((scope) => t(SEARCH_SCOPE_OPTIONS.find((option) => option.value === scope)?.labelKey || 'sidebar.searchScope.smart')).join(' + ');
+  }, [searchScopes, t]);
 
   const searchScopePopoverContent = useMemo(() => {
       const smartSelected = searchScopes.includes('smart');
@@ -3214,8 +3212,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           <div style={{ minWidth: 280, display: 'flex', flexDirection: 'column', background: panelBg, padding: 14, gap: 12 }}>
               <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
                   <div>
-                      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, color: mutedTextColor, textTransform: 'uppercase' }}>搜索范围</div>
-                      <div style={{ marginTop: 4, fontSize: 13, lineHeight: 1.5, color: mutedTextColor }}>“智能”自动匹配最可能的命中项；手动模式支持按维度组合筛选。</div>
+                      <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4, color: mutedTextColor, textTransform: 'uppercase' }}>{t('sidebar.searchScope.title')}</div>
+                      <div style={{ marginTop: 4, fontSize: 13, lineHeight: 1.5, color: mutedTextColor }}>{t('sidebar.searchScope.description')}</div>
                   </div>
                   <div style={{ width: 32, height: 32, borderRadius: 10, display: 'grid', placeItems: 'center', background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)', color: darkMode ? '#ffd666' : '#1677ff', flexShrink: 0 }}>
                       <FilterOutlined />
@@ -3233,10 +3231,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                       </div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <span style={{ fontSize: 14, fontWeight: 700, color: titleColor }}>智能</span>
-                              <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, color: darkMode ? '#ffe58f' : '#ad6800', background: darkMode ? 'rgba(255,214,102,0.16)' : 'rgba(255,214,102,0.35)' }}>推荐</span>
+                              <span style={{ fontSize: 14, fontWeight: 700, color: titleColor }}>{t('sidebar.searchScope.smart')}</span>
+                              <span style={{ padding: '2px 8px', borderRadius: 999, fontSize: 11, fontWeight: 700, color: darkMode ? '#ffe58f' : '#ad6800', background: darkMode ? 'rgba(255,214,102,0.16)' : 'rgba(255,214,102,0.35)' }}>{t('sidebar.searchScope.recommended')}</span>
                           </div>
-                          <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.5, color: mutedTextColor }}>适合日常检索，自动覆盖名称、库、Host 和标签等高频维度。</div>
+                          <div style={{ marginTop: 3, fontSize: 12, lineHeight: 1.5, color: mutedTextColor }}>{t('sidebar.searchScope.smartDescription')}</div>
                       </div>
                   </div>
               </label>
@@ -3244,8 +3242,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               <div style={{ height: 1, background: overlayTheme.divider, opacity: 0.9 }} />
 
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.3, color: mutedTextColor, textTransform: 'uppercase' }}>手动范围</div>
-                  <div style={{ fontSize: 12, color: mutedTextColor }}>支持多选组合</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.3, color: mutedTextColor, textTransform: 'uppercase' }}>{t('sidebar.searchScope.manualTitle')}</div>
+                  <div style={{ fontSize: 12, color: mutedTextColor }}>{t('sidebar.searchScope.multiSelect')}</div>
               </div>
 
               <div style={{ display: 'grid', gap: 8 }}>
@@ -3262,7 +3260,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                                       <div style={{ width: 28, height: 28, borderRadius: 9, display: 'grid', placeItems: 'center', background: checked ? (darkMode ? 'rgba(118,169,250,0.2)' : 'rgba(24,144,255,0.12)') : (darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(17,24,39,0.06)'), color: checked ? (darkMode ? '#91caff' : '#1677ff') : mutedTextColor, flexShrink: 0 }}>
                                           {SEARCH_SCOPE_ICON_MAP[option.value]}
                                       </div>
-                                      <span style={{ fontSize: 14, fontWeight: 600, color: titleColor, whiteSpace: 'nowrap' }}>{option.label}</span>
+                                      <span style={{ fontSize: 14, fontWeight: 600, color: titleColor, whiteSpace: 'nowrap' }}>{t(option.labelKey)}</span>
                                   </div>
                                   <div style={{ width: 18, display: 'flex', justifyContent: 'center', color: checked ? (darkMode ? '#91caff' : '#1677ff') : 'transparent', flexShrink: 0 }}>
                                       <CheckOutlined />
@@ -3274,11 +3272,11 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               </div>
 
               <div style={{ padding: '10px 12px', borderRadius: 12, background: darkMode ? 'rgba(255,255,255,0.03)' : 'rgba(17,24,39,0.04)', color: mutedTextColor, fontSize: 12, lineHeight: 1.6 }}>
-                  智能与其他项互斥。若你明确知道要搜的是对象、库、Host 或标签，建议切到手动范围以减少噪音结果。
+                  {t('sidebar.searchScope.footerHint')}
               </div>
           </div>
       );
-  }, [darkMode, overlayTheme, searchScopes]);
+  }, [darkMode, overlayTheme, searchScopes, t]);
 
   const getConnectionHostSearchText = (node: TreeNode): string => {
       if (node.type !== 'connection') return '';
@@ -4316,7 +4314,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             <Input
                 {...noAutoCapInputProps}
                 ref={searchInputRef}
-                placeholder="搜索..."
+                placeholder={t('sidebar.search.placeholder')}
                 onChange={onSearch}
                 size="small"
                 prefix={<SearchOutlined style={{ color: darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)', marginRight: 4 }} />}
@@ -4337,7 +4335,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                         onOpenChange={setIsSearchScopePopoverOpen}
                         styles={{ body: { padding: 0, borderRadius: 16, overflow: 'hidden' } }}
                     >
-                        <Tooltip title={`搜索范围：${searchScopeSummary}`}>
+                        <Tooltip title={t('sidebar.searchScope.tooltip', { scope: searchScopeSummary })}>
                             <div
                                 style={{
                                     display: 'flex',
@@ -4371,7 +4369,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                             >
                                 <FilterOutlined style={{ fontSize: 13 }} />
                                 <span style={{ fontSize: 12, fontWeight: 500 }}>
-                                    {searchScopes.includes('smart') ? '智' : searchScopes.length}
+                                    {searchScopes.includes('smart') ? t('sidebar.searchScope.smartCompact') : searchScopes.length}
                                 </span>
                             </div>
                         </Tooltip>

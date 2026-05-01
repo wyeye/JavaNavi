@@ -106,6 +106,12 @@ public class I18nMessages {
         put("drivers.metadataRemoved", "Driver package metadata removed.", "驱动包元数据已移除");
         put("drivers.metadataCacheRemoved", "Driver package metadata and cached Jar removed.", "驱动包元数据与缓存 Jar 已移除");
         put("drivers.customJarUploaded", "Custom data source JDBC Jar uploaded and enabled.", "自定义数据源 JDBC Jar 已上传并启用。");
+        put("drivers.customDefinitionUsable", "Custom JDBC definition is usable. DSN-level connection is not tested yet.", "自定义 JDBC 定义可用；尚未测试 DSN 级连接。");
+        put("drivers.customDefinitionRepairRequired", "Custom JDBC definition requires repair.", "自定义 JDBC 定义需要修复。");
+        put("drivers.customDefinitionMetadataMissing", "Re-upload this custom JDBC Jar so JavaNavi can recreate driver metadata.", "请重新上传此自定义 JDBC Jar，以便 JavaNavi 重新生成驱动元数据。");
+        put("drivers.customDefinitionJarMissing", "The managed Jar files are missing. Upload the custom driver package again.", "受管 Jar 文件缺失，请重新上传自定义驱动包。");
+        put("drivers.customDefinitionClassMissing", "No driver class is recorded. Upload a Jar that exposes java.sql.Driver via service metadata.", "未记录驱动类，请上传通过服务元数据暴露 java.sql.Driver 的 Jar。");
+        put("drivers.customDefinitionClassLoadFailed", "The JDBC driver class could not be loaded. Include required dependency Jars and re-upload.", "无法加载 JDBC 驱动类，请包含所需依赖 Jar 后重新上传。");
         put("drivers.defaultIncompatible", "{driver} cannot be used as a compatible driver for {database}.", "{driver} 不能作为 {database} 的兼容驱动。");
         put("drivers.reuseManagedByOwner", "{driver} reuses the {owner} JDBC driver. Manage this driver in the {owner} row.", "{driver} 复用 {owner} JDBC 驱动，请在 {owner} 行管理该驱动。");
         put("drivers.reuseRuntimeStatus", "{driver} is currently reusing the {owner} JDBC driver; {driver} was not downloaded or installed separately.", "{driver} 当前复用 {owner} JDBC 驱动；未单独下载或安装 {driver} 驱动。");
@@ -218,6 +224,18 @@ public class I18nMessages {
                 Map.entry("驱动包元数据已移除", "drivers.metadataRemoved"),
                 Map.entry("驱动包元数据与缓存 Jar 已移除", "drivers.metadataCacheRemoved"),
                 Map.entry("自定义数据源 JDBC Jar 已上传并启用。", "drivers.customJarUploaded"),
+                Map.entry("Custom JDBC definition is usable. DSN-level connection is not tested yet.", "drivers.customDefinitionUsable"),
+                Map.entry("自定义 JDBC 定义可用；尚未测试 DSN 级连接。", "drivers.customDefinitionUsable"),
+                Map.entry("Custom JDBC definition requires repair.", "drivers.customDefinitionRepairRequired"),
+                Map.entry("自定义 JDBC 定义需要修复。", "drivers.customDefinitionRepairRequired"),
+                Map.entry("Re-upload this custom JDBC Jar so JavaNavi can recreate driver metadata.", "drivers.customDefinitionMetadataMissing"),
+                Map.entry("请重新上传此自定义 JDBC Jar，以便 JavaNavi 重新生成驱动元数据。", "drivers.customDefinitionMetadataMissing"),
+                Map.entry("The managed Jar files are missing. Upload the custom driver package again.", "drivers.customDefinitionJarMissing"),
+                Map.entry("受管 Jar 文件缺失，请重新上传自定义驱动包。", "drivers.customDefinitionJarMissing"),
+                Map.entry("No driver class is recorded. Upload a Jar that exposes java.sql.Driver via service metadata.", "drivers.customDefinitionClassMissing"),
+                Map.entry("未记录驱动类，请上传通过服务元数据暴露 java.sql.Driver 的 Jar。", "drivers.customDefinitionClassMissing"),
+                Map.entry("The JDBC driver class could not be loaded. Include required dependency Jars and re-upload.", "drivers.customDefinitionClassLoadFailed"),
+                Map.entry("无法加载 JDBC 驱动类，请包含所需依赖 Jar 后重新上传。", "drivers.customDefinitionClassLoadFailed"),
                 Map.entry("不支持的连接恢复包格式", "connections.unsupportedPackage"),
                 Map.entry("连接导入文件过大", "connections.importTooLarge"),
                 Map.entry("文件密码错误或文件已损坏", "connections.badPasswordOrCorrupt"),

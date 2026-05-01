@@ -1015,21 +1015,21 @@ public class JdbcDriverRuntimeService {
         boolean definitionUsable = metadataReadable && hasJars && driverLoadable;
         List<String> repairHints = new ArrayList<>();
         if (!metadataReadable) {
-            repairHints.add("Re-upload this custom JDBC Jar so JavaNavi can recreate driver metadata.");
+            repairHints.add(messages.message("drivers.customDefinitionMetadataMissing"));
         }
         if (!hasJars) {
-            repairHints.add("The managed Jar files are missing. Upload the custom driver package again.");
+            repairHints.add(messages.message("drivers.customDefinitionJarMissing"));
         }
         if (driverClassName.isBlank()) {
-            repairHints.add("No driver class is recorded. Upload a Jar that exposes java.sql.Driver via service metadata.");
+            repairHints.add(messages.message("drivers.customDefinitionClassMissing"));
         }
         if (hasJars && !driverLoadable) {
-            repairHints.add("The JDBC driver class could not be loaded. Include required dependency Jars and re-upload.");
+            repairHints.add(messages.message("drivers.customDefinitionClassLoadFailed"));
         }
         String validationStatus = definitionUsable ? "valid" : hasJars ? "warning" : "error";
         String message = definitionUsable
-                ? "Custom JDBC definition is usable. DSN-level connection is not tested yet."
-                : repairHints.isEmpty() ? "Custom JDBC definition requires repair." : repairHints.get(0);
+                ? messages.message("drivers.customDefinitionUsable")
+                : repairHints.isEmpty() ? messages.message("drivers.customDefinitionRepairRequired") : repairHints.get(0);
         return customValidationResult(
                 normalizedDriverType,
                 text(metadata.get("version")),
