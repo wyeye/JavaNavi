@@ -6,7 +6,11 @@ import { useStore } from '../store';
 import { normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
 import {
   createCustomDataSource,
+  createCustomDataSourceFromBackendDefinition,
+  extractBackendCustomDataSourceDefinition,
+  extractBackendCustomDataSourceDefinitions,
   loadCustomDataSources,
+  mergeBackendCustomDataSourceDefinitions,
   removeCustomDataSource,
   upsertCustomDataSource,
   type CustomDataSource,
@@ -16,12 +20,14 @@ import {
   ConfigureDefaultDriver,
   ConfigureDriverRepositoryURL,
   DownloadDriverPackage,
+  GetCustomDriverDefinitions,
   GetDriverVersionList,
   GetDriverVersionPackageSize,
   GetDriverStatusList,
   OpenDriverDownloadDirectory,
   RemoveDriverPackage,
   UploadLocalDriverPackage,
+  ValidateCustomDriverDefinition,
 } from '@compat/javanaviApp';
 
 const { Paragraph, Text } = Typography;
@@ -347,6 +353,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
   const [customDataSourceModalOpen, setCustomDataSourceModalOpen] = useState(false);
   const [customDataSourceFiles, setCustomDataSourceFiles] = useState<File[]>([]);
   const [customDataSourceSaving, setCustomDataSourceSaving] = useState(false);
+  const [customDefinitionLoading, setCustomDefinitionLoading] = useState(false);
+  const [customDefinitionValidating, setCustomDefinitionValidating] = useState<Record<string, boolean>>({});
   const [horizontalScrollWidth, setHorizontalScrollWidth] = useState(DRIVER_TABLE_SCROLL_X);
   const [statusLoadError, setStatusLoadError] = useState('');
   const downloadDirRef = useRef(downloadDir);
@@ -610,6 +618,63 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       if (showLoading) {
         setLoading(false);
       }
+    }
+  }, []);
+
+  const refreshCustomDefinitions = useCallback(async (toastOnError = false): Promise<CustomDataSource[]> => {
+    setCustomDefinitionLoading(true);
+    try {
+      const latestSources = loadCustomDataSources();
+      const res = await GetCustomDriverDefinitions(downloadDirRef.current);
+      if (!res?.success) {
+        throw new Error(res?.message || '加载自定义数据源定义失败');
+      }
+      const nextSources = mergeBackendCustomDataSourceDefinitions(
+        latestSources,
+        extractBackendCustomDataSourceDefinitions(res),
+      );
+      setCustomDataSources(nextSources);
+      return nextSources;
+    } catch (error: any) {
+      const latestSources = loadCustomDataSources();
+      setCustomDataSources(latestSources);
+      if (toastOnError) {
+        message.error(error?.message || '加载自定义数据源定义失败');
+      }
+      return latestSources;
+    } finally {
+      setCustomDefinitionLoading(false);
+    }
+  }, []);
+
+  const validateCustomDataSource = useCallback(async (source: CustomDataSource) => {
+    const driverType = String(source.driverType || source.driver || '').trim();
+    if (!driverType) {
+      message.warning('该自定义数据源缺少驱动标识，请重新上传 Jar 修复');
+      return;
+    }
+    setCustomDefinitionValidating((prev) => ({ ...prev, [source.id]: true }));
+    try {
+      const res = await ValidateCustomDriverDefinition(driverType, downloadDirRef.current);
+      if (!res?.success) {
+        throw new Error(res?.message || '校验自定义数据源失败');
+      }
+      const definition = extractBackendCustomDataSourceDefinition(res);
+      const merged = definition ? createCustomDataSourceFromBackendDefinition(definition, source) : null;
+      if (!merged) {
+        throw new Error('后端未返回可用的自定义数据源定义');
+      }
+      const nextSources = upsertCustomDataSource(loadCustomDataSources(), merged);
+      setCustomDataSources(nextSources);
+      if (merged.runtimeStatus?.definitionUsable) {
+        message.success(`${merged.name} 定义可用；连接测试需在新建连接中执行`);
+      } else {
+        message.warning(merged.runtimeStatus?.message || `${merged.name} 需要修复`);
+      }
+    } catch (error: any) {
+      message.error(error?.message || '校验自定义数据源失败');
+    } finally {
+      setCustomDefinitionValidating((prev) => ({ ...prev, [source.id]: false }));
     }
   }, []);
 
@@ -1012,20 +1077,27 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
 
       const source = createCustomDataSource({
         name: sourceName,
-        driver: driverType,
-        driverVersion: version,
+        driverType,
+        version,
         dsnTemplate,
+        dsnHelp: String(values.dsnHelp || '').trim(),
+        description: String(values.description || '').trim(),
         installSource: 'manual-upload',
         jarFileNames: fileNames,
       });
-      const nextCustomDataSources = upsertCustomDataSource(latestSources, source);
+      const backendDefinition = extractBackendCustomDataSourceDefinition(result);
+      const hydratedSource = backendDefinition
+        ? createCustomDataSourceFromBackendDefinition(backendDefinition, source) || source
+        : source;
+      const nextCustomDataSources = upsertCustomDataSource(latestSources, hydratedSource);
       setCustomDataSources(nextCustomDataSources);
-      appendOperationLog(driverType, `[DONE] 自定义数据源 ${source.name} 已创建并启用`);
-      message.success(`已新增自定义数据源：${source.name}`);
+      appendOperationLog(driverType, `[DONE] 自定义数据源 ${hydratedSource.name} 已创建并启用`);
+      message.success(`已新增自定义数据源：${hydratedSource.name}`);
       setCustomDataSourceModalOpen(false);
       setCustomDataSourceFiles([]);
       customDataSourceForm.resetFields();
       await refreshStatus(false);
+      await refreshCustomDefinitions(false);
     } catch (error: any) {
       if (error?.errorFields) {
         return;
@@ -1039,6 +1111,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     customDataSourceFiles,
     customDataSourceForm,
     downloadDir,
+    refreshCustomDefinitions,
     refreshStatus,
     rows,
   ]);
@@ -1081,6 +1154,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         retryCount: hasCachedStatus ? 1 : DRIVER_STATUS_INITIAL_RETRY_COUNT,
       });
     }
+    void refreshCustomDefinitions(false);
 
     const cachedNetwork = driverNetworkSnapshotCache;
     const hasCachedNetwork = !!cachedNetwork;
@@ -1091,7 +1165,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     if (shouldRefreshNetwork) {
       void checkNetworkStatus(false, { showLoading: !hasCachedNetwork });
     }
-  }, [checkNetworkStatus, open, refreshStatus]);
+  }, [checkNetworkStatus, open, refreshCustomDefinitions, refreshStatus]);
 
   useEffect(() => {
     if (!open) {
@@ -1953,63 +2027,77 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             </Button>
           </Space>
         </div>
-        {customDataSources.length > 0 ? (
-          <Collapse
-            size="small"
-            items={[
-              {
-                key: 'custom-data-sources',
-                label: `已创建自定义数据源（${customDataSources.length}）`,
-                children: (
-                  <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                    {customDataSources.map((source) => (
-                      <div
-                        key={source.id}
-                        style={{
-                          alignItems: 'flex-start',
-                          border: '1px solid rgba(127, 127, 127, 0.18)',
-                          borderRadius: 10,
-                          display: 'flex',
-                          gap: 12,
-                          justifyContent: 'space-between',
-                          padding: '10px 12px',
-                        }}
-                      >
-                        <Space direction="vertical" size={4} style={{ minWidth: 0 }}>
-                          <Space size={6} wrap>
-                            <Text strong>{source.name}</Text>
-                            {source.driver ? <Tag color="blue">{source.driver}</Tag> : null}
-                            {source.driverVersion ? <Tag color="purple">{source.driverVersion}</Tag> : null}
-                            {source.installSource === 'manual-upload' ? <Tag color="purple">手动上传</Tag> : null}
-                            {source.installSource === 'maven-download' ? <Tag color="geekblue">Maven 下载</Tag> : null}
-                          </Space>
-                          {source.dsnTemplate ? (
-                            <Text type="secondary" ellipsis={{ tooltip: source.dsnTemplate }} style={{ maxWidth: 760 }}>
-                              DSN 模板：{source.dsnTemplate}
-                            </Text>
-                          ) : null}
-                          {source.jarFileNames?.length ? (
-                            <Text type="secondary" style={{ fontSize: 12 }}>
-                              Jar：{source.jarFileNames.join('、')}
-                            </Text>
-                          ) : null}
-                        </Space>
-                        <Button
-                          danger
-                          size="small"
-                          icon={<DeleteOutlined />}
-                          onClick={() => removeSavedCustomDataSource(source)}
+        <Collapse
+          size="small"
+          items={[
+            {
+              key: 'custom-data-sources',
+              label: `自定义数据源定义（${customDataSources.length}）`,
+              children: (
+                <Space direction="vertical" size={8} style={{ width: '100%' }}>
+                  <Alert
+                    showIcon
+                    type="info"
+                    message="自定义数据源定义保存驱动与 Jar；连接只保存 DSN、凭据和实例选项"
+                    description="后端只返回脱敏定义元数据：驱动类、版本、Jar 文件名/校验和、驱动可加载和定义可用状态；连接是否成功仅在新建连接测试后记录。"
+                    action={(
+                      <Button size="small" icon={<ReloadOutlined />} loading={customDefinitionLoading} onClick={() => void refreshCustomDefinitions(true)}>
+                        同步后端定义
+                      </Button>
+                    )}
+                  />
+                  {customDataSources.length === 0 ? (
+                    <Alert showIcon type="warning" message="还没有自定义数据源定义" description="点击“新增自定义数据源”上传 JDBC Jar，保存后可在新建连接中复用。" />
+                  ) : (
+                    customDataSources.map((source) => {
+                      const status = source.runtimeStatus;
+                      const repairHints = status?.repairHints || [];
+                      return (
+                        <div
+                          key={source.id}
+                          style={{
+                            alignItems: 'flex-start',
+                            border: '1px solid rgba(127, 127, 127, 0.18)',
+                            borderRadius: 10,
+                            display: 'flex',
+                            gap: 12,
+                            justifyContent: 'space-between',
+                            padding: '10px 12px',
+                          }}
                         >
-                          移除记录
-                        </Button>
-                      </div>
-                    ))}
-                  </Space>
-                ),
-              },
-            ]}
-          />
-        ) : null}
+                          <Space direction="vertical" size={4} style={{ minWidth: 0 }}>
+                            <Space size={6} wrap>
+                              <Text strong>{source.name}</Text>
+                              {source.driverType ? <Tag color="blue">{source.driverType}</Tag> : null}
+                              {source.version ? <Tag color="purple">{source.version}</Tag> : null}
+                              {status?.definitionUsable ? <Tag color="success">定义可用</Tag> : status?.driverLoadable ? <Tag color="warning">驱动可加载</Tag> : <Tag>未校验</Tag>}
+                              {source.installSource === 'manual-upload' ? <Tag color="purple">手动上传</Tag> : null}
+                              {source.installSource === 'maven-download' ? <Tag color="geekblue">Maven 下载</Tag> : null}
+                            </Space>
+                            <Text type="secondary" style={{ fontSize: 12 }}>Driver Class：{source.driverClassName || '待后端发现/校验'}</Text>
+                            {source.dsnTemplate ? (
+                              <Text type="secondary" ellipsis={{ tooltip: source.dsnTemplate }} style={{ maxWidth: 760 }}>DSN 模板：{source.dsnTemplate}</Text>
+                            ) : null}
+                            {source.dsnHelp ? (
+                              <Text type="secondary" ellipsis={{ tooltip: source.dsnHelp }} style={{ maxWidth: 760 }}>DSN 说明：{source.dsnHelp}</Text>
+                            ) : null}
+                            {source.jarFileNames?.length ? <Text type="secondary" style={{ fontSize: 12 }}>Jar：{source.jarFileNames.join('、')}</Text> : null}
+                            {status?.message ? <Text type={status.definitionUsable ? 'secondary' : 'danger'} style={{ fontSize: 12 }}>状态：{status.message}</Text> : null}
+                            {repairHints.length > 0 ? <Text type="secondary" style={{ fontSize: 12 }}>修复建议：{repairHints.join('；')}</Text> : null}
+                          </Space>
+                          <Space size={8} wrap style={{ justifyContent: 'flex-end' }}>
+                            <Button size="small" loading={!!customDefinitionValidating[source.id]} onClick={() => void validateCustomDataSource(source)}>校验/修复状态</Button>
+                            <Button danger size="small" icon={<DeleteOutlined />} onClick={() => removeSavedCustomDataSource(source)}>移除记录</Button>
+                          </Space>
+                        </div>
+                      );
+                    })
+                  )}
+                </Space>
+              ),
+            },
+          ]}
+        />
         <Text type="secondary">{filterSummaryText}</Text>
         {statusLoadError && rows.length === 0 ? (
           <Alert
@@ -2069,7 +2157,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             showIcon
             type="info"
             message="在驱动管理中创建自定义数据源"
-            description="这里完成 Jar 上传、数据源命名和 DSN 模板配置；新建连接的“自定义数据源”只需要选择已保存的数据源。"
+            description="这里完成 Jar 上传、驱动类发现、数据源命名和 DSN 指引配置；新建连接只选择定义并填写实际 DSN/凭据。"
           />
           <Form form={customDataSourceForm} layout="vertical">
             <Form.Item label="JDBC Jar" required>
@@ -2113,6 +2201,29 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               <Input.TextArea
                 rows={4}
                 placeholder="例如：jdbc:trino://host:8080/catalog/schema"
+                autoComplete="off"
+              />
+            </Form.Item>
+            <Form.Item
+              name="dsnHelp"
+              label="DSN 填写说明"
+              rules={[{ max: 4096, message: 'DSN 说明最多 4096 个字符' }]}
+              help="可写必填参数、常见 catalog/schema 示例或该驱动的连接注意事项。"
+            >
+              <Input.TextArea
+                rows={3}
+                placeholder="例如：请将 host、catalog、schema 替换为实际环境。"
+                autoComplete="off"
+              />
+            </Form.Item>
+            <Form.Item
+              name="description"
+              label="定义说明（可选）"
+              rules={[{ max: 1024, message: '说明最多 1024 个字符' }]}
+            >
+              <Input.TextArea
+                rows={2}
+                placeholder="例如：公司内网 Trino，只包含主驱动和必要依赖 Jar。"
                 autoComplete="off"
               />
             </Form.Item>

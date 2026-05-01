@@ -316,6 +316,25 @@ public class DriverCompatibilityService {
         );
     }
 
+    public Map<String, Object> customDefinitions(String downloadDir) {
+        Path resolvedDir = resolveManagedDriverDirectory(downloadDir);
+        ensureDirectory(resolvedDir);
+        List<Map<String, Object>> definitions = jdbcDriverRuntimeService.installedCustomDefinitionMetadataList(resolvedDir);
+        return orderedMap(
+                "definitions", definitions,
+                "customDefinitions", definitions,
+                "count", definitions.size(),
+                "webManaged", true
+        );
+    }
+
+    public Map<String, Object> validateCustomDefinition(String driverType, String downloadDir) {
+        Path resolvedDir = resolveManagedDriverDirectory(downloadDir);
+        ensureDirectory(resolvedDir);
+        String normalizedDriverType = requireSafeCustomDriverType(driverType);
+        return jdbcDriverRuntimeService.validateCustomDefinition(normalizedDriverType, resolvedDir);
+    }
+
     public Map<String, Object> configureDefaultDriver(String databaseType, String driverType, String downloadDir) {
         Path resolvedDir = resolveManagedDriverDirectory(downloadDir);
         ensureDirectory(resolvedDir);
@@ -446,7 +465,16 @@ public class DriverCompatibilityService {
                 return installLocalPackage(normalizedDriverType, uploadDir.toString(), resolvedDir.toString(), versionText, "manual-upload");
             }
             publishDriverProgress(normalizedDriverType);
-            return jdbcDriverRuntimeService.installCustomLocalPackage(normalizedDriverType, uploadDir.toString(), resolvedDir, versionText, "manual-upload");
+            Map<String, Object> installResult = jdbcDriverRuntimeService.installCustomLocalPackage(normalizedDriverType, uploadDir.toString(), resolvedDir, versionText, "manual-upload");
+            Map<String, Object> definition = new LinkedHashMap<>(jdbcDriverRuntimeService.validateCustomDefinition(normalizedDriverType, resolvedDir));
+            definition.put("engine", textOrDefault(installResult.get("engine"), "java-jdbc-runtime"));
+            definition.put("packageInstalled", true);
+            definition.put("runtimeAvailable", definition.get("driverLoadable"));
+            definition.put("connectable", definition.get("definitionUsable"));
+            definition.put("installMode", textOrDefault(installResult.get("installMode"), "manual-upload"));
+            definition.put("installSource", "manual-upload");
+            definition.put("message", textOrDefault(installResult.get("message"), text(definition.get("message"))));
+            return definition;
         } finally {
             deleteDirectory(uploadDir);
         }

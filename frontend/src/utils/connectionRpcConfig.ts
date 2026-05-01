@@ -12,6 +12,11 @@ type SSHConfigInput = Record<string, any>;
 type ProxyConfigInput = Record<string, any>;
 type HttpTunnelConfigInput = Record<string, any>;
 
+const isInternalOptionKey = (key: string): boolean => {
+  const normalized = key.replace(/[-_\s]/g, '').toLowerCase();
+  return normalized.startsWith('customdatasource') || normalized.startsWith('javanavi');
+};
+
 const toStringValue = (value: unknown, fallback = ''): string => {
   if (typeof value === 'string') {
     return value;
@@ -20,6 +25,18 @@ const toStringValue = (value: unknown, fallback = ''): string => {
     return String(value);
   }
   return fallback;
+};
+
+const normalizeDriverOptions = (value: unknown): Record<string, string> | undefined => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+  const options = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .map(([key, optionValue]) => [toStringValue(key).trim(), toStringValue(optionValue).trim()])
+      .filter(([key, optionValue]) => key && optionValue && !isInternalOptionKey(key)),
+  );
+  return Object.keys(options).length > 0 ? options : undefined;
 };
 
 const toOptionalStringValue = (value: unknown): string | undefined => {
@@ -120,6 +137,7 @@ export function buildRpcConnectionConfig(
     httpTunnel: normalizeHttpTunnelConfig(merged.httpTunnel),
     driver: toOptionalStringValue(merged.driver),
     dsn: toOptionalStringValue(merged.dsn),
+    options: normalizeDriverOptions(merged.options),
     timeout,
     redisDB,
     uri: toOptionalStringValue(merged.uri),
@@ -137,4 +155,3 @@ export function buildRpcConnectionConfig(
   rpcConfig.id = baseId;
   return rpcConfig;
 }
-

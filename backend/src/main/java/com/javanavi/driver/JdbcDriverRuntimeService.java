@@ -48,6 +48,7 @@ public class JdbcDriverRuntimeService {
     private static final String DEFAULT_REPOSITORY_URL = "https://repo.maven.apache.org/maven2";
     private static final String METADATA_FILE_NAME = "driver-package.json";
     private static final String SETTINGS_FILE_NAME = "driver-runtime-settings.json";
+    private static final String UPLOADS_DIR_NAME = "uploads";
     private static final String VERSIONED_DOWNLOADS_DIR_NAME = "versions";
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(120);
     private static final int MAX_MAVEN_VERSION_OPTIONS = 80;
@@ -443,6 +444,80 @@ public class JdbcDriverRuntimeService {
 
     public Optional<Map<String, Object>> installedMetadata(String driverType, Path driverDirectory) {
         return definition(driverType).flatMap(definition -> readMetadata(installDir(resolveDriverDirectory(driverDirectory), definition.type())));
+    }
+
+    public List<Map<String, Object>> installedCustomDefinitionMetadataList(Path driverDirectory) {
+        Path root = resolveDriverDirectory(driverDirectory);
+        if (!Files.isDirectory(root)) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        try (var stream = Files.list(root)) {
+            stream.filter(Files::isDirectory)
+                    .filter(directory -> !UPLOADS_DIR_NAME.equals(directory.getFileName().toString()))
+                    .filter(directory -> !VERSIONED_DOWNLOADS_DIR_NAME.equals(directory.getFileName().toString()))
+                    .forEach(directory -> {
+                        String driverType = directory.getFileName().toString();
+                        if (definition(driverType).isPresent()) {
+                            return;
+                        }
+                        try {
+                            String normalizedDriverType = requireSafeCustomDriverType(driverType);
+                            if (!installDir(root, normalizedDriverType).equals(directory.toAbsolutePath().normalize())) {
+                                return;
+                            }
+                            readMetadata(directory.toAbsolutePath().normalize()).ifPresent(metadata -> rows.add(customDefinitionMetadataItem(
+                                    normalizedDriverType,
+                                    directory.toAbsolutePath().normalize(),
+                                    metadata
+                            )));
+                        } catch (RuntimeException ignored) {
+                            // Ignore unsafe or unreadable directories: callers receive repairable rows only for managed custom metadata.
+                        }
+                    });
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to list custom JDBC driver definitions.", error);
+        }
+        rows.sort((left, right) -> text(left.get("driverType")).compareToIgnoreCase(text(right.get("driverType"))));
+        return rows;
+    }
+
+    public Map<String, Object> validateCustomDefinition(String driverType, Path driverDirectory) {
+        String normalizedDriverType = requireSafeCustomDriverType(driverType);
+        Path root = resolveDriverDirectory(driverDirectory);
+        Path installDir = installDir(root, normalizedDriverType);
+        Optional<Map<String, Object>> metadata;
+        try {
+            metadata = readMetadata(installDir);
+        } catch (RuntimeException error) {
+            return customValidationResult(
+                    normalizedDriverType,
+                    "",
+                    "",
+                    "",
+                    List.of(),
+                    false,
+                    false,
+                    "error",
+                    "Custom JDBC driver metadata could not be read. Re-upload the Jar from Driver Manager.",
+                    List.of("Open Driver Manager and upload this custom JDBC Jar again to repair its metadata.")
+            );
+        }
+        if (metadata.isEmpty()) {
+            return customValidationResult(
+                    normalizedDriverType,
+                    "",
+                    "",
+                    "",
+                    List.of(),
+                    false,
+                    false,
+                    "error",
+                    "No custom JDBC driver metadata was found. Re-upload the Jar from Driver Manager.",
+                    List.of("Open Driver Manager and upload this custom JDBC Jar again.")
+            );
+        }
+        return customDefinitionMetadataItem(normalizedDriverType, installDir, metadata.get());
     }
 
     public List<Map<String, Object>> installedVersionMetadataList(String driverType, Path driverDirectory) {
@@ -921,9 +996,117 @@ public class JdbcDriverRuntimeService {
         Object single = metadata.get("filePath");
         String singleText = text(single);
         if (singleText.endsWith(".jar")) {
-            return List.of(Path.of(singleText).toAbsolutePath().normalize());
+            Path jar = Path.of(singleText).toAbsolutePath().normalize();
+            if (jar.startsWith(installDir.toAbsolutePath().normalize())) {
+                return List.of(jar);
+            }
         }
         return List.of();
+    }
+
+    private Map<String, Object> customDefinitionMetadataItem(String driverType, Path installDir, Map<String, Object> metadata) {
+        String normalizedDriverType = requireSafeCustomDriverType(driverType);
+        List<Path> jars = metadataJars(metadata, installDir);
+        List<Path> existingJars = jars.stream().filter(Files::isRegularFile).toList();
+        String driverClassName = text(metadata.get("driverClassName"));
+        boolean metadataReadable = !metadata.isEmpty();
+        boolean hasJars = !existingJars.isEmpty();
+        boolean driverLoadable = loadInstalledCustomDriver(normalizedDriverType, installDir.getParent(), false).isPresent();
+        boolean definitionUsable = metadataReadable && hasJars && driverLoadable;
+        List<String> repairHints = new ArrayList<>();
+        if (!metadataReadable) {
+            repairHints.add("Re-upload this custom JDBC Jar so JavaNavi can recreate driver metadata.");
+        }
+        if (!hasJars) {
+            repairHints.add("The managed Jar files are missing. Upload the custom driver package again.");
+        }
+        if (driverClassName.isBlank()) {
+            repairHints.add("No driver class is recorded. Upload a Jar that exposes java.sql.Driver via service metadata.");
+        }
+        if (hasJars && !driverLoadable) {
+            repairHints.add("The JDBC driver class could not be loaded. Include required dependency Jars and re-upload.");
+        }
+        String validationStatus = definitionUsable ? "valid" : hasJars ? "warning" : "error";
+        String message = definitionUsable
+                ? "Custom JDBC definition is usable. DSN-level connection is not tested yet."
+                : repairHints.isEmpty() ? "Custom JDBC definition requires repair." : repairHints.get(0);
+        return customValidationResult(
+                normalizedDriverType,
+                text(metadata.get("version")),
+                driverClassName,
+                text(metadata.get("downloadedAt")),
+                sanitizedArtifacts(metadata, installDir),
+                driverLoadable,
+                definitionUsable,
+                validationStatus,
+                message,
+                repairHints
+        );
+    }
+
+    private Map<String, Object> customValidationResult(
+            String driverType,
+            String version,
+            String driverClassName,
+            String downloadedAt,
+            List<Map<String, Object>> artifacts,
+            boolean driverLoadable,
+            boolean definitionUsable,
+            String validationStatus,
+            String message,
+            List<String> repairHints
+    ) {
+        return orderedMap(
+                "driverType", driverType,
+                "driverName", driverType,
+                "version", version,
+                "driverClassName", driverClassName,
+                "installSource", "manual-upload",
+                "downloadedAt", downloadedAt,
+                "artifacts", artifacts,
+                "jarFileNames", artifacts.stream().map(item -> text(item.get("fileName"))).filter(value -> !value.isBlank()).toList(),
+                "driverLoadable", driverLoadable,
+                "definitionUsable", definitionUsable,
+                "validationStatus", validationStatus,
+                "message", message,
+                "repairHints", repairHints,
+                "checkedAt", Instant.now().toString()
+        );
+    }
+
+    private List<Map<String, Object>> sanitizedArtifacts(Map<String, Object> metadata, Path installDir) {
+        List<Map<String, Object>> artifacts = new ArrayList<>();
+        Object rawArtifacts = metadata.get("artifacts");
+        if (rawArtifacts instanceof List<?> list) {
+            for (Object item : list) {
+                if (!(item instanceof Map<?, ?> rawMap)) {
+                    continue;
+                }
+                String fileName = text(rawMap.get("fileName")).replace('\\', '/');
+                if (fileName.contains("/")) {
+                    fileName = Path.of(fileName).getFileName().toString();
+                }
+                if (fileName.isBlank()) {
+                    continue;
+                }
+                artifacts.add(orderedMap(
+                        "fileName", fileName,
+                        "sha256", text(rawMap.get("sha256")),
+                        "sizeBytes", parseLong(rawMap.get("sizeBytes"))
+                ));
+            }
+        }
+        if (!artifacts.isEmpty()) {
+            return artifacts;
+        }
+        return metadataJars(metadata, installDir).stream()
+                .filter(Files::isRegularFile)
+                .map(path -> orderedMap(
+                        "fileName", path.getFileName().toString(),
+                        "sha256", sha256Hex(path),
+                        "sizeBytes", size(path)
+                ))
+                .toList();
     }
 
     private DriverPackageDefinition requireDefinition(String driverType) {
@@ -1090,6 +1273,15 @@ public class JdbcDriverRuntimeService {
 
     private static String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
+    }
+
+    private static long parseLong(Object value) {
+        try {
+            long parsed = Long.parseLong(text(value));
+            return Math.max(parsed, 0L);
+        } catch (NumberFormatException ignored) {
+            return 0L;
+        }
     }
 
     private static String normalizeInstallMode(String installMode) {

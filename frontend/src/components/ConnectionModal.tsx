@@ -63,7 +63,9 @@ import {
 import { resolveConnectionSecretDraft } from "../utils/connectionSecretDraft";
 import { getCustomConnectionDsnValidationMessage } from "../utils/customConnectionDsn";
 import {
+  extractBackendCustomDataSourceDefinitions,
   loadCustomDataSources,
+  mergeBackendCustomDataSourceDefinitions,
   resolveCustomDataSourceFromConfig,
   type CustomDataSource,
 } from "../utils/customDataSources";
@@ -83,6 +85,7 @@ import {
 import { resolveJVMModeMeta } from "../utils/jvmRuntimePresentation";
 import {
   DBGetDatabases,
+  GetCustomDriverDefinitions,
   GetDriverStatusList,
   MongoDiscoverMembers,
   TestConnection,
@@ -353,6 +356,9 @@ const ConnectionModal: React.FC<{
       ),
     [customDataSourceIdDraft, customDataSources],
   );
+  const selectedCustomDataSourceStatus = selectedCustomDataSource?.runtimeStatus;
+  const selectedCustomDataSourceRepairHints =
+    selectedCustomDataSourceStatus?.repairHints || [];
   const hasUnsupportedJvmModeSelection = useMemo(
     () =>
       hasUnsupportedJVMEditableModes({
@@ -743,7 +749,27 @@ const ConnectionModal: React.FC<{
   };
 
   const refreshCustomDataSources = () => {
-    setCustomDataSources(loadCustomDataSources());
+    void refreshCustomDataSourceDefinitions();
+  };
+
+  const refreshCustomDataSourceDefinitions = async () => {
+    const latest = loadCustomDataSources();
+    try {
+      const res = await GetCustomDriverDefinitions("");
+      if (!res?.success) {
+        setCustomDataSources(latest);
+        return latest;
+      }
+      const merged = mergeBackendCustomDataSourceDefinitions(
+        latest,
+        extractBackendCustomDataSourceDefinitions(res),
+      );
+      setCustomDataSources(merged);
+      return merged;
+    } catch {
+      setCustomDataSources(latest);
+      return latest;
+    }
   };
 
   const handleCustomDataSourceSelect = (sourceId: string) => {
@@ -757,7 +783,7 @@ const ConnectionModal: React.FC<{
     const currentName = String(form.getFieldValue("name") || "").trim();
     const nextValues: Record<string, any> = {
       customDataSourceId: source.id,
-      driver: source.driver || "",
+      driver: source.driverType || source.driver || "",
       connectionInputMode: "target",
       uri: "",
     };
@@ -2097,6 +2123,7 @@ const ConnectionModal: React.FC<{
       setDriverStatusLoaded(false);
       const latestCustomDataSources = loadCustomDataSources();
       setCustomDataSources(latestCustomDataSources);
+      void refreshCustomDataSourceDefinitions();
       void refreshDriverStatus();
       if (initialValues) {
         // Edit mode: Go directly to step 2
@@ -2720,6 +2747,30 @@ const ConnectionModal: React.FC<{
       if (res.success) {
         void message.destroy("connection-test-failure");
         setTestResult({ type: "success", message: res.message });
+        if (values.type === "custom") {
+          const selectedSource = customDataSources.find(
+            (source) => source.id === String(values.customDataSourceId || ""),
+          );
+          if (selectedSource) {
+            const nextSource: CustomDataSource = {
+              ...selectedSource,
+              runtimeStatus: {
+                ...(selectedSource.runtimeStatus || {}),
+                connectionTested: true,
+                checkedAt: Date.now(),
+              },
+              updatedAt: Date.now(),
+            };
+            setCustomDataSources(
+              mergeBackendCustomDataSourceDefinitions(
+                customDataSources.map((source) =>
+                  source.id === nextSource.id ? nextSource : source,
+                ),
+                [],
+              ),
+            );
+          }
+        }
         if (isRedisType) {
           setRedisDbList(Array.from({ length: 16 }, (_, i) => i));
         } else if (!isJVMType) {
@@ -3216,7 +3267,18 @@ const ConnectionModal: React.FC<{
               ...existingCustomOptions,
               customDataSourceId: selectedCustomSource?.id || "",
               customDataSourceName: selectedCustomSource?.name || "",
-              customDataSourceDefaultDriver: selectedCustomSource?.driver || "",
+              customDataSourceDriverType:
+                selectedCustomSource?.driverType ||
+                selectedCustomSource?.driver ||
+                selectedDriverForConfig ||
+                "",
+              customDataSourceDriverClassName:
+                selectedCustomSource?.driverClassName || "",
+              customDataSourceDefaultDriver:
+                selectedCustomSource?.driverType ||
+                selectedCustomSource?.driver ||
+                selectedDriverForConfig ||
+                "",
             }).filter(([, value]) => String(value || "").trim() !== ""),
           )
         : undefined;
@@ -4122,9 +4184,7 @@ const ConnectionModal: React.FC<{
                         popupMatchSelectWidth={false}
                         options={customDataSources.map((source) => ({
                           value: source.id,
-                          label: source.driver
-                            ? `${source.name}（驱动：${source.driver}）`
-                            : source.name,
+                          label: `${source.name}（驱动：${source.driverType || source.driver || "未识别"}）`,
                         }))}
                         onChange={handleCustomDataSourceSelect}
                         notFoundContent="暂无自定义数据源，请先到驱动管理新增"
@@ -4142,6 +4202,13 @@ const ConnectionModal: React.FC<{
                       ) : (
                         <Tag>未选择数据源</Tag>
                       )}
+                      {selectedCustomDataSourceStatus?.definitionUsable ? (
+                        <Tag color="success">定义可用</Tag>
+                      ) : selectedCustomDataSourceStatus?.driverLoadable ? (
+                        <Tag color="warning">驱动可加载</Tag>
+                      ) : selectedCustomDataSource ? (
+                        <Tag color="error">需修复/待校验</Tag>
+                      ) : null}
                     </Space>
                     {selectedCustomDataSource?.description && (
                       <Alert
@@ -4151,6 +4218,45 @@ const ConnectionModal: React.FC<{
                         style={{ marginBottom: 16 }}
                       />
                     )}
+                    {selectedCustomDataSource ? (
+                      <Alert
+                        showIcon
+                        type={
+                          selectedCustomDataSourceStatus?.definitionUsable
+                            ? "success"
+                            : selectedCustomDataSourceStatus?.driverLoadable
+                              ? "warning"
+                              : "error"
+                        }
+                        message={
+                          selectedCustomDataSourceStatus?.message ||
+                          "自定义数据源定义状态未知，请在驱动管理中校验"
+                        }
+                        description={(
+                          <Space direction="vertical" size={4}>
+                            <Text>
+                              Driver Class：
+                              {selectedCustomDataSource.driverClassName ||
+                                "未发现/未记录"}
+                            </Text>
+                            {selectedCustomDataSource.version ? (
+                              <Text>版本：{selectedCustomDataSource.version}</Text>
+                            ) : null}
+                            {selectedCustomDataSource.jarFileNames?.length ? (
+                              <Text>
+                                Jar：{selectedCustomDataSource.jarFileNames.join("、")}
+                              </Text>
+                            ) : null}
+                            {selectedCustomDataSourceRepairHints.length > 0 ? (
+                              <Text type="secondary">
+                                修复建议：{selectedCustomDataSourceRepairHints.join("；")}
+                              </Text>
+                            ) : null}
+                          </Space>
+                        )}
+                        style={{ marginBottom: 16 }}
+                      />
+                    ) : null}
                     <Form.Item
                       name="driver"
                       label="驱动标识"
@@ -4196,6 +4302,15 @@ const ConnectionModal: React.FC<{
                         }
                       />
                     </Form.Item>
+                    {selectedCustomDataSource?.dsnHelp ? (
+                      <Alert
+                        showIcon
+                        type="info"
+                        message="DSN 填写说明"
+                        description={selectedCustomDataSource.dsnHelp}
+                        style={{ marginBottom: 16 }}
+                      />
+                    ) : null}
                     {renderStoredSecretControls({
                       fieldName: "dsn",
                       clearKey: "opaqueDSN",

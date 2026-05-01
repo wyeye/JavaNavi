@@ -1,12 +1,35 @@
+export type CustomDataSourceArtifact = {
+  fileName?: string;
+  sha256?: string;
+  sizeBytes?: number;
+};
+
+export type CustomDataSourceRuntimeStatus = {
+  driverLoadable?: boolean;
+  definitionUsable?: boolean;
+  connectionTested?: boolean;
+  validationStatus?: 'unknown' | 'valid' | 'warning' | 'error';
+  message?: string;
+  repairHints?: string[];
+  checkedAt?: number;
+};
+
 export type CustomDataSource = {
+  schemaVersion: 2;
   id: string;
   name: string;
+  driverType: string;
   driver?: string;
+  driverClassName?: string;
+  version?: string;
   driverVersion?: string;
   dsnTemplate?: string;
+  dsnHelp?: string;
   description?: string;
   installSource?: 'manual-upload' | 'maven-download' | 'unknown';
+  artifacts?: CustomDataSourceArtifact[];
   jarFileNames?: string[];
+  runtimeStatus?: CustomDataSourceRuntimeStatus;
   createdAt: number;
   updatedAt: number;
 };
@@ -14,14 +37,40 @@ export type CustomDataSource = {
 export type CustomDataSourceDraft = {
   name: string;
   driver?: string;
+  driverType?: string;
+  driverClassName?: string;
+  version?: string;
   driverVersion?: string;
   dsnTemplate?: string;
+  dsnHelp?: string;
   description?: string;
   installSource?: 'manual-upload' | 'maven-download' | 'unknown';
+  artifacts?: CustomDataSourceArtifact[];
   jarFileNames?: string[];
+  runtimeStatus?: CustomDataSourceRuntimeStatus;
 };
 
-export const CUSTOM_DATA_SOURCES_STORAGE_KEY = 'javanavi.customDataSources.v1';
+export type BackendCustomDataSourceDefinition = {
+  driverType?: string;
+  driverName?: string;
+  version?: string;
+  driverClassName?: string;
+  installSource?: string;
+  downloadedAt?: string;
+  artifacts?: CustomDataSourceArtifact[];
+  jarFileNames?: string[];
+  driverLoadable?: boolean;
+  definitionUsable?: boolean;
+  connectionTested?: boolean;
+  validationStatus?: string;
+  message?: string;
+  repairHints?: string[];
+  checkedAt?: string | number;
+};
+
+export const CUSTOM_DATA_SOURCES_V1_STORAGE_KEY = 'javanavi.customDataSources.v1';
+export const CUSTOM_DATA_SOURCES_STORAGE_KEY = CUSTOM_DATA_SOURCES_V1_STORAGE_KEY;
+export const CUSTOM_DATA_SOURCES_V2_STORAGE_KEY = 'javanavi.customDataSources.v2';
 
 const isBrowserStorageAvailable = (): boolean => {
   try {
@@ -48,6 +97,18 @@ const normalizeTextList = (value: unknown): string[] | undefined => {
   return items.length > 0 ? items : undefined;
 };
 
+const normalizeFileName = (value: unknown): string => normalizeText(value).replace(/.*[\\/]/, '');
+
+const normalizeFileNameList = (value: unknown): string[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const items = Array.from(
+    new Set(value.map((item) => normalizeFileName(item)).filter(Boolean)),
+  );
+  return items.length > 0 ? items : undefined;
+};
+
 const normalizeInstallSource = (
   value: unknown,
 ): CustomDataSource['installSource'] | undefined => {
@@ -58,65 +119,165 @@ const normalizeInstallSource = (
   return text ? 'unknown' : undefined;
 };
 
+const normalizeValidationStatus = (
+  value: unknown,
+): CustomDataSourceRuntimeStatus['validationStatus'] => {
+  const text = normalizeText(value);
+  if (text === 'valid' || text === 'warning' || text === 'error') {
+    return text;
+  }
+  return 'unknown';
+};
+
+const normalizeTimestamp = (value: unknown, fallback = Date.now()): number => {
+  if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+    return value;
+  }
+  const parsed = Date.parse(normalizeText(value));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback;
+};
+
+const normalizeArtifacts = (value: unknown): CustomDataSourceArtifact[] | undefined => {
+  if (!Array.isArray(value)) {
+    return undefined;
+  }
+  const artifacts = value
+    .map((item): CustomDataSourceArtifact | null => {
+      if (!item || typeof item !== 'object') {
+        return null;
+      }
+      const raw = item as Record<string, unknown>;
+      const fileName = normalizeFileName(raw.fileName);
+      if (!fileName) {
+        return null;
+      }
+      const sizeBytes = Number(raw.sizeBytes);
+      return {
+        fileName,
+        sha256: normalizeOptionalText(raw.sha256),
+        sizeBytes: Number.isFinite(sizeBytes) && sizeBytes >= 0 ? sizeBytes : undefined,
+      };
+    })
+    .filter((item): item is CustomDataSourceArtifact => Boolean(item));
+  return artifacts.length > 0 ? artifacts : undefined;
+};
+
+const normalizeRuntimeStatus = (value: unknown): CustomDataSourceRuntimeStatus | undefined => {
+  if (!value || typeof value !== 'object') {
+    return undefined;
+  }
+  const raw = value as Record<string, unknown>;
+  const status: CustomDataSourceRuntimeStatus = {
+    driverLoadable: typeof raw.driverLoadable === 'boolean' ? raw.driverLoadable : undefined,
+    definitionUsable: typeof raw.definitionUsable === 'boolean' ? raw.definitionUsable : undefined,
+    connectionTested: typeof raw.connectionTested === 'boolean' ? raw.connectionTested : undefined,
+    validationStatus: normalizeValidationStatus(raw.validationStatus),
+    message: normalizeOptionalText(raw.message),
+    repairHints: normalizeTextList(raw.repairHints),
+    checkedAt: normalizeTimestamp(raw.checkedAt, 0) || undefined,
+  };
+  return Object.values(status).some((item) => item !== undefined) ? status : undefined;
+};
+
 const normalizeDataSource = (value: any): CustomDataSource | null => {
   if (!value || typeof value !== 'object') {
     return null;
   }
   const id = normalizeText(value.id);
-  const name = normalizeText(value.name);
+  const name = normalizeText(value.name || value.driverName);
+  const driverType = normalizeText(value.driverType || value.driver).toLowerCase();
   if (!id || !name) {
     return null;
   }
   const now = Date.now();
-  const createdAt = Number(value.createdAt);
-  const updatedAt = Number(value.updatedAt);
+  const artifacts = normalizeArtifacts(value.artifacts);
+  const jarFileNames = normalizeFileNameList(value.jarFileNames)
+    || (artifacts ? artifacts.map((artifact) => artifact.fileName || '').filter(Boolean) : undefined);
+  const version = normalizeOptionalText(value.version || value.driverVersion);
   return {
+    schemaVersion: 2,
     id,
     name,
-    driver: normalizeOptionalText(value.driver),
-    driverVersion: normalizeOptionalText(value.driverVersion),
+    driverType,
+    driver: driverType || undefined,
+    driverClassName: normalizeOptionalText(value.driverClassName),
+    version,
+    driverVersion: version,
     dsnTemplate: normalizeOptionalText(value.dsnTemplate),
+    dsnHelp: normalizeOptionalText(value.dsnHelp),
     description: normalizeOptionalText(value.description),
     installSource: normalizeInstallSource(value.installSource),
-    jarFileNames: normalizeTextList(value.jarFileNames),
-    createdAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt : now,
-    updatedAt: Number.isFinite(updatedAt) && updatedAt > 0 ? updatedAt : now,
+    artifacts,
+    jarFileNames,
+    runtimeStatus: normalizeRuntimeStatus(value.runtimeStatus),
+    createdAt: normalizeTimestamp(value.createdAt, now),
+    updatedAt: normalizeTimestamp(value.updatedAt, now),
   };
+};
+
+const parseStoredSources = (raw: string | null): CustomDataSource[] => {
+  if (!raw) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    const list: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === 'object' && Array.isArray(parsed.sources)
+        ? parsed.sources
+        : [];
+    return list
+      .map(normalizeDataSource)
+      .filter((item): item is CustomDataSource => Boolean(item));
+  } catch {
+    return [];
+  }
+};
+
+const mergeSources = (preferred: CustomDataSource[], fallback: CustomDataSource[]): CustomDataSource[] => {
+  const sources: CustomDataSource[] = [];
+  const ids = new Set<string>();
+  const driverTypes = new Set<string>();
+  const names = new Set<string>();
+  [...preferred, ...fallback].forEach((source) => {
+    const id = normalizeText(source.id);
+    const driverType = normalizeText(source.driverType || source.driver).toLowerCase();
+    const name = normalizeText(source.name).toLowerCase();
+    if (!id || ids.has(id) || (driverType && driverTypes.has(driverType)) || (!driverType && name && names.has(name))) {
+      return;
+    }
+    ids.add(id);
+    if (driverType) {
+      driverTypes.add(driverType);
+    }
+    if (name) {
+      names.add(name);
+    }
+    sources.push(source);
+  });
+  return sources.sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'));
 };
 
 export const loadCustomDataSources = (): CustomDataSource[] => {
   if (!isBrowserStorageAvailable()) {
     return [];
   }
-  try {
-    const raw = window.localStorage.getItem(CUSTOM_DATA_SOURCES_STORAGE_KEY);
-    if (!raw) {
-      return [];
-    }
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed
-      .map(normalizeDataSource)
-      .filter((item): item is CustomDataSource => Boolean(item))
-      .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'));
-  } catch {
-    return [];
-  }
+  const v2Sources = parseStoredSources(window.localStorage.getItem(CUSTOM_DATA_SOURCES_V2_STORAGE_KEY));
+  const v1Sources = parseStoredSources(window.localStorage.getItem(CUSTOM_DATA_SOURCES_V1_STORAGE_KEY));
+  return mergeSources(v2Sources, v1Sources);
 };
 
 export const saveCustomDataSources = (sources: CustomDataSource[]): CustomDataSource[] => {
-  const normalized = sources
-    .map(normalizeDataSource)
-    .filter((item): item is CustomDataSource => Boolean(item))
-    .sort((left, right) => left.name.localeCompare(right.name, 'zh-Hans-CN'));
+  const normalized = mergeSources(
+    sources.map(normalizeDataSource).filter((item): item is CustomDataSource => Boolean(item)),
+    [],
+  );
   if (!isBrowserStorageAvailable()) {
     return normalized;
   }
   window.localStorage.setItem(
-    CUSTOM_DATA_SOURCES_STORAGE_KEY,
-    JSON.stringify(normalized),
+    CUSTOM_DATA_SOURCES_V2_STORAGE_KEY,
+    JSON.stringify({ schemaVersion: 2, sources: normalized }),
   );
   return normalized;
 };
@@ -136,18 +297,153 @@ export const createCustomDataSource = (draft: CustomDataSourceDraft): CustomData
   if (!name) {
     throw new Error('自定义数据源名称不能为空');
   }
+  const driverType = normalizeText(draft.driverType || draft.driver).toLowerCase();
+  const version = normalizeOptionalText(draft.version || draft.driverVersion);
+  const artifacts = normalizeArtifacts(draft.artifacts);
   return {
+    schemaVersion: 2,
     id: createCustomDataSourceId(name),
     name,
-    driver: normalizeOptionalText(draft.driver),
-    driverVersion: normalizeOptionalText(draft.driverVersion),
+    driverType,
+    driver: driverType || undefined,
+    driverClassName: normalizeOptionalText(draft.driverClassName),
+    version,
+    driverVersion: version,
     dsnTemplate: normalizeOptionalText(draft.dsnTemplate),
+    dsnHelp: normalizeOptionalText(draft.dsnHelp),
     description: normalizeOptionalText(draft.description),
     installSource: normalizeInstallSource(draft.installSource),
-    jarFileNames: normalizeTextList(draft.jarFileNames),
+    artifacts,
+    jarFileNames: normalizeFileNameList(draft.jarFileNames)
+      || (artifacts ? artifacts.map((artifact) => artifact.fileName || '').filter(Boolean) : undefined),
+    runtimeStatus: normalizeRuntimeStatus(draft.runtimeStatus),
     createdAt: now,
     updatedAt: now,
   };
+};
+
+export const createCustomDataSourceFromBackendDefinition = (
+  definition: BackendCustomDataSourceDefinition,
+  existing?: CustomDataSource,
+): CustomDataSource | null => {
+  const driverType = normalizeText(definition.driverType).toLowerCase();
+  if (!driverType) {
+    return null;
+  }
+  const now = Date.now();
+  const artifacts = normalizeArtifacts(definition.artifacts);
+  const version = normalizeOptionalText(definition.version);
+  return normalizeDataSource({
+    ...(existing || {}),
+    schemaVersion: 2,
+    id: existing?.id || `custom-${driverType}`,
+    name: normalizeText(existing?.name || definition.driverName || driverType),
+    driverType,
+    driver: driverType,
+    driverClassName: definition.driverClassName || existing?.driverClassName,
+    version: version || existing?.version,
+    driverVersion: version || existing?.driverVersion,
+    installSource: definition.installSource || existing?.installSource || 'manual-upload',
+    artifacts: artifacts || existing?.artifacts,
+    jarFileNames: normalizeFileNameList(definition.jarFileNames)
+      || artifacts?.map((artifact) => artifact.fileName || '').filter(Boolean)
+      || existing?.jarFileNames,
+    runtimeStatus: {
+      ...(existing?.runtimeStatus || {}),
+      driverLoadable: definition.driverLoadable,
+      definitionUsable: definition.definitionUsable,
+      connectionTested: definition.connectionTested ?? existing?.runtimeStatus?.connectionTested,
+      validationStatus: normalizeValidationStatus(definition.validationStatus),
+      message: normalizeOptionalText(definition.message),
+      repairHints: normalizeTextList(definition.repairHints),
+      checkedAt: normalizeTimestamp(definition.checkedAt, now),
+    },
+    createdAt: existing?.createdAt || now,
+    updatedAt: now,
+  });
+};
+
+export const extractBackendCustomDataSourceDefinitions = (payload: any): BackendCustomDataSourceDefinition[] => {
+  const data = payload && typeof payload === 'object' ? payload.data || payload : {};
+  const definitions = Array.isArray(data.definitions)
+    ? data.definitions
+    : Array.isArray(data.customDefinitions)
+      ? data.customDefinitions
+      : Array.isArray(data)
+        ? data
+        : [];
+  return definitions
+    .map((item: any): BackendCustomDataSourceDefinition => ({
+      driverType: normalizeText(item?.driverType),
+      driverName: normalizeText(item?.driverName || item?.driverType),
+      version: normalizeText(item?.version),
+      driverClassName: normalizeText(item?.driverClassName),
+      installSource: normalizeText(item?.installSource),
+      downloadedAt: normalizeText(item?.downloadedAt),
+      artifacts: Array.isArray(item?.artifacts) ? item.artifacts : undefined,
+      jarFileNames: Array.isArray(item?.jarFileNames) ? item.jarFileNames : undefined,
+      driverLoadable: typeof item?.driverLoadable === 'boolean' ? item.driverLoadable : undefined,
+      definitionUsable: typeof item?.definitionUsable === 'boolean' ? item.definitionUsable : undefined,
+      connectionTested: typeof item?.connectionTested === 'boolean' ? item.connectionTested : undefined,
+      validationStatus: normalizeText(item?.validationStatus) || undefined,
+      message: normalizeText(item?.message),
+      repairHints: Array.isArray(item?.repairHints) ? item.repairHints : undefined,
+      checkedAt: item?.checkedAt,
+    }))
+    .filter((item: BackendCustomDataSourceDefinition): item is BackendCustomDataSourceDefinition => !!item.driverType);
+};
+
+export const extractBackendCustomDataSourceDefinition = (payload: any): BackendCustomDataSourceDefinition | undefined => {
+  const definitions = extractBackendCustomDataSourceDefinitions(payload);
+  if (definitions.length > 0) {
+    return definitions[0];
+  }
+  const data = payload && typeof payload === 'object' ? payload.data || payload : {};
+  const driverType = normalizeText(data?.driverType);
+  return driverType
+    ? {
+        driverType,
+        driverName: normalizeText(data?.driverName || driverType),
+        version: normalizeText(data?.version),
+        driverClassName: normalizeText(data?.driverClassName),
+        installSource: normalizeText(data?.installSource),
+        downloadedAt: normalizeText(data?.downloadedAt),
+        artifacts: Array.isArray(data?.artifacts) ? data.artifacts : undefined,
+        jarFileNames: Array.isArray(data?.jarFileNames) ? data.jarFileNames : undefined,
+        driverLoadable: typeof data?.driverLoadable === 'boolean' ? data.driverLoadable : undefined,
+        definitionUsable: typeof data?.definitionUsable === 'boolean' ? data.definitionUsable : undefined,
+        connectionTested: typeof data?.connectionTested === 'boolean' ? data.connectionTested : undefined,
+        validationStatus: normalizeText(data?.validationStatus) || undefined,
+        message: normalizeText(data?.message),
+        repairHints: Array.isArray(data?.repairHints) ? data.repairHints : undefined,
+        checkedAt: data?.checkedAt,
+      }
+    : undefined;
+};
+
+export const mergeBackendCustomDataSourceDefinitions = (
+  sources: CustomDataSource[],
+  definitions: BackendCustomDataSourceDefinition[],
+): CustomDataSource[] => {
+  const byId = new Map(sources.map((source) => [source.id, source]));
+  const byDriverType = new Map(
+    sources
+      .map((source) => [normalizeText(source.driverType || source.driver).toLowerCase(), source] as const)
+      .filter(([driverType]) => Boolean(driverType)),
+  );
+  definitions.forEach((definition) => {
+    const driverType = normalizeText(definition.driverType).toLowerCase();
+    if (!driverType) {
+      return;
+    }
+    const merged = createCustomDataSourceFromBackendDefinition(definition, byDriverType.get(driverType));
+    if (!merged) {
+      return;
+    }
+    byId.set(merged.id, merged);
+    byDriverType.set(driverType, merged);
+  });
+  return saveCustomDataSources(Array.from(byId.values()));
 };
 
 export const upsertCustomDataSource = (
@@ -188,10 +484,12 @@ export const resolveCustomDataSourceFromConfig = (
       return byName;
     }
   }
-  const configuredDriver = normalizeText(config?.driver).toLowerCase();
+  const configuredDriver = normalizeText(
+    options.customDataSourceDriverType || options.customDataSourceDefaultDriver || config?.driver,
+  ).toLowerCase();
   if (configuredDriver) {
     return sources.find(
-      (source) => normalizeText(source.driver).toLowerCase() === configuredDriver,
+      (source) => normalizeText(source.driverType || source.driver).toLowerCase() === configuredDriver,
     );
   }
   return undefined;

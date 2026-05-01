@@ -108,6 +108,21 @@ public class DriverCompatibilityController {
         ));
     }
 
+    @PostMapping("/custom-definitions")
+    public ApiEnvelope<Map<String, Object>> customDefinitions(@RequestBody(required = false) Map<String, Object> input) {
+        return ApiEnvelope.ok(driverCompatibilityService.customDefinitions(
+                stringValue(input, "downloadDir", "directory", "path")
+        ));
+    }
+
+    @PostMapping("/custom-definitions/validate")
+    public ApiEnvelope<Map<String, Object>> validateCustomDefinition(@RequestBody(required = false) Map<String, Object> input) {
+        return ApiEnvelope.ok(driverCompatibilityService.validateCustomDefinition(
+                stringValue(input, "driverType"),
+                stringValue(input, "downloadDir", "directory", "path")
+        ));
+    }
+
     @PostMapping("/default-driver")
     public ApiEnvelope<Map<String, Object>> configureDefaultDriver(@RequestBody(required = false) Map<String, Object> input) {
         return ApiEnvelope.ok(driverCompatibilityService.configureDefaultDriver(

@@ -518,6 +518,15 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
   if (type === "custom") {
     safeConfig.driver = toTrimmedString(raw.driver);
     safeConfig.dsn = toTrimmedString(raw.dsn).slice(0, MAX_URI_LENGTH);
+    const optionRaw =
+      raw.options && typeof raw.options === "object"
+        ? (raw.options as Record<string, unknown>)
+        : {};
+    safeConfig.options = Object.fromEntries(
+      Object.entries(optionRaw)
+        .map(([key, value]) => [toTrimmedString(key), toTrimmedString(value)])
+        .filter(([key, value]) => key && value && key.length <= 128 && value.length <= 4096),
+    );
   }
 
   if (type === "jvm") {

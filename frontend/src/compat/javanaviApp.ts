@@ -64,6 +64,23 @@ function browserMockConnectionPassword(config: any = {}): string | undefined {
   return typeof value === 'string' && value !== '' ? value : undefined;
 }
 
+function isInternalConnectionOptionKey(key: string): boolean {
+  const normalized = String(key || '').replace(/[-_\s]/g, '').toLowerCase();
+  return normalized.startsWith('customdatasource') || normalized.startsWith('javanavi');
+}
+
+function runtimeConnectionOptions(options: any): Record<string, string> | undefined {
+  if (!options || typeof options !== 'object' || Array.isArray(options)) {
+    return undefined;
+  }
+  const filtered = Object.fromEntries(
+    Object.entries(options)
+      .map(([key, value]) => [String(key || '').trim(), String(value ?? '').trim()])
+      .filter(([key, value]) => key && value && !isInternalConnectionOptionKey(key)),
+  );
+  return Object.keys(filtered).length > 0 ? filtered : undefined;
+}
+
 function toConnectionPayload(config: any = {}): Record<string, any> {
   return {
     id: config?.id || config?.connectionId || 'demo-h2',
@@ -75,7 +92,7 @@ function toConnectionPayload(config: any = {}): Record<string, any> {
     database: config?.database,
     username: config?.username || config?.user,
     password: config?.password || browserMockConnectionPassword(config),
-    options: config?.options,
+    options: runtimeConnectionOptions(config?.options),
     timeout: config?.timeout,
     redisDB: config?.redisDB,
     uri: config?.uri,
@@ -436,6 +453,16 @@ export async function UploadLocalDriverPackage(arg1:string,arg2:Array<File>|File
   });
   const payload = await postMultipart('/drivers/upload-local', form);
   return apiEnvelopeToQueryResult(payload, 'Driver package uploaded');
+}
+
+export async function GetCustomDriverDefinitions(arg1:string = ''): Promise<connection.QueryResult> {
+  const payload = await postJson('/drivers/custom-definitions', { downloadDir: arg1 });
+  return apiEnvelopeToQueryResult(payload, 'Custom driver definitions loaded');
+}
+
+export async function ValidateCustomDriverDefinition(arg1:string,arg2:string = ''): Promise<connection.QueryResult> {
+  const payload = await postJson('/drivers/custom-definitions/validate', { driverType: arg1, downloadDir: arg2 });
+  return apiEnvelopeToQueryResult(payload, 'Custom driver definition validated');
 }
 
 

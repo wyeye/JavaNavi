@@ -138,7 +138,7 @@ public class JdbcConnectionFactory {
         }
         if (config.options() != null) {
             config.options().forEach((key, value) -> {
-                if (key != null && value != null && !key.isBlank() && !isBlockedOption(key) && !isPoolLifecycleOption(key)) {
+                if (key != null && value != null && !key.isBlank() && !isBlockedOption(key) && !isInternalOption(key) && !isPoolLifecycleOption(key)) {
                     properties.setProperty(key, value);
                 }
             });
@@ -354,6 +354,11 @@ public class JdbcConnectionFactory {
     private static boolean isBlockedOption(String key) {
         String normalized = key.toLowerCase(Locale.ROOT).trim();
         return normalized.contains("password") || normalized.contains("token") || normalized.contains("secret");
+    }
+
+    private static boolean isInternalOption(String key) {
+        String normalized = normalizeOptionKey(key);
+        return normalized.startsWith("customdatasource") || normalized.startsWith("javanavi");
     }
 
     private static boolean isPoolLifecycleOption(String key) {

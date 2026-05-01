@@ -6,12 +6,14 @@ name: Desktop release packages
     branches:
       - main
       - master
+      - develop
     tags:
       - 'v*'
   pull_request:
     branches:
       - main
       - master
+      - develop
 
 permissions:
   contents: read
