@@ -208,7 +208,7 @@ fn resolve_jar_path(app: &AppHandle) -> Result<PathBuf, SidecarError> {
     if let Ok(manifest_dir) = env::var("CARGO_MANIFEST_DIR") {
         let manifest_dir = PathBuf::from(manifest_dir);
         candidates.push(manifest_dir.join("resources/javanavi-backend.jar"));
-        candidates.push(manifest_dir.join("../backend/target/javanavi-backend-0.1.0.jar"));
+        candidates.extend(find_backend_jars(&manifest_dir.join("../backend/target")));
     }
 
     candidates
@@ -220,6 +220,26 @@ fn resolve_jar_path(app: &AppHandle) -> Result<PathBuf, SidecarError> {
                 None,
             )
         })
+}
+
+fn find_backend_jars(target_dir: &Path) -> Vec<PathBuf> {
+    let mut jars = fs::read_dir(target_dir)
+        .ok()
+        .into_iter()
+        .flat_map(|entries| entries.filter_map(Result::ok))
+        .map(|entry| entry.path())
+        .filter(|path| {
+            path.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| {
+                    name.starts_with("javanavi-backend-")
+                        && name.ends_with(".jar")
+                        && !name.ends_with(".jar.original")
+                })
+        })
+        .collect::<Vec<_>>();
+    jars.sort_by(|left, right| right.cmp(left));
+    jars
 }
 
 fn spawn_java(

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SOURCE_JAR="$ROOT_DIR/backend/target/javanavi-backend-0.1.0.jar"
+BACKEND_DIR="$ROOT_DIR/backend"
 RESOURCE_DIR="$ROOT_DIR/src-tauri/resources"
 RESOURCE_JAR="$RESOURCE_DIR/javanavi-backend.jar"
 RESOURCE_RUNTIME_DIR="$RESOURCE_DIR/java-runtime"
@@ -34,6 +34,21 @@ safe_rm_under_root() {
 }
 
 MAVEN_PROFILES="$DESKTOP_PACKAGE_PROFILE" "$ROOT_DIR/scripts/package-web.sh"
+
+BACKEND_VERSION="$(awk '
+  /<artifactId>javanavi-backend<\/artifactId>/ { found = 1; next }
+  found && /<version>/ {
+    sub(/.*<version>/, "")
+    sub(/<\/version>.*/, "")
+    print
+    exit
+  }
+' "$BACKEND_DIR/pom.xml")"
+if [[ -z "$BACKEND_VERSION" ]]; then
+  echo "Unable to read javanavi-backend version from $BACKEND_DIR/pom.xml" >&2
+  exit 1
+fi
+SOURCE_JAR="$BACKEND_DIR/target/javanavi-backend-$BACKEND_VERSION.jar"
 
 if [[ ! -f "$SOURCE_JAR" ]]; then
   echo "Expected Java Web jar not found: $SOURCE_JAR" >&2

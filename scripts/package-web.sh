@@ -6,7 +6,6 @@ FRONTEND_DIR="$ROOT_DIR/frontend"
 BACKEND_DIR="$ROOT_DIR/backend"
 STATIC_DIR="$BACKEND_DIR/src/main/resources/static"
 TARGET_STATIC_DIR="$BACKEND_DIR/target/classes/static"
-BACKEND_JAR="$BACKEND_DIR/target/javanavi-backend-0.1.0.jar"
 JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
 MAVEN_REPO="${MAVEN_REPO:-$ROOT_DIR/.m2/repository}"
 MAVEN_PROFILES="${MAVEN_PROFILES:-}"
@@ -62,6 +61,21 @@ require_command() {
 require_command npm
 require_command mvn
 
+BACKEND_VERSION="$(awk '
+  /<artifactId>javanavi-backend<\/artifactId>/ { found = 1; next }
+  found && /<version>/ {
+    sub(/.*<version>/, "")
+    sub(/<\/version>.*/, "")
+    print
+    exit
+  }
+' "$BACKEND_DIR/pom.xml")"
+if [[ -z "$BACKEND_VERSION" ]]; then
+  echo "Unable to read javanavi-backend version from $BACKEND_DIR/pom.xml" >&2
+  exit 1
+fi
+BACKEND_JAR="$BACKEND_DIR/target/javanavi-backend-$BACKEND_VERSION.jar"
+
 if [[ ! -d "$JAVA_HOME" ]]; then
   echo "JAVA_HOME does not exist: $JAVA_HOME" >&2
   echo "Set JAVA_HOME to a Java 17+ installation and rerun." >&2
@@ -99,7 +113,7 @@ printf '\n== Build Java Web package ==\n'
   mvn "${MAVEN_ARGS[@]}" package
 )
 
-JAR_PATH="$BACKEND_DIR/target/javanavi-backend-0.1.0.jar"
+JAR_PATH="$BACKEND_JAR"
 if [[ ! -f "$JAR_PATH" ]]; then
   echo "Expected jar not found: $JAR_PATH" >&2
   exit 1
