@@ -32,6 +32,7 @@ try {
   const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs');
   const dataGridValue = await transpileToModule('src/components/dataGridValue.ts', 'dataGridValue.mjs');
   const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
+  const sidebarTreeNavigation = await transpileToModule('src/components/sidebarTreeNavigation.ts', 'sidebarTreeNavigation.mjs');
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
@@ -93,6 +94,12 @@ try {
     dataSyncRequest.validateDataSyncSelection({ sourceDatasetMode: 'table', selectedTables: ['users'], sourceQuery: '', syncContent: 'data' }),
     null,
   );
+
+  assert.deepEqual(
+    sidebarTreeNavigation.getActiveSidebarTableTarget({ type: 'table', connectionId: 'conn-1', dbName: 'demo', tableName: 'users' }),
+    { connectionId: 'conn-1', dbName: 'demo', tableName: 'users' },
+  );
+  assert.equal(sidebarTreeNavigation.getActiveSidebarTableTarget({ type: 'query', connectionId: 'conn-1' }), null);
 
   const frontendFallback = customDataSources.createCustomDataSource({
     name: '本地缓存源',

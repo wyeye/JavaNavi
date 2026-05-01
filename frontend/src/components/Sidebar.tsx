@@ -32,7 +32,9 @@ import { Tree, message, Dropdown, MenuProps, Input, Button, Modal, Form, Badge, 
   CheckOutlined,
   FilterOutlined,
   DashboardOutlined,
-  WarningOutlined
+  WarningOutlined,
+  CompressOutlined,
+  AimOutlined
 	} from '@ant-design/icons';
 import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
@@ -54,6 +56,7 @@ import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildExternalSQLDirectoryId, buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
 import JVMModeBadge from './jvm/JVMModeBadge';
+import { locateActiveSidebarTable } from './sidebarTreeNavigation';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
 
 const { Search } = Input;
@@ -125,6 +128,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const deleteExternalSQLDirectory = useStore(state => state.deleteExternalSQLDirectory);
   const addConnection = useStore(state => state.addConnection);
   const addTab = useStore(state => state.addTab);
+  const tabs = useStore(state => state.tabs);
+  const activeTabId = useStore(state => state.activeTabId);
   const setActiveContext = useStore(state => state.setActiveContext);
   const removeConnection = useStore(state => state.removeConnection);
   const connectionTags = useStore(state => state.connectionTags);
@@ -217,6 +222,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   // Virtual Scroll State
   const [treeHeight, setTreeHeight] = useState(500);
   const treeContainerRef = useRef<HTMLDivElement>(null);
+  const treeRef = useRef<any>(null);
 
   useEffect(() => {
       if (!treeContainerRef.current) return;
@@ -1612,6 +1618,17 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const onExpand = (newExpandedKeys: React.Key[]) => {
     setExpandedKeys(newExpandedKeys);
     setAutoExpandParent(false);
+  };
+
+  const clearTreeClickTimer = () => { if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; } };   const handleCollapseTree = () => { clearTreeClickTimer(); setExpandedKeys([]); setAutoExpandParent(false); message.success(t('sidebar.treeCollapse.done')); };
+  const handleLocateActiveTable = () => {
+      clearTreeClickTimer();
+      return locateActiveSidebarTable({
+          activeTab: tabs.find(tab => tab.id === activeTabId), getTreeData: () => treeData, loadDatabases, loadTables,
+          setExpandedKeys, setAutoExpandParent, setSelectedKeys, setSearchValue, setActiveContext,
+          scrollToKey: (key) => treeRef.current?.scrollTo?.({ key, align: 'top' }),
+          notify: { info: message.info, warning: message.warning, success: message.success }, t,
+      });
   };
 
   const onDoubleClick = (e: any, node: any) => {
@@ -4381,6 +4398,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
         {/* Toolbar */}
         <div style={{ padding: '6px 16px', display: 'flex', gap: 8, justifyContent: 'space-between', borderTop: `1px solid ${darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}`, borderBottom: `1px solid ${darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)'}`, background: darkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.015)' }}>
+            <Tooltip title={t('sidebar.treeCollapse')}>
+                <Button aria-label={t('sidebar.treeCollapse')} size="small" type="text" icon={<CompressOutlined />} onClick={handleCollapseTree} style={{ color: darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)' }} />
+            </Tooltip>
+            <Tooltip title={t('sidebar.locateCurrentTable')}>
+                <Button aria-label={t('sidebar.locateCurrentTable')} size="small" type="text" icon={<AimOutlined />} onClick={() => void handleLocateActiveTable()} style={{ color: darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)' }} />
+            </Tooltip>
             <Tooltip title="新建组">
                 <Button size="small" type="text" icon={<FolderOpenOutlined />} onClick={() => { setRenameViewTarget(null); createTagForm.resetFields(); setIsCreateTagModalOpen(true); }} style={{ color: darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)' }} />
             </Tooltip>
@@ -4398,6 +4421,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         <div ref={treeContainerRef} className="sidebar-tree-scroll-shell" style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
             <div className="sidebar-tree-scroll-content">
                 <Tree
+                    ref={treeRef}
                     showIcon
                     draggable={{
                         icon: false,
