@@ -390,7 +390,7 @@ public class JdbcDriverRuntimeService {
         }
         String driverClassName = discoverDriverClassName(jarPaths)
                 .orElseThrow(() -> new IllegalArgumentException(messages.message("drivers.noJdbcDriverInJar")));
-        String versionText = textOrDefault(version, messages.message("drivers.uploadVersionFallback"));
+        String versionText = textOrDefault(MojibakeTextNormalizer.normalize(version), messages.message("drivers.uploadVersionFallback"));
         Map<String, Object> metadata = orderedMap(
                 "driverType", normalizedDriverType,
                 "version", versionText,

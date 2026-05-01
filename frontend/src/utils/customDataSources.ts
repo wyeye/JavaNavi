@@ -81,9 +81,73 @@ const isBrowserStorageAvailable = (): boolean => {
 };
 
 const normalizeText = (value: unknown): string => String(value ?? '').trim();
+const DEFAULT_UPLOAD_DRIVER_VERSION = '上传-1.0';
+
+const isKnownDefaultUploadVersionMojibake = (value: string): boolean => (
+  value === 'ä¸ä¼ -1.0'
+  || value === 'ä¸Šä¼ -1.0'
+  || value === 'ä¸�ä¼ -1.0'
+  || value === 'ä¸�ä¼ -1.0'
+);
+
+const looksLikeUtf8DecodedAsLatin1 = (value: string): boolean => {
+  if (!value) {
+    return false;
+  }
+  let suspicious = 0;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if ((code >= 0xc0 && code <= 0xff) || (code >= 0x80 && code <= 0x9f)) {
+      suspicious += 1;
+    }
+  }
+  return suspicious >= 2;
+};
+
+const readabilityScore = (value: string): number => {
+  let score = 0;
+  for (const char of value) {
+    const code = char.charCodeAt(0);
+    if (/[\u4e00-\u9fff]/u.test(char)) {
+      score += 4;
+    } else if (/[A-Za-z0-9]/u.test(char)) {
+      score += 2;
+    } else if (char === '-' || char === '_' || char === '.' || /\s/u.test(char)) {
+      score += 1;
+    } else if ((code >= 0xc0 && code <= 0xff) || (code >= 0x80 && code <= 0x9f)) {
+      score -= 3;
+    }
+  }
+  return score;
+};
+
+export const normalizePossiblyMojibakeText = (value: unknown): string => {
+  const text = normalizeText(value);
+  if (isKnownDefaultUploadVersionMojibake(text)) {
+    return DEFAULT_UPLOAD_DRIVER_VERSION;
+  }
+  if (!looksLikeUtf8DecodedAsLatin1(text) || typeof TextDecoder === 'undefined') {
+    return text;
+  }
+  try {
+    const bytes = Uint8Array.from(Array.from(text, (char) => char.charCodeAt(0) & 0xff));
+    const repaired = new TextDecoder('utf-8', { fatal: true }).decode(bytes).trim();
+    if (
+      repaired
+      && repaired !== text
+      && !repaired.includes('\uFFFD')
+      && readabilityScore(repaired) > readabilityScore(text)
+    ) {
+      return repaired;
+    }
+  } catch {
+    return text;
+  }
+  return text;
+};
 
 const normalizeOptionalText = (value: unknown): string | undefined => {
-  const text = normalizeText(value);
+  const text = normalizePossiblyMojibakeText(value);
   return text || undefined;
 };
 
@@ -376,7 +440,7 @@ export const extractBackendCustomDataSourceDefinitions = (payload: any): Backend
     .map((item: any): BackendCustomDataSourceDefinition => ({
       driverType: normalizeText(item?.driverType),
       driverName: normalizeText(item?.driverName || item?.driverType),
-      version: normalizeText(item?.version),
+      version: normalizePossiblyMojibakeText(item?.version),
       driverClassName: normalizeText(item?.driverClassName),
       installSource: normalizeText(item?.installSource),
       downloadedAt: normalizeText(item?.downloadedAt),
@@ -404,7 +468,7 @@ export const extractBackendCustomDataSourceDefinition = (payload: any): BackendC
     ? {
         driverType,
         driverName: normalizeText(data?.driverName || driverType),
-        version: normalizeText(data?.version),
+        version: normalizePossiblyMojibakeText(data?.version),
         driverClassName: normalizeText(data?.driverClassName),
         installSource: normalizeText(data?.installSource),
         downloadedAt: normalizeText(data?.downloadedAt),

@@ -424,7 +424,7 @@ public class DriverCompatibilityService {
         if (files == null || files.isEmpty()) {
             throw new IllegalArgumentException(messages.message("drivers.uploadOneJar"));
         }
-        String versionText = text(version);
+        String versionText = MojibakeTextNormalizer.normalize(version);
         if (versionText.isBlank()) {
             throw new IllegalArgumentException(messages.message("drivers.versionRequiredBeforeUpload"));
         }

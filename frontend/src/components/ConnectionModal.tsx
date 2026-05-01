@@ -2625,7 +2625,6 @@ const ConnectionModal: React.FC<{
   const getBlockingSecretClearMessage = (values: any): string | null => {
     if (
       clearSecrets.primaryPassword &&
-      values.type !== "custom" &&
       !isFileDatabaseType(values.type) &&
       String(values.password ?? "") === ""
     ) {
@@ -4319,6 +4318,63 @@ const ConnectionModal: React.FC<{
                       description:
                         "当前已保存连接字符串。留空表示继续沿用，输入新值表示替换。",
                     })}
+                  </>
+                ),
+              })}
+              {renderConfigSectionCard({
+                sectionKey: "credentials",
+                icon: <SafetyCertificateOutlined />,
+                children: (
+                  <>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        gap: 16,
+                      }}
+                    >
+                      <Form.Item
+                        name="user"
+                        label="用户名 (可选)"
+                        style={{ marginBottom: 0 }}
+                        help="如果所选 JDBC 驱动支持 user 属性，可在这里填写；也可以继续放在 DSN 中。"
+                      >
+                        <Input
+                          {...noAutoCapInputProps}
+                          placeholder="例如：db_user"
+                        />
+                      </Form.Item>
+                      <Form.Item
+                        name="password"
+                        label="密码 (可选)"
+                        style={{ marginBottom: 0 }}
+                        help="保存后走现有密文存储；留空不覆盖已保存密码。"
+                      >
+                        <Input.Password
+                          {...noAutoCapInputProps}
+                          placeholder={getStoredSecretPlaceholder({
+                            hasStoredSecret: initialValues?.hasPrimaryPassword,
+                            emptyPlaceholder: "数据库密码",
+                            retainedLabel: "已保存密码",
+                          })}
+                        />
+                      </Form.Item>
+                    </div>
+                    {renderStoredSecretControls({
+                      fieldName: "password",
+                      clearKey: "primaryPassword",
+                      hasStoredSecret: initialValues?.hasPrimaryPassword,
+                      clearLabel: "清除已保存密码",
+                      description:
+                        "当前已保存自定义连接密码。留空表示继续沿用，输入新值表示替换。",
+                    })}
+                    <Alert
+                      showIcon
+                      type="info"
+                      message="密码也可以继续写在 DSN 中"
+                      description="这里填写的用户名/密码会作为 JDBC connection properties 传给驱动；少数驱动如果只接受 DSN 参数，请按驱动文档在 DSN 中配置。"
+                      style={{ marginTop: 16, marginBottom: 0 }}
+                    />
                   </>
                 ),
               })}
