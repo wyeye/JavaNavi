@@ -39,6 +39,7 @@ public class FileWorkflowCompatibilityService {
 
     private final ObjectMapper objectMapper;
     private final DatabaseCompatibilityService databaseCompatibilityService;
+    private final ExportedFileRevealService exportedFileRevealService;
     private final CompatEventPublisher publisher;
     private final CompatEventFixtures fixtures;
     private final I18nMessages messages;
@@ -53,12 +54,14 @@ public class FileWorkflowCompatibilityService {
             SecurityProperties securityProperties,
             ObjectMapper objectMapper,
             DatabaseCompatibilityService databaseCompatibilityService,
+            ExportedFileRevealService exportedFileRevealService,
             CompatEventPublisher publisher,
             CompatEventFixtures fixtures,
             I18nMessages messages
     ) {
         this.objectMapper = objectMapper;
         this.databaseCompatibilityService = databaseCompatibilityService;
+        this.exportedFileRevealService = exportedFileRevealService;
         this.publisher = publisher;
         this.fixtures = fixtures;
         this.messages = messages;
@@ -327,7 +330,7 @@ public class FileWorkflowCompatibilityService {
 
     private Map<String, Object> exportResult(Path file, int rowCount, List<String> columns, String requestedFormat, boolean dryRun) {
         try {
-            return orderedMap(
+            Map<String, Object> result = orderedMap(
                     "path", file.toString(),
                     "filePath", file.toString(),
                     "filename", file.getFileName().toString(),
@@ -340,6 +343,8 @@ public class FileWorkflowCompatibilityService {
                     "webManaged", true,
                     "dryRun", dryRun
             );
+            result.putAll(exportedFileRevealService.revealFields(file));
+            return result;
         } catch (IOException error) {
             throw new IllegalStateException("Unable to inspect JavaNavi export file.", error);
         }

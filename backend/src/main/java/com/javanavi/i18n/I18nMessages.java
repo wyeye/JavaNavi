@@ -161,6 +161,11 @@ public class I18nMessages {
         put("sync.jdbcPreview", "JDBC table-to-table sync preview.", "JDBC 表到表同步预览");
         put("files.selectOnlyExport", "Only SELECT/WITH query export is supported.", "仅支持 SELECT/WITH 查询导出");
         put("files.safeTableRequired", "Table name is required and may contain only safe identifier characters.", "表名不能为空，且只能包含安全标识符字符。");
+        put("files.revealExportDisabled", "Automatic export file reveal is disabled in this environment. Copy the file path manually: {path}", "自动定位导出文件已被当前环境禁用，请手动复制文件路径：{path}");
+        put("files.revealedExportFile", "Export completed and the file has been selected in the system file manager: {path}", "导出完成，已在系统文件管理器中定位文件：{path}");
+        put("files.openedExportDirectory", "Export completed and the containing directory has been opened: {directory}", "导出完成，已打开文件所在目录：{directory}");
+        put("files.revealExportInterrupted", "Export completed, but opening the exported file location was interrupted. Copy the file path manually: {path}", "导出完成，但打开导出文件位置时被中断，请手动复制文件路径：{path}");
+        put("files.revealExportFailed", "Export completed, but the exported file location could not be opened automatically. Copy the file path manually: {path}{suffix}", "导出完成，但无法自动打开导出文件位置，请手动复制文件路径：{path}{suffix}");
         put("events.readSource", "Read source data", "读取源数据");
         put("events.writeTarget", "Write target table", "写入目标表");
         put("events.complete", "Complete", "完成");
@@ -261,6 +266,11 @@ public class I18nMessages {
                 Map.entry("JDBC 表到表同步预览", "sync.jdbcPreview"),
                 Map.entry("仅支持 SELECT/WITH 查询导出", "files.selectOnlyExport"),
                 Map.entry("表名不能为空，且只能包含安全标识符字符。", "files.safeTableRequired"),
+                Map.entry("自动定位导出文件已被当前环境禁用，请手动复制文件路径：", "files.revealExportDisabled"),
+                Map.entry("导出完成，已在系统文件管理器中定位文件：", "files.revealedExportFile"),
+                Map.entry("导出完成，已打开文件所在目录：", "files.openedExportDirectory"),
+                Map.entry("导出完成，但打开导出文件位置时被中断，请手动复制文件路径：", "files.revealExportInterrupted"),
+                Map.entry("导出完成，但无法自动打开导出文件位置，请手动复制文件路径：", "files.revealExportFailed"),
                 Map.entry("读取源数据", "events.readSource"),
                 Map.entry("写入目标表", "events.writeTarget"),
                 Map.entry("完成", "events.complete"),
@@ -343,6 +353,21 @@ public class I18nMessages {
         }
         if (normalized.startsWith("不支持按需下载的 JDBC 驱动类型:")) {
             return message("drivers.unsupportedDownloadType", "type", normalized.substring("不支持按需下载的 JDBC 驱动类型:".length()).trim());
+        }
+        if (normalized.startsWith("Automatic export file reveal is disabled in this environment. Copy the file path manually:")) {
+            return message("files.revealExportDisabled", "path", normalized.substring("Automatic export file reveal is disabled in this environment. Copy the file path manually:".length()).trim());
+        }
+        if (normalized.startsWith("Export completed and the file has been selected in the system file manager:")) {
+            return message("files.revealedExportFile", "path", normalized.substring("Export completed and the file has been selected in the system file manager:".length()).trim());
+        }
+        if (normalized.startsWith("Export completed and the containing directory has been opened:")) {
+            return message("files.openedExportDirectory", "directory", normalized.substring("Export completed and the containing directory has been opened:".length()).trim());
+        }
+        if (normalized.startsWith("Export completed, but opening the exported file location was interrupted. Copy the file path manually:")) {
+            return message("files.revealExportInterrupted", "path", normalized.substring("Export completed, but opening the exported file location was interrupted. Copy the file path manually:".length()).trim());
+        }
+        if (normalized.startsWith("Export completed, but the exported file location could not be opened automatically. Copy the file path manually:")) {
+            return message("files.revealExportFailed", "path", normalized.substring("Export completed, but the exported file location could not be opened automatically. Copy the file path manually:".length()).trim(), "suffix", "");
         }
         return normalized;
     }

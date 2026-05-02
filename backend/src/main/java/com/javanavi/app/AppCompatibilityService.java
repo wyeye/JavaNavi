@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.connections.ConnectionPackageCompatibilityService;
+import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import com.javanavi.security.SecretStore;
@@ -28,6 +29,7 @@ public class AppCompatibilityService {
 
     private final ObjectMapper objectMapper;
     private final ConnectionPackageCompatibilityService connectionPackageCompatibilityService;
+    private final ExportedFileRevealService exportedFileRevealService;
     private final SecretStore secretStore;
     private final Path dataDirectory;
     private final Path globalProxyFile;
@@ -37,10 +39,12 @@ public class AppCompatibilityService {
             SecurityProperties securityProperties,
             ObjectMapper objectMapper,
             ConnectionPackageCompatibilityService connectionPackageCompatibilityService,
+            ExportedFileRevealService exportedFileRevealService,
             SecretStore secretStore
     ) {
         this.objectMapper = objectMapper;
         this.connectionPackageCompatibilityService = connectionPackageCompatibilityService;
+        this.exportedFileRevealService = exportedFileRevealService;
         this.secretStore = secretStore;
         this.dataDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize();
         this.globalProxyFile = dataDirectory.resolve("global-proxy.json");
@@ -153,13 +157,17 @@ public class AppCompatibilityService {
             Path exportFile = dataDirectory.resolve("exports").resolve("connections-" + Instant.now().toEpochMilli() + ".javanavi-conn");
             Map<String, Object> payload = connectionPackageCompatibilityService.buildExportFile(Boolean.TRUE.equals(includeSecrets), filePassword);
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(exportFile.toFile(), payload);
-            return orderedMap(
+            Map<String, Object> result = orderedMap(
                     "path", exportFile.toString(),
+                    "filePath", exportFile.toString(),
+                    "filename", exportFile.getFileName().toString(),
                     "secretsIncluded", Boolean.TRUE.equals(includeSecrets),
                     "javaNaviPackage", true,
                     "schemaVersion", payload.get("v"),
                     "protection", payload.get("p")
             );
+            result.putAll(exportedFileRevealService.revealFields(exportFile));
+            return result;
         } catch (IOException error) {
             throw new IllegalStateException("Unable to export JavaNavi connections package.", error);
         }

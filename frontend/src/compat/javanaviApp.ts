@@ -219,6 +219,14 @@ function apiEnvelopeToQueryResult(payload: any, fallbackMessage = 'OK'): QueryRe
   if (payload.success === false) return { success: false, message: payload.error?.message || payload.message || translateBackendFallback(language, 'Request failed'), data: payload.data ?? null } as QueryResult;
   const data = payload.data ?? payload;
   const fields = Array.isArray(data?.columns) ? data.columns : undefined;
+  const revealFields = {
+    revealMessage: data?.revealMessage,
+    revealTargetPath: data?.revealTargetPath,
+    revealDirectory: data?.revealDirectory,
+    revealMethod: data?.revealMethod,
+    revealed: data?.revealed,
+    revealSelected: data?.revealSelected,
+  };
   if (Array.isArray(data?.rows) && Array.isArray(data?.columns)) {
     const affectedRow = data.columns.length === 1 && data.columns[0] === 'affectedRows' && data.rows.length > 0;
     return {
@@ -227,9 +235,10 @@ function apiEnvelopeToQueryResult(payload: any, fallbackMessage = 'OK'): QueryRe
       data: affectedRow ? data.rows[0] : data.rows,
       fields,
       queryId: data.queryId,
+      ...revealFields,
     } as QueryResult;
   }
-  return { success: true, message: payload.message || localizedFallback, data, fields, queryId: data?.queryId } as QueryResult;
+  return { success: true, message: payload.message || localizedFallback, data, fields, queryId: data?.queryId, ...revealFields } as QueryResult;
 }
 
 export function GenerateQueryID(): Promise<string> {

@@ -787,6 +787,12 @@ export namespace connection {
 	    data: any;
 	    fields?: string[];
 	    queryId?: string;
+	    revealMessage?: string;
+	    revealTargetPath?: string;
+	    revealDirectory?: string;
+	    revealMethod?: string;
+	    revealed?: boolean;
+	    revealSelected?: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new QueryResult(source);
@@ -799,6 +805,12 @@ export namespace connection {
 	        this.data = source["data"];
 	        this.fields = source["fields"];
 	        this.queryId = source["queryId"];
+	        this.revealMessage = source["revealMessage"];
+	        this.revealTargetPath = source["revealTargetPath"];
+	        this.revealDirectory = source["revealDirectory"];
+	        this.revealMethod = source["revealMethod"];
+	        this.revealed = source["revealed"];
+	        this.revealSelected = source["revealSelected"];
 	    }
 	}
 	

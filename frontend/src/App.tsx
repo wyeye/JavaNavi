@@ -50,6 +50,7 @@ import {
   type SecurityUpdateSettingsFocusTarget,
 } from './utils/securityUpdateRepairFlow';
 import { getWindowsScaleFixNudgedWidth, hasWindowsViewportScaleDrift } from './utils/windowsScaleFix';
+import { exportSuccessMessage } from './utils/exportResultMessage';
 import {
   SHORTCUT_ACTION_META,
   SHORTCUT_ACTION_ORDER,
@@ -1873,7 +1874,7 @@ function App() {
               }
 
               closeConnectionPackageDialog();
-              void message.success(t('connection.package.exportSuccess'));
+              void message.success(exportSuccessMessage(res, language, t('connection.package.exportSuccess')));
               return;
           }
 

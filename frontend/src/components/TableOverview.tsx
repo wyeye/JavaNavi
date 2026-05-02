@@ -10,6 +10,7 @@ import { noAutoCapInputProps } from '../utils/inputAutoCap';
 import { getTableDataDangerActionMeta, supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
+import { exportSuccessMessage } from '../utils/exportResultMessage';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
 import {
     TABLE_OVERVIEW_RENDER_BATCH_SIZE,
@@ -297,11 +298,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         const res = await ExportTable(buildRpcConnectionConfig(config) as any, tab.dbName || '', tableName, format);
         hide();
         if (res.success) {
-            message.success('导出成功');
+            message.success(exportSuccessMessage(res, language));
         } else if (res.message !== '已取消') {
             message.error('导出失败: ' + res.message);
         }
-    }, [buildConfig, tab.dbName]);
+    }, [buildConfig, language, tab.dbName]);
 
     const handleDeleteTable = useCallback((tableName: string) => {
         const config = buildConfig();

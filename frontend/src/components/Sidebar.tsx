@@ -56,6 +56,7 @@ import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 import { buildExternalSQLDirectoryId, buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
+import { exportSuccessMessage } from '../utils/exportResultMessage';
 import JVMModeBadge from './jvm/JVMModeBadge';
 import { locateActiveSidebarTable } from './sidebarTreeNavigation';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
@@ -150,6 +151,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const addSqlLog = useStore(state => state.addSqlLog);
   const language = useStore(state => state.language);
   const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
+  const showExportSuccess = (res: unknown, fallback?: string) => {
+      message.success(exportSuccessMessage(res, language, fallback));
+  };
   const darkMode = theme === 'dark';
   const resolvedAppearance = resolveAppearanceValues(appearance);
   const opacity = normalizeOpacityForPlatform(resolvedAppearance.opacity);
@@ -1764,7 +1768,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const res = await ExportTable(buildRpcConnectionConfig(config) as any, dbName, tableName, format);
       hide();
       if (res.success) {
-          message.success('导出成功');
+          showExportSuccess(res);
       } else if (res.message !== '已取消') {
           message.error('导出失败: ' + res.message);
       }
@@ -1782,7 +1786,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           const res = await (window as any).go.app.App.ExportDatabaseSQL(normalizeConnConfig(conn.config), dbName, includeData);
           hide();
           if (res.success) {
-              message.success('导出成功');
+              showExportSuccess(res);
           } else if (res.message !== '已取消') {
               message.error('导出失败: ' + res.message);
           }
@@ -1809,7 +1813,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           const res = await (window as any).go.app.App.ExportTablesSQL(normalizeConnConfig(first.config), dbName, tableNames, includeData);
           hide();
           if (res.success) {
-              message.success('导出成功');
+              showExportSuccess(res);
           } else if (res.message !== '已取消') {
               message.error('导出失败: ' + res.message);
           }
@@ -1995,9 +1999,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           hide();
           if (res.success) {
               if (mode !== 'schema' && selectedViewCount > 0) {
-                  message.success(`导出成功（已自动跳过 ${selectedViewCount} 个视图的数据导出）`);
+                  showExportSuccess(res, `导出成功（已自动跳过 ${selectedViewCount} 个视图的数据导出）`);
               } else {
-                  message.success('导出成功');
+                  showExportSuccess(res);
               }
           } else if (res.message !== '已取消') {
               message.error('导出失败: ' + res.message);
@@ -2226,7 +2230,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               const res = await (window as any).go.app.App.ExportDatabaseSQL(normalizeConnConfig(batchConnContext.config), db.dbName, includeData);
               hide();
               if (res.success) {
-                  message.success(`${db.dbName} 导出成功`);
+                  showExportSuccess(res, `${db.dbName} 导出成功`);
               } else if (res.message !== '已取消') {
                   message.error(`${db.dbName} 导出失败: ` + res.message);
                   break;

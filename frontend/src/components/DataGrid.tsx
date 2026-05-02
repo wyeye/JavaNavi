@@ -54,6 +54,7 @@ import { buildCopiedRowsForPaste, buildPastedRowsFromCopiedRows } from './dataGr
 import { applyNoAutoCapAttributesWithin, noAutoCapInputProps } from '../utils/inputAutoCap';
 import { resolveEditRowLocator, resolveRowLocatorValues, type EditRowLocator } from '../utils/rowLocator';
 import { translate } from '../i18n';
+import { exportSuccessMessage } from '../utils/exportResultMessage';
 import {
     TEMPORAL_FORMATS,
     formatFromDayjs,
@@ -892,6 +893,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const theme = useStore(state => state.theme);
   const appearance = useStore(state => state.appearance);
   const queryOptions = useStore(state => state.queryOptions);
+  const language = useStore(state => state.language);
   const setQueryOptions = useStore(state => state.setQueryOptions);
   const tableColumnOrders = useStore(state => state.tableColumnOrders);
   const enableColumnOrderMemory = useStore(state => state.enableColumnOrderMemory);
@@ -929,6 +931,9 @@ const DataGrid: React.FC<DataGridProps> = ({
   const canImport = exportScope === 'table' && !!tableName;
   const canExport = !!connectionId && (isQueryResultExport || !!tableName);
   const canViewDdl = exportScope === 'table' && !!connectionId && !!dbName && !!tableName;
+  const showExportSuccess = useCallback((res: unknown) => {
+      void message.success(exportSuccessMessage(res, language));
+  }, [language]);
   const filteredExportSql = useMemo(() => String(exportSqlWithFilter || '').trim(), [exportSqlWithFilter]);
   const hasFilteredExportSql = exportScope === 'table' && filteredExportSql.length > 0;
   const selectionColumnWidth = 46;
@@ -1303,7 +1308,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           // Pass tableName (or 'export') as default filename
           const res = await ExportData(cleanRows, displayColumnNames, tableName || 'export', format);
           if (res.success) {
-              void message.success("导出成功");
+              showExportSuccess(res);
           } else if (res.message !== "已取消") {
               void message.error("导出失败: " + res.message);
           }
@@ -4076,7 +4081,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       try {
           const res = await ExportQuery(buildRpcConnectionConfig(config) as any, dbName || '', sql, defaultName || 'export', format);
           if (res.success) {
-              void message.success("导出成功");
+              showExportSuccess(res);
           } else if (res.message !== "已取消") {
               void message.error("导出失败: " + res.message);
           }
@@ -4085,7 +4090,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       } finally {
           hide();
       }
-  }, [buildConnConfig, dbName]);
+  }, [buildConnConfig, dbName, showExportSuccess]);
 
   const buildPkWhereSql = useCallback((rows: any[], dbType: string) => {
       if (!tableName || pkColumns.length === 0) return '';
@@ -4199,7 +4204,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           try {
               const res = await ExportTable(buildRpcConnectionConfig(config) as any, dbName || '', tableName, format);
               if (res.success) {
-                  void message.success("导出成功");
+                  showExportSuccess(res);
               } else if (res.message !== "已取消") {
                   void message.error("导出失败: " + res.message);
               }
