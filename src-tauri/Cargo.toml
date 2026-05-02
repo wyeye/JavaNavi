@@ -1,6 +1,6 @@
 [package]
 name = "javanavi-desktop"
-version = "0.1.4"
+version = "1.5.0"
 description = "JavaNavi Tauri desktop shell for the Spring Boot web package"
 authors = ["JavaNavi Maintainers"]
 edition = "2021"
