@@ -619,9 +619,19 @@ export async function ImportData(arg1:connection.ConnectionConfig,arg2:string,ar
   return apiEnvelopeToQueryResult(payload, 'Import file selected');
 }
 
-export async function ImportDataWithProgress(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
+export async function UploadImportFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:File): Promise<connection.QueryResult> {
+  const body = new FormData();
+  body.append('database', arg2 || '');
+  body.append('table', arg3 || '');
+  body.append('tableName', arg3 || '');
+  body.append('file', arg4);
+  const payload = await postMultipart('/files/import/upload', body);
+  return apiEnvelopeToQueryResult(payload, 'Import file uploaded');
+}
+
+export async function ImportDataWithProgress(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5 = false): Promise<connection.QueryResult> {
   await replayEventFixture('import', { correlationId: arg4 || arg3, payload: { table: arg3, database: arg2, filePath: arg4 } });
-  const payload = await postJson('/files/import/run', { connection: toConnectionPayload(arg1), database: arg2, table: arg3, filePath: arg4 });
+  const payload = await postJson('/files/import/run', { connection: toConnectionPayload(arg1), database: arg2, table: arg3, filePath: arg4, applyToDatabase: arg5 });
   return apiEnvelopeToQueryResult(payload, 'Import completed');
 }
 

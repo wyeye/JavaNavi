@@ -23,7 +23,7 @@ import {
     arrayMove 
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ImportData, ExportTable, ExportData, ExportQuery, ApplyChanges, DBGetColumns, DBGetIndexes, DBShowCreateTable } from '@compat/javanaviApp';
+import { UploadImportFile, ExportTable, ExportData, ExportQuery, ApplyChanges, DBGetColumns, DBGetIndexes, DBShowCreateTable } from '@compat/javanaviApp';
 import ImportPreviewModal from './ImportPreviewModal';
 import { useStore } from '../store';
 import type { ColumnDefinition, IndexDefinition } from '../types';
@@ -582,7 +582,7 @@ const EditableCell: React.FC<EditableCellProps> = React.memo(({
     ) : (
       <div
         className="editable-cell-value-wrap"
-        style={{ paddingRight: 24, minHeight: 20, position: 'relative' }}
+        style={{ paddingRight: 24, minHeight: 20, position: 'relative', fontWeight: DATA_GRID_BODY_FONT_WEIGHT }}
         onContextMenu={handleContextMenu}
       >
         {children}
@@ -591,7 +591,7 @@ const EditableCell: React.FC<EditableCellProps> = React.memo(({
   } else if (cellContextMenuContext) {
     // 非编辑模式（只读查询结果）也绑定右键菜单，支持复制为 INSERT/JSON/CSV 等操作
     childNode = (
-      <div onContextMenu={handleContextMenu} style={{ minHeight: 20 }}>
+      <div onContextMenu={handleContextMenu} style={{ minHeight: 20, fontWeight: DATA_GRID_BODY_FONT_WEIGHT }}>
         {children}
       </div>
     );
@@ -879,8 +879,20 @@ export const buildDataGridCommitChangeSet = ({
 };
 
 // P2 性能优化：提取内联 style 对象为模块级常量，避免每次 render 创建新对象
-const CELL_ELLIPSIS_STYLE: React.CSSProperties = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' };
-const VIRTUAL_CELL_WRAPPER_STYLE: React.CSSProperties = { margin: -8, padding: '8px 8px 8px 8px' };
+const DATA_GRID_BODY_FONT_WEIGHT = 400;
+const DATA_GRID_BODY_FONT_WEIGHT_CSS = String(DATA_GRID_BODY_FONT_WEIGHT);
+
+const CELL_ELLIPSIS_STYLE: React.CSSProperties = {
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
+  fontWeight: DATA_GRID_BODY_FONT_WEIGHT,
+};
+const VIRTUAL_CELL_WRAPPER_STYLE: React.CSSProperties = {
+  margin: -8,
+  padding: '8px 8px 8px 8px',
+  fontWeight: DATA_GRID_BODY_FONT_WEIGHT,
+};
 
 const DataGrid: React.FC<DataGridProps> = ({
     data, columnNames, loading, tableName, exportScope = 'table', resultSql, dbName, connectionId, pkColumns = [], editLocator, readOnly = false,
@@ -927,8 +939,9 @@ const DataGrid: React.FC<DataGridProps> = ({
   const isDuckDBConnection = dataSourceCaps.type === 'duckdb';
   const supportsCopyInsert = dataSourceCaps.supportsCopyInsert;
   const supportsSqlQueryExport = dataSourceCaps.supportsSqlQueryExport;
+  const supportsImport = dataSourceCaps.supportsImport;
   const isQueryResultExport = exportScope === 'queryResult';
-  const canImport = exportScope === 'table' && !!tableName;
+  const canImport = exportScope === 'table' && !!tableName && supportsImport;
   const canExport = !!connectionId && (isQueryResultExport || !!tableName);
   const canViewDdl = exportScope === 'table' && !!connectionId && !!dbName && !!tableName;
   const showExportSuccess = useCallback((res: unknown) => {
@@ -1207,6 +1220,48 @@ const DataGrid: React.FC<DataGridProps> = ({
     dataIndex: '',
     title: '',
   });
+  const closeCellContextMenu = useCallback(() => {
+    setCellContextMenu(prev => ({ ...prev, visible: false }));
+  }, []);
+
+  const cellContextActionStyle: React.CSSProperties = {
+    padding: '8px 12px',
+    cursor: 'pointer',
+    transition: 'background 0.2s',
+  };
+
+  const getCellContextHoverHandlers = useCallback((disabled = false) => ({
+    onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!disabled) e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5';
+    },
+    onMouseLeave: (e: React.MouseEvent<HTMLDivElement>) => {
+      e.currentTarget.style.background = 'transparent';
+    },
+  }), [darkMode]);
+
+  const renderCellContextAction = useCallback((label: string, action: () => void | Promise<void>, options?: { icon?: React.ReactNode; disabled?: boolean }) => (
+    <div
+      style={{
+        ...cellContextActionStyle,
+        cursor: options?.disabled ? 'not-allowed' : 'pointer',
+        opacity: options?.disabled ? 0.5 : 1,
+      }}
+      {...getCellContextHoverHandlers(options?.disabled)}
+      onClick={() => {
+        if (options?.disabled) return;
+        try {
+          void Promise.resolve(action()).catch(console.error);
+        } catch (error) {
+          console.error(error);
+        }
+        closeCellContextMenu();
+      }}
+    >
+      {options?.icon}
+      {label}
+    </div>
+  ), [closeCellContextMenu, getCellContextHoverHandlers]);
+
   const containerRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const tableScrollTargetsRef = useRef<HTMLElement[]>([]);
@@ -1709,12 +1764,36 @@ const DataGrid: React.FC<DataGridProps> = ({
                     user-select: none;
                     -webkit-user-select: none;
                     cursor: crosshair;
-                    font-weight: 400 !important;
+                    font-weight: ${DATA_GRID_BODY_FONT_WEIGHT_CSS} !important;
+                }
+                .${gridId} .ant-table-tbody > tr,
+                .${gridId} .ant-table-tbody .ant-table-row,
+                .${gridId} .ant-table-tbody-virtual-holder .ant-table-row,
+                .${gridId} .ant-table-tbody-virtual-holder-inner,
+                .${gridId} .rc-virtual-list-holder,
+                .${gridId} .ant-table-cell[data-col-name],
+                .${gridId} .ant-table-cell[data-col-name] * {
+                    font-weight: ${DATA_GRID_BODY_FONT_WEIGHT_CSS} !important;
+                    font-synthesis: none;
+                    font-synthesis-weight: none;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
+                    text-shadow: none !important;
                 }
                 .${gridId} .ant-table-cell[data-col-name] .data-grid-cell-content,
                 .${gridId} .ant-table-cell[data-col-name] .data-grid-cell-virtual-wrap,
                 .${gridId} .ant-table-cell[data-col-name] .editable-cell-value-wrap {
-                    font-weight: inherit !important;
+                    font-weight: ${DATA_GRID_BODY_FONT_WEIGHT_CSS} !important;
+                }
+                .${gridId} .ant-table-cell[data-col-name] b,
+                .${gridId} .ant-table-cell[data-col-name] strong,
+                .${gridId} .ant-table-cell[data-col-name] mark {
+                    font-weight: ${DATA_GRID_BODY_FONT_WEIGHT_CSS} !important;
+                    font-synthesis: none;
+                    font-synthesis-weight: none;
+                    -webkit-font-smoothing: antialiased;
+                    -moz-osx-font-smoothing: grayscale;
+                    text-shadow: none !important;
                 }
                 .${gridId} .ant-table-tbody > tr > td[data-cell-selected="true"],
                 .${gridId} .ant-table-tbody .ant-table-row > .ant-table-cell[data-cell-selected="true"],
@@ -4183,6 +4262,20 @@ const DataGrid: React.FC<DataGridProps> = ({
       await exportByQuery(sql, format, tableName || 'export');
   }, [getTargets, isQueryResultExport, connectionId, tableName, hasChanges, exportData, buildConnConfig, buildPkWhereSql, exportByQuery]);
 
+  const exportCellContextActions = useCallback((record: Item | null) => ([
+    ['CSV', 'csv'],
+    ['Excel', 'xlsx'],
+    ['JSON', 'json'],
+    ['Markdown', 'md'],
+    ['HTML', 'html'],
+  ] as const).map(([label, format]) => (
+    <React.Fragment key={format}>
+      {renderCellContextAction(`导出为 ${label}`, () => {
+        if (record) return handleExportSelected(format, record);
+      })}
+    </React.Fragment>
+  )), [handleExportSelected, renderCellContextAction]);
+
   // Export
   const handleExport = async (format: string) => {
       if (!connectionId) return;
@@ -4292,16 +4385,54 @@ const DataGrid: React.FC<DataGridProps> = ({
 
   const handleImport = async () => {
       if (!connectionId || !tableName) return;
+      if (!supportsImport) {
+          void message.warning("当前数据源暂不支持表格导入");
+          return;
+      }
       const config = buildConnConfig();
       if (!config) return;
 
-      const res = await ImportData(buildRpcConnectionConfig(config) as any, dbName || '', tableName);
-      if (res.success && res.data && res.data.filePath) {
-          setImportFilePath(res.data.filePath);
-          setImportPreviewVisible(true);
-      } else if (res.message !== "已取消") {
-          void message.error("选择文件失败: " + res.message);
-      }
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.csv,.json,text/csv,application/json';
+      input.style.display = 'none';
+      let cleaned = false;
+      const cleanupInput = () => {
+          if (cleaned) return;
+          cleaned = true;
+          input.remove();
+          window.removeEventListener('focus', cleanupAfterDialog);
+      };
+      const cleanupAfterDialog = () => {
+          window.setTimeout(() => {
+              if (!input.files || input.files.length === 0) {
+                  cleanupInput();
+              }
+          }, 0);
+      };
+      input.onchange = async () => {
+          const file = input.files?.[0];
+          cleanupInput();
+          if (!file) return;
+          const hide = message.loading(`正在上传导入文件...`, 0);
+          try {
+              const res = await UploadImportFile(buildRpcConnectionConfig(config) as any, dbName || '', tableName, file);
+              if (res.success && res.data && res.data.filePath) {
+                  setImportFilePath(res.data.filePath);
+                  setImportPreviewVisible(true);
+              } else if (res.message !== "已取消") {
+                  void message.error("上传文件失败: " + res.message);
+              }
+          } catch (e: any) {
+              void message.error("上传文件失败: " + (e?.message || String(e)));
+          } finally {
+              hide();
+          }
+      };
+      input.oncancel = cleanupInput;
+      document.body.appendChild(input);
+      window.addEventListener('focus', cleanupAfterDialog);
+      input.click();
   };
 
   const handleImportSuccess = () => {
@@ -6003,236 +6134,39 @@ const DataGrid: React.FC<DataGridProps> = ({
             >
                 {canModifyData && (
                     <>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={handleCellSetNull}
-                >
-                    设置为 NULL
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={handleOpenContextMenuRowEditor}
-                >
-                    <EditOutlined style={{ marginRight: 8 }} />
-                    编辑本行
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: selectedRowKeys.length > 0 ? 'pointer' : 'not-allowed',
-                        transition: 'background 0.2s',
-                        opacity: selectedRowKeys.length > 0 ? 1 : 0.5,
-                    }}
-                    onMouseEnter={(e) => {
-                        if (selectedRowKeys.length > 0) e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5';
-                    }}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (selectedRowKeys.length > 0 && cellContextMenu.record) {
-                            handleBatchFillToSelected(cellContextMenu.record, cellContextMenu.dataIndex);
-                        }
-                    }}
-                >
-                    <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />
-                    填充到选中行 ({selectedRowKeys.length})
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: copiedCellPatch ? 'pointer' : 'not-allowed',
-                        transition: 'background 0.2s',
-                        opacity: copiedCellPatch ? 1 : 0.5,
-                    }}
-                    onMouseEnter={(e) => {
-                        if (copiedCellPatch) e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5';
-                    }}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (!copiedCellPatch) return;
-                        const fallbackKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
-                        handlePasteCopiedColumnsToSelectedRows(fallbackKey);
-                    }}
-                >
-                    <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />
-                    粘贴已复制列（同名列）
-                </div>
-                <div style={{ height: 1, background: darkMode ? '#303030' : '#f0f0f0', margin: '4px 0' }} />
+                        {renderCellContextAction('设置为 NULL', handleCellSetNull)}
+                        {renderCellContextAction('编辑本行', handleOpenContextMenuRowEditor, { icon: <EditOutlined style={{ marginRight: 8 }} /> })}
+                        {renderCellContextAction(`填充到选中行 (${selectedRowKeys.length})`, () => {
+                            if (cellContextMenu.record) handleBatchFillToSelected(cellContextMenu.record, cellContextMenu.dataIndex);
+                        }, { icon: <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />, disabled: selectedRowKeys.length === 0 })}
+                        {renderCellContextAction('粘贴已复制列（同名列）', () => {
+                            const fallbackKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
+                            handlePasteCopiedColumnsToSelectedRows(fallbackKey);
+                        }, { icon: <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />, disabled: !copiedCellPatch })}
+                        <div style={{ height: 1, background: darkMode ? '#303030' : '#f0f0f0', margin: '4px 0' }} />
                     </>
                 )}
                 {supportsCopyInsert && (
                     <>
-                        <div
-                            style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                transition: 'background 0.2s',
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            onClick={() => {
-                                if (cellContextMenu.record) handleCopyInsert(cellContextMenu.record);
-                                setCellContextMenu(prev => ({ ...prev, visible: false }));
-                            }}
-                        >
-                            复制为 INSERT
-                        </div>
-                        <div
-                            style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                transition: 'background 0.2s',
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            onClick={() => {
-                                if (cellContextMenu.record) handleCopyUpdate(cellContextMenu.record);
-                                setCellContextMenu(prev => ({ ...prev, visible: false }));
-                            }}
-                        >
-                            复制为 UPDATE
-                        </div>
-                        <div
-                            style={{
-                                padding: '8px 12px',
-                                cursor: 'pointer',
-                                transition: 'background 0.2s',
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                            onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                            onClick={() => {
-                                if (cellContextMenu.record) handleCopyDelete(cellContextMenu.record);
-                                setCellContextMenu(prev => ({ ...prev, visible: false }));
-                            }}
-                        >
-                            复制为 DELETE
-                        </div>
+                        {renderCellContextAction('复制为 INSERT', () => { if (cellContextMenu.record) handleCopyInsert(cellContextMenu.record); })}
+                        {renderCellContextAction('复制为 UPDATE', () => { if (cellContextMenu.record) handleCopyUpdate(cellContextMenu.record); })}
+                        {renderCellContextAction('复制为 DELETE', () => { if (cellContextMenu.record) handleCopyDelete(cellContextMenu.record); })}
                     </>
                 )}
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (cellContextMenu.record) handleCopyJson(cellContextMenu.record);
-                        setCellContextMenu(prev => ({ ...prev, visible: false }));
-                    }}
-                >
-                    复制为 JSON
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (cellContextMenu.record) handleCopyCsv(cellContextMenu.record);
-                        setCellContextMenu(prev => ({ ...prev, visible: false }));
-                    }}
-                >
-                    复制为 CSV
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (cellContextMenu.record) {
-                            const records = getTargets(cellContextMenu.record);
-                            const lines = records.map((r: any) => {
-                                const { [JAVANAVI_ROW_KEY]: _rowKey, ...vals } = r;
-                                return `| ${Object.values(vals).join(' | ')} |`;
-                            });
-                            copyToClipboard(lines.join('\n'));
-                        }
-                        setCellContextMenu(prev => ({ ...prev, visible: false }));
-                    }}
-                >
-                    复制为 Markdown
-                </div>
+                {renderCellContextAction('复制为 JSON', () => { if (cellContextMenu.record) handleCopyJson(cellContextMenu.record); })}
+                {renderCellContextAction('复制为 CSV', () => { if (cellContextMenu.record) handleCopyCsv(cellContextMenu.record); })}
+                {renderCellContextAction('复制为 Markdown', () => {
+                    if (cellContextMenu.record) {
+                        const records = getTargets(cellContextMenu.record);
+                        const lines = records.map((r: any) => {
+                            const { [JAVANAVI_ROW_KEY]: _rowKey, ...vals } = r;
+                            return `| ${Object.values(vals).join(' | ')} |`;
+                        });
+                        copyToClipboard(lines.join('\n'));
+                    }
+                })}
                 <div style={{ height: 1, background: darkMode ? '#303030' : '#f0f0f0', margin: '4px 0' }} />
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (cellContextMenu.record) handleExportSelected('csv', cellContextMenu.record).catch(console.error);
-                        setCellContextMenu(prev => ({ ...prev, visible: false }));
-                    }}
-                >
-                    导出为 CSV
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (cellContextMenu.record) handleExportSelected('xlsx', cellContextMenu.record).catch(console.error);
-                        setCellContextMenu(prev => ({ ...prev, visible: false }));
-                    }}
-                >
-                    导出为 Excel
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (cellContextMenu.record) handleExportSelected('json', cellContextMenu.record).catch(console.error);
-                        setCellContextMenu(prev => ({ ...prev, visible: false }));
-                    }}
-                >
-                    导出为 JSON
-                </div>
-                <div
-                    style={{
-                        padding: '8px 12px',
-                        cursor: 'pointer',
-                        transition: 'background 0.2s',
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5'}
-                    onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                    onClick={() => {
-                        if (cellContextMenu.record) handleExportSelected('html', cellContextMenu.record).catch(console.error);
-                        setCellContextMenu(prev => ({ ...prev, visible: false }));
-                    }}
-                >
-                    导出为 HTML
-                </div>
+                {exportCellContextActions(cellContextMenu.record)}
             </div>,
             document.body
         )}

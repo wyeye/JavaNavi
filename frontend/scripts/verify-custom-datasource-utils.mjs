@@ -34,6 +34,8 @@ try {
   const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
   const sidebarTreeNavigation = await transpileToModule('src/components/sidebarTreeNavigation.ts', 'sidebarTreeNavigation.mjs');
   const driverSelection = await transpileToModule('src/utils/driverSelection.ts', 'driverSelection.mjs');
+  const dataSourceCapabilities = await transpileToModule('src/utils/dataSourceCapabilities.ts', 'dataSourceCapabilities.mjs');
+  const shortcuts = await transpileToModule('src/utils/shortcuts.ts', 'shortcuts.mjs');
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
@@ -122,6 +124,43 @@ try {
     driverSelection.filterDriverOptionsForDatabase('doris', [{ driverType: 'diros', databaseType: 'diros' }]).map((option) => option.driverType),
     ['diros'],
     'datasource aliases should normalize before option filtering',
+  );
+
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'mysql' }).supportsImport, true);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'postgresql' }).supportsImport, true);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'sqlite' }).supportsImport, true);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'duckdb' }).supportsImport, true);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'custom', driver: 'kingbase' }).supportsImport, true);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'mongodb' }).supportsImport, false);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'oracle' }).supportsImport, false);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'sqlserver' }).supportsImport, false);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'clickhouse' }).supportsImport, false);
+  assert.equal(dataSourceCapabilities.getDataSourceCapabilities({ type: 'redis' }).supportsImport, false);
+
+  assert.equal(
+    shortcuts.DEFAULT_SHORTCUT_OPTIONS.saveQuery.combo,
+    'Ctrl+S',
+    'query save shortcut should default to Ctrl+S',
+  );
+  assert.equal(
+    shortcuts.SHORTCUT_ACTION_META.saveQuery.scope,
+    'queryEditor',
+    'query save shortcut should be scoped to the query editor',
+  );
+  assert.equal(
+    shortcuts.isQuerySaveShortcutMatch({ key: 's', ctrlKey: true, metaKey: false, altKey: false, shiftKey: false }, 'Ctrl+S'),
+    true,
+    'Ctrl+S should trigger query save',
+  );
+  assert.equal(
+    shortcuts.isQuerySaveShortcutMatch({ key: 's', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false }, 'Ctrl+S'),
+    true,
+    'default query save shortcut should also accept Meta+S',
+  );
+  assert.equal(
+    shortcuts.isQuerySaveShortcutMatch({ key: 's', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false }, 'Ctrl+Alt+S'),
+    false,
+    'Meta+S compatibility should not leak into customized save shortcuts',
   );
 
   const frontendFallback = customDataSources.createCustomDataSource({

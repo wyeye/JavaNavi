@@ -6,11 +6,14 @@ import com.javanavi.model.ApiEnvelope;
 import com.javanavi.security.SecretRedactor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -52,6 +55,15 @@ public class FileWorkflowCompatibilityController {
     @PostMapping("/import/select")
     public ApiEnvelope<Map<String, Object>> importData(@RequestBody(required = false) Map<String, Object> input) {
         return ApiEnvelope.ok(fileWorkflowCompatibilityService.importData(input));
+    }
+
+    @PostMapping(value = "/import/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiEnvelope<Map<String, Object>> uploadImportFile(
+            @RequestParam(value = "table", required = false) String table,
+            @RequestParam(value = "tableName", required = false) String tableName,
+            @RequestParam(value = "file", required = false) MultipartFile file
+    ) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.uploadImportFile(firstText(table, tableName), file));
     }
 
     @PostMapping("/import/preview")
@@ -113,6 +125,18 @@ public class FileWorkflowCompatibilityController {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiEnvelope<Void> illegalState(IllegalStateException error) {
         return ApiEnvelope.failKey(messages, "files.state", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+    }
+
+    private static String firstText(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.trim().isBlank()) {
+                return value.trim();
+            }
+        }
+        return "";
     }
 
     private static String stringValue(Map<String, Object> input, String... keys) {

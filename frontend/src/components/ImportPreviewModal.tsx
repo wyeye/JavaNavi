@@ -108,7 +108,7 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                 ssh: conn.config.ssh || { host: '', port: 22, user: '', password: '', keyPath: '' }
             };
 
-            const res = await ImportDataWithProgress(buildRpcConnectionConfig(config) as any, dbName, tableName, filePath);
+            const res = await ImportDataWithProgress(buildRpcConnectionConfig(config) as any, dbName, tableName, filePath, true);
 
             if (res.success && res.data) {
                 setImportResult(res.data);

@@ -2,6 +2,7 @@ import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
 
 export type ShortcutAction =
   | 'runQuery'
+  | 'saveQuery'
   | 'sendAIChatMessage'
   | 'focusSidebarSearch'
   | 'newQueryTab'
@@ -22,7 +23,7 @@ export interface ShortcutActionMeta {
   description: string;
   allowInEditable?: boolean;
   allowWithoutModifier?: boolean;
-  scope?: 'global' | 'aiComposer';
+  scope?: 'global' | 'aiComposer' | 'queryEditor';
   requiredKey?: string;
   disallowShift?: boolean;
   platformOnly?: 'mac';
@@ -78,6 +79,7 @@ const KEY_ALIASES: Record<string, string> = {
 
 export const SHORTCUT_ACTION_ORDER: ShortcutAction[] = [
   'runQuery',
+  'saveQuery',
   'sendAIChatMessage',
   'focusSidebarSearch',
   'newQueryTab',
@@ -91,6 +93,12 @@ export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = 
   runQuery: {
     label: '执行 SQL',
     description: '在当前查询页执行 SQL',
+  },
+  saveQuery: {
+    label: '保存查询',
+    description: '保存当前查询页的 SQL',
+    allowInEditable: true,
+    scope: 'queryEditor',
   },
   sendAIChatMessage: {
     label: 'AI 聊天发送',
@@ -132,6 +140,7 @@ export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = 
 
 export const DEFAULT_SHORTCUT_OPTIONS: ShortcutOptions = {
   runQuery: { combo: 'Ctrl+Shift+R', enabled: true },
+  saveQuery: { combo: 'Ctrl+S', enabled: true },
   sendAIChatMessage: { combo: 'Enter', enabled: true },
   focusSidebarSearch: { combo: 'Ctrl+F', enabled: true },
   newQueryTab: { combo: 'Ctrl+Shift+N', enabled: true },
@@ -223,6 +232,24 @@ export const isShortcutMatch = (event: KeyboardEvent | ReactKeyboardEvent, combo
   return actual === expected;
 };
 
+export const isQuerySaveShortcutMatch = (event: KeyboardEvent | ReactKeyboardEvent, combo: string): boolean => {
+  if (isShortcutMatch(event, combo)) {
+    return true;
+  }
+
+  // Ctrl+S 是默认保存查询快捷键；macOS 用户通常按 Command+S。
+  // 仅在用户保留默认绑定时提供 Meta+S 兼容，避免自定义快捷键后额外触发。
+  if (normalizeShortcutCombo(combo) !== DEFAULT_SHORTCUT_OPTIONS.saveQuery.combo) {
+    return false;
+  }
+
+  return event.metaKey === true
+    && event.ctrlKey !== true
+    && event.altKey !== true
+    && event.shiftKey !== true
+    && normalizeKeyboardKey(event.key) === 'S';
+};
+
 export const hasModifierKey = (combo: string): boolean => {
   const normalized = normalizeShortcutCombo(combo);
   if (!normalized) return false;
@@ -311,4 +338,3 @@ export const getShortcutDisplay = (combo: string): string => {
   const normalized = normalizeShortcutCombo(combo);
   return normalized || '-';
 };
-

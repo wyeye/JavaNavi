@@ -62,6 +62,21 @@ const COPY_INSERT_TYPES = new Set([
   'clickhouse',
 ]);
 
+const IMPORT_TYPES = new Set([
+  'demo',
+  'h2',
+  'mysql',
+  'mariadb',
+  'diros',
+  'sphinx',
+  'postgres',
+  'kingbase',
+  'highgo',
+  'vastbase',
+  'sqlite',
+  'duckdb',
+]);
+
 const QUERY_EDITOR_DISABLED_TYPES = new Set(['redis']);
 const FORCE_READ_ONLY_QUERY_TYPES = new Set(['tdengine', 'clickhouse']);
 const MANUAL_TOTAL_COUNT_TYPES = new Set(['duckdb', 'oracle']);
@@ -73,6 +88,7 @@ export type DataSourceCapabilities = {
   supportsQueryEditor: boolean;
   supportsSqlQueryExport: boolean;
   supportsCopyInsert: boolean;
+  supportsImport: boolean;
   forceReadOnlyQueryResult: boolean;
   preferManualTotalCount: boolean;
   supportsApproximateTableCount: boolean;
@@ -86,6 +102,7 @@ export const getDataSourceCapabilities = (config: ConnectionLike): DataSourceCap
     supportsQueryEditor: !QUERY_EDITOR_DISABLED_TYPES.has(type),
     supportsSqlQueryExport: SQL_QUERY_EXPORT_TYPES.has(type),
     supportsCopyInsert: COPY_INSERT_TYPES.has(type),
+    supportsImport: IMPORT_TYPES.has(type),
     forceReadOnlyQueryResult: FORCE_READ_ONLY_QUERY_TYPES.has(type),
     preferManualTotalCount: MANUAL_TOTAL_COUNT_TYPES.has(type),
     supportsApproximateTableCount: APPROXIMATE_TABLE_COUNT_TYPES.has(type),

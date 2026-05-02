@@ -12,7 +12,7 @@ import { applyQueryAutoLimit } from '../utils/queryAutoLimit';
 import { resolveEditRowLocator, type EditRowLocator } from '../utils/rowLocator';
 import { getDataSourceCapabilities } from '../utils/dataSourceCapabilities';
 import { convertMongoShellToJsonCommand } from '../utils/mongodb';
-import { getShortcutDisplay, isEditableElement, isShortcutMatch } from '../utils/shortcuts';
+import { getShortcutDisplay, isEditableElement, isQuerySaveShortcutMatch, isShortcutMatch } from '../utils/shortcuts';
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { resolveSqlDialect, resolveSqlFunctions, resolveSqlKeywords } from '../utils/sqlDialect';
@@ -1951,6 +1951,47 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       }
   };
 
+  useEffect(() => {
+      const binding = shortcutOptions.saveQuery;
+      if (!binding?.enabled || !binding.combo) {
+          return;
+      }
+
+      const handleSaveShortcut = (event: KeyboardEvent) => {
+          if (activeTabId !== tab.id) {
+              return;
+          }
+          if (!isQuerySaveShortcutMatch(event, binding.combo)) {
+              return;
+          }
+
+          const editor = editorRef.current;
+          const targetNode = event.target instanceof Node ? event.target : null;
+          const editorHasFocus = !!editor?.hasTextFocus?.();
+          const inEditorPane = !!(targetNode && editorPaneRef.current?.contains(targetNode));
+          const inQueryEditor = !!(targetNode && queryEditorRootRef.current?.contains(targetNode));
+
+          if (!editorHasFocus && !inEditorPane) {
+              return;
+          }
+          if (!editorHasFocus && isEditableElement(event.target) && !inEditorPane) {
+              return;
+          }
+          if (!editorHasFocus && !inQueryEditor) {
+              return;
+          }
+
+          event.preventDefault();
+          event.stopPropagation();
+          void handleQuickSave();
+      };
+
+      window.addEventListener('keydown', handleSaveShortcut, true);
+      return () => {
+          window.removeEventListener('keydown', handleSaveShortcut, true);
+      };
+  }, [activeTabId, tab.id, shortcutOptions.saveQuery, handleQuickSave]);
+
   const handleCloseResult = (key: string) => {
       setResultSets(prev => {
           const idx = prev.findIndex(r => r.key === key);
@@ -2063,9 +2104,17 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             </Button>
           )}
         </Button.Group>
-        <Button icon={<SaveOutlined />} onClick={handleQuickSave}>
-          保存
-        </Button>
+        <Tooltip
+            title={
+                shortcutOptions.saveQuery?.enabled && shortcutOptions.saveQuery?.combo
+                    ? `保存（${getShortcutDisplay(shortcutOptions.saveQuery.combo)}）`
+                    : '保存'
+            }
+        >
+            <Button icon={<SaveOutlined />} onClick={handleQuickSave}>
+              保存
+            </Button>
+        </Tooltip>
         
         <Button.Group>
             <Tooltip title="美化 SQL">
