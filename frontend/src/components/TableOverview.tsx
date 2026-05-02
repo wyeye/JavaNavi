@@ -9,6 +9,8 @@ import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { noAutoCapInputProps } from '../utils/inputAutoCap';
 import { getTableDataDangerActionMeta, supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
+import { buildTableHoverTitle } from '../utils/tableHoverTitle';
+import { translate, type I18nKey, type I18nParams } from '../i18n';
 import {
     TABLE_OVERVIEW_RENDER_BATCH_SIZE,
     buildTableOverviewSearchIndex,
@@ -166,6 +168,8 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const theme = useStore(state => state.theme);
     const addTab = useStore(state => state.addTab);
     const setActiveContext = useStore(state => state.setActiveContext);
+    const language = useStore(state => state.language);
+    const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
     const darkMode = theme === 'dark';
 
     const [tables, setTables] = useState<TableStatRow[]>([]);
@@ -414,6 +418,16 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         return Math.max(max, table.dataSize + table.indexSize);
     }, 0), [sortedFiltered]);
     const allowTruncate = supportsTableTruncateAction(connection?.config?.type || '', connection?.config?.driver);
+    const renderTableHoverTitle = useCallback((table: TableStatRow) => (
+        <span style={{ whiteSpace: 'pre-line' }}>
+            {buildTableHoverTitle({
+                tableName: table.name,
+                comment: table.comment,
+                tableNameLabel: t('table.hover.name'),
+                commentLabel: t('table.hover.comment'),
+            })}
+        </span>
+    ), [t]);
 
     if (loading) {
         return (
@@ -567,7 +581,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
                                         <TableOutlined style={{ fontSize: 14, color: accentColor }} />
-                                        <Tooltip title={t.name} mouseEnterDelay={0.4}>
+                                        <Tooltip title={renderTableHoverTitle(t)} mouseEnterDelay={0.4}>
                                             <span style={{ fontSize: 13, fontWeight: 600, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'block' }}>
                                                 {t.name}
                                             </span>
@@ -678,7 +692,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                             <div style={{ minWidth: 0, flex: '1 1 320px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
                                                     <TableOutlined style={{ fontSize: 13, color: accentColor, flexShrink: 0 }} />
-                                                    <Tooltip title={t.name} mouseEnterDelay={0.4}>
+                                                    <Tooltip title={renderTableHoverTitle(t)} mouseEnterDelay={0.4}>
                                                         <span style={{ color: textPrimary, fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                                                             {t.name}
                                                         </span>

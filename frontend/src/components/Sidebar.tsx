@@ -54,6 +54,7 @@ import { resolveConnectionAccentColor, resolveConnectionIconType } from '../util
 import { buildJVMTabTitle } from '../utils/jvmRuntimePresentation';
 import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors } from '../utils/jvmSidebarActions';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
+import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 import { buildExternalSQLDirectoryId, buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
 import JVMModeBadge from './jvm/JVMModeBadge';
 import { locateActiveSidebarTable } from './sidebarTreeNavigation';
@@ -1202,13 +1203,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
                 const tableRows: any[] = Array.isArray(res.data) ? res.data : [];
 	            const tableEntries = tableRows.map((row: any) => {
-	                const tableName = Object.values(row)[0] as string;
+	                const tableName = String(row?.Table || row?.tableName || row?.table || Object.values(row || {})[0] || '').trim();
 	                const parsed = splitQualifiedName(tableName);
-	                return {
-	                    tableName,
-	                    schemaName: parsed.schemaName,
-	                    displayName: getSidebarTableDisplayName(conn, tableName),
-	                };
+	                return { tableName, schemaName: parsed.schemaName || String(row?.schemaName || '').trim(), displayName: getSidebarTableDisplayName(conn, tableName), comment: String(row?.comment || row?.tableComment || '').trim() };
 	            });
 
 	            const [viewsResult, triggersResult, routinesResult] = await Promise.all([
@@ -1340,12 +1337,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	            // Sort routines by display name (case-insensitive)
 	            routineEntries.sort((a, b) => a.displayName.toLowerCase().localeCompare(b.displayName.toLowerCase()));
 
-	            const buildTableNode = (entry: { tableName: string; schemaName: string; displayName: string }): TreeNode => ({
+	            const buildTableNode = (entry: { tableName: string; schemaName: string; displayName: string; comment?: string }): TreeNode => ({
 	                title: entry.displayName,
 	                key: `${conn.id}-${conn.dbName}-${entry.tableName}`,
 	                icon: <TableOutlined />,
 	                type: 'table',
-	                dataRef: { ...conn, tableName: entry.tableName, schemaName: entry.schemaName },
+	                dataRef: { ...conn, tableName: entry.tableName, schemaName: entry.schemaName, comment: entry.comment },
 	                isLeaf: false,
 	            });
 
@@ -4194,13 +4191,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     let hoverTitle = displayTitle;
     if (node.type === 'table' || node.type === 'view') {
         const rawTableName = String(node?.dataRef?.tableName || node?.dataRef?.viewName || '').trim();
-        const conn = node?.dataRef as SavedConnection | undefined;
-        if (rawTableName && shouldHideSchemaPrefix(conn)) {
-            const lastDotIndex = rawTableName.lastIndexOf('.');
-            if (lastDotIndex > 0 && lastDotIndex < rawTableName.length - 1) {
-                hoverTitle = rawTableName;
-            }
-        }
+        const tableComment = String(node?.dataRef?.comment || node?.dataRef?.tableComment || '').trim();
+        hoverTitle = buildTableHoverTitle({ tableName: rawTableName || displayTitle, comment: tableComment, tableNameLabel: t('table.hover.name'), commentLabel: t('table.hover.comment') });
     } else if (node.type === 'external-sql-directory' || node.type === 'external-sql-folder' || node.type === 'external-sql-file') {
         hoverTitle = String(node?.dataRef?.path || displayTitle);
     }

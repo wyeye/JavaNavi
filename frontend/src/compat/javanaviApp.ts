@@ -184,6 +184,14 @@ function javaNaviTableName(row: any, driver: string): string {
   return tableText;
 }
 
+function firstNonEmptyText(...values: unknown[]): string {
+  for (const value of values) {
+    const text = typeof value === 'string' ? value.trim() : String(value ?? '').trim();
+    if (text) return text;
+  }
+  return '';
+}
+
 function apiEnvelopeToTableResult(payload: any, config: any): QueryResult {
   const result = apiEnvelopeToQueryResult(payload, 'Tables loaded');
   if (!result.success || !Array.isArray(result.data)) return result;
@@ -191,7 +199,14 @@ function apiEnvelopeToTableResult(payload: any, config: any): QueryResult {
   result.data = result.data
     .map((row: any) => {
       const tableName = javaNaviTableName(row, driver);
-      return tableName ? { Table: tableName, tableName: row?.tableName || tableName, schemaName: row?.schemaName || '' } : null;
+      const comment = firstNonEmptyText(row?.comment, row?.tableComment, row?.TABLE_COMMENT, row?.remarks, row?.REMARKS);
+      return tableName ? {
+        Table: tableName,
+        tableName: row?.tableName || tableName,
+        schemaName: row?.schemaName || '',
+        comment,
+        tableComment: comment,
+      } : null;
     })
     .filter(Boolean);
   return result;

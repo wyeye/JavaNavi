@@ -698,9 +698,10 @@ public class DatabaseCompatibilityService {
                 if (table == null || table.isBlank() || isSystemSchema(schema)) {
                     continue;
                 }
-                tables.add(new TableSummaryDto(schema, table, type));
+                tables.add(new TableSummaryDto(schema, table, type, nullToEmpty(getString(rs, "REMARKS"))));
             }
         }
+        tables = enrichTableComments(connection, config, requestedDatabase, scope, tables);
         tables.sort((left, right) -> {
             int schemaCompare = nullToEmpty(left.schemaName()).compareToIgnoreCase(nullToEmpty(right.schemaName()));
             if (schemaCompare != 0) {
@@ -731,11 +732,189 @@ public class DatabaseCompatibilityService {
                 tables.add(new TableSummaryDto(
                         schema,
                         table,
-                        type != null && type.toUpperCase(Locale.ROOT).contains("VIEW") ? "VIEW" : "TABLE"
+                        type != null && type.toUpperCase(Locale.ROOT).contains("VIEW") ? "VIEW" : "TABLE",
+                        ""
                 ));
             }
             return tables;
         }
+    }
+
+    private List<TableSummaryDto> enrichTableComments(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            MetadataScope scope,
+            List<TableSummaryDto> tables
+    ) {
+        if (tables.isEmpty()) {
+            return tables;
+        }
+        String driver = jdbcConnectionFactory.normalizeDriver(config);
+        Map<String, String> comments = new HashMap<>();
+        try {
+            switch (driver) {
+                case "mysql" -> readMySqlTableComments(connection, scope, comments);
+                case "postgresql" -> readPostgresTableComments(connection, comments);
+                case "sqlserver" -> readSqlServerTableComments(connection, config, requestedDatabase, comments);
+                case "oracle", "dameng" -> readOracleLikeTableComments(connection, tables, comments);
+                case "clickhouse" -> readClickHouseTableComments(connection, config, requestedDatabase, comments);
+                default -> {
+                    return tables;
+                }
+            }
+        } catch (SQLException ignored) {
+            return tables;
+        }
+        if (comments.isEmpty()) {
+            return tables;
+        }
+
+        List<TableSummaryDto> enriched = new ArrayList<>();
+        for (TableSummaryDto table : tables) {
+            String comment = firstText(
+                    table.comment(),
+                    comments.get(tableCommentKey(table.schemaName(), table.tableName())),
+                    comments.get(tableCommentKey("", table.tableName()))
+            );
+            enriched.add(new TableSummaryDto(
+                    table.schemaName(),
+                    table.tableName(),
+                    table.tableType(),
+                    nullToEmpty(comment)
+            ));
+        }
+        return enriched;
+    }
+
+    private void readMySqlTableComments(Connection connection, MetadataScope scope, Map<String, String> comments) throws SQLException {
+        String schema = firstText(scope.catalog());
+        if (schema == null) {
+            return;
+        }
+        String sql = """
+                select table_schema, table_name, table_comment
+                  from information_schema.tables
+                 where table_schema = ?
+                   and table_type in ('BASE TABLE', 'VIEW')
+                """;
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, schema);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    putTableComment(comments, getString(rs, "table_schema"), getString(rs, "table_name"), getString(rs, "table_comment"));
+                }
+            }
+        }
+    }
+
+    private void readPostgresTableComments(Connection connection, Map<String, String> comments) throws SQLException {
+        String sql = """
+                select n.nspname as table_schema,
+                       c.relname as table_name,
+                       obj_description(c.oid, 'pg_class') as table_comment
+                  from pg_class c
+                  join pg_namespace n on n.oid = c.relnamespace
+                 where c.relkind in ('r', 'v')
+                   and n.nspname not in ('information_schema', 'pg_catalog')
+                   and n.nspname not like 'pg_toast%'
+                """;
+        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                putTableComment(comments, getString(rs, "table_schema"), getString(rs, "table_name"), getString(rs, "table_comment"));
+            }
+        }
+    }
+
+    private void readSqlServerTableComments(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            Map<String, String> comments
+    ) throws SQLException {
+        String database = firstText(requestedDatabase, config == null ? null : config.database());
+        String prefix = database == null ? "" : "[" + database.replace("]", "]]") + "].";
+        String sql = """
+                select s.name as table_schema,
+                       o.name as table_name,
+                       cast(ep.value as nvarchar(max)) as table_comment
+                  from %ssys.objects o
+                  join %ssys.schemas s on s.schema_id = o.schema_id
+                  left join %ssys.extended_properties ep
+                    on ep.major_id = o.object_id
+                   and ep.minor_id = 0
+                   and ep.name = 'MS_Description'
+                 where o.type in ('U', 'V')
+                """.formatted(prefix, prefix, prefix);
+        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                putTableComment(comments, getString(rs, "table_schema"), getString(rs, "table_name"), getString(rs, "table_comment"));
+            }
+        }
+    }
+
+    private void readOracleLikeTableComments(
+            Connection connection,
+            List<TableSummaryDto> tables,
+            Map<String, String> comments
+    ) throws SQLException {
+        Set<String> owners = new LinkedHashSet<>();
+        for (TableSummaryDto table : tables) {
+            String owner = firstText(table.schemaName());
+            if (owner != null) {
+                owners.add(owner.toUpperCase(Locale.ROOT));
+            }
+        }
+        if (owners.isEmpty()) {
+            return;
+        }
+        String sql = "select owner, table_name, comments from all_tab_comments where owner = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            for (String owner : owners) {
+                statement.setString(1, owner);
+                try (ResultSet rs = statement.executeQuery()) {
+                    while (rs.next()) {
+                        putTableComment(comments, getString(rs, "owner"), getString(rs, "table_name"), getString(rs, "comments"));
+                    }
+                }
+            }
+        }
+    }
+
+    private void readClickHouseTableComments(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            Map<String, String> comments
+    ) throws SQLException {
+        String database = firstText(requestedDatabase, config == null ? null : config.database());
+        if (database == null) {
+            return;
+        }
+        String sql = "select database, name, comment from system.tables where database = ?";
+        try (PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, database);
+            try (ResultSet rs = statement.executeQuery()) {
+                while (rs.next()) {
+                    putTableComment(comments, getString(rs, "database"), getString(rs, "name"), getString(rs, "comment"));
+                }
+            }
+        }
+    }
+
+    private static void putTableComment(Map<String, String> comments, String schema, String table, String comment) {
+        String normalizedTable = firstText(table);
+        String normalizedComment = firstText(comment);
+        if (normalizedTable == null || normalizedComment == null) {
+            return;
+        }
+        comments.put(tableCommentKey(schema, normalizedTable), normalizedComment);
+    }
+
+    private static String tableCommentKey(String schema, String table) {
+        return nullToEmpty(schema).trim().toLowerCase(Locale.ROOT)
+                + "\u0001"
+                + nullToEmpty(table).trim().toLowerCase(Locale.ROOT);
     }
 
     private List<ColumnDefinitionDto> listColumnsOnConnection(Connection connection, ConnectionConfigDto config, String requestedDatabase, String tableName) throws SQLException {
