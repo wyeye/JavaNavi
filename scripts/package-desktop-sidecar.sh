@@ -12,19 +12,30 @@ JAVANAVI_DESKTOP_BUNDLE_JRE="${JAVANAVI_DESKTOP_BUNDLE_JRE:-1}"
 # Spring Boot's configuration binder uses java.beans.PropertyEditorSupport from java.desktop.
 JAVANAVI_DESKTOP_JLINK_MODULES="${JAVANAVI_DESKTOP_JLINK_MODULES:-java.base,java.logging,java.naming,java.management,java.instrument,java.sql,java.xml,java.net.http,jdk.crypto.ec,jdk.unsupported,java.security.sasl,java.security.jgss,jdk.charsets,java.desktop}"
 
+canonical_path() {
+  local path="$1"
+  if command -v cygpath >/dev/null 2>&1; then
+    cygpath -am "$path"
+  else
+    printf '%s\n' "$path"
+  fi
+}
+
 safe_rm_under_root() {
-  local target
+  local target root_canonical
+  root_canonical="$(canonical_path "$ROOT_DIR")"
   for target in "$@"; do
     if [[ -z "$target" ]]; then
       echo "Refusing to remove an empty path" >&2
       exit 1
     fi
-    local parent resolved
+    local parent resolved resolved_canonical
     parent="$(dirname "$target")"
     mkdir -p "$parent"
     resolved="$(cd "$parent" && pwd -P)/$(basename "$target")"
-    case "$resolved" in
-      "$ROOT_DIR"/*) rm -rf "$resolved" ;;
+    resolved_canonical="$(canonical_path "$resolved")"
+    case "$resolved_canonical" in
+      "$root_canonical"/*) rm -rf "$resolved" ;;
       *)
         echo "Refusing to remove path outside repository: $target" >&2
         exit 1
