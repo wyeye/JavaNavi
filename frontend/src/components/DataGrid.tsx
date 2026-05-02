@@ -1704,7 +1704,18 @@ const DataGrid: React.FC<DataGridProps> = ({
                 .${gridId} .ant-table-tbody > tr.row-modified:hover > td,
                 .${gridId} .ant-table-tbody .ant-table-row.row-modified:hover > .ant-table-cell { background-color: ${rowModHover} !important; }
                 .${gridId} .ant-table-tbody > tr > td[data-col-name],
-                .${gridId} .ant-table-tbody .ant-table-row > .ant-table-cell[data-col-name] { user-select: none; -webkit-user-select: none; cursor: crosshair; }
+                .${gridId} .ant-table-tbody .ant-table-row > .ant-table-cell[data-col-name],
+                .${gridId} .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-col-name] {
+                    user-select: none;
+                    -webkit-user-select: none;
+                    cursor: crosshair;
+                    font-weight: 400 !important;
+                }
+                .${gridId} .ant-table-cell[data-col-name] .data-grid-cell-content,
+                .${gridId} .ant-table-cell[data-col-name] .data-grid-cell-virtual-wrap,
+                .${gridId} .ant-table-cell[data-col-name] .editable-cell-value-wrap {
+                    font-weight: inherit !important;
+                }
                 .${gridId} .ant-table-tbody > tr > td[data-cell-selected="true"],
                 .${gridId} .ant-table-tbody .ant-table-row > .ant-table-cell[data-cell-selected="true"],
                 .${gridId} [data-cell-selected="true"] {
@@ -3561,7 +3572,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           sortOrder: (sortInfo.find(s => s.columnKey === key && s.enabled !== false)?.order || null) as SortOrder | undefined,
           editable: canModifyData, // Only editable if table name known and not readonly
           render: (text: any) => (
-              <div style={CELL_ELLIPSIS_STYLE}>
+              <div className="data-grid-cell-content" style={CELL_ELLIPSIS_STYLE}>
                   {renderCellDisplayValue(text, normalizedPageFindText)}
               </div>
           ),
@@ -3659,6 +3670,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                           focusCell={openCellEditor}
                           columnType={(columnMetaMap[dataIndex] || columnMetaMapByLowerName[dataIndex.toLowerCase()])?.type}
                           as="div"
+                          className="data-grid-cell-virtual-wrap"
                           style={VIRTUAL_CELL_WRAPPER_STYLE}
                       >
                           {originalRenderContent}
@@ -3668,6 +3680,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               if (enableVirtual) {
                   return (
                       <div
+                          className="data-grid-cell-virtual-wrap"
                           style={VIRTUAL_CELL_WRAPPER_STYLE}
                           onContextMenu={(e) => {
                               e.preventDefault();
