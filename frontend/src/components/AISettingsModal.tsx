@@ -11,6 +11,7 @@ import {
     resolvePresetBaseURL,
     resolvePresetModelSelection,
     resolvePresetTransport,
+    supportsOpenAiCompatibleTransport,
 } from '../utils/aiProviderPresets';
 import {
     PROVIDER_PRESET_CARD_BASE_STYLE,
@@ -64,6 +65,16 @@ const PROVIDER_PRESETS: ProviderPreset[] = [
 
 const findPreset = (key: string): ProviderPreset => PROVIDER_PRESETS.find(p => p.key === key) || PROVIDER_PRESETS[PROVIDER_PRESETS.length - 1];
 
+const normalizeModelOptions = (models: unknown): string[] => {
+    if (!Array.isArray(models)) return [];
+    return Array.from(new Set(models.map(model => String(model || '').trim()).filter(Boolean)));
+};
+
+const modelOptionsFromTestResponse = (response: Record<string, any> | undefined): string[] => {
+    const topLevelModels = normalizeModelOptions(response?.models);
+    return topLevelModels.length > 0 ? topLevelModels : normalizeModelOptions(response?.transport?.models);
+};
+
 const matchProviderPreset = (provider: Pick<AIProviderConfig, 'type' | 'baseUrl' | 'apiFormat'>): ProviderPreset => {
     const presetKey = resolveProviderPresetKey(provider, PROVIDER_PRESETS, 'custom');
     return findPreset(presetKey);
@@ -111,6 +122,14 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
     const watchedPresetKey = Form.useWatch('presetKey', form);
     const watchedApiFormat = Form.useWatch('apiFormat', form) || 'openai';
     const watchedApiKeyInput = Form.useWatch('apiKey', form);
+    const watchedModels = normalizeModelOptions(Form.useWatch('models', form));
+    const canFetchModels = supportsOpenAiCompatibleTransport({
+        type: watchedType,
+        apiFormat: watchedApiFormat,
+    });
+    const modelFetchHelpText = canFetchModels
+        ? 'OpenAI-compatible 接口会调用 /models 自动获取模型；也可以手动输入模型 ID。'
+        : '当前 API 格式暂不支持自动获取模型；请手动填写模型 ID，聊天 HTTP transport 不会对该格式启用。';
 
     const loadConfig = useCallback(async () => {
         try {
@@ -171,10 +190,17 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             resetProviderEditorSession();
         }
     }, [open, resetProviderEditorSession]);
+
+    useEffect(() => {
+        if (String(watchedApiKeyInput || '').trim() !== '' && clearProviderSecret) {
+            setClearProviderSecret(false);
+        }
+    }, [watchedApiKeyInput, clearProviderSecret]);
+
     const handleAddProvider = () => {
-        const preset = findPreset('openai');
+        const preset = findPreset('custom');
         applyProviderEditorSession(buildAddProviderEditorSession({
-            presetKey: 'openai',
+            presetKey: 'custom',
             presetBackendType: preset.backendType,
             presetBaseUrl: preset.defaultBaseUrl,
             presetModel: preset.defaultModel,
@@ -241,6 +267,9 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 valuesModel: values.model,
                 customModels: values.models,
             });
+            if (!finalModel) {
+                throw new Error('请先获取模型列表并选择模型，或手动输入模型 ID');
+            }
             // 内置供应商自动使用 preset label 作为名称
             const finalName = isCustomLike ? (values.name || preset.label) : preset.label;
             
@@ -254,10 +283,12 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 presetFixedApiFormat: preset.fixedApiFormat,
                 valuesApiFormat: values.apiFormat,
             });
+            const transportEnabled = supportsOpenAiCompatibleTransport(resolvedTransport);
+            const hasReplacementApiKey = String(values.apiKey || '').trim() !== '';
             const secretDraft = resolveProviderSecretDraft({
                 hasSecret: editingProvider?.hasSecret,
                 apiKeyInput: values.apiKey,
-                clearSecret: clearProviderSecret,
+                clearSecret: clearProviderSecret && !hasReplacementApiKey,
             });
             const payload = { 
                 ...editingProvider, 
@@ -265,11 +296,13 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 ...resolvedTransport,
                 name: finalName,
                 apiKey: secretDraft.apiKey,
+                clearApiKey: secretDraft.mode === 'clear',
                 hasSecret: secretDraft.hasSecret,
                 model: finalModel,
                 models: resolvedModels,
                 baseUrl: finalBaseUrl,
                 apiFormat: resolvedTransport.apiFormat,
+                transportEnabled,
             };
             // 后端 AISaveProvider 统一处理新增和更新，返回 void，失败抛异常
             await Service?.AISaveProvider?.(payload);
@@ -318,7 +351,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 presetDefaultBaseUrl: preset.defaultBaseUrl,
                 valuesBaseUrl: values.baseUrl,
             });
-            const { model: finalModel, models: resolvedModels } = resolvePresetModelSelection({
+            const { model: selectedModel, models: resolvedModels } = resolvePresetModelSelection({
                 presetKey: values.presetKey || 'openai',
                 presetDefaultModel: preset.defaultModel,
                 presetModels: preset.models,
@@ -330,6 +363,12 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 presetFixedApiFormat: preset.fixedApiFormat,
                 valuesApiFormat: values.apiFormat,
             });
+            const transportEnabled = supportsOpenAiCompatibleTransport(resolvedTransport);
+            if (!transportEnabled) {
+                setTestStatus('idle');
+                void messageApi.info('当前仅支持 OpenAI-compatible 接口自动获取模型；请手动填写模型 ID 后保存');
+                return;
+            }
             const secretDraft = resolveProviderSecretDraft({
                 hasSecret: editingProvider?.hasSecret,
                 apiKeyInput: values.apiKey,
@@ -345,13 +384,25 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 apiKey: secretDraft.apiKey,
                 hasSecret: secretDraft.hasSecret,
                 baseUrl: finalBaseUrl,
-                model: finalModel,
+                model: selectedModel,
                 models: resolvedModels,
                 maxTokens: Number(values.maxTokens) || 4096,
                 temperature: Number(values.temperature) ?? 0.7,
                 apiFormat: resolvedTransport.apiFormat,
+                transportEnabled,
             });
-            if (res?.success) { setTestStatus('success'); void messageApi.success('连接成功'); }
+            if (res?.success) {
+                const fetchedModels = modelOptionsFromTestResponse(res);
+                if (fetchedModels.length > 0) {
+                    const nextModel = fetchedModels.includes(selectedModel) ? selectedModel : fetchedModels[0];
+                    form.setFieldsValue({ models: fetchedModels, model: nextModel });
+                    setTestStatus('success');
+                    void messageApi.success(`已获取 ${fetchedModels.length} 个模型，请选择后保存`);
+                } else {
+                    setTestStatus('success');
+                    void messageApi.success('连接成功，未返回模型列表，可手动填写模型 ID');
+                }
+            }
             else { setTestStatus('error'); void messageApi.error(`测试失败: ${res?.message || '未知错误'}`); }
         } catch (e: any) { setTestStatus('error'); void messageApi.error(e?.message || '测试失败'); }
         finally { setLoading(false); }
@@ -370,6 +421,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             apiFormat: resolvedTransport.apiFormat || 'openai',
             baseUrl: preset.defaultBaseUrl,
             model: preset.defaultModel,
+            models: preset.models,
         });
     };
 
@@ -501,7 +553,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                                 <RobotOutlined style={{ fontSize: 14 }} /> 基本信息
                             </div>
                             
-                            <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>供应商名称</span>} name="name" rules={[{ required: true, message: '请输入名称' }]} style={{ marginBottom: 16 }}>
+                            <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>供应商名称</span>} name="name" style={{ marginBottom: 16 }}>
                                 <Input placeholder="例如：我的自建 OpenAI / 专属大模型"
                                     size="middle"
                                     style={{ borderRadius: 8, background: inputBg, border: `1px solid ${cardBorder}` }} />
@@ -532,12 +584,23 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                                 </Form.Item>
                             )}
                             
-                            <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>可用模型列表（可选配置）</span>} name="models" style={{ marginBottom: 0 }}>
-                                <Select mode="tags" size="middle" placeholder="配置指定的模型ID，留空则默认去服务端拉取" style={{ width: '100%' }} />
+                            <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>可用模型列表</span>} name="models" style={{ marginBottom: 16 }}>
+                                <Select mode="tags" size="middle" placeholder={canFetchModels ? '点击“获取模型”自动填充，或手动输入模型 ID' : '当前格式需手动输入模型 ID'} style={{ width: '100%' }} />
                             </Form.Item>
+                            <div style={{ marginTop: -8, marginBottom: 16, fontSize: 12, color: overlayTheme.mutedText, lineHeight: 1.5 }}>
+                                {modelFetchHelpText}
+                            </div>
                         </div>
                     )}
-                    <Form.Item name="model" hidden><Input /></Form.Item>
+                    {watchedModels.length > 0 ? (
+                        <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>选择模型</span>} name="model" rules={[{ required: true, message: '请选择模型' }]} style={{ marginBottom: 16 }}>
+                            <Select showSearch size="middle" placeholder="请选择要使用的模型" options={watchedModels.map(model => ({ label: model, value: model }))} style={{ width: '100%' }} />
+                        </Form.Item>
+                    ) : (
+                        <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>模型 ID</span>} name="model" rules={[{ required: !canFetchModels, message: '请输入模型 ID，或先获取模型列表' }]} style={{ marginBottom: 16 }}>
+                            <Input placeholder={canFetchModels ? '点击“获取模型”自动填充，或手动输入如 gpt-5.5' : '请输入模型 ID'} size="middle" style={{ borderRadius: 8, background: inputBg, border: `1px solid ${cardBorder}` }} />
+                        </Form.Item>
+                    )}
                     <Form.Item name="name" hidden><Input /></Form.Item>
 
                     {/* 认证信息 */}
@@ -583,8 +646,9 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                         borderTop: `1px solid ${cardBorder}`, paddingBottom: 24,
                     }}>
                         <Button onClick={handleTestProvider} loading={loading} style={{ borderRadius: 10 }}
+                            disabled={!canFetchModels}
                             icon={testStatus === 'success' ? <CheckOutlined style={{ color: '#22c55e' }} /> : undefined}>
-                            {testStatus === 'success' ? '连接正常' : testStatus === 'error' ? '重新测试' : '测试连接'}
+                            {canFetchModels ? (testStatus === 'success' ? '模型已获取' : testStatus === 'error' ? '重新获取模型' : '获取模型') : '仅 OpenAI-compatible 可获取模型'}
                         </Button>
                         <Button type="primary" onClick={handleSaveProvider} loading={loading}
                             style={{ borderRadius: 10, fontWeight: 600 }}>
@@ -832,9 +896,3 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
 };
 
 export default AISettingsModal;
-
-
-
-
-
-

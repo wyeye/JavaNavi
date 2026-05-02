@@ -57,7 +57,8 @@ Implemented on 2026-04-28:
 - `EncryptedFileSecretStore` provides an AES-GCM local-file encrypted secret-store abstraction.
 - Browser adapter calls establish the local session through the JavaNavi compatibility adapter; modern flows rely on the HttpOnly SameSite cookie, while legacy header echo remains optional when explicitly returned by the backend.
 - The SSE compatibility event bridge binds each subscriber to the authenticated local-session id that opened the stream. Published runtime/AI/job events are delivered only to subscribers from the same request-bound local session, not to every authenticated client in the process.
-- Java-backed AI provider transport rejects localhost/private/link-local provider endpoints unless `JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true` is set for trusted local testing.
+- Java-backed AI provider transport rejects localhost/private/link-local provider endpoints unless `JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true` is set. Packaged desktop sidecars set this variable so trusted local/LAN OpenAI-compatible providers work in the desktop app; standalone Java Web runs must opt in explicitly.
+- JavaNavi Web outbound AI transport is server-gated to OpenAI-compatible providers (`type=openai` or `type=custom` with `apiFormat=openai`). Unsupported provider formats must not honor a stale or client-forged `transportEnabled=true`; they stay in manual-model local-state mode until protocol-specific transports exist.
 - Secret redaction is implemented in backend runtime code and must be exercised through package/startup smoke or focused manual checks when credential paths change.
 
 This gate allows later implementation of real credential flows, but it does not itself mark any external database driver as complete.

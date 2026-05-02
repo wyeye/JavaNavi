@@ -171,13 +171,21 @@ export const resolvePresetModelSelection = ({
   customModels,
 }: ResolvePresetModelSelectionInput): ResolvePresetModelSelectionResult => {
   const isCustomLike = CUSTOM_LIKE_PRESET_KEYS.has(presetKey);
-  const resolvedModels = isCustomLike ? (customModels || []) : presetModels;
+  const usesDraftModels = isCustomLike || presetModels.length === 0;
+  const resolvedModels = usesDraftModels ? (customModels || []) : presetModels;
   const fallbackModel = resolvedModels.length > 0 ? resolvedModels[0] : '';
   return {
     models: resolvedModels,
-    model: isCustomLike ? (valuesModel || fallbackModel) : (valuesModel || presetDefaultModel),
+    model: usesDraftModels ? (valuesModel || fallbackModel) : (valuesModel || presetDefaultModel),
   };
 };
+
+export const supportsOpenAiCompatibleTransport = ({
+  type,
+  apiFormat,
+}: Pick<ResolvePresetTransportResult, 'type' | 'apiFormat'>): boolean => (
+  type === 'openai' || (type === 'custom' && apiFormat === 'openai')
+);
 
 export const resolvePresetBaseURL = ({
   presetKey,

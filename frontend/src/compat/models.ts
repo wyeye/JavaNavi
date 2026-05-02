@@ -87,6 +87,9 @@ export namespace ai {
 	    models?: string[];
 	    apiFormat?: string;
 	    headers?: Record<string, string>;
+	    transportEnabled?: boolean;
+	    transportCapability?: string;
+	    modelDiscoverySupported?: boolean;
 	    maxTokens: number;
 	    temperature: number;
 	
@@ -107,6 +110,9 @@ export namespace ai {
 	        this.models = source["models"];
 	        this.apiFormat = source["apiFormat"];
 	        this.headers = source["headers"];
+	        this.transportEnabled = source["transportEnabled"];
+	        this.transportCapability = source["transportCapability"];
+	        this.modelDiscoverySupported = source["modelDiscoverySupported"];
 	        this.maxTokens = source["maxTokens"];
 	        this.temperature = source["temperature"];
 	    }

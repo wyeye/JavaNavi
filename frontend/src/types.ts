@@ -526,6 +526,9 @@ export interface AIProviderConfig {
   models?: string[];
   apiFormat?: string; // custom 专用: openai | anthropic | gemini | claude-cli
   headers?: Record<string, string>;
+  transportEnabled?: boolean;
+  transportCapability?: string;
+  modelDiscoverySupported?: boolean;
   maxTokens: number;
   temperature: number;
 }

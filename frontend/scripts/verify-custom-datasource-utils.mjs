@@ -36,6 +36,8 @@ try {
   const driverSelection = await transpileToModule('src/utils/driverSelection.ts', 'driverSelection.mjs');
   const dataSourceCapabilities = await transpileToModule('src/utils/dataSourceCapabilities.ts', 'dataSourceCapabilities.mjs');
   const shortcuts = await transpileToModule('src/utils/shortcuts.ts', 'shortcuts.mjs');
+  const aiProviderPresets = await transpileToModule('src/utils/aiProviderPresets.ts', 'aiProviderPresets.mjs');
+  const providerSecretDraft = await transpileToModule('src/utils/providerSecretDraft.ts', 'providerSecretDraft.mjs');
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
@@ -161,6 +163,73 @@ try {
     shortcuts.isQuerySaveShortcutMatch({ key: 's', ctrlKey: false, metaKey: true, altKey: false, shiftKey: false }, 'Ctrl+Alt+S'),
     false,
     'Meta+S compatibility should not leak into customized save shortcuts',
+  );
+
+  assert.deepEqual(
+    aiProviderPresets.resolvePresetModelSelection({
+      presetKey: 'openai',
+      presetDefaultModel: 'gpt-4o',
+      presetModels: [],
+      valuesModel: 'gpt-5.5',
+      customModels: ['gpt-5.5', 'gpt-5-mini'],
+    }),
+    { model: 'gpt-5.5', models: ['gpt-5.5', 'gpt-5-mini'] },
+    'remote-fetched models should be preserved for presets without a static catalog',
+  );
+  assert.deepEqual(
+    aiProviderPresets.resolvePresetModelSelection({
+      presetKey: 'qwen-coding-plan',
+      presetDefaultModel: '',
+      presetModels: ['qwen3-coder-plus'],
+      valuesModel: '',
+      customModels: ['remote-model'],
+    }),
+    { model: '', models: ['qwen3-coder-plus'] },
+    'static catalog presets should keep their curated model list without forcing a default selection',
+  );
+  assert.equal(
+    aiProviderPresets.supportsOpenAiCompatibleTransport({ type: 'openai' }),
+    true,
+    'OpenAI backend type should support JavaNavi OpenAI-compatible HTTP transport',
+  );
+  assert.equal(
+    aiProviderPresets.supportsOpenAiCompatibleTransport({ type: 'custom', apiFormat: 'openai' }),
+    true,
+    'custom OpenAI-compatible format should support model discovery',
+  );
+  assert.equal(
+    aiProviderPresets.supportsOpenAiCompatibleTransport({ type: 'anthropic', apiFormat: 'openai' }),
+    false,
+    'non-custom Anthropic providers should not be upgraded by a forged OpenAI API format',
+  );
+  assert.equal(
+    aiProviderPresets.supportsOpenAiCompatibleTransport({ type: 'custom', apiFormat: 'anthropic' }),
+    false,
+    'custom Anthropic format should not use OpenAI-compatible model discovery',
+  );
+  assert.equal(
+    aiProviderPresets.supportsOpenAiCompatibleTransport({ type: 'gemini' }),
+    false,
+    'Gemini format should not use OpenAI-compatible model discovery',
+  );
+  assert.equal(
+    aiProviderPresets.supportsOpenAiCompatibleTransport({ type: 'anthropic' }),
+    false,
+    'non-OpenAI-compatible provider types should not be auto transport-enabled',
+  );
+  assert.equal(
+    aiProviderPresets.supportsOpenAiCompatibleTransport({ type: 'custom', apiFormat: 'claude-cli' }),
+    false,
+    'Claude CLI custom format should not use OpenAI-compatible HTTP transport',
+  );
+  assert.deepEqual(
+    providerSecretDraft.resolveProviderSecretDraft({
+      hasSecret: true,
+      apiKeyInput: 'replacement-secret',
+      clearSecret: false,
+    }),
+    { mode: 'replace', apiKey: 'replacement-secret', hasSecret: true },
+    'typed replacement API key should win after stale clear intent is suppressed',
   );
 
   const frontendFallback = customDataSources.createCustomDataSource({

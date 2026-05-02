@@ -14,6 +14,7 @@ Tauri v2 desktop app
   │    SERVER_ADDRESS=127.0.0.1
   │    SERVER_PORT=<dynamic_port>
   │    JAVANAVI_DATA_DIR=<desktop app data dir>
+  │    JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true
   ├─ polls /api/v1/health
   └─ opens the main window at http://127.0.0.1:<dynamic_port>/
 ```
@@ -97,6 +98,7 @@ npm run desktop:build
 - The main window is created only after `/api/v1/health` succeeds.
 - If startup fails, an error window displays the failure and log path.
 - Closing or quitting the desktop app terminates only the Java child process owned by that desktop session.
+- Desktop packages set `JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true` for the Java sidecar so trusted local/LAN OpenAI-compatible providers can be used from the packaged app. Standalone Java Web runs still require explicitly setting this environment variable.
 
 ## Logs and data directory
 

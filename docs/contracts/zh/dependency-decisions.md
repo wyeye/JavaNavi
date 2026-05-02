@@ -153,7 +153,7 @@
 
 ### Decision ID: DEP-AI-PROVIDER-SDK
 
-- **Status:** 未采用厂商 SDK；JavaNavi 当前通过 JDK HTTP API 调用 OpenAI-compatible HTTP。
+- **Status:** 未采用厂商 SDK；JavaNavi 当前通过 JDK HTTP API 调用 OpenAI-compatible HTTP。Anthropic、Gemini 与 Claude CLI 格式在 provider-specific transport 获批并实现前仅保留手动模型配置。
 - **Allowed artifacts only after approval:** OpenAI/Anthropic/Azure 等 provider SDK 使用前必须新增决策条目。
 - **Required verification:** 修改该区域时进行手动/runtime AI provider smoke 与 secret redaction 检查。
 - **Secret/credential impact:** API key、base URL、header、prompt 与 stream chunk 都需要脱敏/日志纪律。

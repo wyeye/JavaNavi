@@ -14,6 +14,7 @@ Tauri v2 desktop app
   │    SERVER_ADDRESS=127.0.0.1
   │    SERVER_PORT=<dynamic_port>
   │    JAVANAVI_DATA_DIR=<desktop app data dir>
+  │    JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true
   ├─ 轮询 /api/v1/health
   └─ 打开主窗口到 http://127.0.0.1:<dynamic_port>/
 ```
@@ -97,6 +98,7 @@ npm run desktop:build
 - 主窗口仅在 `/api/v1/health` 成功后创建。
 - 启动失败时，错误窗口会显示失败信息和日志路径。
 - 关闭或退出桌面应用只会终止该桌面会话拥有的 Java 子进程。
+- 桌面包会为 Java sidecar 设置 `JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS=true`，让受信任的本机/LAN OpenAI-compatible provider 可在打包应用中使用；独立 Java Web 运行仍需显式设置该环境变量。
 
 ## 日志与数据目录
 

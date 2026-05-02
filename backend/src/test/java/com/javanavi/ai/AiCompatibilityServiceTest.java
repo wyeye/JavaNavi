@@ -11,6 +11,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
@@ -61,6 +62,211 @@ class AiCompatibilityServiceTest {
         assertThat(prompts.get("表结构审查"))
                 .contains("反三范式")
                 .contains("ALTER TABLE");
+    }
+
+    @Test
+    void extractsDistinctModelIdsFromOpenAiCompatibleModelsPayload() {
+        List<String> models = AiCompatibilityService.openAiCompatibleModelIds(Map.of(
+                "object", "list",
+                "data", List.of(
+                        Map.of("id", "gpt-5.5", "object", "model"),
+                        Map.of("id", "gpt-5.5", "object", "model"),
+                        Map.of("name", "fallback-name"),
+                        "string-model",
+                        Map.of("id", "")
+                )
+        ));
+
+        assertThat(models).containsExactly("gpt-5.5");
+    }
+
+    @Test
+    void ignoresAlternateModelsArrayPayloadForOpenAiCompatibleDiscovery() {
+        List<String> models = AiCompatibilityService.openAiCompatibleModelIds(Map.of(
+                "models", List.of(
+                        Map.of("model", "provider-model-a"),
+                        Map.of("id", "provider-model-b")
+                )
+        ));
+
+        assertThat(models).isEmpty();
+    }
+
+    @Test
+    void openAiCompatibleTransportSupportIsLimitedToOpenAiFormat() {
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("openai", null)).isTrue();
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("custom", "openai")).isTrue();
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("anthropic", "openai")).isFalse();
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("gemini", "openai")).isFalse();
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("anthropic", null)).isFalse();
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("gemini", null)).isFalse();
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("custom", "anthropic")).isFalse();
+        assertThat(AiCompatibilityService.supportsOpenAiCompatibleTransport("custom", "claude-cli")).isFalse();
+    }
+
+    @Test
+    void transportTestDoesNotRequirePreselectedModelBeforeCredentialValidation() {
+        Map<String, Object> result = service().testProvider(Map.of(
+                "type", "openai",
+                "baseUrl", "https://example.test/v1",
+                "transportEnabled", true
+        ));
+
+        assertThat(result.get("success")).isEqualTo(false);
+        assertThat(result.get("message")).isEqualTo("AI provider API key is required or must already be stored.");
+        assertThat(result.get("networkTested")).isEqualTo(false);
+    }
+
+    @Test
+    void transportTestWithApiKeyAttemptsNetworkWhenModelIsBlank() {
+        Map<String, Object> result = service().testProvider(Map.of(
+                "type", "openai",
+                "baseUrl", "https://model-fetch.invalid/v1",
+                "apiKey", "test-secret",
+                "transportEnabled", true
+        ));
+
+        assertThat(result.get("success")).isEqualTo(false);
+        assertThat(result.get("message")).asString().startsWith("AI provider transport test failed:");
+        assertThat(result.get("message")).asString().doesNotContain("test-secret");
+        assertThat(result.get("networkTested")).isEqualTo(true);
+        assertThat(result).doesNotContainKey("apiKey");
+    }
+
+    @Test
+    void transportTestDoesNotAttemptNetworkForUnsupportedProviderFormats() {
+        Map<String, Object> result = service().testProvider(Map.of(
+                "type", "anthropic",
+                "baseUrl", "https://example.invalid/anthropic",
+                "model", "claude-3-5-sonnet-latest",
+                "apiKey", "test-secret",
+                "transportEnabled", true
+        ));
+
+        assertThat(result.get("success")).isEqualTo(true);
+        assertThat(result.get("networkTested")).isEqualTo(false);
+        assertThat(result.get("transportEnabled")).isEqualTo(false);
+        assertThat(result.get("transportRequested")).isEqualTo(true);
+        assertThat(result.get("transportCapability")).isEqualTo("anthropic");
+        assertThat(result.get("modelDiscoverySupported")).isEqualTo(false);
+        assertThat(result.get("modelsFetched")).isEqualTo(false);
+        assertThat(result.get("modelCount")).isEqualTo(0);
+    }
+
+    @Test
+    void transportTestRequiresManualModelForUnsupportedDiscoveryEvenWithTransportRequested() {
+        Map<String, Object> result = service().testProvider(Map.of(
+                "type", "gemini",
+                "baseUrl", "https://example.invalid/gemini",
+                "apiKey", "test-secret",
+                "transportEnabled", true
+        ));
+
+        assertThat(result.get("success")).isEqualTo(false);
+        assertThat(result.get("message")).isEqualTo("AI model is required because JavaNavi Web automatic model discovery is only supported for OpenAI-compatible providers.");
+        assertThat(result.get("networkTested")).isEqualTo(false);
+        assertThat(result.get("transportEnabled")).isEqualTo(false);
+        assertThat(result.get("modelDiscoverySupported")).isEqualTo(false);
+        assertThat(result.get("modelsFetched")).isEqualTo(false);
+    }
+
+    @Test
+    void saveProviderIgnoresUnsupportedTransportEnabledFlag() {
+        Map<String, Object> saved = service().saveProvider(Map.of(
+                "id", "anthropic-save-guard",
+                "type", "anthropic",
+                "name", "Anthropic Save Guard",
+                "baseUrl", "https://example.invalid/anthropic",
+                "model", "claude-3-5-sonnet-latest",
+                "apiFormat", "openai",
+                "apiKey", "test-secret",
+                "transportEnabled", true
+        ));
+
+        assertThat(saved.get("transportEnabled")).isEqualTo(false);
+        assertThat(saved.get("apiFormat")).isEqualTo("anthropic");
+    }
+
+    @Test
+    void chatSendDoesNotUseOpenAiTransportForStaleUnsupportedProviderState() throws Exception {
+        AiCompatibilityService service = service();
+        new ObjectMapper().writeValue(tempDir.resolve("ai-state.json").toFile(), Map.of(
+                "providers", List.of(Map.of(
+                        "id", "stale-unsupported",
+                        "type", "anthropic",
+                        "name", "Stale Unsupported",
+                        "baseUrl", "https://example.invalid/anthropic",
+                        "model", "claude-3-5-sonnet-latest",
+                        "apiFormat", "anthropic",
+                        "headers", Map.of(),
+                        "transportEnabled", true,
+                        "maxTokens", 4096,
+                        "temperature", 0.2
+                )),
+                "activeProvider", "stale-unsupported",
+                "safetyLevel", "readonly",
+                "contextLevel", "schema_only",
+                "sessions", Map.of()
+        ));
+
+        Map<String, Object> response = service.chatSend(Map.of(
+                "messages", List.of(Map.of("role", "user", "content", "hello"))
+        ));
+
+        assertThat(response.get("transport")).isEqualTo("java-web-local-state");
+        assertThat(response.get("transportCapability")).isEqualTo("anthropic");
+        assertThat(response.get("content")).asString().contains("only supports OpenAI-compatible HTTP transport");
+    }
+
+    @Test
+    void chatSendExplainsUnsupportedProviderTransportInsteadOfDisabledTransportHint() {
+        AiCompatibilityService service = service();
+        service.saveProvider(Map.of(
+                "id", "anthropic-manual",
+                "type", "anthropic",
+                "name", "Anthropic Manual",
+                "baseUrl", "https://example.invalid/anthropic",
+                "model", "claude-3-5-sonnet-latest",
+                "apiKey", "test-secret"
+        ));
+
+        Map<String, Object> response = service.chatSend(Map.of(
+                "messages", List.of(Map.of("role", "user", "content", "hello"))
+        ));
+
+        assertThat(response.get("transport")).isEqualTo("java-web-local-state");
+        assertThat(response.get("transportCapability")).isEqualTo("anthropic");
+        assertThat(response.get("content")).asString()
+                .contains("only supports OpenAI-compatible HTTP transport")
+                .doesNotContain("enable transportEnabled");
+    }
+
+    @Test
+    void explicitProviderSecretClearRemovesStoredSecret() {
+        AiCompatibilityService service = service();
+        Map<String, Object> saved = service.saveProvider(Map.of(
+                "id", "provider-clear-test",
+                "type", "openai",
+                "name", "Clear Test",
+                "baseUrl", "https://example.test/v1",
+                "model", "gpt-5.5",
+                "apiKey", "test-secret",
+                "transportEnabled", true
+        ));
+        assertThat(saved.get("hasSecret")).isEqualTo(true);
+
+        Map<String, Object> cleared = service.saveProvider(Map.of(
+                "id", "provider-clear-test",
+                "type", "openai",
+                "name", "Clear Test",
+                "baseUrl", "https://example.test/v1",
+                "model", "gpt-5.5",
+                "clearApiKey", true,
+                "transportEnabled", true
+        ));
+
+        assertThat(cleared.get("hasSecret")).isEqualTo(false);
+        assertThat(service.getProviders().get(0).get("hasSecret")).isEqualTo(false);
     }
 
     private AiCompatibilityService service() {

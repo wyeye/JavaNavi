@@ -153,7 +153,7 @@ Each decision entry must include:
 
 ### Decision ID: DEP-AI-PROVIDER-SDK
 
-- **Status:** No vendor SDK adopted; JavaNavi currently uses OpenAI-compatible HTTP over JDK HTTP APIs.
+- **Status:** No vendor SDK adopted; JavaNavi currently uses OpenAI-compatible HTTP over JDK HTTP APIs. Anthropic, Gemini, and Claude CLI formats remain manual-model configuration until provider-specific transports are approved and implemented.
 - **Allowed artifacts only after approval:** Provider SDKs such as OpenAI/Anthropic/Azure SDKs require a new decision entry before use.
 - **Required verification:** manual/runtime AI provider smoke and secret redaction checks when this area changes.
 - **Secret/credential impact:** API keys, base URLs, headers, prompts, and stream chunks require redaction/logging discipline.

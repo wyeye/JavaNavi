@@ -23,6 +23,7 @@ const DEFAULT_JAVA_ARGS: &[&str] = &[
 ];
 const EXTRA_JAVA_ARGS_ENV: &str = "JAVANAVI_DESKTOP_JAVA_OPTS";
 const DISABLE_DEFAULT_JAVA_ARGS_ENV: &str = "JAVANAVI_DESKTOP_DISABLE_DEFAULT_JAVA_OPTS";
+const ALLOW_PRIVATE_AI_ENDPOINTS_ENV: &str = "JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS";
 
 #[derive(Debug, Clone)]
 pub struct SidecarError {
@@ -275,6 +276,7 @@ fn spawn_java(
         .env("SERVER_ADDRESS", "127.0.0.1")
         .env("SERVER_PORT", port.to_string())
         .env("JAVANAVI_DATA_DIR", data_dir)
+        .env(ALLOW_PRIVATE_AI_ENDPOINTS_ENV, "true")
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .spawn()

@@ -84,6 +84,9 @@ public class AiCompatibilityService {
                 .orElse(null);
 
         String type = normalizeType(firstText(text(input.get("type")), existing == null ? null : text(existing.get("type")), "openai"));
+        String apiFormat = providerApiFormat(type, firstText(text(input.get("apiFormat")), existing == null ? null : text(existing.get("apiFormat"))));
+        boolean transportRequested = booleanValue(input.get("transportEnabled"), existing != null && booleanValue(existing.get("transportEnabled"), false));
+        boolean transportEnabled = transportRequested && supportsOpenAiCompatibleTransport(type, apiFormat);
         String apiKey = text(input.get("apiKey"));
         boolean hasSecret = existing != null && bool(existing.get("hasSecret")) || secretStore.get(secretKey(id)).isPresent();
         if (apiKey != null && !apiKey.isBlank()) {
@@ -104,9 +107,9 @@ public class AiCompatibilityService {
                 "baseUrl", firstText(text(input.get("baseUrl")), existing == null ? null : text(existing.get("baseUrl")), defaultBaseUrl(type)),
                 "model", firstText(text(input.get("model")), existing == null ? null : text(existing.get("model")), defaultModel(type)),
                 "models", stringList(input.get("models")),
-                "apiFormat", firstText(text(input.get("apiFormat")), existing == null ? null : text(existing.get("apiFormat")), type),
+                "apiFormat", apiFormat,
                 "headers", mapValue(input.get("headers")),
-                "transportEnabled", booleanValue(input.get("transportEnabled"), existing != null && booleanValue(existing.get("transportEnabled"), false)),
+                "transportEnabled", transportEnabled,
                 "maxTokens", positiveInt(input.get("maxTokens"), existing == null ? 4096 : positiveInt(existing.get("maxTokens"), 4096)),
                 "temperature", numeric(input.get("temperature"), existing == null ? 0.2 : numeric(existing.get("temperature"), 0.2)),
                 "updatedAt", Instant.now().toString()
@@ -266,20 +269,69 @@ public class AiCompatibilityService {
                 .findFirst()
                 .orElse(Map.of());
         String type = normalizeType(firstText(input == null ? null : text(input.get("type")), text(savedProvider.get("type"))));
+        String apiFormat = providerApiFormat(type, firstText(input == null ? null : text(input.get("apiFormat")), text(savedProvider.get("apiFormat"))));
         String model = firstText(input == null ? null : text(input.get("model")), text(savedProvider.get("model")));
         String apiKey = input == null ? null : text(input.get("apiKey"));
         Optional<String> storedSecret = providerId.isBlank() ? Optional.empty() : secretStore.get(secretKey(providerId));
         boolean hasStoredSecret = storedSecret.isPresent();
-        if (isBlank(model)) {
-            return orderedMap("success", false, "message", "AI model is required.", "networkTested", false);
+        boolean transportRequested = booleanValue(input == null ? null : input.get("transportEnabled"), booleanValue(savedProvider.get("transportEnabled"), false));
+        boolean modelDiscoverySupported = supportsOpenAiCompatibleTransport(type, apiFormat);
+        boolean transportEnabled = transportRequested && modelDiscoverySupported;
+        if (transportRequested && !modelDiscoverySupported) {
+            if (isBlank(model)) {
+                return orderedMap(
+                        "success", false,
+                        "message", "AI model is required because JavaNavi Web automatic model discovery is only supported for OpenAI-compatible providers.",
+                        "providerId", providerId.isBlank() ? "preview" : providerId,
+                        "networkTested", false,
+                        "transportEnabled", false,
+                        "transportRequested", true,
+                        "transportCapability", transportCapability(type, apiFormat),
+                        "modelDiscoverySupported", false,
+                        "modelsFetched", false
+                );
+            }
+            if (!"claude_cli".equals(type) && isBlank(apiKey) && !hasStoredSecret) {
+                return orderedMap(
+                        "success", false,
+                        "message", "AI provider API key is required or must already be stored.",
+                        "providerId", providerId.isBlank() ? "preview" : providerId,
+                        "networkTested", false,
+                        "transportEnabled", false,
+                        "transportRequested", true,
+                        "transportCapability", transportCapability(type, apiFormat),
+                        "modelDiscoverySupported", false,
+                        "modelsFetched", false
+                );
+            }
+            return orderedMap(
+                    "success", true,
+                    "message", "AI provider configuration is valid, but JavaNavi Web outbound HTTP transport and model discovery are only supported for OpenAI-compatible providers. The model ID will be kept as a manual configuration.",
+                    "providerId", providerId.isBlank() ? "preview" : providerId,
+                    "networkTested", false,
+                    "transportEnabled", false,
+                    "transportRequested", true,
+                    "transportCapability", transportCapability(type, apiFormat),
+                    "modelDiscoverySupported", false,
+                    "modelsFetched", false,
+                    "models", List.of(),
+                    "modelCount", 0
+            );
         }
         if (!"claude_cli".equals(type) && isBlank(apiKey) && !hasStoredSecret) {
-            return orderedMap("success", false, "message", "AI provider API key is required or must already be stored.", "networkTested", false);
+            return orderedMap(
+                    "success", false,
+                    "message", "AI provider API key is required or must already be stored.",
+                    "networkTested", false,
+                    "transportCapability", transportCapability(type, apiFormat),
+                    "modelDiscoverySupported", modelDiscoverySupported,
+                    "modelsFetched", false
+            );
         }
-        boolean transportEnabled = booleanValue(input == null ? null : input.get("transportEnabled"), booleanValue(savedProvider.get("transportEnabled"), false));
-        if (transportEnabled && !"claude_cli".equals(type)) {
+        if (transportEnabled) {
             Map<String, Object> provider = new LinkedHashMap<>(savedProvider);
             provider.put("type", type);
+            provider.put("apiFormat", apiFormat);
             provider.put("model", model);
             provider.put("baseUrl", firstText(input == null ? null : text(input.get("baseUrl")), text(savedProvider.get("baseUrl")), defaultBaseUrl(type)));
             provider.put("headers", input != null && input.get("headers") != null ? mapValue(input.get("headers")) : mapValue(savedProvider.get("headers")));
@@ -291,6 +343,11 @@ public class AiCompatibilityService {
                         "providerId", providerId.isBlank() ? "preview" : providerId,
                         "networkTested", true,
                         "transportEnabled", true,
+                        "transportCapability", transportCapability(type, apiFormat),
+                        "modelDiscoverySupported", true,
+                        "modelsFetched", true,
+                        "models", transport.getOrDefault("models", List.of()),
+                        "modelCount", transport.getOrDefault("modelCount", 0),
                         "transport", transport
                 );
             } catch (IOException | InterruptedException | IllegalArgumentException error) {
@@ -302,9 +359,23 @@ public class AiCompatibilityService {
                         "message", "AI provider transport test failed: " + SecretRedactor.redact(error.getMessage()),
                         "providerId", providerId.isBlank() ? "preview" : providerId,
                         "networkTested", true,
-                        "transportEnabled", true
+                        "transportEnabled", true,
+                        "transportCapability", transportCapability(type, apiFormat),
+                        "modelDiscoverySupported", true,
+                        "modelsFetched", false
                 );
             }
+        }
+        if (isBlank(model)) {
+            return orderedMap(
+                    "success", false,
+                    "message", "AI model is required.",
+                    "networkTested", false,
+                    "transportEnabled", false,
+                    "transportCapability", transportCapability(type, apiFormat),
+                    "modelDiscoverySupported", modelDiscoverySupported,
+                    "modelsFetched", false
+            );
         }
         return orderedMap(
                 "success", true,
@@ -313,7 +384,10 @@ public class AiCompatibilityService {
                         : "AI provider configuration is valid for JavaNavi Web local storage; enable transportEnabled for outbound HTTP model calls.",
                 "providerId", providerId.isBlank() ? "preview" : providerId,
                 "networkTested", false,
-                "transportEnabled", transportEnabled
+                "transportEnabled", transportEnabled,
+                "transportCapability", transportCapability(type, apiFormat),
+                "modelDiscoverySupported", modelDiscoverySupported,
+                "modelsFetched", false
         );
     }
 
@@ -363,7 +437,22 @@ public class AiCompatibilityService {
             );
         }
         Map<String, Object> selected = provider.get();
-        if (booleanValue(selected.get("transportEnabled"), false)) {
+        boolean transportEnabled = booleanValue(selected.get("transportEnabled"), false);
+        boolean transportSupported = supportsOpenAiCompatibleTransport(selected);
+        if (!transportSupported) {
+            return orderedMap(
+                    "content", "JavaNavi AI provider '" + firstText(text(selected.get("name")), active) + "' is configured for "
+                            + transportCapability(selected)
+                            + ", but JavaNavi Web currently only supports OpenAI-compatible HTTP transport. Switch the provider API format to OpenAI-compatible or keep the model ID as manual configuration until provider-specific transport is added.",
+                    "choices", List.of(),
+                    "providerId", active,
+                    "model", selected.get("model"),
+                    "transport", "java-web-local-state",
+                    "transportCapability", transportCapability(selected),
+                    "transportError", false
+            );
+        }
+        if (transportEnabled) {
             Optional<String> apiKey = secretStore.get(secretKey(active));
             if (apiKey.isEmpty()) {
                 return orderedMap(
@@ -396,7 +485,8 @@ public class AiCompatibilityService {
                 "choices", List.of(),
                 "providerId", active,
                 "model", selected.get("model"),
-                "transport", "java-web-local-state"
+                "transport", "java-web-local-state",
+                "transportCapability", transportCapability(selected)
         );
     }
 
@@ -457,10 +547,12 @@ public class AiCompatibilityService {
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
         }
+        List<String> models = openAiCompatibleModelIds(payload);
         return orderedMap(
                 "statusCode", response.statusCode(),
                 "endpoint", "models",
-                "modelCount", objectList(payload.get("data")).size()
+                "modelCount", models.size(),
+                "models", models
         );
     }
 
@@ -524,7 +616,9 @@ public class AiCompatibilityService {
         Optional<Map<String, Object>> provider = providers(state).stream()
                 .filter(item -> active.equals(text(item.get("id"))))
                 .findFirst();
-        if (provider.isEmpty() || !booleanValue(provider.get().get("transportEnabled"), false)) {
+        if (provider.isEmpty()
+                || !booleanValue(provider.get().get("transportEnabled"), false)
+                || !supportsOpenAiCompatibleTransport(provider.get())) {
             return Optional.empty();
         }
         Optional<String> apiKey = secretStore.get(secretKey(active));
@@ -803,6 +897,26 @@ public class AiCompatibilityService {
         return List.of();
     }
 
+    static List<String> openAiCompatibleModelIds(Map<String, Object> payload) {
+        if (payload == null) {
+            return List.of();
+        }
+        return objectListStatic(payload.get("data")).stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> text(item.get("id")))
+                .filter(item -> !isBlank(item))
+                .distinct()
+                .toList();
+    }
+
+    private static List<Object> objectListStatic(Object value) {
+        if (value instanceof List<?> list) {
+            return new ArrayList<>(list);
+        }
+        return List.of();
+    }
+
     private static URI chatCompletionsUri(String baseUrl) {
         String base = firstText(baseUrl, defaultBaseUrl("openai"));
         String normalized = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
@@ -986,13 +1100,64 @@ public class AiCompatibilityService {
         return sanitized.length() > 96 ? sanitized.substring(0, 96) : sanitized;
     }
 
+    private static boolean supportsOpenAiCompatibleTransport(Map<String, Object> provider) {
+        return supportsOpenAiCompatibleTransport(text(provider.get("type")), text(provider.get("apiFormat")));
+    }
+
+    static boolean supportsOpenAiCompatibleTransport(String type, String apiFormat) {
+        String normalizedType = normalizeType(type);
+        String normalizedApiFormat = normalizeApiFormat(firstText(apiFormat, defaultApiFormat(normalizedType)));
+        return "openai".equals(normalizedType) || ("custom".equals(normalizedType) && "openai".equals(normalizedApiFormat));
+    }
+
+    private static String transportCapability(Map<String, Object> provider) {
+        return transportCapability(text(provider.get("type")), text(provider.get("apiFormat")));
+    }
+
+    private static String transportCapability(String type, String apiFormat) {
+        String normalizedType = normalizeType(type);
+        return supportsOpenAiCompatibleTransport(normalizedType, apiFormat)
+                ? "openai-compatible-http"
+                : providerApiFormat(normalizedType, apiFormat);
+    }
+
     private static String normalizeType(String type) {
         String value = firstText(type, "openai").toLowerCase(Locale.ROOT);
         return switch (value) {
             case "anthropic", "claude" -> "anthropic";
             case "gemini", "google" -> "gemini";
             case "custom" -> "custom";
-            case "claude_cli" -> "claude_cli";
+            case "claude_cli", "claude-cli" -> "claude_cli";
+            default -> "openai";
+        };
+    }
+
+    private static String normalizeApiFormat(String apiFormat) {
+        String value = firstText(apiFormat, "openai").toLowerCase(Locale.ROOT).replace('_', '-');
+        return switch (value) {
+            case "anthropic", "claude" -> "anthropic";
+            case "gemini", "google" -> "gemini";
+            case "claude-cli" -> "claude-cli";
+            case "custom" -> "custom";
+            default -> "openai";
+        };
+    }
+
+    private static String providerApiFormat(String type, String apiFormat) {
+        return switch (normalizeType(type)) {
+            case "anthropic" -> "anthropic";
+            case "gemini" -> "gemini";
+            case "claude_cli" -> "claude-cli";
+            case "custom" -> normalizeApiFormat(firstText(apiFormat, "openai"));
+            default -> "openai";
+        };
+    }
+
+    private static String defaultApiFormat(String type) {
+        return switch (normalizeType(type)) {
+            case "anthropic" -> "anthropic";
+            case "gemini" -> "gemini";
+            case "claude_cli" -> "claude-cli";
             default -> "openai";
         };
     }
@@ -1051,8 +1216,12 @@ public class AiCompatibilityService {
         if (value instanceof Number number) {
             return number.doubleValue();
         }
+        String text = text(value);
+        if (isBlank(text)) {
+            return fallback;
+        }
         try {
-            return Double.parseDouble(text(value));
+            return Double.parseDouble(text);
         } catch (NumberFormatException ignored) {
             return fallback;
         }
