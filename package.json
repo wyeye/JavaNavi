@@ -10,7 +10,7 @@
     "desktop:dev": "npm run desktop:stage && tauri dev",
     "desktop:build": "npm run desktop:stage && tauri build",
     "desktop:build:linux": "npm run desktop:stage && tauri build --bundles deb rpm",
-    "desktop:build:macos": "npm run desktop:stage && tauri build --bundles dmg",
+    "desktop:build:macos": "npm run desktop:stage && tauri build --bundles app",
     "desktop:build:windows": "npm run desktop:stage && tauri build --bundles nsis"
   },
   "devDependencies": {

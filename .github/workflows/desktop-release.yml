@@ -137,6 +137,11 @@ jobs:
       - name: Install root dependencies
         run: npm ci
 
+      - name: Resolve package version
+        run: |
+          set -euo pipefail
+          echo "PACKAGE_VERSION=$(node -p "require('./package.json').version")" >> "$GITHUB_ENV"
+
       - name: Use Bash for npm scripts on Windows
         if: matrix.platform == 'windows'
         shell: pwsh
@@ -160,6 +165,33 @@ jobs:
           else
             npm run desktop:build
           fi
+
+      - name: Create macOS DMG
+        if: matrix.platform == 'macos'
+        env:
+          PACKAGE_ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          app_path="src-tauri/target/release/bundle/macos/JavaNavi.app"
+          dmg_dir="src-tauri/target/release/bundle/dmg"
+          dmg_path="${dmg_dir}/JavaNavi_${PACKAGE_VERSION}_${PACKAGE_ARCH}.dmg"
+          if [[ ! -d "$app_path" ]]; then
+            echo "macOS app bundle was not created: $app_path" >&2
+            exit 1
+          fi
+          rm -rf "$dmg_dir" "$RUNNER_TEMP/javanavi-dmg-root"
+          mkdir -p "$dmg_dir" "$RUNNER_TEMP/javanavi-dmg-root"
+          cp -R "$app_path" "$RUNNER_TEMP/javanavi-dmg-root/JavaNavi.app"
+          ln -s /Applications "$RUNNER_TEMP/javanavi-dmg-root/Applications"
+          du -sh "$RUNNER_TEMP/javanavi-dmg-root"
+          hdiutil create \
+            -volname "JavaNavi ${PACKAGE_VERSION}" \
+            -srcfolder "$RUNNER_TEMP/javanavi-dmg-root" \
+            -ov \
+            -format UDZO \
+            "$dmg_path"
+          hdiutil verify "$dmg_path"
+          ls -lh "$dmg_path"
 
       - name: Collect desktop bundles
         env:
