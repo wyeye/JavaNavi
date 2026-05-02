@@ -70,6 +70,7 @@ import {
   resolveCustomDataSourceFromConfig,
   type CustomDataSource,
 } from "../utils/customDataSources";
+import { filterDriverOptionsForDatabase, normalizeDriverSelectionType, resolveDefaultDriverTypeForDatabase } from "../utils/driverSelection";
 import {
   applyNoAutoCapAttributes,
   noAutoCapInputProps,
@@ -235,6 +236,8 @@ type DriverStatusSnapshot = {
 type DriverOption = {
   driverType: string;
   driverName: string;
+  databaseType?: string;
+  databaseName?: string;
   available: boolean;
   connectable: boolean;
   default?: boolean;
@@ -936,46 +939,62 @@ const ConnectionModal: React.FC<{
     drivers.forEach((item: any) => {
       const type = normalizeDriverType(String(item.type || "").trim());
       if (!type) return;
+      const parsedDriverOptions: DriverOption[] = Array.isArray(item.driverOptions)
+        ? item.driverOptions
+            .map((option: any) => {
+              const driverType = normalizeDriverType(
+                String(option.driverType || "").trim(),
+              );
+              if (!driverType) {
+                return null;
+              }
+              return {
+                driverType,
+                driverName: String(
+                  option.driverName || option.driverType || driverType,
+                ).trim(),
+                databaseType:
+                  normalizeDriverType(String(option.databaseType || "").trim()) ||
+                  undefined,
+                databaseName: String(option.databaseName || "").trim() || undefined,
+                available: !!option.available,
+                connectable: !!option.connectable,
+                default: !!option.default,
+                reusedRuntime: !!option.reusedRuntime,
+                runtimeOwnerType:
+                  String(option.runtimeOwnerType || "").trim() || undefined,
+                runtimeOwnerName:
+                  String(option.runtimeOwnerName || "").trim() || undefined,
+                driverClassName:
+                  String(option.driverClassName || "").trim() || undefined,
+                message: String(option.message || "").trim() || undefined,
+              } as DriverOption;
+            })
+            .filter((option: DriverOption | null): option is DriverOption =>
+              Boolean(option),
+            )
+        : [];
+      const driverOptions = filterDriverOptionsForDatabase<DriverOption>(type, parsedDriverOptions);
+      const rawDefaultDriverType = String(item.defaultDriverType || "").trim();
+      const defaultDriverType = resolveDefaultDriverTypeForDatabase(
+        type,
+        rawDefaultDriverType,
+        driverOptions,
+      ) || undefined;
+      const defaultDriverName =
+        driverOptions.find((option) => option.driverType === defaultDriverType)
+          ?.driverName ||
+        (normalizeDriverSelectionType(rawDefaultDriverType) === defaultDriverType
+          ? String(item.defaultDriverName || "").trim()
+          : "") ||
+        defaultDriverType;
       result[type] = {
         type,
         name: String(item.name || item.type || type).trim(),
         connectable: !!item.connectable,
-        defaultDriverType:
-          normalizeDriverType(String(item.defaultDriverType || "").trim()) ||
-          undefined,
-        defaultDriverName:
-          String(item.defaultDriverName || "").trim() || undefined,
-        driverOptions: Array.isArray(item.driverOptions)
-          ? item.driverOptions
-              .map((option: any) => {
-                const driverType = normalizeDriverType(
-                  String(option.driverType || "").trim(),
-                );
-                if (!driverType) {
-                  return null;
-                }
-                return {
-                  driverType,
-                  driverName: String(
-                    option.driverName || option.driverType || driverType,
-                  ).trim(),
-                  available: !!option.available,
-                  connectable: !!option.connectable,
-                  default: !!option.default,
-                  reusedRuntime: !!option.reusedRuntime,
-                  runtimeOwnerType:
-                    String(option.runtimeOwnerType || "").trim() || undefined,
-                  runtimeOwnerName:
-                    String(option.runtimeOwnerName || "").trim() || undefined,
-                  driverClassName:
-                    String(option.driverClassName || "").trim() || undefined,
-                  message: String(option.message || "").trim() || undefined,
-                } as DriverOption;
-              })
-              .filter((option: DriverOption | null): option is DriverOption =>
-                Boolean(option),
-              )
-          : undefined,
+        defaultDriverType,
+        defaultDriverName,
+        driverOptions,
         message: String(item.message || "").trim() || undefined,
       };
     });
@@ -3237,9 +3256,12 @@ const ConnectionModal: React.FC<{
         ? String(mergedValues.driver || "").trim()
         : type === "jvm"
           ? undefined
-          : normalizeDriverType(String(mergedValues.driver || "")) ||
-            driverStatusMap[normalizedConfigType]?.defaultDriverType ||
-            normalizedConfigType;
+          : resolveDefaultDriverTypeForDatabase(
+              normalizedConfigType,
+              normalizeDriverType(String(mergedValues.driver || "")) ||
+                driverStatusMap[normalizedConfigType]?.defaultDriverType,
+              driverStatusMap[normalizedConfigType]?.driverOptions || [],
+            ) || normalizedConfigType;
     const selectedCustomSource =
       type === "custom"
         ? customDataSources.find(

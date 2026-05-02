@@ -322,11 +322,7 @@ public class JdbcConnectionFactory {
 
     private static List<String> compatibleDriverTypes(String driverType) {
         String logical = normalizeSelectionToken(driverType);
-        return switch (logical) {
-            case "mysql", "mariadb", "diros", "sphinx" -> List.of("mysql", "mariadb", "diros", "sphinx");
-            case "postgres", "kingbase", "highgo", "vastbase" -> List.of("postgres", "kingbase", "highgo", "vastbase");
-            default -> List.of(logical);
-        };
+        return List.of(logical);
     }
 
     private static String normalizeSelectionToken(String value) {

@@ -33,6 +33,7 @@ try {
   const dataGridValue = await transpileToModule('src/components/dataGridValue.ts', 'dataGridValue.mjs');
   const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
   const sidebarTreeNavigation = await transpileToModule('src/components/sidebarTreeNavigation.ts', 'sidebarTreeNavigation.mjs');
+  const driverSelection = await transpileToModule('src/utils/driverSelection.ts', 'driverSelection.mjs');
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
@@ -100,6 +101,28 @@ try {
     { connectionId: 'conn-1', dbName: 'demo', tableName: 'users' },
   );
   assert.equal(sidebarTreeNavigation.getActiveSidebarTableTarget({ type: 'query', connectionId: 'conn-1' }), null);
+
+  const mysqlDriverOptions = [
+    { driverType: 'mysql', databaseType: 'mysql', driverName: 'MySQL' },
+    { driverType: 'mariadb', databaseType: 'mysql', driverName: 'MariaDB' },
+    { driverType: 'postgres', databaseType: 'postgres', driverName: 'PostgreSQL' },
+    { driverType: 'oracle', driverName: 'Oracle' },
+  ];
+  assert.deepEqual(
+    driverSelection.filterDriverOptionsForDatabase('mysql', mysqlDriverOptions).map((option) => option.driverType),
+    ['mysql'],
+    'existing MySQL datasource should only expose MySQL driver choices',
+  );
+  assert.equal(
+    driverSelection.resolveDefaultDriverTypeForDatabase('mysql', 'mariadb', mysqlDriverOptions),
+    'mysql',
+    'cross-type saved defaults should fall back to the datasource driver',
+  );
+  assert.deepEqual(
+    driverSelection.filterDriverOptionsForDatabase('doris', [{ driverType: 'diros', databaseType: 'diros' }]).map((option) => option.driverType),
+    ['diros'],
+    'datasource aliases should normalize before option filtering',
+  );
 
   const frontendFallback = customDataSources.createCustomDataSource({
     name: '本地缓存源',

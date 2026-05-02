@@ -29,6 +29,7 @@ import {
   UploadLocalDriverPackage,
   ValidateCustomDriverDefinition,
 } from '@compat/javanaviApp';
+import { filterDriverOptionsForDatabase, normalizeDriverSelectionType, resolveDefaultDriverTypeForDatabase } from '../utils/driverSelection';
 
 const { Paragraph, Text } = Typography;
 
@@ -514,54 +515,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             setDownloadDir(resolvedDir);
           }
 
-          const nextRows: DriverStatusRow[] = drivers.map((item: any) => ({
-            type: String(item.type || '').trim(),
-            name: String(item.name || item.type || '').trim(),
-            builtIn: !!item.builtIn,
-            managedDownload: !!item.managedDownload,
-            downloadRequired: !!item.downloadRequired,
-            reusedDriverType: String(item.reusedDriverType || '').trim() || undefined,
-            reusedDriverName: String(item.reusedDriverName || '').trim() || undefined,
-            pinnedVersion: String(item.pinnedVersion || '').trim() || undefined,
-            installedVersion: String(item.installedVersion || '').trim() || undefined,
-            installedVersions: Array.isArray(item.installedVersions)
-              ? item.installedVersions
-                  .map((entry: any) => {
-                    const version = String(entry.version || '').trim();
-                    if (!version) {
-                      return null;
-                    }
-                    return {
-                      version,
-                      active: !!entry.active,
-                      installMode: String(entry.installMode || '').trim() || undefined,
-                      installSource: String(entry.installSource || '').trim() || undefined,
-                      downloadedAt: String(entry.downloadedAt || '').trim() || undefined,
-                      installDir: String(entry.installDir || '').trim() || undefined,
-                      filePath: String(entry.filePath || '').trim() || undefined,
-                    } as DriverInstalledVersion;
-                  })
-                  .filter((entry: DriverInstalledVersion | null): entry is DriverInstalledVersion => !!entry)
-              : undefined,
-            installedVersionCount: Number.isFinite(Number(item.installedVersionCount))
-              ? Number(item.installedVersionCount)
-              : undefined,
-            packageSizeText: String(item.packageSizeText || '').trim() || undefined,
-            runtimeAvailable: !!item.runtimeAvailable,
-            packageInstalled: !!item.packageInstalled,
-            connectable: !!item.connectable,
-            defaultDownloadUrl: String(item.defaultDownloadUrl || '').trim() || undefined,
-            installDir: String(item.installDir || '').trim() || undefined,
-            packagePath: String(item.packagePath || '').trim() || undefined,
-            executablePath: String(item.executablePath || '').trim() || undefined,
-            downloadedAt: String(item.downloadedAt || '').trim() || undefined,
-            installMode: String(item.installMode || '').trim() || undefined,
-            installSource: String(item.installSource || '').trim() || undefined,
-            installSourceLabel: String(item.installSourceLabel || '').trim() || undefined,
-            installSourceDetail: String(item.installSourceDetail || '').trim() || undefined,
-            defaultDriverType: String(item.defaultDriverType || '').trim() || undefined,
-            defaultDriverName: String(item.defaultDriverName || '').trim() || undefined,
-            driverOptions: Array.isArray(item.driverOptions)
+          const nextRows: DriverStatusRow[] = drivers.map((item: any) => {
+            const rowType = String(item.type || '').trim();
+            const parsedDriverOptions: DriverOption[] = Array.isArray(item.driverOptions)
               ? item.driverOptions
                   .map((option: any) => {
                     const driverType = String(option.driverType || '').trim();
@@ -584,9 +540,64 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                     } as DriverOption;
                   })
                   .filter((option: DriverOption | null): option is DriverOption => !!option)
-              : undefined,
-            message: String(item.message || '').trim() || undefined,
-          }));
+              : [];
+            const driverOptions = filterDriverOptionsForDatabase<DriverOption>(rowType, parsedDriverOptions);
+            const rawDefaultDriverType = String(item.defaultDriverType || '').trim();
+            const defaultDriverType = resolveDefaultDriverTypeForDatabase(rowType, rawDefaultDriverType, driverOptions);
+            const defaultDriverName = driverOptions.find((option) => option.driverType === defaultDriverType)?.driverName
+              || (normalizeDriverSelectionType(rawDefaultDriverType) === defaultDriverType ? String(item.defaultDriverName || '').trim() : '')
+              || defaultDriverType;
+            return {
+              type: rowType,
+              name: String(item.name || item.type || '').trim(),
+              builtIn: !!item.builtIn,
+              managedDownload: !!item.managedDownload,
+              downloadRequired: !!item.downloadRequired,
+              reusedDriverType: String(item.reusedDriverType || '').trim() || undefined,
+              reusedDriverName: String(item.reusedDriverName || '').trim() || undefined,
+              pinnedVersion: String(item.pinnedVersion || '').trim() || undefined,
+              installedVersion: String(item.installedVersion || '').trim() || undefined,
+              installedVersions: Array.isArray(item.installedVersions)
+                ? item.installedVersions
+                    .map((entry: any) => {
+                      const version = String(entry.version || '').trim();
+                      if (!version) {
+                        return null;
+                      }
+                      return {
+                        version,
+                        active: !!entry.active,
+                        installMode: String(entry.installMode || '').trim() || undefined,
+                        installSource: String(entry.installSource || '').trim() || undefined,
+                        downloadedAt: String(entry.downloadedAt || '').trim() || undefined,
+                        installDir: String(entry.installDir || '').trim() || undefined,
+                        filePath: String(entry.filePath || '').trim() || undefined,
+                      } as DriverInstalledVersion;
+                    })
+                    .filter((entry: DriverInstalledVersion | null): entry is DriverInstalledVersion => !!entry)
+                : undefined,
+              installedVersionCount: Number.isFinite(Number(item.installedVersionCount))
+                ? Number(item.installedVersionCount)
+                : undefined,
+              packageSizeText: String(item.packageSizeText || '').trim() || undefined,
+              runtimeAvailable: !!item.runtimeAvailable,
+              packageInstalled: !!item.packageInstalled,
+              connectable: !!item.connectable,
+              defaultDownloadUrl: String(item.defaultDownloadUrl || '').trim() || undefined,
+              installDir: String(item.installDir || '').trim() || undefined,
+              packagePath: String(item.packagePath || '').trim() || undefined,
+              executablePath: String(item.executablePath || '').trim() || undefined,
+              downloadedAt: String(item.downloadedAt || '').trim() || undefined,
+              installMode: String(item.installMode || '').trim() || undefined,
+              installSource: String(item.installSource || '').trim() || undefined,
+              installSourceLabel: String(item.installSourceLabel || '').trim() || undefined,
+              installSourceDetail: String(item.installSourceDetail || '').trim() || undefined,
+              defaultDriverType: defaultDriverType || undefined,
+              defaultDriverName: defaultDriverName || undefined,
+              driverOptions,
+              message: String(item.message || '').trim() || undefined,
+            };
+          });
           setRows(nextRows);
           setStatusLoadError('');
           driverStatusSnapshotCache = {

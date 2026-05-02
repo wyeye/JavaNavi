@@ -743,11 +743,7 @@ public class DriverCompatibilityService {
 
     private static List<String> compatibleDriverTypes(String databaseType) {
         String normalized = normalizeDriverType(databaseType);
-        return switch (normalized) {
-            case "mysql", "mariadb", "diros", "sphinx" -> List.of("mysql", "mariadb", "diros", "sphinx");
-            case "postgres", "kingbase", "highgo", "vastbase" -> List.of("postgres", "kingbase", "highgo", "vastbase");
-            default -> List.of(normalized);
-        };
+        return List.of(normalized);
     }
 
     private String statusMessage(DriverDefinition definition, Path resolvedDir, boolean metadataInstalled, String runtimeOwnerType) {
