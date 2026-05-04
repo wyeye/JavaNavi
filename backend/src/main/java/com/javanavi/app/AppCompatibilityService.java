@@ -54,7 +54,7 @@ public class AppCompatibilityService {
     public Map<String, Object> appInfo() {
         return orderedMap(
                 "name", "JavaNavi",
-                "version", "0.1.0",
+                "version", "0.1.5",
                 "backend", "java-spring-boot",
                 "packageType", "java-web",
                 "dataDirectory", dataDirectory.toString(),
@@ -179,8 +179,8 @@ public class AppCompatibilityService {
 
     public Map<String, Object> updateStatus() {
         return orderedMap(
-                "currentVersion", "0.1.0",
-                "latestVersion", "0.1.0",
+                "currentVersion", "0.1.5",
+                "latestVersion", "0.1.5",
                 "hasUpdate", false,
                 "downloaded", false,
                 "message", "JavaNavi Web package does not perform in-app binary updates."
