@@ -4454,19 +4454,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         <div
             ref={treeContainerRef}
             className="sidebar-tree-scroll-shell"
-            tabIndex={0}
-            onKeyDown={handleSidebarTreeKeyDown}
-            onMouseDown={(event) => {
-                if ((event.target as HTMLElement | null)?.closest('.ant-tree')) {
-                    event.currentTarget.focus();
-                }
-            }}
             style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}
         >
             <div className="sidebar-tree-scroll-content">
                 <Tree
                     ref={treeRef}
                     showIcon
+                    tabIndex={0}
+                    onKeyDown={handleSidebarTreeKeyDown}
                     draggable={{
                         icon: false,
                         nodeDraggable: (node: any) => node.type === 'connection' || node.type === 'tag'
