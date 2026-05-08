@@ -10,6 +10,7 @@ JAVA_HOME="${JAVA_HOME:-/usr/lib/jvm/java-17-openjdk-amd64}"
 MAVEN_REPO="${MAVEN_REPO:-$ROOT_DIR/.m2/repository}"
 MAVEN_PROFILES="${MAVEN_PROFILES:-}"
 MAVEN_EXTRA_ARGS="${MAVEN_EXTRA_ARGS:-}"
+JAR_TOOL=""
 
 safe_rm_under_root() {
   local target
@@ -58,6 +59,62 @@ require_command() {
   fi
 }
 
+resolve_jar_tool() {
+  local candidate
+  for candidate in "$JAVA_HOME/bin/jar" "$JAVA_HOME/bin/jar.exe"; do
+    if [[ -x "$candidate" ]]; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+assert_jar_entry() {
+  local entry="$1"
+  local description="$2"
+  if ! grep -Fxq "$entry" <<< "$JAR_ENTRIES"; then
+    echo "Packaged jar does not contain $description: $entry" >&2
+    exit 1
+  fi
+}
+
+assert_jar_prefix() {
+  local prefix="$1"
+  local description="$2"
+  if ! grep -Fq "$prefix" <<< "$JAR_ENTRIES"; then
+    echo "Packaged jar does not contain $description under: $prefix" >&2
+    exit 1
+  fi
+}
+
+assert_boot_manifest() {
+  local jar_path="$1"
+  local tmp_dir
+  tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "$tmp_dir"' RETURN
+  (
+    cd "$tmp_dir"
+    "$JAR_TOOL" xf "$jar_path" META-INF/MANIFEST.MF
+  )
+  if [[ ! -f "$tmp_dir/META-INF/MANIFEST.MF" ]]; then
+    echo "Packaged jar does not contain META-INF/MANIFEST.MF" >&2
+    exit 1
+  fi
+  local manifest
+  manifest="$(tr -d '\r' < "$tmp_dir/META-INF/MANIFEST.MF")"
+  if ! grep -Fqx "Main-Class: org.springframework.boot.loader.launch.JarLauncher" <<< "$manifest"; then
+    echo "Packaged jar manifest does not point to Spring Boot JarLauncher" >&2
+    exit 1
+  fi
+  if ! grep -Fqx "Start-Class: com.javanavi.JavaNaviApplication" <<< "$manifest"; then
+    echo "Packaged jar manifest does not point to com.javanavi.JavaNaviApplication" >&2
+    exit 1
+  fi
+  trap - RETURN
+  rm -rf "$tmp_dir"
+}
+
 require_command npm
 require_command mvn
 
@@ -79,6 +136,11 @@ BACKEND_JAR="$BACKEND_DIR/target/javanavi-backend-$BACKEND_VERSION.jar"
 if [[ ! -d "$JAVA_HOME" ]]; then
   echo "JAVA_HOME does not exist: $JAVA_HOME" >&2
   echo "Set JAVA_HOME to a Java 17+ installation and rerun." >&2
+  exit 1
+fi
+if ! JAR_TOOL="$(resolve_jar_tool)"; then
+  echo "JAVA_HOME does not provide an executable jar tool under: $JAVA_HOME/bin" >&2
+  echo "Set JAVA_HOME to a Java 17+ JDK and rerun." >&2
   exit 1
 fi
 
@@ -119,10 +181,13 @@ if [[ ! -f "$JAR_PATH" ]]; then
   exit 1
 fi
 
-if ! "$JAVA_HOME/bin/jar" tf "$JAR_PATH" | grep -q 'BOOT-INF/classes/static/index.html'; then
-  echo "Packaged jar does not contain React static index.html" >&2
-  exit 1
-fi
+JAR_ENTRIES="$("$JAR_TOOL" tf "$JAR_PATH")"
+assert_jar_entry "BOOT-INF/classes/static/index.html" "React static index.html"
+assert_jar_entry "BOOT-INF/classes/com/javanavi/JavaNaviApplication.class" "JavaNavi Spring Boot application class"
+assert_jar_entry "org/springframework/boot/loader/launch/JarLauncher.class" "Spring Boot JarLauncher"
+assert_jar_prefix "BOOT-INF/lib/" "Spring Boot nested dependencies"
+assert_boot_manifest "$JAR_PATH"
 
 printf 'WEB_PACKAGE_JAR=%s\n' "$JAR_PATH"
+printf 'WEB_PACKAGE_BOOT_JAR=verified\n'
 printf 'WEB_PACKAGE_BUILD=passed\n'

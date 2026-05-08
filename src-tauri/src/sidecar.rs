@@ -332,7 +332,7 @@ fn wait_for_health(sidecar: &mut JavaSidecar, log_path: &Path) -> Result<(), Sid
         match sidecar.child.try_wait() {
             Ok(Some(status)) => {
                 return Err(SidecarError::new(
-                    format!("Java backend exited before becoming healthy: {status}"),
+                    classify_exit_before_health(status.to_string(), log_path),
                     Some(log_path.to_path_buf()),
                 ));
             }
@@ -363,6 +363,21 @@ fn wait_for_health(sidecar: &mut JavaSidecar, log_path: &Path) -> Result<(), Sid
 
         thread::sleep(Duration::from_millis(500));
     }
+}
+
+fn classify_exit_before_health(status: String, log_path: &Path) -> String {
+    let fallback = format!("Java backend exited before becoming healthy: {status}");
+    let Ok(log) = fs::read_to_string(log_path) else {
+        return fallback;
+    };
+
+    if log.contains("org.springframework.boot.loader.launch.JarLauncher") {
+        return format!(
+            "{fallback}. The bundled backend jar is not an executable Spring Boot jar; reinstall JavaNavi Desktop from a package built with `npm run desktop:stage` / `npm run desktop:build`."
+        );
+    }
+
+    fallback
 }
 
 #[derive(Debug)]
