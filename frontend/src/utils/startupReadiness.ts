@@ -16,7 +16,7 @@ export function getConnectionWorkbenchState(
   if (!hasAppliedInitialGlobalProxy) {
     return {
       ready: false,
-      message: 'Loading security configuration…',
+      message: 'Loading application configuration…',
     };
   }
   return {
@@ -24,4 +24,3 @@ export function getConnectionWorkbenchState(
     message: '',
   };
 }
-

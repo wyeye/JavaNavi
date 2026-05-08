@@ -2587,7 +2587,7 @@ const ConnectionModal: React.FC<{
           (error: unknown) => {
             console.warn("Failed to refresh post-save state", error);
             void message.warning(
-              "配置已保存，但安全更新状态暂未刷新，请稍后重新检查",
+              "配置已保存，但界面状态暂未刷新，请稍后重新检查",
             );
           },
         );

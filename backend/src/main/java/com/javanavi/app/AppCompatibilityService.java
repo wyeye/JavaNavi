@@ -112,27 +112,6 @@ public class AppCompatibilityService {
         return getGlobalProxy();
     }
 
-    public Map<String, Object> securityUpdateStatus(String status) {
-        Instant now = Instant.now();
-        return orderedMap(
-                "schemaVersion", 1,
-                "migrationId", "java-web-secret-store",
-                "overallStatus", status,
-                "sourceType", "java-web-backend",
-                "reminderVisible", false,
-                "canStart", true,
-                "canPostpone", true,
-                "canRetry", false,
-                "backupAvailable", false,
-                "startedAt", now.toString(),
-                "updatedAt", now.toString(),
-                "completedAt", "completed".equals(status) ? now.toString() : null,
-                "postponedAt", "postponed".equals(status) ? now.toString() : null,
-                "summary", orderedMap("total", 0, "updated", 0, "pending", 0, "skipped", 0, "failed", 0),
-                "issues", List.of()
-        );
-    }
-
     public void logWindowDiagnostic(String stage, String payload) {
         try {
             Path logFile = dataDirectory.resolve("diagnostics").resolve("window.log");

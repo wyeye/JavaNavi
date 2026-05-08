@@ -61,31 +61,6 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(appCompatibilityService.saveGlobalProxy(input));
     }
 
-    @GetMapping("/security-update/status")
-    public ApiEnvelope<Map<String, Object>> securityUpdateStatus() {
-        return ApiEnvelope.ok(appCompatibilityService.securityUpdateStatus("completed"));
-    }
-
-    @PostMapping("/security-update/start")
-    public ApiEnvelope<Map<String, Object>> startSecurityUpdate() {
-        return ApiEnvelope.ok(appCompatibilityService.securityUpdateStatus("completed"));
-    }
-
-    @PostMapping("/security-update/retry")
-    public ApiEnvelope<Map<String, Object>> retrySecurityUpdate() {
-        return ApiEnvelope.ok(appCompatibilityService.securityUpdateStatus("completed"));
-    }
-
-    @PostMapping("/security-update/restart")
-    public ApiEnvelope<Map<String, Object>> restartSecurityUpdate() {
-        return ApiEnvelope.ok(appCompatibilityService.securityUpdateStatus("completed"));
-    }
-
-    @PostMapping("/security-update/dismiss")
-    public ApiEnvelope<Map<String, Object>> dismissSecurityUpdate() {
-        return ApiEnvelope.ok(appCompatibilityService.securityUpdateStatus("postponed"));
-    }
-
     @PostMapping("/diagnostics/window")
     public ApiEnvelope<Map<String, Object>> logWindowDiagnostic(@RequestBody Map<String, Object> input) {
         String stage = input == null || input.get("stage") == null ? "" : String.valueOf(input.get("stage"));

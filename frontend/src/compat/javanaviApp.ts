@@ -437,10 +437,6 @@ export async function DeleteSavedConnection(arg1:string): Promise<void> {
   return DeleteConnection(arg1);
 }
 
-export async function DismissSecurityUpdateReminder(): Promise<app.SecurityUpdateStatus> {
-  return dataOrThrow<app.SecurityUpdateStatus>(await postJson('/app/security-update/dismiss', {}), 'Failed to dismiss security update reminder.');
-}
-
 export async function DownloadDriverPackage(arg1:string,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
   await replayEventFixture('driver', { correlationId: arg1, payload: { driverType: arg1, version: arg2, url: arg3, checksum: arg4 } });
   const payload = await postJson('/drivers/download', { driverType: arg1, version: arg2, downloadURL: arg3, downloadDir: arg4 });
@@ -593,10 +589,6 @@ export async function GetSavedConnections(): Promise<Array<connection.SavedConne
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
-export async function GetSecurityUpdateStatus(): Promise<app.SecurityUpdateStatus> {
-  return dataOrThrow<app.SecurityUpdateStatus>(await getJson('/app/security-update/status'), 'Failed to load security update status.');
-}
-
 export async function ImportConfigFile(): Promise<connection.QueryResult> {
   const payload = await postJson('/files/config/import', {});
   return apiEnvelopeToQueryResult(payload, 'Config import file loaded');
@@ -633,18 +625,6 @@ export async function ImportDataWithProgress(arg1:connection.ConnectionConfig,ar
   await replayEventFixture('import', { correlationId: arg4 || arg3, payload: { table: arg3, database: arg2, filePath: arg4 } });
   const payload = await postJson('/files/import/run', { connection: toConnectionPayload(arg1), database: arg2, table: arg3, filePath: arg4, applyToDatabase: arg5 });
   return apiEnvelopeToQueryResult(payload, 'Import completed');
-}
-
-export async function ImportLegacyConnections(arg1:Array<connection.SavedConnectionInput>): Promise<Array<connection.SavedConnectionView>> {
-  const payload = await postJson('/connections/saved/import', { connections: Array.isArray(arg1) ? arg1 : [] });
-  if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to import JavaNavi saved connections.');
-  }
-  return Array.isArray(payload?.data) ? payload.data : [];
-}
-
-export async function ImportLegacyGlobalProxy(arg1:connection.SaveGlobalProxyInput): Promise<connection.GlobalProxyView> {
-  return SaveGlobalProxy(arg1);
 }
 
 export async function InstallLocalDriverPackage(arg1:string,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
@@ -963,14 +943,6 @@ export async function ResolveDriverRepositoryURL(arg1:string): Promise<connectio
   return apiEnvelopeToQueryResult(payload, 'Driver repository URL resolved');
 }
 
-export async function RestartSecurityUpdate(arg1:app.RestartSecurityUpdateRequest): Promise<app.SecurityUpdateStatus> {
-  return dataOrThrow<app.SecurityUpdateStatus>(await postJson('/app/security-update/restart', arg1 || {}), 'Failed to restart security update.');
-}
-
-export async function RetrySecurityUpdateCurrentRound(arg1:app.RetrySecurityUpdateRequest): Promise<app.SecurityUpdateStatus> {
-  return dataOrThrow<app.SecurityUpdateStatus>(await postJson('/app/security-update/retry', arg1 || {}), 'Failed to retry security update.');
-}
-
 export async function SaveConnection(arg1:connection.SavedConnectionInput): Promise<connection.SavedConnectionView> {
   const payload = await postJson('/connections/saved/save', arg1);
   if (payload?.success === false) {
@@ -1024,10 +996,6 @@ export async function SetMacNativeWindowControls(arg1: boolean): Promise<void> {
 
 export async function SetWindowTranslucency(arg1: number, arg2: number): Promise<void> {
   return;
-}
-
-export async function StartSecurityUpdate(arg1:app.StartSecurityUpdateRequest): Promise<app.SecurityUpdateStatus> {
-  return dataOrThrow<app.SecurityUpdateStatus>(await postJson('/app/security-update/start', arg1 || {}), 'Failed to start security update.');
 }
 
 export async function TestConnection(arg1: connection.ConnectionConfig): Promise<connection.QueryResult> {

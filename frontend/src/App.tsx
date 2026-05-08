@@ -5,11 +5,10 @@ import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
-import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, CloudDownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, FolderOpenOutlined, HddOutlined, SafetyCertificateOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, CloudDownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, FolderOpenOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, EventsOn, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
-import SecurityUpdateBanner from './components/SecurityUpdateBanner';
 import { DEFAULT_APPEARANCE, useStore } from './store';
-import { SavedConnection, SecurityUpdateIssue, SecurityUpdateStatus } from './types';
+import { SavedConnection } from './types';
 import { blurToFilter, isMacLikePlatform, normalizeBlurForPlatform, normalizeOpacityForPlatform, isWindowsPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from './utils/appearance';
 import { getDataGridColumnWidthModeOptions, sanitizeDataTableColumnWidthMode } from './utils/dataGridDisplay';
 import { shouldHandleMacNativeFullscreenShortcut, shouldSuppressMacNativeEscapeExit } from './utils/macWindow';
@@ -17,38 +16,13 @@ import { shouldEnableMacWindowDiagnostics } from './utils/macWindowDiagnostics';
 import { resolveAboutDisplayVersion } from './utils/appVersionDisplay';
 import { buildOverlayWorkbenchTheme } from './utils/overlayWorkbenchTheme';
 import { getConnectionWorkbenchState } from './utils/startupReadiness';
-import { toSaveGlobalProxyInput } from './utils/globalProxyDraft';
+import { createGlobalProxyDraft, toSaveGlobalProxyInput } from './utils/globalProxyDraft';
 import {
   detectConnectionImportKind,
   isConnectionPackagePasswordRequiredError,
   resolveConnectionPackageExportResult,
   normalizeConnectionPackagePassword,
 } from './utils/connectionExport';
-import {
-  bootstrapSecureConfig,
-  finalizeSecurityUpdateStatus,
-  mergeSecurityUpdateStatusWithLegacySource,
-  startSecurityUpdateFromBootstrap,
-} from './utils/secureConfigBootstrap';
-import {
-  LEGACY_PERSIST_KEY,
-  hasLegacyMigratableSensitiveItems,
-  stripLegacyPersistedConnectionById,
-} from './utils/legacyConnectionStorage';
-import {
-  getSecurityUpdateStatusMeta,
-  resolveSecurityUpdateEntryVisibility,
-} from './utils/securityUpdatePresentation';
-import {
-  hasSecurityUpdateRecentResult,
-  resolveSecurityUpdateRepairEntry,
-  resolveSecurityUpdateSettingsFocusTarget,
-  shouldRefreshSecurityUpdateDetailsFocus,
-  shouldReopenSecurityUpdateDetails,
-  shouldRetrySecurityUpdateAfterRepairSave,
-  type SecurityUpdateRepairSource,
-  type SecurityUpdateSettingsFocusTarget,
-} from './utils/securityUpdateRepairFlow';
 import { getWindowsScaleFixNudgedWidth, hasWindowsViewportScaleDrift } from './utils/windowsScaleFix';
 import { exportSuccessMessage } from './utils/exportResultMessage';
 import {
@@ -71,7 +45,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { ApplyDataRootDirectory, GetDataRootDirectoryInfo, GetSavedConnections, OpenDataRootDirectory, SelectDataRootDirectory, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { ApplyDataRootDirectory, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetSavedConnections, OpenDataRootDirectory, SelectDataRootDirectory, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -84,9 +58,6 @@ const AIChatPanel = lazy(() => import('./components/AIChatPanel'));
 const AISettingsModal = lazy(() => import('./components/AISettingsModal'));
 const Sidebar = lazy(() => import('./components/Sidebar'));
 const TabManager = lazy(() => import('./components/TabManager'));
-const SecurityUpdateIntroModal = lazy(() => import('./components/SecurityUpdateIntroModal'));
-const SecurityUpdateProgressModal = lazy(() => import('./components/SecurityUpdateProgressModal'));
-const SecurityUpdateSettingsModal = lazy(() => import('./components/SecurityUpdateSettingsModal'));
 
 const { Sider, Content } = Layout;
 const MIN_UI_SCALE = 0.8;
@@ -95,17 +66,6 @@ const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 20;
 const DEFAULT_UI_SCALE = 1.0;
 const DEFAULT_FONT_SIZE = 14;
-const createEmptySecurityUpdateStatus = (): SecurityUpdateStatus => ({
-  overallStatus: 'not_detected',
-  summary: {
-    total: 0,
-    updated: 0,
-    pending: 0,
-    skipped: 0,
-    failed: 0,
-  },
-  issues: [],
-});
 
 const detectNavigatorPlatform = (): string => {
   if (typeof navigator === 'undefined') {
@@ -196,18 +156,7 @@ function App() {
   const [runtimeBuildType, setRuntimeBuildType] = useState('');
   const [isLinuxRuntime, setIsLinuxRuntime] = useState(false);
   const [isStoreHydrated, setIsStoreHydrated] = useState(() => useStore.persist.hasHydrated());
-  const [hasLoadedSecureConfig, setHasLoadedSecureConfig] = useState(false);
-  const [securityUpdateStatus, setSecurityUpdateStatus] = useState<SecurityUpdateStatus>(() => createEmptySecurityUpdateStatus());
-  const [securityUpdateRawPayload, setSecurityUpdateRawPayload] = useState<string | null>(null);
-  const [securityUpdateHasLegacySensitiveItems, setSecurityUpdateHasLegacySensitiveItems] = useState(false);
-  const [isSecurityUpdateIntroOpen, setIsSecurityUpdateIntroOpen] = useState(false);
-  const [isSecurityUpdateBannerDismissed, setIsSecurityUpdateBannerDismissed] = useState(false);
-  const [isSecurityUpdateSettingsOpen, setIsSecurityUpdateSettingsOpen] = useState(false);
-  const [securityUpdateSettingsFocusTarget, setSecurityUpdateSettingsFocusTarget] = useState<SecurityUpdateSettingsFocusTarget | null>(null);
-  const [securityUpdateSettingsFocusRequest, setSecurityUpdateSettingsFocusRequest] = useState(0);
-  const [isSecurityUpdateProgressOpen, setIsSecurityUpdateProgressOpen] = useState(false);
-  const [securityUpdateProgressStage, setSecurityUpdateProgressStage] = useState(t('security.stage.update'));
-  const [securityUpdateRepairSource, setSecurityUpdateRepairSource] = useState<SecurityUpdateRepairSource | null>(null);
+  const [hasLoadedInitialConfig, setHasLoadedInitialConfig] = useState(false);
   const [focusedAIProviderId, setFocusedAIProviderId] = useState<string | undefined>(undefined);
   const [connectionPackageDialog, setConnectionPackageDialog] = useState<ConnectionPackageDialogState>(() => createClosedConnectionPackageDialogState());
   const [pendingConnectionImportPayload, setPendingConnectionImportPayload] = useState<string | null>(null);
@@ -220,15 +169,7 @@ function App() {
   const windowDiagSequenceRef = React.useRef(0);
   const windowDiagLastSignatureRef = React.useRef('');
   const windowDiagLastAtRef = React.useRef(0);
-  const connectionWorkbenchState = getConnectionWorkbenchState(isStoreHydrated, hasLoadedSecureConfig);
-  const securityUpdateStatusMeta = useMemo(
-      () => getSecurityUpdateStatusMeta(securityUpdateStatus, language),
-      [language, securityUpdateStatus],
-  );
-  const securityUpdateEntryVisibility = useMemo(
-      () => resolveSecurityUpdateEntryVisibility(securityUpdateStatus),
-      [securityUpdateStatus],
-  );
+  const connectionWorkbenchState = getConnectionWorkbenchState(isStoreHydrated, hasLoadedInitialConfig);
 
   const windowCornerRadius = 14;
   useEffect(() => {
@@ -331,80 +272,49 @@ function App() {
       };
   }, [isStoreHydrated]);
 
-  const normalizeSecurityUpdateStatus = useCallback((status?: Partial<SecurityUpdateStatus> | null): SecurityUpdateStatus => {
-      const fallback = createEmptySecurityUpdateStatus();
-      return {
-          ...fallback,
-          ...(status ?? {}),
-          summary: {
-              ...fallback.summary,
-              ...(status?.summary ?? {}),
-          },
-          issues: Array.isArray(status?.issues) ? status.issues : [],
-      };
-  }, []);
-
-  const applySecurityUpdateStatus = useCallback((
-      status?: Partial<SecurityUpdateStatus> | null,
-      options?: {
-          openSettings?: boolean;
-          refreshFocus?: boolean;
-          resetBannerDismissed?: boolean;
-      },
-  ) => {
-      const nextStatus = normalizeSecurityUpdateStatus(status);
-      const visibility = resolveSecurityUpdateEntryVisibility(nextStatus);
-      setSecurityUpdateStatus(nextStatus);
-      setIsSecurityUpdateIntroOpen(visibility.showIntro);
-      if (options?.resetBannerDismissed !== false) {
-          setIsSecurityUpdateBannerDismissed(false);
-      }
-      if (options?.openSettings) {
-          if (options.refreshFocus !== false) {
-              setSecurityUpdateSettingsFocusTarget(resolveSecurityUpdateSettingsFocusTarget(nextStatus));
-              setSecurityUpdateSettingsFocusRequest((current) => current + 1);
-          }
-          setIsSecurityUpdateSettingsOpen(true);
-      }
-      return nextStatus;
-  }, [normalizeSecurityUpdateStatus]);
-
   useEffect(() => {
       if (!isStoreHydrated) {
           return;
       }
 
       let cancelled = false;
-      const loadSecureConfig = async () => {
+      const loadInitialConfig = async () => {
+          const backendApp = (window as any).go?.app?.App;
           try {
-              const result = await bootstrapSecureConfig({
-                  backend: (window as any).go?.app?.App,
-                  replaceConnections,
-                  replaceGlobalProxy,
-              });
-              if (cancelled) {
-                  return;
+              if (typeof backendApp?.GetSavedConnections === 'function') {
+                  const latestConnections = await GetSavedConnections();
+                  if (!cancelled && Array.isArray(latestConnections)) {
+                      replaceConnections(latestConnections as SavedConnection[]);
+                  }
               }
-              setSecurityUpdateRawPayload(result.rawPayload);
-              setSecurityUpdateHasLegacySensitiveItems(result.hasLegacySensitiveItems);
-              applySecurityUpdateStatus(result.status);
           } catch (err) {
-              console.warn('Failed to bootstrap secure config', err);
+              console.warn('Failed to load saved connections', err);
+          }
+
+          try {
+              if (typeof backendApp?.GetGlobalProxyConfig === 'function') {
+                  const proxyResult = await GetGlobalProxyConfig();
+                  if (!cancelled && proxyResult?.success && proxyResult.data) {
+                      replaceGlobalProxy(createGlobalProxyDraft(proxyResult.data));
+                  }
+              }
+          } catch (err) {
+              console.warn('Failed to load global proxy config', err);
           } finally {
               if (!cancelled) {
-                  setHasLoadedSecureConfig(true);
+                  setHasLoadedInitialConfig(true);
               }
           }
       };
 
-      void loadSecureConfig();
+      void loadInitialConfig();
       return () => {
           cancelled = true;
       };
-  }, [applySecurityUpdateStatus, isStoreHydrated, replaceConnections, replaceGlobalProxy]);
+  }, [isStoreHydrated, replaceConnections, replaceGlobalProxy]);
 
   useEffect(() => {
-      if (!isStoreHydrated || !hasLoadedSecureConfig) {
+      if (!isStoreHydrated || !hasLoadedInitialConfig) {
           return;
       }
 
@@ -458,7 +368,7 @@ function App() {
       };
   }, [
       isStoreHydrated,
-      hasLoadedSecureConfig,
+      hasLoadedInitialConfig,
       globalProxy.enabled,
       globalProxy.type,
       globalProxy.host,
@@ -969,185 +879,6 @@ function App() {
   const connections = useStore(state => state.connections);
   const tabs = useStore(state => state.tabs);
   const activeTabId = useStore(state => state.activeTabId);
-  const openSecurityUpdateSettings = useCallback((focusTarget: SecurityUpdateSettingsFocusTarget | null = null) => {
-      setIsSecurityUpdateIntroOpen(false);
-      setSecurityUpdateSettingsFocusTarget(focusTarget);
-      setSecurityUpdateSettingsFocusRequest((current) => current + 1);
-      setIsSecurityUpdateSettingsOpen(true);
-  }, []);
-  const handleOpenSecurityUpdateSettings = useCallback((focusTarget: SecurityUpdateSettingsFocusTarget | null = null) => {
-      openSecurityUpdateSettings(focusTarget);
-  }, [openSecurityUpdateSettings]);
-  const runSecurityUpdateRound = useCallback(async (mode: 'start' | 'retry' | 'restart') => {
-      const backendApp = (window as any).go?.app?.App;
-      const stageText = mode === 'retry'
-          ? t('security.stage.retry')
-          : t('security.stage.update');
-      const detailsWereOpen = isSecurityUpdateSettingsOpen;
-      setSecurityUpdateProgressStage(stageText);
-      setIsSecurityUpdateProgressOpen(true);
-      setIsSecurityUpdateIntroOpen(false);
-      setIsSecurityUpdateSettingsOpen(false);
-
-      let nextStatus: SecurityUpdateStatus | null = null;
-      let shouldOpenSettings = false;
-      let refreshSettingsFocus = false;
-      try {
-          if (mode === 'start') {
-              const result = await startSecurityUpdateFromBootstrap({
-                  backend: backendApp,
-                  replaceConnections,
-                  replaceGlobalProxy,
-              });
-              if (result.error) {
-                  throw result.error;
-              }
-              nextStatus = normalizeSecurityUpdateStatus(result.status);
-          } else if (mode === 'retry') {
-              if (typeof backendApp?.RetrySecurityUpdateCurrentRound !== 'function') {
-                  throw new Error(t('security.capabilityUnavailable'));
-              }
-              nextStatus = normalizeSecurityUpdateStatus(await backendApp.RetrySecurityUpdateCurrentRound({
-                  migrationId: securityUpdateStatus.migrationId,
-              }));
-          } else {
-              if (typeof backendApp?.RestartSecurityUpdate !== 'function') {
-                  throw new Error(t('security.capabilityUnavailable'));
-              }
-              nextStatus = normalizeSecurityUpdateStatus(await backendApp.RestartSecurityUpdate({
-                  migrationId: securityUpdateStatus.migrationId,
-                  sourceType: 'current_app_saved_config',
-                  rawPayload: securityUpdateRawPayload ?? '',
-                  options: {
-                      allowPartial: true,
-                      writeBackup: true,
-                  },
-              }));
-          }
-
-          if (mode !== 'start') {
-              nextStatus = await finalizeSecurityUpdateStatus({
-                  backend: backendApp,
-                  replaceConnections,
-                  replaceGlobalProxy,
-              }, nextStatus);
-          }
-
-          shouldOpenSettings = nextStatus.overallStatus === 'needs_attention' || nextStatus.overallStatus === 'rolled_back';
-          refreshSettingsFocus = shouldRefreshSecurityUpdateDetailsFocus({
-              requestedOpen: shouldOpenSettings,
-              wasOpen: detailsWereOpen,
-          });
-      } catch (err: any) {
-          console.warn('Failed to execute security update round', err);
-          setIsSecurityUpdateProgressOpen(false);
-          if (detailsWereOpen) {
-              setIsSecurityUpdateSettingsOpen(true);
-          }
-          void message.error(err?.message || t('security.updateIncomplete'));
-          return;
-      }
-
-      if (!nextStatus) {
-          setIsSecurityUpdateProgressOpen(false);
-          return;
-      }
-      setIsSecurityUpdateProgressOpen(false);
-      applySecurityUpdateStatus(nextStatus, {
-          openSettings: shouldOpenSettings,
-          refreshFocus: refreshSettingsFocus,
-      });
-
-      if (nextStatus.overallStatus === 'completed') {
-          setSecurityUpdateHasLegacySensitiveItems(false);
-          setSecurityUpdateRawPayload(null);
-          setIsSecurityUpdateSettingsOpen(false);
-          void message.success(t('security.savedConfigCompleted'));
-      } else if (nextStatus.overallStatus === 'needs_attention') {
-          void message.warning(t('security.needsAttention'));
-      } else if (nextStatus.overallStatus === 'rolled_back') {
-          void message.warning(t('security.rolledBack'));
-      }
-  }, [
-      applySecurityUpdateStatus,
-      isSecurityUpdateSettingsOpen,
-      normalizeSecurityUpdateStatus,
-      replaceConnections,
-      replaceGlobalProxy,
-      securityUpdateRawPayload,
-      securityUpdateStatus.migrationId,
-  ]);
-  const handleStartSecurityUpdate = useCallback(() => {
-      void runSecurityUpdateRound('start');
-  }, [runSecurityUpdateRound]);
-  const handleRetrySecurityUpdate = useCallback(() => {
-      void runSecurityUpdateRound('retry');
-  }, [runSecurityUpdateRound]);
-  const handleRestartSecurityUpdate = useCallback(() => {
-      void runSecurityUpdateRound('restart');
-  }, [runSecurityUpdateRound]);
-  const handlePostponeSecurityUpdate = useCallback(async () => {
-      const backendApp = (window as any).go?.app?.App;
-      setIsSecurityUpdateIntroOpen(false);
-      try {
-          if (typeof backendApp?.DismissSecurityUpdateReminder === 'function') {
-              const nextStatus = mergeSecurityUpdateStatusWithLegacySource(
-                  await backendApp.DismissSecurityUpdateReminder(),
-                  securityUpdateRawPayload,
-              );
-              applySecurityUpdateStatus(nextStatus);
-              return;
-          }
-          applySecurityUpdateStatus({
-              overallStatus: 'postponed',
-              canStart: true,
-              canPostpone: true,
-              summary: securityUpdateStatus.summary,
-              issues: securityUpdateStatus.issues,
-          });
-      } catch (err: any) {
-          console.warn('Failed to dismiss security update reminder', err);
-          void message.error(err?.message || t('security.postponeFailed'));
-      }
-  }, [
-      applySecurityUpdateStatus,
-      securityUpdateRawPayload,
-      securityUpdateStatus.issues,
-      securityUpdateStatus.summary,
-  ]);
-  const handleSecurityUpdateIssueAction = useCallback((issue: SecurityUpdateIssue) => {
-      const repairEntry = resolveSecurityUpdateRepairEntry(issue, connections, securityUpdateStatus);
-      if (repairEntry.type === 'warning') {
-          void message.warning(repairEntry.message);
-          return;
-      }
-      if (repairEntry.type === 'connection') {
-          setIsSecurityUpdateSettingsOpen(false);
-          setSecurityUpdateRepairSource(repairEntry.repairSource);
-          setEditingConnection(repairEntry.connection);
-          setIsModalOpen(true);
-          return;
-      }
-      if (repairEntry.type === 'proxy') {
-          setIsSecurityUpdateSettingsOpen(false);
-          setSecurityUpdateRepairSource(repairEntry.repairSource);
-          setIsProxyModalOpen(true);
-          return;
-      }
-      if (repairEntry.type === 'ai') {
-          setIsSecurityUpdateSettingsOpen(false);
-          setSecurityUpdateRepairSource(repairEntry.repairSource);
-          setFocusedAIProviderId(repairEntry.providerId);
-          setIsAISettingsOpen(true);
-          return;
-      }
-      if (repairEntry.type === 'retry') {
-          void runSecurityUpdateRound('retry');
-          return;
-      }
-      setSecurityUpdateRepairSource(null);
-      openSecurityUpdateSettings(repairEntry.focusTarget);
-  }, [connections, openSecurityUpdateSettings, runSecurityUpdateRound, securityUpdateStatus]);
   const updateCheckInFlightRef = React.useRef(false);
   const updateDownloadInFlightRef = React.useRef(false);
   const updateUserDismissedRef = React.useRef(false);
@@ -2086,91 +1817,18 @@ function App() {
   };
 
   const handleCreateConnection = () => {
-      setSecurityUpdateRepairSource(null);
       setEditingConnection(null);
       setIsModalOpen(true);
   };
 
   const handleEditConnection = (conn: SavedConnection) => {
-      setSecurityUpdateRepairSource(null);
       setEditingConnection(conn);
       setIsModalOpen(true);
   };
 
-  const handleConnectionSaved = useCallback(async (savedConnection: SavedConnection) => {
-      if (!shouldRetrySecurityUpdateAfterRepairSave(securityUpdateRepairSource)) {
-          return;
-      }
-
-      const backendApp = (window as any).go?.app?.App;
-      if (securityUpdateStatus.migrationId) {
-          if (typeof backendApp?.RetrySecurityUpdateCurrentRound !== 'function') {
-              return;
-          }
-
-          const rawStatus = await backendApp.RetrySecurityUpdateCurrentRound({
-              migrationId: securityUpdateStatus.migrationId,
-          });
-          const nextStatus = await finalizeSecurityUpdateStatus({
-              backend: backendApp,
-              replaceConnections,
-              replaceGlobalProxy,
-          }, normalizeSecurityUpdateStatus(rawStatus));
-
-          applySecurityUpdateStatus(nextStatus, {
-              openSettings: false,
-          });
-
-          if (nextStatus.overallStatus === 'completed') {
-              setSecurityUpdateHasLegacySensitiveItems(false);
-              setSecurityUpdateRawPayload(null);
-          }
-          return;
-      }
-
-      if (!securityUpdateRawPayload || !savedConnection?.id) {
-          return;
-      }
-
-      const nextRawPayload = stripLegacyPersistedConnectionById(securityUpdateRawPayload, savedConnection.id);
-      if (!nextRawPayload || nextRawPayload === securityUpdateRawPayload) {
-          return;
-      }
-
-      window.localStorage.setItem(LEGACY_PERSIST_KEY, nextRawPayload);
-
-      const rawStatus = typeof backendApp?.GetSecurityUpdateStatus === 'function'
-          ? await backendApp.GetSecurityUpdateStatus()
-          : securityUpdateStatus;
-      const nextStatus = mergeSecurityUpdateStatusWithLegacySource(rawStatus, nextRawPayload, {
-          previousStatus: securityUpdateStatus,
-      });
-      const nextHasLegacySensitiveItems = hasLegacyMigratableSensitiveItems(nextRawPayload);
-
-      setSecurityUpdateRawPayload(nextRawPayload);
-      setSecurityUpdateHasLegacySensitiveItems(nextHasLegacySensitiveItems);
-      applySecurityUpdateStatus(nextStatus, {
-          openSettings: false,
-      });
-  }, [
-      applySecurityUpdateStatus,
-      normalizeSecurityUpdateStatus,
-      replaceConnections,
-      replaceGlobalProxy,
-      securityUpdateRawPayload,
-      securityUpdateRepairSource,
-      securityUpdateStatus,
-      securityUpdateStatus.migrationId,
-  ]);
-
   const handleCloseModal = () => {
-      const reopenSecurityUpdateDetails = shouldReopenSecurityUpdateDetails(securityUpdateRepairSource);
       setIsModalOpen(false);
       setEditingConnection(null);
-      setSecurityUpdateRepairSource(null);
-      if (reopenSecurityUpdateDetails) {
-          setIsSecurityUpdateSettingsOpen(true);
-      }
   };
 
   const handleOpenDriverManagerFromConnection = () => {
@@ -2180,43 +1838,26 @@ function App() {
   };
 
   const handleCloseDriverManager = useCallback(() => {
-      const reopenSecurityUpdateDetails = shouldReopenSecurityUpdateDetails(securityUpdateRepairSource);
       setIsDriverModalOpen(false);
-      setSecurityUpdateRepairSource(null);
-      if (reopenSecurityUpdateDetails) {
-          setIsSecurityUpdateSettingsOpen(true);
-      }
-  }, [securityUpdateRepairSource]);
+  }, []);
 
   const handleOpenGlobalProxySettings = useCallback(() => {
-      setSecurityUpdateRepairSource(null);
       setIsProxyModalOpen(true);
   }, []);
 
   const handleCloseGlobalProxySettings = useCallback(() => {
-      const reopenSecurityUpdateDetails = shouldReopenSecurityUpdateDetails(securityUpdateRepairSource);
       setIsProxyModalOpen(false);
-      setSecurityUpdateRepairSource(null);
-      if (reopenSecurityUpdateDetails) {
-          setIsSecurityUpdateSettingsOpen(true);
-      }
-  }, [securityUpdateRepairSource]);
+  }, []);
 
   const handleOpenAISettings = useCallback((providerId?: string) => {
-      setSecurityUpdateRepairSource(null);
       setFocusedAIProviderId(providerId);
       setIsAISettingsOpen(true);
   }, []);
 
   const handleCloseAISettings = useCallback(() => {
-      const reopenSecurityUpdateDetails = shouldReopenSecurityUpdateDetails(securityUpdateRepairSource);
       setIsAISettingsOpen(false);
       setFocusedAIProviderId(undefined);
-      setSecurityUpdateRepairSource(null);
-      if (reopenSecurityUpdateDetails) {
-          setIsSecurityUpdateSettingsOpen(true);
-      }
-  }, [securityUpdateRepairSource]);
+  }, []);
 
   const handleTitleBarWindowToggle = async () => {
       const syncWindowStateFromRuntime = async () => {
@@ -2802,22 +2443,6 @@ function App() {
             )}
           </Sider>
            <Content style={{ background: bgContent, overflow: 'hidden', display: 'flex', flexDirection: 'column', minWidth: 0, flex: 1 }}>
-             {securityUpdateEntryVisibility.showBanner && !isSecurityUpdateBannerDismissed && (
-                <SecurityUpdateBanner
-                  status={securityUpdateStatus}
-                  darkMode={darkMode}
-                  overlayTheme={overlayTheme}
-                  language={language}
-                  surfaceOpacity={effectiveOpacity}
-                  onStart={handleStartSecurityUpdate}
-                  onRetry={handleRetrySecurityUpdate}
-                  onRestart={handleRestartSecurityUpdate}
-                  onOpenDetails={() => handleOpenSecurityUpdateSettings(
-                      hasSecurityUpdateRecentResult(securityUpdateStatus) ? 'recent_result' : null,
-                  )}
-                  onDismiss={() => setIsSecurityUpdateBannerDismissed(true)}
-                />
-             )}
              <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'row', position: 'relative' }}>
                <div style={{ flex: 1, minHeight: 0, minWidth: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', background: bgContent, marginBottom: isLogPanelOpen ? 8 : 0, borderRadius: isLogPanelOpen ? 'var(--javanavi-border-radius)' : 0, clipPath: isLogPanelOpen ? 'inset(0 round var(--javanavi-border-radius))' : 'none' }}>
                   <Suspense fallback={<div style={{ display: 'grid', height: '100%', placeItems: 'center' }}><Spin /></div>}>
@@ -2862,7 +2487,6 @@ function App() {
                 onClose={handleCloseModal}
                 initialValues={editingConnection}
                 onOpenDriverManager={handleOpenDriverManagerFromConnection}
-                onSaved={handleConnectionSaved}
               />
             </Suspense>
           )}
@@ -2936,18 +2560,6 @@ function App() {
                     setIsShortcutModalOpen(true);
                   },
                 },
-                {
-                  key: 'security-update',
-                  icon: <SafetyCertificateOutlined />,
-                  title: t('tools.security.title'),
-                  description: securityUpdateEntryVisibility.showDetailEntry || securityUpdateHasLegacySensitiveItems
-                    ? t('tools.security.status', { status: securityUpdateStatusMeta.label })
-                    : t('tools.security.description'),
-                  onClick: () => {
-                    setIsToolsModalOpen(false);
-                    setIsSecurityUpdateSettingsOpen(true);
-                  },
-                },
               ].map((item) => (
                 <Button key={item.key} type="text" style={utilityActionCardStyle} onClick={item.onClick}>
                   <span style={{ width: 36, height: 36, borderRadius: 12, display: 'grid', placeItems: 'center', background: overlayTheme.iconBg, color: overlayTheme.iconColor, flexShrink: 0 }}>
@@ -3012,8 +2624,7 @@ function App() {
                   description: t('settings.proxy.description'),
                   onClick: () => {
                     setIsSettingsModalOpen(false);
-                    setSecurityUpdateRepairSource(null);
-                    setIsProxyModalOpen(true);
+                    handleOpenGlobalProxySettings();
                   },
                 },
                 {
@@ -3131,51 +2742,6 @@ function App() {
                 open={isDriverModalOpen}
                 onClose={handleCloseDriverManager}
                 onOpenGlobalProxySettings={handleOpenGlobalProxySettings}
-              />
-            </Suspense>
-          )}
-          {isSecurityUpdateIntroOpen && (
-            <Suspense fallback={null}>
-              <SecurityUpdateIntroModal
-                open={isSecurityUpdateIntroOpen}
-                loading={isSecurityUpdateProgressOpen}
-                darkMode={darkMode}
-                overlayTheme={overlayTheme}
-                language={language}
-                surfaceOpacity={effectiveOpacity}
-                onStart={handleStartSecurityUpdate}
-                onPostpone={handlePostponeSecurityUpdate}
-                onViewDetails={() => handleOpenSecurityUpdateSettings()}
-              />
-            </Suspense>
-          )}
-          {isSecurityUpdateSettingsOpen && (
-            <Suspense fallback={null}>
-              <SecurityUpdateSettingsModal
-                open={isSecurityUpdateSettingsOpen}
-                darkMode={darkMode}
-                overlayTheme={overlayTheme}
-                language={language}
-                surfaceOpacity={effectiveOpacity}
-                status={securityUpdateStatus}
-                focusTarget={securityUpdateSettingsFocusTarget}
-                focusRequest={securityUpdateSettingsFocusRequest}
-                onClose={() => setIsSecurityUpdateSettingsOpen(false)}
-                onStart={handleStartSecurityUpdate}
-                onRetry={handleRetrySecurityUpdate}
-                onRestart={handleRestartSecurityUpdate}
-                onIssueAction={handleSecurityUpdateIssueAction}
-              />
-            </Suspense>
-          )}
-          {isSecurityUpdateProgressOpen && (
-            <Suspense fallback={null}>
-              <SecurityUpdateProgressModal
-                open={isSecurityUpdateProgressOpen}
-                stageText={securityUpdateProgressStage}
-                overlayTheme={overlayTheme}
-                language={language}
-                surfaceOpacity={effectiveOpacity}
               />
             </Suspense>
           )}
