@@ -4461,7 +4461,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                     event.currentTarget.focus();
                 }
             }}
-            style={{ flex: 1, overflow: 'hidden', minHeight: 0, outline: 'none' }}
+            style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}
         >
             <div className="sidebar-tree-scroll-content">
                 <Tree
