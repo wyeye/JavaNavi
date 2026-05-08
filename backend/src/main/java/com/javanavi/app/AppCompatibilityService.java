@@ -8,16 +8,19 @@ import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import com.javanavi.security.SecretStore;
+import org.springframework.web.multipart.MultipartFile;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.util.Comparator;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.stream.Stream;
 
@@ -166,6 +169,23 @@ public class AppCompatibilityService {
         );
     }
 
+    public Map<String, Object> resolveDatabaseSqlWorkspace(String connectionId, String dbName) {
+        try {
+            Path directory = databaseSqlWorkspaceDirectory(connectionId, dbName);
+            Files.createDirectories(directory);
+            return orderedMap(
+                    "path", directory.toString(),
+                    "name", directory.getFileName() == null ? directory.toString() : directory.getFileName().toString(),
+                    "connectionId", safePathSegment(connectionId, "connection"),
+                    "dbName", textOrDefault(dbName, "database"),
+                    "webManaged", true,
+                    "workspaceRoot", sqlWorkspaceDirectory.toString()
+            );
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to prepare JavaNavi SQL workspace directory.", error);
+        }
+    }
+
     public Map<String, Object> selectSqlDirectory(String currentPath) {
         try {
             Path directory = resolveSqlWorkspacePath(currentPath, true);
@@ -196,6 +216,65 @@ public class AppCompatibilityService {
             }
         } catch (IOException error) {
             throw new IllegalStateException("Unable to list JavaNavi SQL workspace directory.", error);
+        }
+    }
+
+    public Map<String, Object> uploadSqlFile(String directoryPath, MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new IllegalArgumentException("Please upload a non-empty SQL file.");
+        }
+        try {
+            Path directory = resolveSqlWorkspacePath(directoryPath, true);
+            Files.createDirectories(directory);
+            Path target = directory.resolve(requireSqlFileName(file.getOriginalFilename())).normalize();
+            if (!target.startsWith(sqlWorkspaceRoot())) {
+                throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+            }
+            Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
+            return orderedMap(
+                    "path", target.toString(),
+                    "filePath", target.toString(),
+                    "name", target.getFileName().toString(),
+                    "size", Files.size(target),
+                    "webManaged", true
+            );
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to upload JavaNavi SQL workspace file.", error);
+        }
+    }
+
+    public Map<String, Object> createSqlDirectory(String parentPath, String name) {
+        try {
+            Path parent = resolveSqlWorkspacePath(parentPath, true);
+            Files.createDirectories(parent);
+            Path target = parent.resolve(requireWorkspaceName(name)).normalize();
+            if (!target.startsWith(sqlWorkspaceRoot())) {
+                throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+            }
+            Files.createDirectories(target);
+            return sqlDirectoryEntry(target);
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to create JavaNavi SQL workspace directory.", error);
+        }
+    }
+
+    public Map<String, Object> renameSqlPath(String path, String newName) {
+        try {
+            Path source = resolveSqlWorkspaceExistingPath(path);
+            if (!Files.exists(source)) {
+                throw new IllegalArgumentException("Selected path does not exist in the JavaNavi managed SQL workspace.");
+            }
+            String normalizedName = Files.isDirectory(source)
+                    ? requireWorkspaceName(newName)
+                    : requireSqlFileName(newName);
+            Path target = source.resolveSibling(normalizedName).normalize();
+            if (!target.startsWith(sqlWorkspaceRoot())) {
+                throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+            }
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+            return sqlDirectoryEntry(target);
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to rename JavaNavi SQL workspace path.", error);
         }
     }
 
@@ -269,21 +348,43 @@ public class AppCompatibilityService {
     private Map<String, Object> sqlDirectoryEntry(Path path) {
         try {
             boolean directory = Files.isDirectory(path);
-            return orderedMap(
+            Map<String, Object> result = orderedMap(
                     "name", path.getFileName().toString(),
                     "path", path.toAbsolutePath().normalize().toString(),
                     "isDir", directory,
                     "size", directory ? 0 : Files.size(path),
                     "webManaged", true
             );
+            if (directory) {
+                try (Stream<Path> stream = Files.list(path)) {
+                    List<Map<String, Object>> children = stream
+                            .filter(child -> Files.isDirectory(child) || child.getFileName().toString().toLowerCase().endsWith(".sql"))
+                            .sorted(Comparator
+                                    .comparing((Path child) -> !Files.isDirectory(child))
+                                    .thenComparing(child -> child.getFileName().toString().toLowerCase()))
+                            .map(this::sqlDirectoryEntry)
+                            .toList();
+                    result.put("children", children);
+                }
+            }
+            return result;
         } catch (IOException error) {
             throw new IllegalStateException("Unable to inspect JavaNavi SQL workspace path.", error);
         }
     }
 
+    private Path databaseSqlWorkspaceDirectory(String connectionId, String dbName) {
+        return sqlWorkspaceDirectory.resolve("connections")
+                .resolve(safePathSegment(connectionId, "connection"))
+                .resolve("databases")
+                .resolve(safePathSegment(dbName, "database"))
+                .toAbsolutePath()
+                .normalize();
+    }
+
     private Path resolveSqlWorkspacePath(String rawPath, boolean directoryDefault) {
         String raw = rawPath == null ? "" : rawPath.trim();
-        Path root = sqlWorkspaceDirectory.toAbsolutePath().normalize();
+        Path root = sqlWorkspaceRoot();
         if (raw.isBlank()) {
             return directoryDefault ? root : root.resolve("untitled-" + Instant.now().toEpochMilli() + ".sql").normalize();
         }
@@ -302,6 +403,56 @@ public class AppCompatibilityService {
             candidate = candidate.resolveSibling(candidate.getFileName() + ".sql").normalize();
         }
         return candidate;
+    }
+
+    private Path resolveSqlWorkspaceExistingPath(String rawPath) {
+        String raw = rawPath == null ? "" : rawPath.trim();
+        Path root = sqlWorkspaceRoot();
+        if (raw.isBlank()) {
+            throw new IllegalArgumentException("SQL workspace path must not be empty.");
+        }
+        Path input = Path.of(raw);
+        Path candidate = input.isAbsolute()
+                ? input.toAbsolutePath().normalize()
+                : root.resolve(raw.replace('\\', '/')).normalize();
+        if (!candidate.startsWith(root)) {
+            throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+        }
+        return candidate;
+    }
+
+    private Path sqlWorkspaceRoot() {
+        return sqlWorkspaceDirectory.toAbsolutePath().normalize();
+    }
+
+    private String safePathSegment(String value, String fallback) {
+        String normalized = textOrDefault(value, fallback)
+                .replace('\\', '-')
+                .replace('/', '-')
+                .replaceAll("[^A-Za-z0-9._-]+", "-")
+                .replaceAll("-+", "-")
+                .replaceAll("^[-.]+|[-.]+$", "");
+        return normalized.isBlank() ? fallback : normalized;
+    }
+
+    private String requireSqlFileName(String rawName) {
+        String normalized = requireWorkspaceName(rawName);
+        String withSqlSuffix = normalized.toLowerCase(Locale.ROOT).endsWith(".sql") ? normalized : normalized + ".sql";
+        if (withSqlSuffix.contains("/") || withSqlSuffix.contains("\\")) {
+            throw new IllegalArgumentException("SQL file names must not contain path separators.");
+        }
+        return withSqlSuffix;
+    }
+
+    private String requireWorkspaceName(String rawName) {
+        String normalized = textOrDefault(rawName, "").trim();
+        if (normalized.isBlank()) {
+            throw new IllegalArgumentException("Workspace name must not be empty.");
+        }
+        if (normalized.contains("/") || normalized.contains("\\") || ".".equals(normalized) || "..".equals(normalized)) {
+            throw new IllegalArgumentException("Workspace names must not contain path separators.");
+        }
+        return normalized;
     }
 
     private void writeMap(Path file, Map<String, Object> value) {

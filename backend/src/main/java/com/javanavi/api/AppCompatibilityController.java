@@ -6,11 +6,14 @@ import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.AppCompatInvokeRequestDto;
 import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
+import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -101,6 +104,14 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(appCompatibilityService.listSqlDirectory(directory));
     }
 
+    @PostMapping("/sql-workspace/resolve")
+    public ApiEnvelope<Map<String, Object>> resolveSqlWorkspace(@RequestBody Map<String, Object> input) {
+        return ApiEnvelope.ok(appCompatibilityService.resolveDatabaseSqlWorkspace(
+                stringValue(input, "connectionId"),
+                stringValue(input, "dbName", "database")
+        ));
+    }
+
     @PostMapping("/sql-file/read")
     public ApiEnvelope<Object> readSqlFile(@RequestBody Map<String, Object> input) {
         String filePath = stringValue(input, "path", "filePath");
@@ -112,6 +123,31 @@ public class AppCompatibilityController {
         String filePath = stringValue(input, "path", "filePath");
         String content = stringValue(input, "content", "sql");
         return ApiEnvelope.ok(appCompatibilityService.writeSqlFile(filePath, content));
+    }
+
+    @PostMapping(value = "/sql-file/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+    public ApiEnvelope<Map<String, Object>> uploadSqlFile(
+            @RequestParam(value = "directoryPath", required = false) String directoryPath,
+            @RequestParam(value = "path", required = false) String path,
+            @RequestParam(value = "file", required = false) MultipartFile file
+    ) {
+        return ApiEnvelope.ok(appCompatibilityService.uploadSqlFile(firstText(directoryPath, path), file));
+    }
+
+    @PostMapping("/sql-directory/create")
+    public ApiEnvelope<Map<String, Object>> createSqlDirectory(@RequestBody Map<String, Object> input) {
+        return ApiEnvelope.ok(appCompatibilityService.createSqlDirectory(
+                stringValue(input, "parentPath", "path", "directoryPath"),
+                stringValue(input, "name", "directoryName")
+        ));
+    }
+
+    @PostMapping("/sql-path/rename")
+    public ApiEnvelope<Map<String, Object>> renameSqlPath(@RequestBody Map<String, Object> input) {
+        return ApiEnvelope.ok(appCompatibilityService.renameSqlPath(
+                stringValue(input, "path", "filePath"),
+                stringValue(input, "newName", "name")
+        ));
     }
 
     @PostMapping("/connections/export-package")
@@ -142,6 +178,18 @@ public class AppCompatibilityController {
             Object value = input.get(key);
             if (value != null) {
                 return String.valueOf(value);
+            }
+        }
+        return "";
+    }
+
+    private static String firstText(String... values) {
+        if (values == null) {
+            return "";
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
             }
         }
         return "";
