@@ -14,9 +14,16 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.net.UnknownHostException;
+import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -33,6 +40,8 @@ public class DriverCompatibilityService {
     private static final String DEFAULT_REPOSITORY_URL = "builtin://javanavi-driver-matrix";
     private static final String METADATA_FILE_NAME = "driver-package.json";
     private static final String DRIVER_DEFAULTS_FILE_NAME = "driver-defaults.json";
+    private static final Duration REPOSITORY_CONNECT_TIMEOUT = Duration.ofSeconds(3);
+    private static final Duration REPOSITORY_REQUEST_TIMEOUT = Duration.ofSeconds(5);
 
     private static final List<DriverDefinition> DRIVER_DEFINITIONS = List.of(
             new DriverDefinition("mysql", "MySQL", true, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "MySQL Connector/J is bundled in the JavaNavi backend runtime."),
@@ -61,6 +70,7 @@ public class DriverCompatibilityService {
     private final I18nMessages messages;
     private final Path dataDirectory;
     private final Path defaultDriverDirectory;
+    private final HttpClient repositoryProbeClient;
 
     public DriverCompatibilityService(
             SecurityProperties securityProperties,
@@ -77,6 +87,10 @@ public class DriverCompatibilityService {
         this.messages = messages;
         this.dataDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize();
         this.defaultDriverDirectory = dataDirectory.resolve("drivers").normalize();
+        this.repositoryProbeClient = HttpClient.newBuilder()
+                .connectTimeout(REPOSITORY_CONNECT_TIMEOUT)
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
     }
 
     public Map<String, Object> networkStatus() {
@@ -85,41 +99,35 @@ public class DriverCompatibilityService {
         Map<String, Object> repositorySettings = jdbcDriverRuntimeService.repositorySettings();
         String repositoryUrl = textOrDefault(repositorySettings.get("repositoryUrl"), jdbcDriverRuntimeService.defaultRepositoryURL());
         String repositoryHost = repositoryHost(repositoryUrl);
+        Map<String, Object> repositoryProbe = probeRepository(repositoryUrl);
+        boolean repositoryReachable = Boolean.TRUE.equals(repositoryProbe.get("reachable"));
+        boolean overallReachable = workspaceAvailable && repositoryReachable;
         List<Map<String, Object>> checks = List.of(
                 orderedMap(
                         "name", "JavaNavi backend package",
                         "url", "local://backend",
                         "reachable", true,
                         "method", "LOCAL",
-                        "latencyMs", 0,
-                        "httpLatencyMs", 0,
-                        "tcpLatencyMs", 0
+                        "error", ""
                 ),
                 orderedMap(
                         "name", "Managed driver workspace",
                         "url", defaultDriverDirectory.toString(),
                         "reachable", workspaceAvailable,
                         "method", "FILESYSTEM",
-                        "latencyMs", 0,
-                        "error", workspaceAvailable ? "" : "Workspace directory is unavailable"
+                        "error", workspaceAvailable ? "" : messages.message("drivers.workspaceDirectoryUnavailable")
                 ),
-                orderedMap(
-                        "name", "Maven driver repository",
-                        "url", SecretRedactor.redact(repositoryUrl),
-                        "reachable", true,
-                        "method", "CONFIG",
-                        "latencyMs", 0
-                )
+                repositoryProbe
         );
         return orderedMap(
-                "reachable", workspaceAvailable,
+                "reachable", overallReachable,
                 "summary", workspaceAvailable
                         ? messages.message("drivers.workspaceReady")
                         : messages.message("drivers.workspaceUnavailable"),
-                "recommendedProxy", false,
+                "recommendedProxy", workspaceAvailable && !repositoryReachable,
                 "proxyConfigured", false,
                 "proxyEnv", Map.of(),
-                "downloadChainReachable", workspaceAvailable,
+                "downloadChainReachable", repositoryReachable,
                 "downloadRequiredHosts", repositoryHost.isBlank() ? List.of() : List.of(repositoryHost),
                 "defaultRepositoryURL", jdbcDriverRuntimeService.defaultRepositoryURL(),
                 "defaultRepositoryUrl", jdbcDriverRuntimeService.defaultRepositoryURL(),
@@ -129,10 +137,126 @@ public class DriverCompatibilityService {
                 "configuredRepositoryUrl", repositorySettings.get("configuredRepositoryUrl"),
                 "repositoryConfigured", repositorySettings.get("repositoryConfigured"),
                 "checkedAt", Instant.now().toString(),
-                "networkProbeMode", "local-only",
+                "networkProbeMode", "http-repository-probe",
                 "workspaceRoot", defaultDriverDirectory.toString(),
                 "checks", checks
         );
+    }
+
+    private Map<String, Object> probeRepository(String repositoryUrl) {
+        if (!supportsHttpProbe(repositoryUrl)) {
+            return orderedMap(
+                    "name", "Maven driver repository",
+                    "url", SecretRedactor.redact(repositoryUrl),
+                    "reachable", false,
+                    "method", "INVALID",
+                    "error", messages.message("drivers.invalidRepositoryUrl")
+            );
+        }
+        Map<String, Object> headProbe = probeRepositoryOnce(repositoryUrl, "HEAD");
+        Integer headStatus = integerValue(headProbe.get("httpStatus"));
+        if (headStatus != null && shouldFallbackToGet(headStatus)) {
+            Map<String, Object> getProbe = probeRepositoryOnce(repositoryUrl, "GET");
+            if (Boolean.TRUE.equals(getProbe.get("reachable"))) {
+                return getProbe;
+            }
+            Map<String, Object> next = new LinkedHashMap<>(getProbe);
+            String reason = text(getProbe.get("error"));
+            next.put("error", reason.isBlank()
+                    ? messages.message("drivers.httpFallbackFailed", "status", headStatus)
+                    : messages.message("drivers.httpFallbackFailedWithReason", "status", headStatus, "reason", reason));
+            return next;
+        }
+        return headProbe;
+    }
+
+    private Map<String, Object> probeRepositoryOnce(String repositoryUrl, String method) {
+        long startedAt = System.nanoTime();
+        try {
+            HttpRequest.Builder builder = HttpRequest.newBuilder(new URI(repositoryUrl))
+                    .timeout(REPOSITORY_REQUEST_TIMEOUT);
+            HttpRequest request = "HEAD".equalsIgnoreCase(method)
+                    ? builder.method("HEAD", HttpRequest.BodyPublishers.noBody()).build()
+                    : builder.GET().build();
+            HttpResponse<Void> response = repositoryProbeClient.send(request, HttpResponse.BodyHandlers.discarding());
+            long latencyMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
+            int statusCode = response.statusCode();
+            boolean reachable = statusCode >= 200 && statusCode < 400;
+            Map<String, Object> result = orderedMap(
+                    "name", "Maven driver repository",
+                    "url", SecretRedactor.redact(repositoryUrl),
+                    "reachable", reachable,
+                    "method", method.toUpperCase(Locale.ROOT),
+                    "httpStatus", statusCode,
+                    "httpLatencyMs", latencyMs,
+                    "latencyMs", latencyMs
+            );
+            if (!reachable) {
+                result.put("error", messages.message("drivers.httpStatus", "status", statusCode));
+            }
+            return result;
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return orderedMap(
+                    "name", "Maven driver repository",
+                    "url", SecretRedactor.redact(repositoryUrl),
+                    "reachable", false,
+                    "method", method.toUpperCase(Locale.ROOT),
+                    "error", messages.message("drivers.requestInterrupted")
+            );
+        } catch (Exception error) {
+            return orderedMap(
+                    "name", "Maven driver repository",
+                    "url", SecretRedactor.redact(repositoryUrl),
+                    "reachable", false,
+                    "method", method.toUpperCase(Locale.ROOT),
+                    "error", normalizeProbeError(error)
+            );
+        }
+    }
+
+    private static boolean shouldFallbackToGet(int statusCode) {
+        return statusCode == 403 || statusCode == 405 || statusCode == 501;
+    }
+
+    private static boolean supportsHttpProbe(String repositoryUrl) {
+        try {
+            URI uri = new URI(repositoryUrl);
+            String scheme = text(uri.getScheme()).toLowerCase(Locale.ROOT);
+            return ("http".equals(scheme) || "https".equals(scheme)) && !text(uri.getHost()).isBlank();
+        } catch (Exception ignored) {
+            return false;
+        }
+    }
+
+    private String normalizeProbeError(Exception error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof IllegalArgumentException || current instanceof URISyntaxException) {
+                return messages.message("drivers.invalidRepositoryUrl");
+            }
+            if (current instanceof HttpConnectTimeoutException) {
+                return messages.message("drivers.connectionTimedOut");
+            }
+            if (current instanceof HttpTimeoutException) {
+                return messages.message("drivers.readTimedOut");
+            }
+            if (current instanceof UnknownHostException) {
+                return messages.message("drivers.dnsLookupFailed");
+            }
+            if (current instanceof javax.net.ssl.SSLHandshakeException) {
+                return messages.message("drivers.tlsHandshakeFailed");
+            }
+            if (current instanceof java.net.ConnectException) {
+                return messages.message("drivers.connectionRefused");
+            }
+            if (current instanceof java.net.NoRouteToHostException) {
+                return messages.message("drivers.noRouteToHost");
+            }
+            current = current.getCause();
+        }
+        String message = text(error.getMessage());
+        return message.isBlank() ? error.getClass().getSimpleName() : message;
     }
 
     public Map<String, Object> configureRuntimeDirectory(String directory) {
@@ -1002,6 +1126,18 @@ public class DriverCompatibilityService {
             return text(host);
         } catch (URISyntaxException ignored) {
             return "";
+        }
+    }
+
+    private static Integer integerValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            String text = text(value);
+            return text.isBlank() ? null : Integer.parseInt(text);
+        } catch (NumberFormatException ignored) {
+            return null;
         }
     }
 
