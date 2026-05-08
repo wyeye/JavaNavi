@@ -204,6 +204,7 @@ function apiEnvelopeToTableResult(payload: any, config: any): QueryResult {
         Table: tableName,
         tableName: row?.tableName || tableName,
         schemaName: row?.schemaName || '',
+        tableType: row?.tableType || row?.table_type || row?.TABLE_TYPE || '',
         comment,
         tableComment: comment,
       } : null;

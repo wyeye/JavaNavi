@@ -175,7 +175,7 @@ public class DatabaseCompatibilityService {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listTables(resolveSavedConnectionSecret(config), requestedDatabase);
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> listTablesOnConnection(connection, config, requestedDatabase)));
+        return withRedactedSqlErrors(() -> withConnection(config, connection -> listTablesOnConnection(connection, config, requestedDatabase, true)));
     }
 
     public List<ColumnDefinitionDto> listColumns(ConnectionConfigDto config, String requestedDatabase, String tableName) {
@@ -683,14 +683,15 @@ public class DatabaseCompatibilityService {
         return new FunctionRef(tableRef(config, requestedDatabase, name), arguments);
     }
 
-    private List<TableSummaryDto> listTablesOnConnection(Connection connection, ConnectionConfigDto config, String requestedDatabase) throws SQLException {
+    private List<TableSummaryDto> listTablesOnConnection(Connection connection, ConnectionConfigDto config, String requestedDatabase, boolean tablesOnly) throws SQLException {
         String driver = jdbcConnectionFactory.normalizeDriver(config);
         if ("duckdb".equals(driver)) {
-            return duckDbTables(connection);
+            return duckDbTables(connection, tablesOnly);
         }
         MetadataScope scope = metadataScope(config, requestedDatabase);
         List<TableSummaryDto> tables = new ArrayList<>();
-        try (ResultSet rs = connection.getMetaData().getTables(scope.catalog(), scope.schema(), "%", new String[]{"TABLE", "VIEW"})) {
+        String[] tableTypes = tablesOnly ? new String[]{"TABLE"} : new String[]{"TABLE", "VIEW"};
+        try (ResultSet rs = connection.getMetaData().getTables(scope.catalog(), scope.schema(), "%", tableTypes)) {
             while (rs.next()) {
                 String schema = firstText(getString(rs, "TABLE_SCHEM"), getString(rs, "TABLE_CAT"));
                 String table = getString(rs, "TABLE_NAME");
@@ -712,14 +713,14 @@ public class DatabaseCompatibilityService {
         return tables;
     }
 
-    private List<TableSummaryDto> duckDbTables(Connection connection) throws SQLException {
+    private List<TableSummaryDto> duckDbTables(Connection connection, boolean tablesOnly) throws SQLException {
         String sql = """
                 select table_schema, table_name, table_type
                   from information_schema.tables
                  where table_schema not in ('information_schema', 'pg_catalog')
-                   and table_type in ('BASE TABLE', 'VIEW')
+                   and table_type in (%s)
                  order by table_schema, table_name
-                """;
+                """.formatted(tablesOnly ? "'BASE TABLE'" : "'BASE TABLE', 'VIEW'");
         try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
             List<TableSummaryDto> tables = new ArrayList<>();
             while (rs.next()) {
@@ -936,7 +937,7 @@ public class DatabaseCompatibilityService {
 
     private List<ColumnDefinitionWithTableDto> listAllColumnsOnConnection(Connection connection, ConnectionConfigDto config, String requestedDatabase) throws SQLException {
         List<ColumnDefinitionWithTableDto> allColumns = new ArrayList<>();
-        for (TableSummaryDto table : listTablesOnConnection(connection, config, requestedDatabase)) {
+        for (TableSummaryDto table : listTablesOnConnection(connection, config, requestedDatabase, false)) {
             String qualifiedTable = qualifiedTableForFrontend(config, table);
             for (ColumnDefinitionDto column : listColumnsOnConnection(connection, config, table.schemaName(), table.tableName())) {
                 allColumns.add(new ColumnDefinitionWithTableDto(qualifiedTable, column.name(), column.type()));

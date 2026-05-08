@@ -1206,7 +1206,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	            setConnectionStates(prev => ({ ...prev, [key as string]: 'success' }));
 
                 const tableRows: any[] = Array.isArray(res.data) ? res.data : [];
-	            const tableEntries = tableRows.map((row: any) => {
+                const baseTableRows = tableRows.filter((row: any) => !String(row?.tableType || row?.table_type || row?.TABLE_TYPE || '').toUpperCase().includes('VIEW'));
+	            const tableEntries = baseTableRows.map((row: any) => {
 	                const tableName = String(row?.Table || row?.tableName || row?.table || Object.values(row || {})[0] || '').trim();
 	                const parsed = splitQualifiedName(tableName);
 	                return { tableName, schemaName: parsed.schemaName || String(row?.schemaName || '').trim(), displayName: getSidebarTableDisplayName(conn, tableName), comment: String(row?.comment || row?.tableComment || '').trim() };
