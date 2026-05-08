@@ -535,7 +535,15 @@ fn java_candidates(app: &AppHandle) -> Vec<JavaCandidate> {
 
 fn java_binary_name() -> &'static str {
     if cfg!(target_os = "windows") {
-        "java.exe"
+        java_binary_name_for("windows")
+    } else {
+        java_binary_name_for("other")
+    }
+}
+
+fn java_binary_name_for(target_os: &str) -> &'static str {
+    if target_os.eq_ignore_ascii_case("windows") {
+        "javaw.exe"
     } else {
         "java"
     }
@@ -601,7 +609,10 @@ fn append_log(path: &Path, message: &str) {
 mod tests {
     use std::path::{Path, PathBuf};
 
-    use super::{is_truthy_env, normalize_windows_verbatim_path, parse_java_major, split_java_opts};
+    use super::{
+        is_truthy_env, java_binary_name, java_binary_name_for, normalize_windows_verbatim_path, parse_java_major,
+        split_java_opts,
+    };
 
     #[test]
     fn parses_legacy_java_version() {
@@ -648,6 +659,21 @@ mod tests {
         assert_eq!(
             normalize_windows_verbatim_path(Path::new(r"\\?\UNC\server\share\JavaNavi\backend.jar")),
             PathBuf::from(r"\\server\share\JavaNavi\backend.jar")
+        );
+    }
+
+    #[test]
+    fn uses_javaw_on_windows() {
+        assert_eq!(java_binary_name_for("windows"), "javaw.exe");
+        assert_eq!(java_binary_name_for("linux"), "java");
+        assert_eq!(java_binary_name_for("macos"), "java");
+        assert_eq!(
+            java_binary_name(),
+            if cfg!(target_os = "windows") {
+                "javaw.exe"
+            } else {
+                "java"
+            }
         );
     }
 }
