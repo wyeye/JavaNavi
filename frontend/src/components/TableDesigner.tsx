@@ -2453,12 +2453,42 @@ END;`;
             .table-designer-shell .ant-tabs-nav::before {
                 border-bottom-color: ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'} !important;
             }
+            .table-designer-shell .ant-tabs-nav-wrap {
+                padding: 2px;
+            }
+            .table-designer-shell .ant-tabs-nav-list {
+                gap: 8px;
+            }
             .table-designer-shell .ant-tabs-ink-bar {
+                display: none !important;
                 will-change: transform;
                 transition: width 0.15s ease, left 0.15s ease, transform 0.15s ease !important;
             }
             .table-designer-shell .ant-tabs-tab {
-                transition: color 0.15s ease !important;
+                margin: 0 !important;
+                padding: 7px 14px !important;
+                border-radius: 999px !important;
+                border: 1px solid transparent !important;
+                background: ${darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(255,255,255,0.56)'} !important;
+                color: ${darkMode ? 'rgba(255,255,255,0.72)' : 'rgba(0,0,0,0.62)'} !important;
+                transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease, box-shadow 0.15s ease !important;
+            }
+            .table-designer-shell .ant-tabs-tab:hover {
+                background: ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(24,144,255,0.08)'} !important;
+                color: ${darkMode ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.82)'} !important;
+            }
+            .table-designer-shell .ant-tabs-tab .ant-tabs-tab-btn {
+                color: inherit !important;
+                font-weight: 500;
+            }
+            .table-designer-shell .ant-tabs-tab.ant-tabs-tab-active {
+                background: ${darkMode ? 'rgba(246,196,83,0.18)' : 'rgba(24,144,255,0.14)'} !important;
+                border-color: ${darkMode ? 'rgba(246,196,83,0.34)' : 'rgba(24,144,255,0.26)'} !important;
+                box-shadow: ${darkMode ? '0 4px 12px rgba(0,0,0,0.18)' : '0 4px 12px rgba(24,144,255,0.12)'} !important;
+                color: ${darkMode ? '#f6c453' : '#1677ff'} !important;
+            }
+            .table-designer-shell .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+                font-weight: 600;
             }
             .table-designer-shell .ant-tabs-content-holder,
             .table-designer-shell .ant-tabs-content,
