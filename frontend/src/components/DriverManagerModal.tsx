@@ -1874,7 +1874,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     >
       <div ref={modalContentRef}>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <Text type="secondary">JavaNavi Web 会展示每个 JavaNavi 驱动的真实 Java 可用性；完整包内置 JDBC runtime，桌面轻量包会把未随包携带的 JDBC 驱动标为“待下载”，并支持自动下载或上传 Jar，不会被静默标绿。来源列会区分 Maven 下载、手动上传、内置 runtime 与复用 runtime。</Text>
+        <Text type="secondary">JavaNavi Web 会展示每个 JavaNavi 驱动的真实 Java 可用性；外部 JDBC 驱动默认按需下载或手动上传，只有实际可用后才会显示为已启用。来源列会区分 Maven 下载、手动上传、内置 runtime 与复用 runtime。</Text>
         {networkStatus ? (
           networkUnreachable ? (
             <Alert

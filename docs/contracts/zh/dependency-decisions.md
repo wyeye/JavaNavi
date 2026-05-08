@@ -87,7 +87,7 @@
 
 - **Package choice:** runtime scope 的 `org.duckdb:duckdb_jdbc:1.5.2.0`。
 - **License and maintenance:** MIT；DuckDB 项目维护，当前 Java/JDBC artifact 发布到 Maven Central。
-- **Scope:** 可选 DuckDB 文件数据库 runtime profile；desktop slim 默认排除并显示受管下载状态。
+- **Scope:** 可选 DuckDB 文件数据库 runtime；默认通过 Driver Manager 下载/上传管理，并显示受管下载状态。
 - **Verification:** 后端 `mvn package`，以及按需进行手动/runtime DuckDB 与 driver-manager smoke。
 - **Secret/credential impact:** DuckDB 文件路径可能泄漏本地用户名和项目名，因此 API 错误与受管 driver metadata 必须继续经过 `SecretRedactor`。
 - **Rejected alternatives:** 通过 SQLite/H2 模拟 DuckDB | SQL 方言与存储语义不匹配。
@@ -96,19 +96,10 @@
 
 - **Package choice:** runtime scope 的 `com.microsoft.sqlserver:mssql-jdbc:13.4.0.jre11`、`com.oracle.database.jdbc:ojdbc11:23.26.1.0.0`、`com.dameng:DmJdbcDriver18:8.1.3.140`、`com.taosdata.jdbc:taos-jdbcdriver:3.8.3`、`com.clickhouse:clickhouse-jdbc:0.9.8`。
 - **License and maintenance:** 厂商发布的 Maven Central JDBC artifact；按 `driverType` 隔离使用，只有匹配 profile 才加载。
-- **Scope:** Java Web/full-driver 构建的可选 JDBC profile；desktop slim 默认排除并显示受管下载状态。
+- **Scope:** 通过 Driver Manager 下载/上传管理的可选 JDBC runtime；打包产物默认显示受管下载状态。
 - **Verification:** 后端 `mvn package`，以及按需进行手动/runtime 可选 driver smoke。
 - **Secret/credential impact:** 这些 profile 携带凭据型 JDBC URL/options，必须继续经过 `SecretRedactor`、`SecretStore` 与连接错误脱敏门禁。
 - **Rejected alternatives:** 优先动态加载用户自带 JDBC jar | 需要 classloader 隔离、信任提示、恶意扫描与单独安全设计。
-
-### Decision ID: DEP-DESKTOP-SLIM-PROFILE
-
-- **Package choice:** Maven profile `desktop-slim`，默认由 `scripts/package-desktop-sidecar.sh` 选择，除非 `DESKTOP_PACKAGE_PROFILE` 覆盖。
-- **License and maintenance:** 不引入新依赖；只控制已批准可选 JDBC artifact 是否嵌入桌面包。
-- **Scope:** 桌面打包 profile。保留 Spring/Web/JDBC 基础、H2、Redis/Mongo direct runtime 与连接包加密；从首阶段桌面安装包排除外部 JDBC driver jar。
-- **Verification:** `npm run desktop:stage` 使用所选 profile stage 桌面 jar；修改 driver 打包时检查 staged jar/profile 输出。
-- **Secret/credential impact:** 不新增凭据边界。被排除的可选 driver 在受管下载/上传前不可加载。
-- **Rejected alternatives:** 首个桌面安装包内置所有可选 JDBC driver | 会让包体积被低频 driver jar 主导。
 
 ### Decision ID: DEP-CONNECTION-PACKAGE-CRYPTO
 

@@ -44,23 +44,23 @@ public class DriverCompatibilityService {
     private static final Duration REPOSITORY_REQUEST_TIMEOUT = Duration.ofSeconds(5);
 
     private static final List<DriverDefinition> DRIVER_DEFINITIONS = List.of(
-            new DriverDefinition("mysql", "MySQL", true, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "MySQL Connector/J is bundled in the JavaNavi backend runtime."),
-            new DriverDefinition("oracle", "Oracle", true, "23.26.1.0.0", "", "implemented", "oracle.jdbc.OracleDriver", "Oracle JDBC is bundled through the JavaNavi ojdbc11 runtime profile."),
+            new DriverDefinition("mysql", "MySQL", false, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "MySQL Connector/J can be downloaded on demand through Driver Manager."),
+            new DriverDefinition("oracle", "Oracle", false, "23.26.1.0.0", "", "implemented", "oracle.jdbc.OracleDriver", "Oracle JDBC can be downloaded on demand through Driver Manager."),
             new DriverDefinition("redis", "Redis", true, "runtime", "", "implemented", "", "Redis direct TCP/RESP compatibility is implemented by JavaNavi without an external driver package."),
-            new DriverDefinition("postgres", "PostgreSQL", true, "runtime", "", "implemented", "org.postgresql.Driver", "PostgreSQL JDBC is bundled in the JavaNavi backend runtime."),
-            new DriverDefinition("mariadb", "MariaDB", true, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "MariaDB-compatible JDBC connections are routed through the bundled MySQL Connector/J runtime profile."),
-            new DriverDefinition("diros", "Doris", true, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "Doris MySQL-wire JDBC connections are routed through the bundled MySQL Connector/J runtime profile."),
-            new DriverDefinition("sphinx", "Sphinx", true, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "SphinxQL MySQL-wire JDBC connections are routed through the bundled MySQL Connector/J runtime profile."),
-            new DriverDefinition("sqlserver", "SQL Server", true, "13.4.0.jre11", "", "implemented", "com.microsoft.sqlserver.jdbc.SQLServerDriver", "SQL Server JDBC is bundled through the JavaNavi Microsoft JDBC runtime profile."),
-            new DriverDefinition("sqlite", "SQLite", true, "runtime", "", "implemented", "org.sqlite.JDBC", "SQLite file database compatibility is bundled through the JavaNavi Xerial SQLite JDBC runtime profile."),
-            new DriverDefinition("duckdb", "DuckDB", true, "runtime", "", "implemented", "org.duckdb.DuckDBDriver", "DuckDB file database compatibility is bundled through the JavaNavi DuckDB JDBC runtime profile."),
-            new DriverDefinition("dameng", "Dameng", true, "8.1.3.140", "", "implemented", "dm.jdbc.driver.DmDriver", "Dameng JDBC is bundled through the JavaNavi DmJdbcDriver18 runtime profile."),
-            new DriverDefinition("kingbase", "Kingbase", true, "runtime", "", "implemented", "org.postgresql.Driver", "Kingbase PostgreSQL-wire JDBC connections are routed through the bundled PostgreSQL JDBC runtime profile."),
-            new DriverDefinition("highgo", "HighGo", true, "runtime", "", "implemented", "org.postgresql.Driver", "HighGo PostgreSQL-wire JDBC connections are routed through the bundled PostgreSQL JDBC runtime profile."),
-            new DriverDefinition("vastbase", "Vastbase", true, "runtime", "", "implemented", "org.postgresql.Driver", "Vastbase PostgreSQL-wire JDBC connections are routed through the bundled PostgreSQL JDBC runtime profile."),
+            new DriverDefinition("postgres", "PostgreSQL", false, "runtime", "", "implemented", "org.postgresql.Driver", "PostgreSQL JDBC can be downloaded on demand through Driver Manager."),
+            new DriverDefinition("mariadb", "MariaDB", false, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "MariaDB-compatible JDBC connections reuse the managed MySQL runtime when it is installed."),
+            new DriverDefinition("diros", "Doris", false, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "Doris MySQL-wire JDBC connections reuse the managed MySQL runtime when it is installed."),
+            new DriverDefinition("sphinx", "Sphinx", false, "runtime", "", "implemented", "com.mysql.cj.jdbc.Driver", "SphinxQL MySQL-wire JDBC connections reuse the managed MySQL runtime when it is installed."),
+            new DriverDefinition("sqlserver", "SQL Server", false, "13.4.0.jre11", "", "implemented", "com.microsoft.sqlserver.jdbc.SQLServerDriver", "SQL Server JDBC can be downloaded on demand through Driver Manager."),
+            new DriverDefinition("sqlite", "SQLite", false, "runtime", "", "implemented", "org.sqlite.JDBC", "SQLite JDBC can be downloaded on demand through Driver Manager."),
+            new DriverDefinition("duckdb", "DuckDB", false, "runtime", "", "implemented", "org.duckdb.DuckDBDriver", "DuckDB JDBC can be downloaded on demand through Driver Manager."),
+            new DriverDefinition("dameng", "Dameng", false, "8.1.3.140", "", "implemented", "dm.jdbc.driver.DmDriver", "Dameng JDBC can be downloaded on demand through Driver Manager."),
+            new DriverDefinition("kingbase", "Kingbase", false, "runtime", "", "implemented", "org.postgresql.Driver", "Kingbase PostgreSQL-wire JDBC connections reuse the managed PostgreSQL runtime when it is installed."),
+            new DriverDefinition("highgo", "HighGo", false, "runtime", "", "implemented", "org.postgresql.Driver", "HighGo PostgreSQL-wire JDBC connections reuse the managed PostgreSQL runtime when it is installed."),
+            new DriverDefinition("vastbase", "Vastbase", false, "runtime", "", "implemented", "org.postgresql.Driver", "Vastbase PostgreSQL-wire JDBC connections reuse the managed PostgreSQL runtime when it is installed."),
             new DriverDefinition("mongodb", "MongoDB", true, "runtime", "", "implemented", "", "MongoDB direct wire compatibility is implemented by JavaNavi for discovery, metadata/query/applyChanges, SCRAM auth profiles, and TLS profile handling without a Java driver package."),
-            new DriverDefinition("tdengine", "TDengine", true, "3.8.3", "", "implemented", "com.taosdata.jdbc.rs.RestfulDriver", "TDengine JDBC is bundled through the JavaNavi TAOS-RS runtime profile."),
-            new DriverDefinition("clickhouse", "ClickHouse", true, "0.9.8", "", "implemented", "com.clickhouse.jdbc.ClickHouseDriver", "ClickHouse JDBC is bundled through the JavaNavi ClickHouse JDBC runtime profile.")
+            new DriverDefinition("tdengine", "TDengine", false, "3.8.3", "", "implemented", "com.taosdata.jdbc.rs.RestfulDriver", "TDengine JDBC can be downloaded on demand through Driver Manager."),
+            new DriverDefinition("clickhouse", "ClickHouse", false, "0.9.8", "", "implemented", "com.clickhouse.jdbc.ClickHouseDriver", "ClickHouse JDBC can be downloaded on demand through Driver Manager.")
     );
 
     private final ObjectMapper objectMapper;
@@ -660,7 +660,7 @@ public class DriverCompatibilityService {
         boolean managedJdbc = jdbcDriverRuntimeService.isManagedDriver(definition.type());
         boolean classpathRuntime = jdbcDriverRuntimeService.isClasspathAvailable(definition.type());
         boolean implementedRuntime = runtimeAvailable(definition, resolvedDir);
-        boolean backendBuiltIn = definition.builtIn() && (!managedJdbc || classpathRuntime);
+        boolean backendBuiltIn = definition.builtIn() && implementedRuntime && (!managedJdbc || classpathRuntime);
         boolean packageInstalled = backendBuiltIn ? implementedRuntime : metadata.isPresent() || jdbcMetadata.isPresent();
         String javaStatus = implementedRuntime ? definition.javaStatus() : "not-bundled";
         String installedVersion = jdbcMetadata
@@ -760,7 +760,7 @@ public class DriverCompatibilityService {
         }
         if (reusedManagedRuntime) {
             Map<String, Object> ownerSource = metadataSourceInfo(reusedMetadata);
-            String ownerLabel = textOrDefault(ownerSource.get("installSourceLabel"), messages.message("drivers.builtinRuntime"));
+            String ownerLabel = textOrDefault(ownerSource.get("installSourceLabel"), messages.message("drivers.notInstalled"));
             return orderedMap(
                     "installMode", "reused-runtime",
                     "installSource", "reused-runtime",
@@ -887,7 +887,7 @@ public class DriverCompatibilityService {
                 }
                 return messages.message("drivers.missingJdbcDownloadable");
             }
-            return messages.message("drivers.missingUseFullBuild");
+            return messages.message("drivers.missingCanDownloadJar");
         }
         if (metadataInstalled) {
             return messages.message("drivers.metadataRegisteredPrefix") + definition.message();
@@ -912,7 +912,7 @@ public class DriverCompatibilityService {
         if (jdbcDriverRuntimeService.isManagedDriver(definition.type())) {
             return messages.message("drivers.missingCanDownloadJar");
         }
-        return messages.message("drivers.missingUseFullJdbcPackage");
+        return messages.message("drivers.missingCanDownloadJar");
     }
 
     private Map<String, Object> driverMetadata(DriverDefinition definition, String version, String source, String installMode, Path resolvedDir) {

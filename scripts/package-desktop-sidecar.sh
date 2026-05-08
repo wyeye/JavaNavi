@@ -7,7 +7,6 @@ RESOURCE_DIR="$ROOT_DIR/src-tauri/resources"
 RESOURCE_JAR="$RESOURCE_DIR/javanavi-backend.jar"
 RESOURCE_RUNTIME_DIR="$RESOURCE_DIR/java-runtime"
 TAURI_RELEASE_RESOURCE_DIR="$ROOT_DIR/src-tauri/target/release/resources"
-DESKTOP_PACKAGE_PROFILE="${DESKTOP_PACKAGE_PROFILE:-desktop-slim}"
 JAVANAVI_DESKTOP_BUNDLE_JRE="${JAVANAVI_DESKTOP_BUNDLE_JRE:-1}"
 # Spring Boot's configuration binder uses java.beans.PropertyEditorSupport from java.desktop.
 JAVANAVI_DESKTOP_JLINK_MODULES="${JAVANAVI_DESKTOP_JLINK_MODULES:-java.base,java.logging,java.naming,java.management,java.instrument,java.sql,java.xml,java.net.http,jdk.crypto.ec,jdk.unsupported,java.security.sasl,java.security.jgss,jdk.charsets,java.desktop}"
@@ -44,7 +43,7 @@ safe_rm_under_root() {
   done
 }
 
-MAVEN_PROFILES="$DESKTOP_PACKAGE_PROFILE" "$ROOT_DIR/scripts/package-web.sh"
+"$ROOT_DIR/scripts/package-web.sh"
 
 BACKEND_VERSION="$(awk '
   /<artifactId>javanavi-backend<\/artifactId>/ { found = 1; next }
@@ -212,7 +211,6 @@ fi
 # stale files, so clear only the generated resource mirror before native build.
 safe_rm_under_root "$TAURI_RELEASE_RESOURCE_DIR/java-runtime" "$TAURI_RELEASE_RESOURCE_DIR/javanavi-backend.jar" 2>/dev/null || true
 
-printf 'DESKTOP_PACKAGE_PROFILE=%s\n' "$DESKTOP_PACKAGE_PROFILE"
 printf 'DESKTOP_JLINK_MODULES=%s\n' "$JAVANAVI_DESKTOP_JLINK_MODULES"
 printf 'DESKTOP_SIDECAR_JAR=%s\n' "$RESOURCE_JAR"
 printf 'DESKTOP_SIDECAR_STAGE=passed\n'

@@ -63,14 +63,7 @@ JAVANAVI_DESKTOP_DISABLE_DEFAULT_JAVA_OPTS=1 npm run desktop:dev
 npm run desktop:stage
 ```
 
-默认使用 `DESKTOP_PACKAGE_PROFILE=desktop-slim` 来缩小原生包体积，并通过 `jlink` 生成紧凑 Java runtime。slim jar 保留 H2 demo/runtime 数据源和 `.javanavi-conn` 加密能力，同时排除外部 JDBC driver jar：MySQL、PostgreSQL、SQLite、DuckDB、Oracle、SQL Server、Dameng、TDengine 和 ClickHouse。Driver Manager 状态由 class 与受管 driver cache 计算，因此省略的 JDBC runtime 会显示为 **待下载**，可按需从可配置 Maven 仓库下载、手动上传 JDBC Jar 并确认版本，或在首次连接时自动下载。常规 Java Web build 默认仍是 full-driver。
-
-仅在接受包体积取舍或需要离线优先 MySQL/PostgreSQL/SQLite/文件数据库桌面连接时使用完整 driver 矩阵：
-
-```bash
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:stage
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:build
-```
+该命令使用与 Java Web 相同的后端 jar 语义，并通过 `jlink` 生成紧凑 Java runtime。MySQL、PostgreSQL、SQLite、DuckDB、Oracle、SQL Server、Dameng、TDengine、ClickHouse 等外部 JDBC driver jar 默认不内置。Driver Manager 会先显示为 **待下载**，待按需下载或手动上传 JDBC Jar 后再启用。
 
 开发期运行桌面应用：
 
@@ -162,15 +155,11 @@ npm run desktop:stage
 
 该命令复用 `scripts/package-web.sh`，把 `frontend/dist` 嵌入 Spring Boot jar，将 jar 复制到 Tauri resource 路径，并 stage 内置 Java runtime。
 
-默认桌面 staging profile 是 `desktop-slim`。如果本地测试需要可选 full-driver 支持，可重新运行：
-
-```bash
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:stage
-```
+当前 stage 出来的桌面 jar 与 Java Web 使用同一套按需 JDBC 模型。
 
 ### JDBC driver 显示为待下载
 
-这对 `desktop-slim` 是预期行为。首次连接可把 pinned JDBC Jar 下载到受管 driver cache，或从 **Driver Manager** 预安装。默认下载源是 Maven Central (`https://repo.maven.apache.org/maven2`)，加载前会校验 SHA-256。Driver Manager 也可配置内部 Nexus/Artifactory 或公共镜像等其他 Maven repository root。离线环境可使用 Driver Manager 的手动 Jar 上传流程：
+这是预期行为。首次连接可把 pinned JDBC Jar 下载到受管 driver cache，或从 **Driver Manager** 预安装。默认下载源是 Maven Central (`https://repo.maven.apache.org/maven2`)，加载前会校验 SHA-256。Driver Manager 也可配置内部 Nexus/Artifactory 或公共镜像等其他 Maven repository root。离线环境可使用 Driver Manager 的手动 Jar 上传流程：
 
 - 单 Jar driver：直接上传/选择 JDBC Jar 并确认版本标签；
 - ClickHouse 等多 Jar driver：多选所需 Jar 并确认共享版本标签。

@@ -113,12 +113,7 @@ npm run desktop:build
 
 `desktop:stage` 复用 `scripts/package-web.sh`，把生成的 jar 复制到 `src-tauri/resources/javanavi-backend.jar`，并创建用于打包的最小 Java runtime。生成的 jar、runtime 和原生构建产物不会提交。
 
-桌面 staging/build 默认使用 `DESKTOP_PACKAGE_PROFILE=desktop-slim` 来缩小安装包。slim profile 保留 H2 demo/runtime 数据源和连接包加密能力，但排除 MySQL、PostgreSQL、SQLite、DuckDB、Oracle、SQL Server、Dameng、TDengine、ClickHouse 等外部 JDBC driver jar。这些省略的 JDBC runtime 会在 Driver Manager 中显示为 **待下载**，可从可配置 Maven 仓库按需下载、手动上传 JDBC Jar 并填写版本，或在首次连接时自动下载。Java Web 包默认仍使用完整 driver profile。仅在需要离线优先 JDBC 支持时构建 full-driver 桌面 jar：
-
-```bash
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:stage
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:build
-```
+桌面 staging/build 现在与 Java Web 使用同一套后端 jar 语义。MySQL、PostgreSQL、SQLite、DuckDB、Oracle、SQL Server、Dameng、TDengine、ClickHouse 等外部 JDBC driver 默认不内置；Driver Manager 会先显示为 **待下载**，待按需下载或手动上传 JDBC Jar 后再启用。
 
 当前桌面壳非目标：不处理签名/公证、自动更新、原生 UI 重写或后端 API 重设计。关键生命周期、日志、验证与排障见[桌面文档](docs/desktop-tauri.md)。
 
@@ -158,4 +153,4 @@ npm run desktop:build
 - 本地 session token 是 loopback/local package guard，不是远程多用户认证模型。
 - 只读 SQL guard 是本地 UX/runtime 安全检查，不是完整 SQL 防火墙。
 - 浏览器安全文件工作流限制在受管 workspace 或上传/下载流程；任意原生文件对话框属于桌面壳能力。
-- 桌面 `desktop-slim` 有意不把较少使用的 JDBC driver jar 打进安装包；需要时使用受管下载或 `full-jdbc-drivers` profile。
+- 桌面包与 Java Web 现在共用同一套按需 JDBC 模型；需要外部 JDBC 驱动时使用受管下载或手动上传。

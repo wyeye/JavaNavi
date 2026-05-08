@@ -107,10 +107,10 @@ public class I18nMessages {
         put("drivers.openDirInterruptedPrefix", "Opening the driver directory was interrupted. Copy the path manually: ", "打开驱动目录被中断，请手动复制路径：");
         put("drivers.openDirFailedPrefix", "Unable to open the driver directory automatically. Copy the path manually: ", "无法自动打开驱动目录，请手动复制路径：");
         put("drivers.missingJdbcDownloadable", "This backend package does not include the JDBC driver; download it on demand in Driver Manager or let the first connection download it automatically.", "当前后端包未内置该 JDBC 驱动；可在驱动管理器中按需下载，或首次连接时自动下载。");
-        put("drivers.missingUseFullBuild", "This backend package does not include the driver; use the full-jdbc-drivers build for complete JDBC support.", "当前后端包未内置该驱动；如需完整 JDBC 支持，请使用 full-jdbc-drivers 构建。");
+        put("drivers.missingUseFullBuild", "This backend package does not include the driver; download it on demand in Driver Manager or upload the JDBC Jar manually.", "当前后端包未内置该驱动；请在驱动管理器中按需下载，或手动上传 JDBC Jar。");
         put("drivers.metadataRegisteredPrefix", "Driver package metadata registered; ", "驱动包元数据已登记；");
         put("drivers.missingCanDownloadJar", "This backend package does not include the driver; download the JDBC Jar on demand through Driver Manager.", "当前后端包未内置该驱动；可通过驱动管理器按需下载 JDBC Jar");
-        put("drivers.missingUseFullJdbcPackage", "This backend package does not include the driver; use the full-jdbc-drivers build for a complete JDBC package.", "当前后端包未内置该驱动；请使用 full-jdbc-drivers 构建完整 JDBC 包");
+        put("drivers.missingUseFullJdbcPackage", "This backend package does not include the driver; download it on demand in Driver Manager or upload the JDBC Jar manually.", "当前后端包未内置该驱动；请在驱动管理器中按需下载，或手动上传 JDBC Jar。");
         put("drivers.builtinDriverNoSuffix", "Built-in driver: ", "内置驱动");
         put("common.switchSucceeded", "Switched successfully.", "切换成功");
         put("drivers.mavenDownload", "Maven download", "Maven 下载");
@@ -297,10 +297,10 @@ public class I18nMessages {
                 Map.entry("打开驱动目录被中断，请手动复制路径：", "drivers.openDirInterruptedPrefix"),
                 Map.entry("无法自动打开驱动目录，请手动复制路径：", "drivers.openDirFailedPrefix"),
                 Map.entry("当前后端包未内置该 JDBC 驱动；可在驱动管理器中按需下载，或首次连接时自动下载。", "drivers.missingJdbcDownloadable"),
-                Map.entry("当前后端包未内置该驱动；如需完整 JDBC 支持，请使用 full-jdbc-drivers 构建。", "drivers.missingUseFullBuild"),
+                Map.entry("当前后端包未内置该驱动；请在驱动管理器中按需下载，或手动上传 JDBC Jar。", "drivers.missingUseFullBuild"),
                 Map.entry("驱动包元数据已登记；", "drivers.metadataRegisteredPrefix"),
                 Map.entry("当前后端包未内置该驱动；可通过驱动管理器按需下载 JDBC Jar", "drivers.missingCanDownloadJar"),
-                Map.entry("当前后端包未内置该驱动；请使用 full-jdbc-drivers 构建完整 JDBC 包", "drivers.missingUseFullJdbcPackage")
+                Map.entry("当前后端包未内置该驱动；请在驱动管理器中按需下载，或手动上传 JDBC Jar。", "drivers.missingUseFullJdbcPackage")
         );
         String code = fallbackCodes.get(normalized);
         if (code != null) {

@@ -122,14 +122,63 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
-    void acceptsSameDatasourceDefaultDriver() {
+    void rejectsSameDatasourceDefaultDriverWhenManagedRuntimeIsMissing() {
         DriverCompatibilityService service = service();
 
-        Map<String, Object> mysql = service.configureDefaultDriver("mysql", "mysql", "");
-        Map<String, Object> mariadb = service.configureDefaultDriver("mariadb", "mariadb", "");
+        assertThatThrownBy(() -> service.configureDefaultDriver("mysql", "mysql", ""))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("available compatible driver");
+    }
 
-        assertThat(mysql.get("defaultDriverType")).isEqualTo("mysql");
-        assertThat(mariadb.get("defaultDriverType")).isEqualTo("mariadb");
+    @Test
+    void acceptsSameDatasourceDefaultDriverWhenRuntimeIsAvailable() {
+        DriverCompatibilityService service = service();
+
+        Map<String, Object> redis = service.configureDefaultDriver("redis", "redis", "");
+        Map<String, Object> mongodb = service.configureDefaultDriver("mongodb", "mongodb", "");
+
+        assertThat(redis.get("defaultDriverType")).isEqualTo("redis");
+        assertThat(mongodb.get("defaultDriverType")).isEqualTo("mongodb");
+    }
+
+    @Test
+    void managedJdbcDriversAreNotBuiltInByDefault() {
+        DriverCompatibilityService service = service();
+
+        Map<String, Object> status = service.statusList("", "");
+        Map<String, Object> mysql = driverRow(status, "mysql");
+
+        assertThat(mysql.get("builtIn")).isEqualTo(false);
+        assertThat(mysql.get("managedDownload")).isEqualTo(true);
+        assertThat(mysql.get("downloadRequired")).isEqualTo(true);
+        assertThat(mysql.get("runtimeAvailable")).isEqualTo(false);
+        assertThat(mysql.get("connectable")).isEqualTo(false);
+    }
+
+    @Test
+    void reusedManagedDriversWaitForOwnerRuntimeByDefault() {
+        DriverCompatibilityService service = service();
+
+        Map<String, Object> status = service.statusList("", "");
+        Map<String, Object> mariadb = driverRow(status, "mariadb");
+
+        assertThat(mariadb.get("builtIn")).isEqualTo(false);
+        assertThat(mariadb.get("reusedDriverType")).isEqualTo("mysql");
+        assertThat(mariadb.get("downloadRequired")).isEqualTo(false);
+        assertThat(mariadb.get("runtimeAvailable")).isEqualTo(false);
+        assertThat(mariadb.get("connectable")).isEqualTo(false);
+    }
+
+    @Test
+    void builtinNonJdbcRuntimeStaysAvailableByDefault() {
+        DriverCompatibilityService service = service();
+
+        Map<String, Object> status = service.statusList("", "");
+        Map<String, Object> redis = driverRow(status, "redis");
+
+        assertThat(redis.get("builtIn")).isEqualTo(true);
+        assertThat(redis.get("runtimeAvailable")).isEqualTo(true);
+        assertThat(redis.get("connectable")).isEqualTo(true);
     }
 
     @Test

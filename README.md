@@ -113,12 +113,7 @@ npm run desktop:build
 
 `desktop:stage` reuses `scripts/package-web.sh`, copies the generated jar to `src-tauri/resources/javanavi-backend.jar`, and creates a minimized Java runtime at `src-tauri/resources/java-runtime` for bundling. Generated jars, runtimes, and native build outputs are not committed.
 
-Desktop staging/build defaults to `DESKTOP_PACKAGE_PROFILE=desktop-slim` to keep installers small. The slim profile keeps the H2 demo/runtime datasource and connection-package crypto, but excludes external JDBC driver jars including MySQL, PostgreSQL, SQLite, DuckDB, Oracle, SQL Server, Dameng, TDengine, and ClickHouse. These omitted JDBC runtimes show as **待下载** in Driver Manager and can be downloaded on demand from a configurable Maven repository, uploaded manually as JDBC Jar(s) with an explicit version label, or auto-downloaded on first connection. The Java Web package default remains the full driver profile. Build a full-driver desktop jar only when offline-first JDBC support is required:
-
-```bash
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:stage
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:build
-```
+Desktop staging/build now uses the same backend jar semantics as Java Web. External JDBC drivers including MySQL, PostgreSQL, SQLite, DuckDB, Oracle, SQL Server, Dameng, TDengine, and ClickHouse are not bundled by default; Driver Manager shows them as **待下载** until they are downloaded on demand or uploaded manually as JDBC Jar(s).
 
 Desktop non-goals for the current shell: no signing/notarization, no automatic updater, no native UI rewrite, and no backend API redesign. See [Desktop documentation](docs/desktop-tauri.md) for essential lifecycle, logs, verification, and troubleshooting details.
 
@@ -158,4 +153,4 @@ This repository intentionally does not keep checked-in test classes/spec files. 
 - The local-session token is a loopback/local package guard, not a remote multi-user authentication model.
 - The read-only SQL guard is a local UX/runtime safety check, not a complete SQL firewall.
 - Browser-safe file workflows are constrained to managed workspaces or upload/download flows; arbitrary native file dialogs belong to the desktop shell.
-- Desktop `desktop-slim` intentionally omits less-common JDBC driver jars from the bundled installer; use managed downloads or the `full-jdbc-drivers` profile when needed.
+- Desktop packages and Java Web now share the same on-demand JDBC model; use managed downloads or manual Jar upload when an external JDBC driver is needed.

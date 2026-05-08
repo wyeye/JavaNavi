@@ -63,14 +63,7 @@ Stage the backend jar as a desktop resource:
 npm run desktop:stage
 ```
 
-By default this uses `DESKTOP_PACKAGE_PROFILE=desktop-slim` to minimize native package size and `jlink` to generate a compact Java runtime. The slim jar keeps the H2 demo/runtime datasource and `.javanavi-conn` crypto support, while excluding external JDBC driver jars: MySQL, PostgreSQL, SQLite, DuckDB, Oracle, SQL Server, Dameng, TDengine, and ClickHouse. Driver manager status is computed from classes and the managed driver cache, so omitted JDBC runtimes appear as **待下载** and can be downloaded on demand from a configurable Maven repository, uploaded manually as JDBC Jar(s) with an explicit version label, or auto-downloaded on first connection. The regular Java Web build remains full-driver by default.
-
-Use the full driver matrix for desktop only when the package-size tradeoff is acceptable or when offline-first MySQL/PostgreSQL/SQLite/file-database desktop connectivity is required:
-
-```bash
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:stage
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:build
-```
+This stages the same backend jar semantics used by Java Web and uses `jlink` to generate a compact Java runtime. External JDBC driver jars such as MySQL, PostgreSQL, SQLite, DuckDB, Oracle, SQL Server, Dameng, TDengine, and ClickHouse are not bundled by default. Driver Manager shows them as **待下载** until they are downloaded on demand or uploaded manually as JDBC Jar(s).
 
 Run the desktop app in development:
 
@@ -162,15 +155,11 @@ npm run desktop:stage
 
 This reuses `scripts/package-web.sh`, embeds `frontend/dist` into the Spring Boot jar, copies the jar to the Tauri resource path, and stages the bundled Java runtime.
 
-The default desktop staging profile is `desktop-slim`. If optional full-driver support is required for local testing, rerun with:
-
-```bash
-DESKTOP_PACKAGE_PROFILE=full-jdbc-drivers npm run desktop:stage
-```
+The staged desktop jar uses the same on-demand JDBC model as Java Web.
 
 ### JDBC driver is shown as 待下载
 
-This is expected for `desktop-slim`. The first connection attempt can auto-download the pinned JDBC Jar(s) into the managed driver cache, or you can preinstall them from **Driver Manager**. The default download source is Maven Central (`https://repo.maven.apache.org/maven2`) with SHA-256 verification before the driver is loaded. Driver Manager also lets you configure another Maven repository root such as an internal Nexus/Artifactory or a public mirror. For offline environments, use Driver Manager's manual Jar upload flow:
+This is expected. The first connection attempt can auto-download the pinned JDBC Jar(s) into the managed driver cache, or you can preinstall them from **Driver Manager**. The default download source is Maven Central (`https://repo.maven.apache.org/maven2`) with SHA-256 verification before the driver is loaded. Driver Manager also lets you configure another Maven repository root such as an internal Nexus/Artifactory or a public mirror. For offline environments, use Driver Manager's manual Jar upload flow:
 
 - single-Jar drivers: upload/select the JDBC Jar directly and confirm the version label;
 - multi-Jar drivers such as ClickHouse: multi-select the required Jars for upload and confirm the shared version label.

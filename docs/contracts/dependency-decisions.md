@@ -96,19 +96,10 @@ Each decision entry must include:
 
 - **Package choice:** `com.microsoft.sqlserver:mssql-jdbc:13.4.0.jre11`, `com.oracle.database.jdbc:ojdbc11:23.26.1.0.0`, `com.dameng:DmJdbcDriver18:8.1.3.140`, `com.taosdata.jdbc:taos-jdbcdriver:3.8.3`, and `com.clickhouse:clickhouse-jdbc:0.9.8`, all with runtime scope.
 - **License and maintenance:** Vendor-published JDBC artifacts available from Maven Central; profile usage is isolated by `driverType` and no transitive driver is invoked unless matching profile is selected.
-- **Scope:** Optional JDBC profile closure for Java Web/full-driver builds; desktop slim excludes them by default and exposes managed download status.
+- **Scope:** Optional JDBC runtime set managed through Driver Manager downloads/uploads; packaged builds expose managed download status by default.
 - **Verification:** backend `mvn package` plus manual/runtime optional-driver smoke when needed.
 - **Secret/credential impact:** These profiles carry credential-bearing JDBC URLs/options and must continue through `SecretRedactor`, `SecretStore`, and connection error redaction gates.
 - **Rejected alternatives:** Use dynamic user-supplied JDBC jars first | requires classloader isolation, trust prompts, malware scanning, and a separate security design.
-
-### Decision ID: DEP-DESKTOP-SLIM-PROFILE
-
-- **Package choice:** Maven profile `desktop-slim`, selected by `scripts/package-desktop-sidecar.sh` unless `DESKTOP_PACKAGE_PROFILE` overrides it.
-- **License and maintenance:** No new dependency; it controls which already-approved optional JDBC artifacts are embedded in desktop packages.
-- **Scope:** Desktop packaging profile. Keeps Spring/Web/JDBC foundation, H2, Redis/Mongo direct runtimes, and connection-package crypto; excludes external JDBC driver jars from the first-phase desktop installer.
-- **Verification:** `npm run desktop:stage` stages the desktop jar with the selected profile; inspect the staged jar/profile output when changing driver packaging.
-- **Secret/credential impact:** No new credential boundary. Excluded optional drivers cannot be loaded until managed download/upload makes them available.
-- **Rejected alternatives:** Ship the first desktop installer with all optional JDBC drivers | makes the package dominated by rarely-used driver jars.
 
 ### Decision ID: DEP-CONNECTION-PACKAGE-CRYPTO
 

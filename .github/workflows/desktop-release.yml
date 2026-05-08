@@ -29,7 +29,6 @@ env:
   JAVA_VERSION: '21'
   NODE_VERSION: '22'
   CARGO_TERM_COLOR: always
-  DESKTOP_PACKAGE_PROFILE: desktop-slim
 
 jobs:
   build-desktop-package:
