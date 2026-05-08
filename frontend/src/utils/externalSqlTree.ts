@@ -1,8 +1,7 @@
-import type { ExternalSQLDirectory, ExternalSQLTreeEntry } from '../types';
+import type { ExternalSQLTreeEntry } from '../types';
 
 export type ExternalSQLNodeType =
   | 'external-sql-root'
-  | 'external-sql-directory'
   | 'external-sql-folder'
   | 'external-sql-file';
 
@@ -19,20 +18,13 @@ type BuildExternalSQLRootNodeParams = {
   dbNodeKey: string;
   connectionId: string;
   dbName: string;
-  directories: ExternalSQLDirectory[];
-  directoryTrees: Record<string, ExternalSQLTreeEntry[]>;
+  workspacePath: string;
+  workspaceName: string;
+  directoryTree: ExternalSQLTreeEntry[];
 };
 
 const normalizeExternalSQLPath = (value: string): string =>
   String(value || '').trim().replace(/\\/g, '/');
-
-const resolveDirectoryDisplayName = (directory: ExternalSQLDirectory): string => {
-  const explicitName = String(directory.name || '').trim();
-  if (explicitName) return explicitName;
-  const normalizedPath = normalizeExternalSQLPath(directory.path);
-  const segments = normalizedPath.split('/').filter(Boolean);
-  return segments[segments.length - 1] || 'SQL目录';
-};
 
 export const buildExternalSQLDirectoryId = (connectionId: string, dbName: string, directoryPath: string): string =>
   `external-sql-dir:${String(connectionId || '').trim()}:${String(dbName || '').trim()}:${normalizeExternalSQLPath(directoryPath)}`;
@@ -45,7 +37,7 @@ const buildExternalSQLNodeKey = (type: ExternalSQLNodeType, base: string): strin
 
 const mapExternalSQLTreeEntries = (
   entries: ExternalSQLTreeEntry[],
-  context: { connectionId: string; dbName: string; dbNodeKey: string; directoryId: string },
+  context: { connectionId: string; dbName: string; dbNodeKey: string; rootPath: string },
 ): ExternalSQLTreeNode[] => entries.map((entry) => {
   const entryPath = normalizeExternalSQLPath(entry.path);
   if (entry.isDir) {
@@ -60,7 +52,7 @@ const mapExternalSQLTreeEntries = (
         connectionId: context.connectionId,
         dbName: context.dbName,
         dbNodeKey: context.dbNodeKey,
-        directoryId: context.directoryId,
+        rootPath: context.rootPath,
         path: entry.path,
         name: entry.name,
       },
@@ -76,7 +68,7 @@ const mapExternalSQLTreeEntries = (
       connectionId: context.connectionId,
       dbName: context.dbName,
       dbNodeKey: context.dbNodeKey,
-      directoryId: context.directoryId,
+      rootPath: context.rootPath,
       path: entry.path,
       name: entry.name,
     },
@@ -87,33 +79,15 @@ export const buildExternalSQLRootNode = ({
   dbNodeKey,
   connectionId,
   dbName,
-  directories,
-  directoryTrees,
+  workspacePath,
+  workspaceName,
+  directoryTree,
 }: BuildExternalSQLRootNodeParams): ExternalSQLTreeNode => {
-  const sortedDirectories = [...directories].sort((left, right) =>
-    resolveDirectoryDisplayName(left).toLowerCase().localeCompare(resolveDirectoryDisplayName(right).toLowerCase()),
-  );
-
-  const children = sortedDirectories.map((directory) => {
-    const directoryChildren = mapExternalSQLTreeEntries(directoryTrees[directory.id] || [], {
-      connectionId,
-      dbName,
-      dbNodeKey,
-      directoryId: directory.id,
-    });
-    return {
-      title: resolveDirectoryDisplayName(directory),
-      key: buildExternalSQLNodeKey('external-sql-directory', directory.id),
-      type: 'external-sql-directory' as const,
-      isLeaf: directoryChildren.length === 0,
-      children: directoryChildren.length > 0 ? directoryChildren : undefined,
-      dataRef: {
-        ...directory,
-        connectionId,
-        dbName,
-        dbNodeKey,
-      },
-    };
+  const children = mapExternalSQLTreeEntries(directoryTree, {
+    connectionId,
+    dbName,
+    dbNodeKey,
+    rootPath: workspacePath,
   });
 
   return {
@@ -126,6 +100,8 @@ export const buildExternalSQLRootNode = ({
       connectionId,
       dbName,
       dbNodeKey,
+      path: workspacePath,
+      name: workspaceName,
     },
   };
 };

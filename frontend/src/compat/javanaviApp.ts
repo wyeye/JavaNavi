@@ -714,6 +714,11 @@ export async function JVMStopMonitoring(arg1:connection.ConnectionConfig,arg2:st
   return apiEnvelopeToQueryResult(payload, 'JVM monitoring stopped');
 }
 
+export async function ResolveSQLWorkspace(arg1:string,arg2:string): Promise<connection.QueryResult> {
+  const payload = await postJson('/app/sql-workspace/resolve', { connectionId: arg1, dbName: arg2 });
+  return apiEnvelopeToQueryResult(payload, 'SQL workspace resolved');
+}
+
 export async function ListSQLDirectory(arg1:string): Promise<connection.QueryResult> {
   const payload = await postJson('/app/sql-directory/list', { path: arg1 });
   return apiEnvelopeToQueryResult(payload, 'SQL directory loaded');
@@ -781,9 +786,27 @@ export async function ReadSQLFile(arg1:string): Promise<connection.QueryResult> 
   return apiEnvelopeToQueryResult(payload, 'SQL file loaded');
 }
 
+export async function UploadSQLFile(arg1:string,arg2:File): Promise<connection.QueryResult> {
+  const body = new FormData();
+  body.append('directoryPath', arg1 || '');
+  body.append('file', arg2);
+  const payload = await postMultipart('/app/sql-file/upload', body);
+  return apiEnvelopeToQueryResult(payload, 'SQL file uploaded');
+}
+
 export async function WriteSQLFile(arg1:string,arg2:string): Promise<connection.QueryResult> {
   const payload = await postJson('/app/sql-file/write', { path: arg1, content: arg2 });
   return apiEnvelopeToQueryResult(payload, 'SQL file saved');
+}
+
+export async function CreateSQLDirectory(arg1:string,arg2:string): Promise<connection.QueryResult> {
+  const payload = await postJson('/app/sql-directory/create', { parentPath: arg1, name: arg2 });
+  return apiEnvelopeToQueryResult(payload, 'SQL directory created');
+}
+
+export async function RenameSQLWorkspacePath(arg1:string,arg2:string): Promise<connection.QueryResult> {
+  const payload = await postJson('/app/sql-path/rename', { path: arg1, newName: arg2 });
+  return apiEnvelopeToQueryResult(payload, 'SQL workspace path renamed');
 }
 
 export async function RedisConnect(arg1:connection.ConnectionConfig): Promise<connection.QueryResult> {

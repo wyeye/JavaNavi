@@ -40,7 +40,7 @@ import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 	import { SavedConnection, ExternalSQLTreeEntry, JVMCapability, JVMResourceSummary } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, SelectSQLDirectory, ListSQLDirectory, ReadSQLFile, JVMProbeCapabilities, CloseConnection } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, JVMProbeCapabilities, CloseConnection } from '@compat/javanaviApp';
 import { getTableDataDangerActionMeta, supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
   import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
@@ -54,7 +54,7 @@ import { buildJVMTabTitle } from '../utils/jvmRuntimePresentation';
 import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors } from '../utils/jvmSidebarActions';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
-import { buildExternalSQLDirectoryId, buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
+import { buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
 import JVMModeBadge from './jvm/JVMModeBadge';
 import { filterSidebarTree, normalizeMySQLViewDDLForEditing, resolveCopyableSidebarNodeName, type SearchScope, type TreeNode } from './sidebarSearch';
@@ -96,10 +96,7 @@ const SEARCH_SCOPE_ICON_MAP: Record<SearchScope, React.ReactNode> = {
 const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> = ({ onEditConnection }) => {
   const connections = useStore(state => state.connections);
   const savedQueries = useStore(state => state.savedQueries);
-  const externalSQLDirectories = useStore(state => state.externalSQLDirectories);
   const deleteQuery = useStore(state => state.deleteQuery);
-  const saveExternalSQLDirectory = useStore(state => state.saveExternalSQLDirectory);
-  const deleteExternalSQLDirectory = useStore(state => state.deleteExternalSQLDirectory);
   const addConnection = useStore(state => state.addConnection);
   const addTab = useStore(state => state.addTab);
   const tabs = useStore(state => state.tabs);
@@ -194,6 +191,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const selectedNodesRef = useRef<any[]>([]);
   const loadingNodesRef = useRef<Set<string>>(new Set());
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const externalSqlUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const pendingExternalSqlUploadRef = useRef<{ connectionId: string; dbName: string; dbNodeKey: string; directoryPath: string } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: MenuProps['items'] } | null>(null);
   
   // Virtual Scroll State
@@ -319,7 +318,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               loadTables(node);
           }
       });
-  }, [autoFetchVisible, externalSQLDirectories, savedQueries]);
+  }, [autoFetchVisible, savedQueries]);
 
   useEffect(() => {
     setTreeData((prev) => {
@@ -430,8 +429,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       switch (node.type) {
         case 'external-sql-root':
           return <FolderOpenOutlined />;
-        case 'external-sql-directory':
-          return <HddOutlined />;
         case 'external-sql-folder':
           return <FolderOutlined />;
         default:
@@ -458,7 +455,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
     if (
       node.type === 'external-sql-root'
-      || node.type === 'external-sql-directory'
       || node.type === 'external-sql-folder'
       || node.type === 'external-sql-file'
     ) {
@@ -1146,8 +1142,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       loadingNodesRef.current.add(loadKey);
       
       const dbQueries = savedQueries.filter(q => q.connectionId === conn.id && q.dbName === dbName);
-      const dbExternalSQLDirectories = useStore.getState().externalSQLDirectories.filter(directory => directory.connectionId === conn.id && directory.dbName === dbName);
-      
       const queriesNode: TreeNode = {
           title: '已存查询',
           key: `${key}-queries`,
@@ -1190,32 +1184,37 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	                loadDatabaseTriggers(conn, conn.dbName),
 	                loadFunctions(conn, conn.dbName),
 	            ]);
-                const externalSQLDirectoryResults = await Promise.all(
-                    dbExternalSQLDirectories.map(async (directory) => {
-                        const directoryRes = await ListSQLDirectory(directory.path);
-                        if (!directoryRes.success) {
-                            message.warning({
-                                key: `external-sql-${directory.id}`,
-                                content: `SQL 目录读取失败: ${directory.name} (${directoryRes.message})`,
-                            });
-                            return { id: directory.id, entries: [] as ExternalSQLTreeEntry[] };
-                        }
-                        return {
-                            id: directory.id,
-                            entries: Array.isArray(directoryRes.data) ? directoryRes.data as ExternalSQLTreeEntry[] : [],
-                        };
-                    }),
-                );
-                const externalSQLTrees = externalSQLDirectoryResults.reduce<Record<string, ExternalSQLTreeEntry[]>>((accumulator, item) => {
-                    accumulator[item.id] = item.entries;
-                    return accumulator;
-                }, {});
+                const workspaceRes = await ResolveSQLWorkspace(String(conn.id), String(conn.dbName));
+                const workspacePayload = workspaceRes.success && workspaceRes.data && typeof workspaceRes.data === 'object'
+                    ? workspaceRes.data as Record<string, unknown>
+                    : {};
+                const workspacePath = String(workspacePayload.path || '').trim();
+                const workspaceName = String(workspacePayload.name || 'SQL工作区').trim() || 'SQL工作区';
+
+                let externalSQLTreeEntries: ExternalSQLTreeEntry[] = [];
+                if (!workspaceRes.success) {
+                    message.warning({
+                        key: `external-sql-${conn.id}-${conn.dbName}`,
+                        content: `SQL 工作区加载失败: ${workspaceRes.message}`,
+                    });
+                } else if (workspacePath) {
+                    const directoryRes = await ListSQLDirectory(workspacePath);
+                    if (!directoryRes.success) {
+                        message.warning({
+                            key: `external-sql-${conn.id}-${conn.dbName}`,
+                            content: `SQL 工作区读取失败: ${directoryRes.message}`,
+                        });
+                    } else {
+                        externalSQLTreeEntries = Array.isArray(directoryRes.data) ? directoryRes.data as ExternalSQLTreeEntry[] : [];
+                    }
+                }
                 const externalSQLRootNode = decorateExternalSQLTreeNode(buildExternalSQLRootNode({
                     dbNodeKey: String(key),
                     connectionId: String(conn.id),
                     dbName: String(conn.dbName),
-                    directories: dbExternalSQLDirectories,
-                    directoryTrees: externalSQLTrees,
+                    workspacePath,
+                    workspaceName,
+                    directoryTree: externalSQLTreeEntries,
                 }));
 
             const viewRows: string[] = Array.isArray(viewsResult.views) ? viewsResult.views : [];
@@ -1561,7 +1560,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
       } else if (type === 'saved-query') {
           setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
-      } else if (type === 'external-sql-root' || type === 'external-sql-directory' || type === 'external-sql-folder' || type === 'external-sql-file') {
+      } else if (type === 'external-sql-root' || type === 'external-sql-folder' || type === 'external-sql-file') {
           setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
       } else if (type === 'redis-db') {
           setActiveContext({ connectionId: dataRef.id, dbName: `db${dataRef.redisDB}` });
@@ -1636,7 +1635,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       else if (type === 'jvm-mode' || type === 'jvm-resource' || type === 'jvm-diagnostic' || type === 'jvm-monitoring') setActiveContext({ connectionId: dataRef.id, dbName: '' });
       else if (type === 'table' || type === 'view' || type === 'db-trigger' || type === 'routine') setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
       else if (type === 'saved-query') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
-      else if (type === 'external-sql-root' || type === 'external-sql-directory' || type === 'external-sql-folder' || type === 'external-sql-file') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
+      else if (type === 'external-sql-root' || type === 'external-sql-folder' || type === 'external-sql-file') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
       else if (type === 'redis-db') setActiveContext({ connectionId: dataRef.id, dbName: `db${dataRef.redisDB}` });
 
       if (node.type === 'table') {
@@ -2423,58 +2422,106 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const handleAddExternalSQLDirectory = async (node: any) => {
-      const context = getNodeDatabaseContext(node);
-      if (!context?.connectionId || !context?.dbName || !context?.dbNodeKey) {
-          message.warning('请在具体数据库下添加外部 SQL 目录');
-          return;
+  const resolveExternalSQLTargetDirectory = (node: any): string => {
+      if (node?.type === 'external-sql-root' || node?.type === 'external-sql-folder') {
+          return String(node?.dataRef?.path || '').trim();
       }
-
-      const currentDirectory = externalSQLDirectories.find((item) =>
-          item.connectionId === context.connectionId && item.dbName === context.dbName,
-      )?.path || '';
-      const selection = await SelectSQLDirectory(currentDirectory);
-      if (!selection.success) {
-          if (selection.message !== '已取消') {
-              message.error('选择 SQL 目录失败: ' + selection.message);
-          }
-          return;
+      if (node?.type === 'external-sql-file') {
+          const currentPath = String(node?.dataRef?.path || '').trim();
+          return currentPath.replace(/[\\/][^\\/]+$/, '');
       }
-
-      const payload = (selection.data && typeof selection.data === 'object') ? selection.data as Record<string, unknown> : {};
-      const path = String(payload.path || '').trim();
-      const name = String(payload.name || '').trim();
-      if (!path) {
-          message.error('未获取到有效的 SQL 目录路径');
-          return;
-      }
-
-      const directoryId = buildExternalSQLDirectoryId(context.connectionId, context.dbName, path);
-      saveExternalSQLDirectory({
-          id: directoryId,
-          name: name || path.split(/[\\/]/).filter(Boolean).pop() || 'SQL目录',
-          path,
-          connectionId: context.connectionId,
-          dbName: context.dbName,
-          createdAt: Date.now(),
-      });
-
-      setExpandedKeys((prev) => Array.from(new Set([...prev, context.dbNodeKey, `${context.dbNodeKey}-external-sql`])));
-      setAutoExpandParent(false);
-      await refreshDatabaseNode(context.dbNodeKey);
-      message.success('外部 SQL 目录已添加');
+      return '';
   };
 
-  const handleRemoveExternalSQLDirectory = async (node: any) => {
-      const directoryId = String(node?.dataRef?.id || '').trim();
-      const dbNodeKey = String(node?.dataRef?.dbNodeKey || '').trim();
-      if (!directoryId) {
-          message.error('未找到可移除的 SQL 目录');
+  const handleUploadExternalSQLFile = async (node: any) => {
+      const context = getNodeDatabaseContext(node);
+      const directoryPath = resolveExternalSQLTargetDirectory(node);
+      if (!context?.connectionId || !context?.dbName || !context?.dbNodeKey || !directoryPath) {
+          message.error('SQL 上传目标目录无效');
           return;
       }
-      deleteExternalSQLDirectory(directoryId);
-      await refreshDatabaseNode(dbNodeKey);
-      message.success('外部 SQL 目录已移除');
+      pendingExternalSqlUploadRef.current = { ...context, directoryPath };
+      externalSqlUploadInputRef.current?.click();
+  };
+
+  const handleExternalSQLFileSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const uploadContext = pendingExternalSqlUploadRef.current;
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      pendingExternalSqlUploadRef.current = null;
+      if (!uploadContext || !file) {
+          return;
+      }
+      const uploadRes = await UploadSQLFile(uploadContext.directoryPath, file);
+      if (!uploadRes.success) {
+          message.error('上传 SQL 文件失败: ' + uploadRes.message);
+          return;
+      }
+      const payload = uploadRes.data && typeof uploadRes.data === 'object' ? uploadRes.data as Record<string, unknown> : {};
+      const uploadedPath = String(payload.path || payload.filePath || '').trim();
+      const uploadedName = String(payload.name || file.name || 'SQL文件').trim() || 'SQL文件';
+      setExpandedKeys((prev) => Array.from(new Set([...prev, uploadContext.dbNodeKey, `${uploadContext.dbNodeKey}-external-sql`])));
+      setAutoExpandParent(false);
+      await refreshDatabaseNode(uploadContext.dbNodeKey);
+      message.success('SQL 文件上传成功');
+      void openExternalSQLFile({
+          title: uploadedName,
+          dataRef: {
+              connectionId: uploadContext.connectionId,
+              dbName: uploadContext.dbName,
+              dbNodeKey: uploadContext.dbNodeKey,
+              path: uploadedPath,
+              name: uploadedName,
+          },
+      });
+  };
+
+  const handleCreateExternalSQLDirectory = async (node: any) => {
+      const context = getNodeDatabaseContext(node);
+      const targetPath = resolveExternalSQLTargetDirectory(node);
+      if (!context?.dbNodeKey || !targetPath) {
+          message.error('目录创建目标无效');
+          return;
+      }
+      let nextName = '';
+      Modal.confirm({
+          title: '新建目录',
+          content: <Input {...noAutoCapInputProps} placeholder="请输入目录名" onChange={(event) => { nextName = event.target.value; }} />,
+          onOk: async () => {
+              const createRes = await CreateSQLDirectory(targetPath, nextName);
+              if (!createRes.success) {
+                  message.error('创建目录失败: ' + createRes.message);
+                  throw new Error(createRes.message || 'create directory failed');
+              }
+              setExpandedKeys((prev) => Array.from(new Set([...prev, context.dbNodeKey, `${context.dbNodeKey}-external-sql`, targetPath])));
+              setAutoExpandParent(false);
+              await refreshDatabaseNode(context.dbNodeKey);
+              message.success('目录已创建');
+          },
+      });
+  };
+
+  const handleRenameExternalSQLPath = async (node: any) => {
+      const context = getNodeDatabaseContext(node);
+      const currentPath = String(node?.dataRef?.path || '').trim();
+      if (!context?.dbNodeKey || !currentPath) {
+          message.error('重命名目标无效');
+          return;
+      }
+      let nextName = String(node?.dataRef?.name || node?.title || '').trim();
+      Modal.confirm({
+          title: '重命名',
+          content: <Input {...noAutoCapInputProps} defaultValue={nextName} onChange={(event) => { nextName = event.target.value; }} />,
+          onOk: async () => {
+              const renameRes = await RenameSQLWorkspacePath(currentPath, nextName);
+              if (!renameRes.success) {
+                  message.error('重命名失败: ' + renameRes.message);
+                  throw new Error(renameRes.message || 'rename failed');
+              }
+              await refreshDatabaseNode(context.dbNodeKey);
+              message.success('重命名成功');
+          },
+      });
   };
 
   const handleRefreshExternalSQLDirectory = async (node: any) => {
@@ -4052,34 +4099,64 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     if (node.type === 'external-sql-root') {
         return [
             {
-                key: 'add-external-sql-directory',
-                label: '添加 SQL 目录',
+                key: 'upload-external-sql-file',
+                label: '上传 SQL',
+                icon: <FileAddOutlined />,
+                onClick: () => {
+                    void handleUploadExternalSQLFile(node);
+                }
+            },
+            {
+                key: 'create-external-sql-directory',
+                label: '新建目录',
                 icon: <PlusOutlined />,
                 onClick: () => {
-                    void handleAddExternalSQLDirectory(node);
+                    void handleCreateExternalSQLDirectory(node);
+                }
+            },
+            {
+                key: 'refresh-external-sql-directory',
+                label: '刷新',
+                icon: <ReloadOutlined />,
+                onClick: () => {
+                    void handleRefreshExternalSQLDirectory(node);
                 }
             }
         ];
     }
 
-    if (node.type === 'external-sql-directory') {
+    if (node.type === 'external-sql-folder') {
         return [
             {
+                key: 'upload-external-sql-file',
+                label: '上传 SQL',
+                icon: <FileAddOutlined />,
+                onClick: () => {
+                    void handleUploadExternalSQLFile(node);
+                }
+            },
+            {
+                key: 'create-external-sql-directory',
+                label: '新建目录',
+                icon: <PlusOutlined />,
+                onClick: () => {
+                    void handleCreateExternalSQLDirectory(node);
+                }
+            },
+            {
+                key: 'rename-external-sql-path',
+                label: '重命名',
+                icon: <EditOutlined />,
+                onClick: () => {
+                    void handleRenameExternalSQLPath(node);
+                }
+            },
+            {
                 key: 'refresh-external-sql-directory',
-                label: '刷新目录',
+                label: '刷新',
                 icon: <ReloadOutlined />,
                 onClick: () => {
                     void handleRefreshExternalSQLDirectory(node);
-                }
-            },
-            { type: 'divider' },
-            {
-                key: 'remove-external-sql-directory',
-                label: '移除目录',
-                icon: <DeleteOutlined />,
-                danger: true,
-                onClick: () => {
-                    void handleRemoveExternalSQLDirectory(node);
                 }
             }
         ];
@@ -4093,6 +4170,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 icon: <ConsoleSqlOutlined />,
                 onClick: () => {
                     void openExternalSQLFile(node);
+                }
+            },
+            {
+                key: 'rename-external-sql-path',
+                label: '重命名',
+                icon: <EditOutlined />,
+                onClick: () => {
+                    void handleRenameExternalSQLPath(node);
                 }
             }
         ];
@@ -4118,7 +4203,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         const rawTableName = String(node?.dataRef?.tableName || node?.dataRef?.viewName || '').trim();
         const tableComment = String(node?.dataRef?.comment || node?.dataRef?.tableComment || '').trim();
         hoverTitle = buildTableHoverTitle({ tableName: rawTableName || displayTitle, comment: tableComment, tableNameLabel: t('table.hover.name'), commentLabel: t('table.hover.comment') });
-    } else if (node.type === 'external-sql-directory' || node.type === 'external-sql-folder' || node.type === 'external-sql-file') {
+    } else if (node.type === 'external-sql-folder' || node.type === 'external-sql-file') {
         hoverTitle = String(node?.dataRef?.path || displayTitle);
     }
 
@@ -4146,11 +4231,11 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                     className="sidebar-tree-node-action"
                     size="small"
                     type="text"
-                    icon={<PlusOutlined />}
+                    icon={<FileAddOutlined />}
                     onClick={(event) => {
                         event.preventDefault();
                         event.stopPropagation();
-                        void handleAddExternalSQLDirectory(node);
+                        void handleUploadExternalSQLFile(node);
                     }}
                     style={{ paddingInline: 4, height: 20 }}
                 />
@@ -4368,6 +4453,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 />
             </div>
         </div>
+
+        <input
+            ref={externalSqlUploadInputRef}
+            type="file"
+            accept=".sql"
+            style={{ display: 'none' }}
+            onChange={handleExternalSQLFileSelected}
+        />
 
         {contextMenu && (
             <Dropdown
