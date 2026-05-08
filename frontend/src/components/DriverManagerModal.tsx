@@ -148,6 +148,10 @@ const parseOptionalLatency = (value: unknown): number | undefined => {
   return parsed;
 };
 
+const isRepositoryConnectivityProbe = (probe?: DriverNetworkProbe | null): boolean => (
+  probe?.name === 'Maven driver repository' || probe?.name === 'Built-in driver matrix'
+);
+
 const sharedInfoAlertIcon = <InfoCircleFilled style={{ fontSize: 24 }} />;
 
 type DriverVersionOption = {
@@ -1819,6 +1823,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     || networkStatus?.checks.find((item) => item.name === 'Built-in driver matrix')
     || null;
   const repositoryConnectivityLatencyMs = repositoryConnectivityProbe
+    && isRepositoryConnectivityProbe(repositoryConnectivityProbe)
     ? (repositoryConnectivityProbe.httpLatencyMs ?? repositoryConnectivityProbe.latencyMs ?? repositoryConnectivityProbe.tcpLatencyMs)
     : undefined;
   const logBlockBackground = darkMode
