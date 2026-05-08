@@ -1658,7 +1658,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
       if (!isCopy) return;
 
-      const node = selectedNodesRef.current?.[0];
+      const selectedKey = selectedKeys[0];
+      const node = selectedKey == null ? null : findTreeNodeByKey(treeData, selectedKey);
       const copyName = resolveCopyableSidebarNodeName(node);
       if (!copyName) return;
 
