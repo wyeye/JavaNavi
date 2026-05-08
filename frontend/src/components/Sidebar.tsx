@@ -49,7 +49,6 @@ import FindInDatabaseModal from './FindInDatabaseModal';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { noAutoCapInputProps } from '../utils/inputAutoCap';
 import { normalizeSidebarViewName, resolveSidebarRuntimeDatabase } from '../utils/sidebarMetadata';
-import { resolveConnectionHostTokens } from '../utils/tabDisplay';
 import { resolveConnectionAccentColor, resolveConnectionIconType } from '../utils/connectionVisual';
 import { buildJVMTabTitle } from '../utils/jvmRuntimePresentation';
 import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors } from '../utils/jvmSidebarActions';
@@ -58,26 +57,16 @@ import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 import { buildExternalSQLDirectoryId, buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
 import JVMModeBadge from './jvm/JVMModeBadge';
+import { filterSidebarTree, normalizeMySQLViewDDLForEditing, resolveCopyableSidebarNodeName, type SearchScope, type TreeNode } from './sidebarSearch';
 import { locateActiveSidebarTable } from './sidebarTreeNavigation';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
 
 const { Search } = Input;
 
-interface TreeNode {
-  title: string;
-  key: string;
-  isLeaf?: boolean;
-  children?: TreeNode[];
-  icon?: React.ReactNode;
-  dataRef?: any;
-  type?: 'connection' | 'database' | 'table' | 'view' | 'db-trigger' | 'routine' | 'object-group' | 'queries-folder' | 'saved-query' | 'external-sql-root' | 'external-sql-directory' | 'external-sql-folder' | 'external-sql-file' | 'folder-columns' | 'folder-indexes' | 'folder-fks' | 'folder-triggers' | 'redis-db' | 'tag' | 'jvm-mode' | 'jvm-resource' | 'jvm-diagnostic' | 'jvm-monitoring';
-}
-
 type BatchTableExportMode = 'schema' | 'backup' | 'dataOnly';
 type BatchObjectType = 'table' | 'view';
 type BatchObjectFilterType = 'all' | BatchObjectType;
 type BatchSelectionScope = 'filtered' | 'all';
-type SearchScope = 'smart' | 'object' | 'database' | 'host' | 'tag';
 
 interface BatchObjectItem {
   title: string;
@@ -102,23 +91,6 @@ const SEARCH_SCOPE_ICON_MAP: Record<SearchScope, React.ReactNode> = {
   database: <DatabaseOutlined />,
   host: <CloudOutlined />,
   tag: <TagOutlined />,
-};
-
-const normalizeMySQLViewDDLForEditing = (viewName: string, rawDefinition: unknown): string => {
-  const text = String(rawDefinition || '').trim();
-  if (!text) return '';
-
-  const normalized = text.replace(/\r\n/g, '\n').trim().replace(/;+\s*$/, '');
-  const createViewPrefixPattern = /^\s*create\s+(?:algorithm\s*=\s*\w+\s+)?(?:definer\s*=\s*(?:`[^`]+`|\S+)\s*@\s*(?:`[^`]+`|\S+)\s+)?(?:sql\s+security\s+(?:definer|invoker)\s+)?view\s+/i;
-  if (createViewPrefixPattern.test(normalized)) {
-    return `${normalized.replace(createViewPrefixPattern, 'CREATE OR REPLACE VIEW ')};`;
-  }
-
-  if (/^\s*(select|with)\b/i.test(normalized)) {
-    return `CREATE OR REPLACE VIEW ${viewName} AS\n${normalized};`;
-  }
-
-  return `${normalized};`;
 };
 
 const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> = ({ onEditConnection }) => {
@@ -1631,23 +1603,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           scrollToKey: (key) => treeRef.current?.scrollTo?.({ key, align: 'top' }),
           notify: { info: message.info, warning: message.warning, success: message.success }, t,
       });
-  };
-
-  const resolveCopyableSidebarNodeName = (node: any): string => {
-      switch (node?.type) {
-          case 'database':
-              return String(node?.dataRef?.dbName || '').trim();
-          case 'table':
-              return String(node?.dataRef?.tableName || '').trim();
-          case 'view':
-              return String(node?.dataRef?.viewName || '').trim();
-          case 'routine':
-              return String(node?.dataRef?.routineName || '').trim();
-          case 'db-trigger':
-              return String(node?.dataRef?.triggerName || '').trim();
-          default:
-              return '';
-      }
   };
 
   const handleSidebarTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
@@ -3333,81 +3288,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       );
   }, [darkMode, overlayTheme, searchScopes, t]);
 
-  const getConnectionHostSearchText = (node: TreeNode): string => {
-      if (node.type !== 'connection') return '';
-      const config = node.dataRef?.config || {};
-      return resolveConnectionHostTokens(config).join(' ');
-  };
-
-  const getConnectionNameSearchText = (node: TreeNode): string => {
-      if (node.type !== 'connection') return '';
-      const name = node.dataRef?.name ?? node.title;
-      return String(name || '').toLowerCase();
-  };
-
-  const isObjectNode = (node: TreeNode): boolean => {
-      return node.type === 'table'
-          || node.type === 'view'
-          || node.type === 'db-trigger'
-          || node.type === 'routine'
-          || node.type === 'object-group';
-  };
-
-  const matchByScopes = (node: TreeNode, keyword: string, scopes: SearchScope[]): boolean => {
-      const title = String(node.title || '').toLowerCase();
-      if (scopes.includes('database') && node.type === 'database' && title.includes(keyword)) {
-          return true;
-      }
-      if (scopes.includes('tag') && node.type === 'tag' && title.includes(keyword)) {
-          return true;
-      }
-      if (scopes.includes('host') && node.type === 'connection' && getConnectionHostSearchText(node).includes(keyword)) {
-          return true;
-      }
-      if (scopes.includes('object') && isObjectNode(node) && title.includes(keyword)) {
-          return true;
-      }
-      return false;
-  };
-
-  const loop = (data: TreeNode[], keyword: string): TreeNode[] => {
-      const isSmartMode = searchScopes.includes('smart');
-      const result: TreeNode[] = [];
-      data.forEach((item) => {
-          const titleMatch = String(item.title || '').toLowerCase().includes(keyword);
-          const smartMatch = item.type === 'connection'
-              ? getConnectionNameSearchText(item).includes(keyword) || getConnectionHostSearchText(item).includes(keyword)
-              : titleMatch;
-          const scopedMatch = matchByScopes(item, keyword, searchScopes);
-          const selfMatch = isSmartMode ? smartMatch : scopedMatch;
-          const filteredChildren = item.children ? loop(item.children, keyword) : [];
-
-          if (selfMatch) {
-              const shouldKeepFullSubtree = isSmartMode
-                  || item.type === 'connection'
-                  || item.type === 'database'
-                  || item.type === 'tag';
-              if (item.children && shouldKeepFullSubtree) {
-                  result.push(item);
-              } else if (item.children && filteredChildren.length > 0) {
-                  result.push({ ...item, children: filteredChildren });
-              } else {
-                  result.push(item);
-              }
-              return;
-          }
-
-          if (filteredChildren.length > 0) {
-              result.push({ ...item, children: filteredChildren });
-          }
-      });
-      return result;
-  };
-
   const displayTreeData = useMemo(() => {
       const keyword = searchValue.trim().toLowerCase();
       if (!keyword) return treeData;
-      return loop(treeData, keyword);
+      return filterSidebarTree(treeData, keyword, searchScopes);
   }, [searchValue, searchScopes, treeData]);
 
   const getNodeMenuItems = (node: any): MenuProps['items'] => {
