@@ -265,17 +265,21 @@ fn spawn_java(
         &format!("Java sidecar optimization args: {}\n", java_args.join(" ")),
     );
 
-    let mut command = Command::new(java_path);
+    let java_path = normalize_windows_verbatim_path(java_path);
+    let jar_path = normalize_windows_verbatim_path(jar_path);
+    let data_dir = normalize_windows_verbatim_path(data_dir);
+
+    let mut command = Command::new(&java_path);
     for arg in &java_args {
         command.arg(arg);
     }
 
     let child = command
         .arg("-jar")
-        .arg(jar_path)
+        .arg(&jar_path)
         .env("SERVER_ADDRESS", "127.0.0.1")
         .env("SERVER_PORT", port.to_string())
-        .env("JAVANAVI_DATA_DIR", data_dir)
+        .env("JAVANAVI_DATA_DIR", &data_dir)
         .env(ALLOW_PRIVATE_AI_ENDPOINTS_ENV, "true")
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
@@ -295,6 +299,20 @@ fn spawn_java(
         jar_path: jar_path.to_path_buf(),
         java_path: java_path.to_path_buf(),
     })
+}
+
+fn normalize_windows_verbatim_path(path: &Path) -> PathBuf {
+    let raw = path.as_os_str().to_string_lossy();
+    if let Some(rest) = raw.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = raw.strip_prefix(r"\\?\") {
+        let mut chars = rest.chars();
+        if matches!((chars.next(), chars.next()), (Some(_), Some(':'))) {
+            return PathBuf::from(rest);
+        }
+    }
+    path.to_path_buf()
 }
 
 fn desktop_java_args() -> Vec<String> {
@@ -581,7 +599,9 @@ fn append_log(path: &Path, message: &str) {
 
 #[cfg(test)]
 mod tests {
-    use super::{is_truthy_env, parse_java_major, split_java_opts};
+    use std::path::{Path, PathBuf};
+
+    use super::{is_truthy_env, normalize_windows_verbatim_path, parse_java_major, split_java_opts};
 
     #[test]
     fn parses_legacy_java_version() {
@@ -613,5 +633,21 @@ mod tests {
         assert!(is_truthy_env("yes"));
         assert!(!is_truthy_env("0"));
         assert!(!is_truthy_env("false"));
+    }
+
+    #[test]
+    fn normalizes_windows_verbatim_drive_paths() {
+        assert_eq!(
+            normalize_windows_verbatim_path(Path::new(r"\\?\C:\JavaNavi\resources\javanavi-backend.jar")),
+            PathBuf::from(r"C:\JavaNavi\resources\javanavi-backend.jar")
+        );
+    }
+
+    #[test]
+    fn normalizes_windows_verbatim_unc_paths() {
+        assert_eq!(
+            normalize_windows_verbatim_path(Path::new(r"\\?\UNC\server\share\JavaNavi\backend.jar")),
+            PathBuf::from(r"\\server\share\JavaNavi\backend.jar")
+        );
     }
 }
