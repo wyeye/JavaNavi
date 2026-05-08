@@ -1633,6 +1633,42 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
+  const resolveCopyableSidebarNodeName = (node: any): string => {
+      switch (node?.type) {
+          case 'database':
+              return String(node?.dataRef?.dbName || '').trim();
+          case 'table':
+              return String(node?.dataRef?.tableName || '').trim();
+          case 'view':
+              return String(node?.dataRef?.viewName || '').trim();
+          case 'routine':
+              return String(node?.dataRef?.routineName || '').trim();
+          case 'db-trigger':
+              return String(node?.dataRef?.triggerName || '').trim();
+          default:
+              return '';
+      }
+  };
+
+  const handleSidebarTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const isCopy = (event.ctrlKey || event.metaKey)
+          && !event.altKey
+          && !event.shiftKey
+          && String(event.key || '').toLowerCase() === 'c';
+
+      if (!isCopy) return;
+
+      const selectedKey = selectedKeys[0];
+      const node = selectedKey == null ? null : findTreeNodeByKey(treeData, selectedKey);
+      const copyName = resolveCopyableSidebarNodeName(node);
+      if (!copyName) return;
+
+      event.preventDefault();
+      void navigator.clipboard.writeText(copyName)
+          .then(() => message.success(`已复制名称: ${copyName}`))
+          .catch(() => message.error('复制名称失败'));
+  };
+
   const onDoubleClick = (e: any, node: any) => {
       // 双击时取消单击延迟动作（如表概览打开），让双击只触发展开/折叠
       if (clickTimerRef.current) {
@@ -4415,11 +4451,17 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             </Tooltip>
         </div>
 
-        <div ref={treeContainerRef} className="sidebar-tree-scroll-shell" style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <div
+            ref={treeContainerRef}
+            className="sidebar-tree-scroll-shell"
+            style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}
+        >
             <div className="sidebar-tree-scroll-content">
                 <Tree
                     ref={treeRef}
                     showIcon
+                    tabIndex={0}
+                    onKeyDown={handleSidebarTreeKeyDown}
                     draggable={{
                         icon: false,
                         nodeDraggable: (node: any) => node.type === 'connection' || node.type === 'tag'
