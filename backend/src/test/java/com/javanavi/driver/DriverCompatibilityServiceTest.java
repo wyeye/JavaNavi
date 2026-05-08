@@ -6,6 +6,8 @@ import com.sun.net.httpserver.HttpServer;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.events.CompatEventFixtures;
 import com.javanavi.events.CompatEventPublisher;
+import com.javanavi.i18n.AppLanguage;
+import com.javanavi.i18n.I18nContext;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.db.JdbcConnectionFactory;
 import com.javanavi.model.ConnectionConfigDto;
@@ -72,6 +74,20 @@ class DriverCompatibilityServiceTest {
         assertThat(status.get("reachable")).isEqualTo(false);
         assertThat(repository.get("reachable")).isEqualTo(false);
         assertThat(repository.get("error")).isEqualTo("Invalid repository URL");
+    }
+
+    @Test
+    void networkStatusLocalizesRepositoryErrorsInChinese() {
+        DriverCompatibilityService service = serviceWithRepository("http://:bad-url");
+        I18nContext.set(AppLanguage.ZH);
+        try {
+            Map<String, Object> status = service.networkStatus();
+            Map<String, Object> repository = networkCheck(status, "Maven driver repository");
+
+            assertThat(repository.get("error")).isEqualTo("Maven 源地址无效");
+        } finally {
+            I18nContext.clear();
+        }
     }
 
     @Test

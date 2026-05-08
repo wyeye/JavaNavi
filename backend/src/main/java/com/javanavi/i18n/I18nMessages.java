@@ -81,6 +81,18 @@ public class I18nMessages {
         put("drivers.unsupportedDownloadType", "Unsupported on-demand JDBC driver type: {type}", "不支持按需下载的 JDBC 驱动类型：{type}");
         put("drivers.workspaceReady", "JavaNavi Web Driver Manager is using the local managed workspace; JDBC drivers can be downloaded from Maven Central and verified on demand.", "JavaNavi Web 驱动管理已使用本地受管工作区；JDBC 驱动可按需从 Maven Central 下载并校验。");
         put("drivers.workspaceUnavailable", "JavaNavi Web driver workspace is unavailable. Check data directory permissions.", "JavaNavi Web 驱动工作区不可用，请检查数据目录权限。");
+        put("drivers.workspaceDirectoryUnavailable", "Workspace directory is unavailable", "工作区目录不可用");
+        put("drivers.invalidRepositoryUrl", "Invalid repository URL", "Maven 源地址无效");
+        put("drivers.httpFallbackFailed", "HTTP {status}; fallback to GET failed", "HTTP {status}；回退 GET 失败");
+        put("drivers.httpFallbackFailedWithReason", "HTTP {status}; fallback to GET failed: {reason}", "HTTP {status}；回退 GET 失败：{reason}");
+        put("drivers.httpStatus", "HTTP {status}", "HTTP {status}");
+        put("drivers.requestInterrupted", "Request interrupted", "请求已中断");
+        put("drivers.connectionTimedOut", "Connection timed out", "连接超时");
+        put("drivers.readTimedOut", "Read timed out", "读取超时");
+        put("drivers.dnsLookupFailed", "DNS lookup failed", "DNS 解析失败");
+        put("drivers.tlsHandshakeFailed", "TLS handshake failed", "TLS 握手失败");
+        put("drivers.connectionRefused", "Connection refused", "连接被拒绝");
+        put("drivers.noRouteToHost", "No route to host", "无可达路由");
         put("drivers.defaultMustBeAvailable", "Only an available compatible driver can be set as the default driver.", "只能把已可用的兼容驱动设置为默认驱动");
         put("drivers.uploadOneJar", "Upload at least one JDBC Jar file.", "请至少上传一个 JDBC Jar 文件");
         put("drivers.versionRequiredBeforeUpload", "Enter a driver version before uploading JDBC Jars.", "上传 JDBC Jar 前请输入驱动版本");

@@ -115,7 +115,7 @@ public class DriverCompatibilityService {
                         "url", defaultDriverDirectory.toString(),
                         "reachable", workspaceAvailable,
                         "method", "FILESYSTEM",
-                        "error", workspaceAvailable ? "" : "Workspace directory is unavailable"
+                        "error", workspaceAvailable ? "" : messages.message("drivers.workspaceDirectoryUnavailable")
                 ),
                 repositoryProbe
         );
@@ -150,7 +150,7 @@ public class DriverCompatibilityService {
                     "url", SecretRedactor.redact(repositoryUrl),
                     "reachable", false,
                     "method", "INVALID",
-                    "error", "Invalid repository URL"
+                    "error", messages.message("drivers.invalidRepositoryUrl")
             );
         }
         Map<String, Object> headProbe = probeRepositoryOnce(repositoryUrl, "HEAD");
@@ -163,8 +163,8 @@ public class DriverCompatibilityService {
             Map<String, Object> next = new LinkedHashMap<>(getProbe);
             String reason = text(getProbe.get("error"));
             next.put("error", reason.isBlank()
-                    ? "HTTP " + headStatus + "; fallback to GET failed"
-                    : "HTTP " + headStatus + "; fallback to GET failed: " + reason);
+                    ? messages.message("drivers.httpFallbackFailed", "status", headStatus)
+                    : messages.message("drivers.httpFallbackFailedWithReason", "status", headStatus, "reason", reason));
             return next;
         }
         return headProbe;
@@ -192,7 +192,7 @@ public class DriverCompatibilityService {
                     "latencyMs", latencyMs
             );
             if (!reachable) {
-                result.put("error", "HTTP " + statusCode);
+                result.put("error", messages.message("drivers.httpStatus", "status", statusCode));
             }
             return result;
         } catch (InterruptedException error) {
@@ -202,7 +202,7 @@ public class DriverCompatibilityService {
                     "url", SecretRedactor.redact(repositoryUrl),
                     "reachable", false,
                     "method", method.toUpperCase(Locale.ROOT),
-                    "error", "Request interrupted"
+                    "error", messages.message("drivers.requestInterrupted")
             );
         } catch (Exception error) {
             return orderedMap(
@@ -229,29 +229,29 @@ public class DriverCompatibilityService {
         }
     }
 
-    private static String normalizeProbeError(Exception error) {
+    private String normalizeProbeError(Exception error) {
         Throwable current = error;
         while (current != null) {
             if (current instanceof IllegalArgumentException || current instanceof URISyntaxException) {
-                return "Invalid repository URL";
+                return messages.message("drivers.invalidRepositoryUrl");
             }
             if (current instanceof HttpConnectTimeoutException) {
-                return "Connection timed out";
+                return messages.message("drivers.connectionTimedOut");
             }
             if (current instanceof HttpTimeoutException) {
-                return "Read timed out";
+                return messages.message("drivers.readTimedOut");
             }
             if (current instanceof UnknownHostException) {
-                return "DNS lookup failed";
+                return messages.message("drivers.dnsLookupFailed");
             }
             if (current instanceof javax.net.ssl.SSLHandshakeException) {
-                return "TLS handshake failed";
+                return messages.message("drivers.tlsHandshakeFailed");
             }
             if (current instanceof java.net.ConnectException) {
-                return "Connection refused";
+                return messages.message("drivers.connectionRefused");
             }
             if (current instanceof java.net.NoRouteToHostException) {
-                return "No route to host";
+                return messages.message("drivers.noRouteToHost");
             }
             current = current.getCause();
         }
