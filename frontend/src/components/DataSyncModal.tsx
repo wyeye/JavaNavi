@@ -3,7 +3,7 @@ import { Modal, Form, Select, Input, Button, message, Steps, Transfer, Card, Ale
 import { DatabaseOutlined, RocketOutlined, SwapOutlined, TableOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
 import { translate, type I18nKey } from '../i18n';
-import { DBGetDatabases, DBGetTables, DataSync, DataSyncAnalyze, DataSyncPreview } from '@compat/javanaviApp';
+import { DBGetDatabases, DBGetTables, DataSync, DataSyncAnalyze, DataSyncPreview, DataSyncCancel } from '@compat/javanaviApp';
 import { SavedConnection } from '../types';
 import { EventsOn } from '@compat/runtime';
 import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from '../utils/appearance';
@@ -619,6 +619,13 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 
       try {
           const res = await DataSync(config as any);
+          if (res?.cancelled) {
+              setSyncResult(res);
+              setSyncLogs(Array.isArray(res.logs) ? (res.logs as string[]).map((log) => ({ level: 'warn', message: String(log || '') })) : []);
+              setLoading(false);
+              setSyncing(false);
+              return;
+          }
           setSyncResult(res);
           if (Array.isArray(res?.logs) && res.logs.length > 0) {
               setSyncLogs(prev => {
@@ -637,6 +644,21 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       }
       setLoading(false);
       setSyncing(false);
+  };
+
+  const handleCancelSync = async () => {
+      if (!jobIdRef.current) return;
+      try {
+          const res = await DataSyncCancel(jobIdRef.current);
+          if (res?.cancelled) {
+              setSyncResult(res);
+              setSyncLogs(Array.isArray(res.logs) ? (res.logs as string[]).map((log) => ({ level: 'warn', message: String(log || '') })) : []);
+              setLoading(false);
+              setSyncing(false);
+          }
+      } catch {
+          message.error(t('dataSync.error.executionFailed'));
+      }
   };
 
   const renderSyncLogItem = (item: SyncLogItem) => {
@@ -1276,6 +1298,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           {currentStep === 2 && (
               <>
                   <Button disabled={syncing} onClick={() => setCurrentStep(1)} style={{ marginRight: 8 }}>继续同步</Button>
+                  <Button disabled={!syncing} onClick={() => void handleCancelSync()} style={{ marginRight: 8 }}>取消同步</Button>
                   <Button type="primary" disabled={syncing} onClick={onClose}>关闭</Button>
               </>
           )}

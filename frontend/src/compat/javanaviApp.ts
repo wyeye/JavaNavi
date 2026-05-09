@@ -398,26 +398,21 @@ export async function DBShowCreateTable(arg1: connection.ConnectionConfig, arg2:
 }
 
 export async function DataSync(arg1:sync.SyncConfig): Promise<sync.SyncResult> {
-  await replayEventFixture('sync', {
-    correlationId: arg1?.jobId,
-    payload: { table: Array.isArray(arg1?.tables) && arg1.tables.length > 0 ? arg1.tables[0] : undefined },
-  });
   return dataOrThrow<sync.SyncResult>(await postJson('/data-sync/run', arg1 || {}), 'Data sync failed.');
 }
 
 export async function DataSyncAnalyze(arg1:sync.SyncConfig): Promise<connection.QueryResult> {
-  await replayEventFixture('sync', {
-    correlationId: arg1?.jobId,
-    payload: { table: Array.isArray(arg1?.tables) && arg1.tables.length > 0 ? arg1.tables[0] : undefined },
-  });
   const payload = await postJson('/data-sync/analyze', arg1 || {});
   return apiEnvelopeToQueryResult(payload, 'Data sync analysis completed');
 }
 
 export async function DataSyncPreview(arg1:sync.SyncConfig,arg2:string,arg3:number): Promise<connection.QueryResult> {
-  await replayEventFixture('sync', { correlationId: arg1?.jobId, payload: { table: arg2, total: arg3 } });
   const payload = await postJson('/data-sync/preview', { ...(arg1 || {}), table: arg2, limit: arg3 });
   return apiEnvelopeToQueryResult(payload, 'Data sync preview loaded');
+}
+
+export async function DataSyncCancel(jobId: string): Promise<Record<string, any>> {
+  return dataOrThrow<Record<string, any>>(await postJson('/data-sync/cancel', { jobId }), 'Data sync cancel failed.');
 }
 
 export async function CloseConnection(arg1:string): Promise<void> {

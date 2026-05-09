@@ -32,4 +32,10 @@ public class DataSyncCompatibilityController {
     public ApiEnvelope<Map<String, Object>> preview(@RequestBody Map<String, Object> input) {
         return ApiEnvelope.ok(dataSyncCompatibilityService.preview(input));
     }
+
+    @PostMapping("/cancel")
+    public ApiEnvelope<Map<String, Object>> cancel(@RequestBody Map<String, Object> input) {
+        String jobId = input == null ? "" : String.valueOf(input.getOrDefault("jobId", ""));
+        return ApiEnvelope.ok(dataSyncCompatibilityService.cancel(jobId));
+    }
 }

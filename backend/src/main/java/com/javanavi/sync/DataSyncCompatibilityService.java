@@ -1,7 +1,9 @@
 package com.javanavi.sync;
 
 import com.javanavi.db.DatabaseCompatibilityService;
+import com.javanavi.events.CompatEventPublisher;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.model.CompatEventDto;
 import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
 import com.javanavi.model.ColumnDefinitionDto;
@@ -22,96 +24,132 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 @Service
 public class DataSyncCompatibilityService {
     private static final int SYNC_QUERY_PAGE_SIZE = 10_000;
     private final DatabaseCompatibilityService databaseCompatibilityService;
+    private final CompatEventPublisher eventPublisher;
     private final I18nMessages messages;
+    private final Set<String> cancelledJobs = ConcurrentHashMap.newKeySet();
 
-    public DataSyncCompatibilityService(DatabaseCompatibilityService databaseCompatibilityService, I18nMessages messages) {
+    public DataSyncCompatibilityService(DatabaseCompatibilityService databaseCompatibilityService, CompatEventPublisher eventPublisher, I18nMessages messages) {
         this.databaseCompatibilityService = databaseCompatibilityService;
+        this.eventPublisher = eventPublisher;
         this.messages = messages;
+    }
+
+    public Map<String, Object> cancel(String jobId) {
+        String normalized = text(jobId);
+        if (!normalized.isBlank()) {
+            cancelledJobs.add(normalized);
+            publishSyncLog(normalized, "warn", "Data sync cancelled by user.");
+        }
+        return orderedMap("cancelled", true, "jobId", normalized);
     }
 
     public Map<String, Object> run(Map<String, Object> input) {
         SyncRequest request = SyncRequest.from(input);
-        if (request.hasSourceQuery()) {
-            return runSourceQuerySync(request);
-        }
-        if (request.hasJdbcTableSync()) {
-            return runJdbcTableSync(request);
-        }
-        if (!request.fixtureEligible()) {
-            return externalPendingRun(request);
-        }
-        List<TableDiff> diffs = request.tables().stream()
-                .map(table -> diff(table, request.fixture(table)))
-                .toList();
-
-        int inserted = 0;
-        int updated = 0;
-        int deleted = 0;
-        int tablesSynced = 0;
-        List<String> logs = new ArrayList<>();
-        logs.add("DataSync fixture-backed compatibility request accepted");
-        logs.add("Mode: " + request.mode() + "; content: " + request.content());
-
-        Map<String, Object> targetSnapshots = new LinkedHashMap<>();
-        boolean syncSchema = request.syncSchema();
-        boolean syncData = request.syncData();
-        for (TableDiff diff : diffs) {
-            TableOptions options = request.tableOptions(diff.table());
-            List<Map<String, Object>> targetAfter = diff.copyTargetRows();
-            if (syncSchema) {
-                logs.add("Schema fixture inspected for table " + diff.table() + ": " + diff.schemaStatements().size() + " statement(s)");
+        try {
+            if (request.hasSourceQuery()) {
+                return runSourceQuerySync(request);
             }
-            if (syncData) {
-                MutationStats stats = applyFixtureMutation(diff, targetAfter, request.mode(), options);
-                inserted += stats.inserted();
-                updated += stats.updated();
-                deleted += stats.deleted();
-                logs.add("Table " + diff.table() + ": inserted=" + stats.inserted() + ", updated=" + stats.updated() + ", deleted=" + stats.deleted());
+            if (request.hasJdbcTableSync()) {
+                return runJdbcTableSync(request);
             }
-            if (syncSchema || syncData) {
-                tablesSynced++;
+            if (!request.fixtureEligible()) {
+                return externalPendingRun(request);
             }
-            targetSnapshots.put(diff.table(), targetAfter);
-        }
+            List<TableDiff> diffs = new ArrayList<>();
+            for (String table : request.tables()) {
+                throwIfCancelled(request.jobId());
+                diffs.add(diff(table, request.fixture(table)));
+            }
 
-        return orderedMap(
-                "success", true,
-                "message", "JavaNavi Web data sync compatibility completed against managed fixture datasets.",
-                "logs", logs,
-                "tablesSynced", tablesSynced,
-                "rowsInserted", inserted,
-                "rowsUpdated", updated,
-                "rowsDeleted", deleted,
-                "totalRows", inserted + updated + deleted,
-                "syncedRows", inserted + updated + deleted,
-                "jobId", request.jobId(),
-                "tables", request.tables(),
-                "dryRun", false,
-                "fixtureBacked", true,
-                "targetSnapshots", targetSnapshots
-        );
+            int inserted = 0;
+            int updated = 0;
+            int deleted = 0;
+            int tablesSynced = 0;
+            List<String> logs = new ArrayList<>();
+            logs.add("DataSync fixture-backed compatibility request accepted");
+            logs.add("Mode: " + request.mode() + "; content: " + request.content());
+            publishSyncLog(request.jobId(), "info", "DataSync fixture-backed compatibility request accepted");
+
+            Map<String, Object> targetSnapshots = new LinkedHashMap<>();
+            boolean syncSchema = request.syncSchema();
+            boolean syncData = request.syncData();
+            int total = Math.max(1, diffs.size());
+            for (int index = 0; index < diffs.size(); index++) {
+                throwIfCancelled(request.jobId());
+                TableDiff diff = diffs.get(index);
+                TableOptions options = request.tableOptions(diff.table());
+                List<Map<String, Object>> targetAfter = diff.copyTargetRows();
+                publishSyncProgress(request.jobId(), index, total, diff.table(), messages.message("events.readSource"));
+                if (syncSchema) {
+                    logs.add("Schema fixture inspected for table " + diff.table() + ": " + diff.schemaStatements().size() + " statement(s)");
+                }
+                if (syncData) {
+                    MutationStats stats = applyFixtureMutation(diff, targetAfter, request.mode(), options);
+                    inserted += stats.inserted();
+                    updated += stats.updated();
+                    deleted += stats.deleted();
+                    logs.add("Table " + diff.table() + ": inserted=" + stats.inserted() + ", updated=" + stats.updated() + ", deleted=" + stats.deleted());
+                    publishSyncProgress(request.jobId(), index + 1, total, diff.table(), messages.message("events.writeTarget"));
+                }
+                if (syncSchema || syncData) {
+                    tablesSynced++;
+                }
+                targetSnapshots.put(diff.table(), targetAfter);
+            }
+            publishSyncLog(request.jobId(), "info", "DataSync fixture-backed compatibility completed.");
+            publishSyncProgress(request.jobId(), total, total, diffs.isEmpty() ? "" : diffs.get(diffs.size() - 1).table(), messages.message("events.complete"));
+
+            return orderedMap(
+                    "success", true,
+                    "message", "JavaNavi Web data sync compatibility completed against managed fixture datasets.",
+                    "logs", logs,
+                    "tablesSynced", tablesSynced,
+                    "rowsInserted", inserted,
+                    "rowsUpdated", updated,
+                    "rowsDeleted", deleted,
+                    "totalRows", inserted + updated + deleted,
+                    "syncedRows", inserted + updated + deleted,
+                    "jobId", request.jobId(),
+                    "tables", request.tables(),
+                    "dryRun", false,
+                    "fixtureBacked", true,
+                    "targetSnapshots", targetSnapshots
+            );
+        } catch (DataSyncCancelledException cancelled) {
+            return cancelledResult(request.jobId(), List.of("Data sync cancelled by user."));
+        } finally {
+            cancelledJobs.remove(request.jobId());
+        }
     }
 
     public Map<String, Object> analyze(Map<String, Object> input) {
         SyncRequest request = SyncRequest.from(input);
-        if (request.hasSourceQuery()) {
-            return analyzeSourceQuerySync(request);
-        }
-        if (request.hasJdbcTableSync()) {
-            return analyzeJdbcTableSync(request);
-        }
-        if (!request.fixtureEligible()) {
-            return externalPendingAnalyze(request);
-        }
-        List<Map<String, Object>> tableSummaries = request.tables().stream()
-                .map(table -> diff(table, request.fixture(table)))
-                .map(diff -> orderedMap(
+        throwIfCancelled(request.jobId());
+        try {
+            if (request.hasSourceQuery()) {
+                return analyzeSourceQuerySync(request);
+            }
+            if (request.hasJdbcTableSync()) {
+                return analyzeJdbcTableSync(request);
+            }
+            if (!request.fixtureEligible()) {
+                return externalPendingAnalyze(request);
+            }
+            List<Map<String, Object>> tableSummaries = new ArrayList<>();
+            int total = Math.max(1, request.tables().size());
+            for (int index = 0; index < request.tables().size(); index++) {
+                throwIfCancelled(request.jobId());
+                String table = request.tables().get(index);
+                TableDiff diff = diff(table, request.fixture(table));
+                tableSummaries.add(orderedMap(
                         "table", diff.table(),
                         "pkColumn", diff.pkColumn(),
                         "canSync", true,
@@ -128,64 +166,77 @@ public class DataSyncCompatibilityService {
                         "unsupportedObjects", List.of(),
                         "indexesToCreate", 0,
                         "indexesSkipped", 0
-                ))
-                .toList();
-        return orderedMap(
-                "success", true,
-                "message", "JavaNavi Web data sync analysis completed against managed fixture datasets.",
-                "logs", List.of("Analyzed table count: " + request.tables().size(), "Fixture source/target rows were compared without external database side effects"),
-                "tablesSynced", 0,
-                "rowsInserted", tableSummaries.stream().mapToInt(row -> intValue(row.get("inserts"), 0)).sum(),
-                "rowsUpdated", tableSummaries.stream().mapToInt(row -> intValue(row.get("updates"), 0)).sum(),
-                "rowsDeleted", tableSummaries.stream().mapToInt(row -> intValue(row.get("deletes"), 0)).sum(),
-                "tables", tableSummaries,
-                "dryRun", true,
-                "fixtureBacked", true
-        );
+                ));
+                publishSyncProgress(request.jobId(), index + 1, total, table, messages.message("events.readSource"));
+            }
+            return orderedMap(
+                    "success", true,
+                    "message", "JavaNavi Web data sync analysis completed against managed fixture datasets.",
+                    "logs", List.of("Analyzed table count: " + request.tables().size(), "Fixture source/target rows were compared without external database side effects"),
+                    "tablesSynced", 0,
+                    "rowsInserted", tableSummaries.stream().mapToInt(row -> intValue(row.get("inserts"), 0)).sum(),
+                    "rowsUpdated", tableSummaries.stream().mapToInt(row -> intValue(row.get("updates"), 0)).sum(),
+                    "rowsDeleted", tableSummaries.stream().mapToInt(row -> intValue(row.get("deletes"), 0)).sum(),
+                    "tables", tableSummaries,
+                    "dryRun", true,
+                    "fixtureBacked", true
+            );
+        } catch (DataSyncCancelledException cancelled) {
+            return cancelledResult(request.jobId(), List.of("Data sync cancelled by user."));
+        } finally {
+            cancelledJobs.remove(request.jobId());
+        }
     }
 
     public Map<String, Object> preview(Map<String, Object> input) {
         SyncRequest request = SyncRequest.from(input);
-        String table = firstText(text(input == null ? null : input.get("table")), request.tables().isEmpty() ? "" : request.tables().get(0));
-        if (table.isBlank()) {
-            table = "fixture_table";
+        throwIfCancelled(request.jobId());
+        try {
+            String table = firstText(text(input == null ? null : input.get("table")), request.tables().isEmpty() ? "" : request.tables().get(0));
+            if (table.isBlank()) {
+                table = "fixture_table";
+            }
+            int limit = positiveInt(input == null ? null : input.get("limit"), 20, 500);
+            if (request.hasSourceQuery()) {
+                return previewSourceQuerySync(request, table, limit);
+            }
+            if (request.hasJdbcTableSync()) {
+                return previewJdbcTableSync(request, table, limit);
+            }
+            if (!request.fixtureEligible()) {
+                return externalPendingPreview(table, limit);
+            }
+            TableDiff diff = diff(table, request.fixture(table));
+            List<Map<String, Object>> inserts = diff.inserts().stream().limit(limit).map(PreviewInsert::toMap).toList();
+            List<Map<String, Object>> updates = diff.updates().stream().limit(limit).map(PreviewUpdate::toMap).toList();
+            List<Map<String, Object>> deletes = diff.deletes().stream().limit(limit).map(PreviewDelete::toMap).toList();
+            return orderedMap(
+                    "table", diff.table(),
+                    "pkColumn", diff.pkColumn(),
+                    "columnTypes", diff.columnTypes(),
+                    "schemaSummary", request.syncSchema() ? "Fixture schema statements available" : "Fixture data diff preview",
+                    "schemaWarnings", List.of("External database schema execution is not performed by the fixture path."),
+                    "schemaStatements", diff.schemaStatements(),
+                    "totalInserts", diff.inserts().size(),
+                    "totalUpdates", diff.updates().size(),
+                    "totalDeletes", diff.deletes().size(),
+                    "inserts", inserts,
+                    "updates", updates,
+                    "deletes", deletes,
+                    "insertRows", inserts,
+                    "updateRows", updates,
+                    "deleteRows", deletes,
+                    "limit", limit,
+                    "hasMore", diff.inserts().size() > limit || diff.updates().size() > limit || diff.deletes().size() > limit,
+                    "dryRun", true,
+                    "fixtureBacked", true,
+                    "message", "JavaNavi Web data sync preview computed source/target fixture differences."
+            );
+        } catch (DataSyncCancelledException cancelled) {
+            return cancelledResult(request.jobId(), List.of("Data sync cancelled by user."));
+        } finally {
+            cancelledJobs.remove(request.jobId());
         }
-        int limit = positiveInt(input == null ? null : input.get("limit"), 20, 500);
-        if (request.hasSourceQuery()) {
-            return previewSourceQuerySync(request, table, limit);
-        }
-        if (request.hasJdbcTableSync()) {
-            return previewJdbcTableSync(request, table, limit);
-        }
-        if (!request.fixtureEligible()) {
-            return externalPendingPreview(table, limit);
-        }
-        TableDiff diff = diff(table, request.fixture(table));
-        List<Map<String, Object>> inserts = diff.inserts().stream().limit(limit).map(PreviewInsert::toMap).toList();
-        List<Map<String, Object>> updates = diff.updates().stream().limit(limit).map(PreviewUpdate::toMap).toList();
-        List<Map<String, Object>> deletes = diff.deletes().stream().limit(limit).map(PreviewDelete::toMap).toList();
-        return orderedMap(
-                "table", diff.table(),
-                "pkColumn", diff.pkColumn(),
-                "columnTypes", diff.columnTypes(),
-                "schemaSummary", request.syncSchema() ? "Fixture schema statements available" : "Fixture data diff preview",
-                "schemaWarnings", List.of("External database schema execution is not performed by the fixture path."),
-                "schemaStatements", diff.schemaStatements(),
-                "totalInserts", diff.inserts().size(),
-                "totalUpdates", diff.updates().size(),
-                "totalDeletes", diff.deletes().size(),
-                "inserts", inserts,
-                "updates", updates,
-                "deletes", deletes,
-                "insertRows", inserts,
-                "updateRows", updates,
-                "deleteRows", deletes,
-                "limit", limit,
-                "hasMore", diff.inserts().size() > limit || diff.updates().size() > limit || diff.deletes().size() > limit,
-                "dryRun", true,
-                "fixtureBacked", true,
-                "message", "JavaNavi Web data sync preview computed source/target fixture differences."
-        );
     }
 
 
@@ -216,6 +267,9 @@ public class DataSyncCompatibilityService {
         List<Map<String, Object>> inserts = new ArrayList<>();
         List<UpdateRowDto> updates = new ArrayList<>();
         List<Map<String, Object>> deletes = new ArrayList<>();
+        publishSyncLog(request.jobId(), "info", "DataSync source-query sync started.");
+        publishSyncProgress(request.jobId(), 0, 2, context.table(), messages.message("events.readSource"));
+        throwIfCancelled(request.jobId());
         if ("full_overwrite".equals(request.mode())) {
             databaseCompatibilityService.clearTables(context.targetConfig(), jdbcScopeName(context.targetConfig()), List.of(context.table()), false);
             if (options.insert()) {
@@ -249,12 +303,15 @@ public class DataSyncCompatibilityService {
             }
         }
 
+        throwIfCancelled(request.jobId());
         ApplyChangesResultDto result = databaseCompatibilityService.applyChanges(
                 context.targetConfig(),
                 jdbcScopeName(context.targetConfig()),
                 context.table(),
                 new ChangeSetDto(inserts, updates, deletes)
         );
+        publishSyncProgress(request.jobId(), 1, 2, context.table(), messages.message("events.writeTarget"));
+        publishSyncLog(request.jobId(), "info", "DataSync source-query sync completed.");
         int affected = result.affectedRows();
         return orderedMap(
                 "success", true,
@@ -371,6 +428,7 @@ public class DataSyncCompatibilityService {
         List<String> logs = new ArrayList<>();
         logs.add("DataSync JDBC table-to-table request accepted");
         logs.add("Mode: " + request.mode() + "; content: " + request.content());
+        publishSyncLog(request.jobId(), "info", "DataSync JDBC table-to-table request accepted.");
 
         if (!request.syncData()) {
             return orderedMap(
@@ -392,7 +450,9 @@ public class DataSyncCompatibilityService {
             );
         }
 
+        int total = Math.max(1, request.tables().size());
         for (String table : request.tables()) {
+            throwIfCancelled(request.jobId());
             SourceQueryContext context = loadTableSyncContext(request, table, true, true);
             TableOptions options = request.tableOptions(context.table());
             if (!options.insert() && !options.update() && !options.delete()) {
@@ -403,6 +463,7 @@ public class DataSyncCompatibilityService {
             List<Map<String, Object>> inserts = new ArrayList<>();
             List<UpdateRowDto> updates = new ArrayList<>();
             List<Map<String, Object>> deletes = new ArrayList<>();
+            publishSyncProgress(request.jobId(), tablesSynced, total, context.table(), messages.message("events.readSource"));
             if ("full_overwrite".equals(request.mode())) {
                 databaseCompatibilityService.clearTables(context.targetConfig(), jdbcScopeName(context.targetConfig()), List.of(context.table()), false);
                 if (options.insert()) {
@@ -441,12 +502,14 @@ public class DataSyncCompatibilityService {
                 }
             }
 
+            throwIfCancelled(request.jobId());
             ApplyChangesResultDto result = databaseCompatibilityService.applyChanges(
                     context.targetConfig(),
                     jdbcScopeName(context.targetConfig()),
                     context.table(),
                     new ChangeSetDto(inserts, updates, deletes)
             );
+            publishSyncProgress(request.jobId(), tablesSynced + 1, total, context.table(), messages.message("events.writeTarget"));
             inserted += result.insertedRows();
             updated += result.updatedRows();
             deleted += result.deletedRows();
@@ -454,6 +517,7 @@ public class DataSyncCompatibilityService {
             logs.add("Table " + context.table() + ": inserted=" + result.insertedRows()
                     + ", updated=" + result.updatedRows() + ", deleted=" + result.deletedRows());
         }
+        publishSyncLog(request.jobId(), "info", "DataSync JDBC table-to-table sync completed.");
 
         int affected = inserted + updated + deleted;
         return orderedMap(
@@ -481,6 +545,7 @@ public class DataSyncCompatibilityService {
         int updated = 0;
         int deleted = 0;
         for (String table : request.tables()) {
+            throwIfCancelled(request.jobId());
             SourceQueryContext context = loadTableSyncContext(request, table, true, true);
             SourceQueryDiff diff = sourceQueryDiff(context);
             inserted += diff.inserts().size();
@@ -524,6 +589,7 @@ public class DataSyncCompatibilityService {
     }
 
     private Map<String, Object> previewJdbcTableSync(SyncRequest request, String table, int limit) {
+        throwIfCancelled(request.jobId());
         SourceQueryContext context = loadTableSyncContext(request.withSingleTable(table), table, true, true);
         SourceQueryDiff diff = sourceQueryDiff(context);
         List<Map<String, Object>> inserts = diff.inserts().stream().limit(limit)
@@ -697,6 +763,83 @@ public class DataSyncCompatibilityService {
             }
         }
         return new MutationStats(inserted, updated, deleted);
+    }
+
+    private void throwIfCancelled(String jobId) {
+        String normalized = text(jobId);
+        if (!normalized.isBlank() && cancelledJobs.contains(normalized)) {
+            throw new DataSyncCancelledException(normalized);
+        }
+    }
+
+    private void publishSyncLog(String jobId, String level, String message) {
+        if (eventPublisher == null) {
+            return;
+        }
+        Instant now = Instant.now();
+        eventPublisher.publish(new CompatEventDto(
+                UUID.randomUUID().toString(),
+                "sync:log",
+                "sync",
+                "javanavi-backend",
+                jobId,
+                "running",
+                message,
+                now,
+                orderedMap(
+                        "jobId", jobId,
+                        "level", level,
+                        "message", message,
+                        "ts", now.toEpochMilli()
+                )
+        ));
+    }
+
+    private void publishSyncProgress(String jobId, int current, int total, String table, String stage) {
+        if (eventPublisher == null) {
+            return;
+        }
+        int safeTotal = Math.max(total, 0);
+        int safeCurrent = Math.max(0, Math.min(current, safeTotal == 0 ? current : safeTotal));
+        int percent = safeTotal <= 0 ? 0 : Math.min(100, Math.max(0, (int) Math.round((safeCurrent * 100.0) / safeTotal)));
+        Instant now = Instant.now();
+        eventPublisher.publish(new CompatEventDto(
+                UUID.randomUUID().toString(),
+                "sync:progress",
+                "sync",
+                "javanavi-backend",
+                jobId,
+                "running",
+                stage,
+                now,
+                orderedMap(
+                        "jobId", jobId,
+                        "percent", percent,
+                        "current", safeCurrent,
+                        "total", safeTotal,
+                        "table", table,
+                        "stage", stage
+                )
+        ));
+    }
+
+    private Map<String, Object> cancelledResult(String jobId, List<String> logs) {
+        return orderedMap(
+                "success", true,
+                "cancelled", true,
+                "message", "已取消",
+                "jobId", jobId,
+                "logs", logs,
+                "tablesSynced", 0,
+                "rowsInserted", 0,
+                "rowsUpdated", 0,
+                "rowsDeleted", 0,
+                "totalRows", 0,
+                "syncedRows", 0,
+                "dryRun", false,
+                "fixtureBacked", false,
+                "jdbcBacked", false
+        );
     }
 
     private static TableDiff diff(String table, TableFixture fixture) {

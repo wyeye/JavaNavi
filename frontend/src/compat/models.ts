@@ -917,6 +917,7 @@ export namespace sync {
 	}
 	export class SyncResult {
 	    success: boolean;
+	    cancelled?: boolean;
 	    message: string;
 	    logs: string[];
 	    tablesSynced: number;
@@ -931,6 +932,7 @@ export namespace sync {
 	    constructor(source: any = {}) {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.success = source["success"];
+	        this.cancelled = source["cancelled"];
 	        this.message = source["message"];
 	        this.logs = source["logs"];
 	        this.tablesSynced = source["tablesSynced"];
