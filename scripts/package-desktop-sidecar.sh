@@ -9,7 +9,8 @@ RESOURCE_RUNTIME_DIR="$RESOURCE_DIR/java-runtime"
 TAURI_RELEASE_RESOURCE_DIR="$ROOT_DIR/src-tauri/target/release/resources"
 JAVANAVI_DESKTOP_BUNDLE_JRE="${JAVANAVI_DESKTOP_BUNDLE_JRE:-1}"
 # Spring Boot's configuration binder uses java.beans.PropertyEditorSupport from java.desktop.
-JAVANAVI_DESKTOP_JLINK_MODULES="${JAVANAVI_DESKTOP_JLINK_MODULES:-java.base,java.logging,java.naming,java.management,java.instrument,java.sql,java.xml,java.net.http,jdk.crypto.ec,jdk.unsupported,java.security.sasl,java.security.jgss,jdk.charsets,java.desktop}"
+# DM JDBC also touches javax.sql.rowset.spi.SyncProviderException from java.sql.rowset.
+JAVANAVI_DESKTOP_JLINK_MODULES="${JAVANAVI_DESKTOP_JLINK_MODULES:-java.base,java.logging,java.naming,java.management,java.instrument,java.sql,java.sql.rowset,java.xml,java.net.http,jdk.crypto.ec,jdk.unsupported,java.security.sasl,java.security.jgss,jdk.charsets,java.desktop}"
 
 canonical_path() {
   local path="$1"
