@@ -45,7 +45,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { ApplyDataRootDirectory, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetSavedConnections, OpenDataRootDirectory, SelectDataRootDirectory, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { ApplyDataRootDirectory, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, OpenDataRootDirectory, SaveLanguage, SelectDataRootDirectory, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -300,6 +300,21 @@ function App() {
               }
           } catch (err) {
               console.warn('Failed to load global proxy config', err);
+          }
+
+          try {
+              if (typeof backendApp?.GetLanguage === 'function') {
+                  const languageResult = await GetLanguage();
+                  if (!cancelled && languageResult?.success && languageResult.data?.language) {
+                      const nextLanguage = languageResult.data.language === 'zh' ? 'zh' : 'en';
+                      const currentLanguage = useStore.getState().language;
+                      if (currentLanguage !== nextLanguage) {
+                          useStore.getState().setLanguage(nextLanguage);
+                      }
+                  }
+              }
+          } catch (err) {
+              console.warn('Failed to load language config', err);
           } finally {
               if (!cancelled) {
                   setHasLoadedInitialConfig(true);
@@ -2598,6 +2613,7 @@ function App() {
                     }))}
                     onChange={(nextLanguage) => {
                       setLanguage(nextLanguage);
+                      void SaveLanguage(nextLanguage);
                       void message.success(t('settings.language.applied', {
                         language: t(nextLanguage === 'zh' ? 'language.chinese' : 'language.english'),
                       }));

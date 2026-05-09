@@ -29,6 +29,18 @@ class AppCompatibilityServiceTest {
         System.clearProperty("javanavi.disableOsOpen");
     }
 
+
+    @Test
+    void persistsAndReloadsLanguageInAppDataDirectory() throws Exception {
+        AppCompatibilityService service = service();
+
+        Map<String, Object> saved = service.saveLanguage("zh-CN");
+
+        assertThat(saved).containsEntry("language", "zh");
+        assertThat(Path.of(tempDir.toString(), "language.json")).exists();
+        assertThat(service.getLanguage()).containsEntry("language", "zh");
+    }
+
     @Test
     void exportConnectionsPackageReturnsRevealFieldsWithoutBlockingWhenDisabled() {
         System.setProperty("javanavi.disableOsOpen", "true");

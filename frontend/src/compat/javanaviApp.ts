@@ -577,6 +577,11 @@ export async function GetGlobalProxyConfig(): Promise<connection.QueryResult> {
   return apiEnvelopeToQueryResult(payload, 'Global proxy loaded');
 }
 
+export async function GetLanguage(): Promise<connection.QueryResult> {
+  const payload = await getJson('/app/language');
+  return apiEnvelopeToQueryResult(payload, 'Language loaded');
+}
+
 export async function GetSavedConnections(): Promise<Array<connection.SavedConnectionView>> {
   const payload = await postJson('/connections/saved/list', {});
   if (payload?.success === false) {
@@ -972,6 +977,10 @@ export async function SaveConnection(arg1:connection.SavedConnectionInput): Prom
 
 export async function SaveGlobalProxy(arg1:connection.SaveGlobalProxyInput): Promise<connection.GlobalProxyView> {
   return dataOrThrow<connection.GlobalProxyView>(await postJson('/app/global-proxy', arg1 || {}), 'Failed to save global proxy.');
+}
+
+export async function SaveLanguage(arg1:string): Promise<connection.QueryResult> {
+  return apiEnvelopeToQueryResult(await postJson('/app/language', { language: arg1 }), 'Language saved');
 }
 
 export async function SelectDataRootDirectory(arg1:string): Promise<connection.QueryResult> {

@@ -59,9 +59,20 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(appCompatibilityService.getGlobalProxy());
     }
 
+    @GetMapping("/language")
+    public ApiEnvelope<Map<String, Object>> getLanguage() {
+        return ApiEnvelope.ok(appCompatibilityService.getLanguage());
+    }
+
     @PostMapping("/global-proxy")
     public ApiEnvelope<Map<String, Object>> saveGlobalProxy(@RequestBody GlobalProxyConfigDto input) {
         return ApiEnvelope.ok(appCompatibilityService.saveGlobalProxy(input));
+    }
+
+    @PostMapping("/language")
+    public ApiEnvelope<Map<String, Object>> saveLanguage(@RequestBody Map<String, Object> input) {
+        String rawLanguage = input == null || input.get("language") == null ? "" : String.valueOf(input.get("language"));
+        return ApiEnvelope.ok(appCompatibilityService.saveLanguage(rawLanguage));
     }
 
     @PostMapping("/diagnostics/window")

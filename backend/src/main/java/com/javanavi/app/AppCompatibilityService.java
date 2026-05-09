@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.connections.ConnectionPackageCompatibilityService;
 import com.javanavi.files.ExportedFileRevealService;
+import com.javanavi.i18n.AppLanguage;
 import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import com.javanavi.security.SecretStore;
@@ -36,6 +37,7 @@ public class AppCompatibilityService {
     private final SecretStore secretStore;
     private final Path dataDirectory;
     private final Path globalProxyFile;
+    private final Path languageFile;
     private final Path sqlWorkspaceDirectory;
 
     public AppCompatibilityService(
@@ -51,6 +53,7 @@ public class AppCompatibilityService {
         this.secretStore = secretStore;
         this.dataDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize();
         this.globalProxyFile = dataDirectory.resolve("global-proxy.json");
+        this.languageFile = dataDirectory.resolve("language.json");
         this.sqlWorkspaceDirectory = dataDirectory.resolve("sql-workspace").normalize();
     }
 
@@ -89,6 +92,19 @@ public class AppCompatibilityService {
         result.put("hasPassword", hasPassword);
         result.put("secretRef", GLOBAL_PROXY_SECRET_REF);
         return result;
+    }
+
+    public synchronized Map<String, Object> getLanguage() {
+        Map<String, Object> stored = readMap(languageFile);
+        String language = AppLanguage.from(stored.get("language")) == AppLanguage.ZH ? "zh" : "en";
+        return orderedMap("language", language);
+    }
+
+    public synchronized Map<String, Object> saveLanguage(String rawLanguage) {
+        AppLanguage language = AppLanguage.from(rawLanguage);
+        Map<String, Object> value = orderedMap("language", language == AppLanguage.ZH ? "zh" : "en");
+        writeMap(languageFile, value);
+        return value;
     }
 
     public synchronized Map<String, Object> saveGlobalProxy(GlobalProxyConfigDto input) {
