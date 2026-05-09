@@ -13,6 +13,9 @@ public class I18nMessages {
     public I18nMessages() {
         put("request.invalid", "Invalid request: {message}", "请求无效：{message}");
         put("request.validation", "Request did not match the JavaNavi compatibility contract.", "请求不符合 JavaNavi 兼容接口约定。");
+        put("request.notFound", "Requested API endpoint was not found.", "请求的 API 不存在。");
+        put("request.nullPointer", "Internal server error.", "服务内部异常。");
+        put("request.rateLimited", "Too many requests. Please retry later.", "请求过于频繁，请稍后再试。");
         put("app.state", "Application state error: {message}", "应用状态异常：{message}");
         put("app.browserNativeUnavailable", "JavaNavi Web cannot open an OS directory picker from the backend package.", "JavaNavi Web 后端包无法打开系统目录选择器。");
         put("app.restartRequiredUnsupported", "Changing the JavaNavi Web data directory at runtime is not supported; set JAVANAVI_DATA_DIR before startup.", "JavaNavi Web 暂不支持运行时切换数据目录；请在启动前设置 JAVANAVI_DATA_DIR。");

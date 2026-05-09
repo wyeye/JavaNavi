@@ -9,6 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalApiExceptionHandler {
@@ -40,5 +41,23 @@ public class GlobalApiExceptionHandler {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiEnvelope<Void> illegalState(IllegalStateException error) {
         return ApiEnvelope.failKey(messages, "app.state", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public ApiEnvelope<Void> notFound(NoResourceFoundException error) {
+        return ApiEnvelope.failKey(messages, "request.notFound");
+    }
+
+    @ExceptionHandler(NullPointerException.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ApiEnvelope<Void> nullPointer(NullPointerException error) {
+        return ApiEnvelope.failKey(messages, "request.nullPointer");
+    }
+
+    @ExceptionHandler(ApiRateLimitExceededException.class)
+    @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
+    public ApiEnvelope<Void> rateLimited(ApiRateLimitExceededException error) {
+        return ApiEnvelope.failKey(messages, "request.rateLimited");
     }
 }
