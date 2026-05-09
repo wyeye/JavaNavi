@@ -86,7 +86,7 @@ public class AiCompatibilityService {
         String type = normalizeType(firstText(text(input.get("type")), existing == null ? null : text(existing.get("type")), "openai"));
         String apiFormat = providerApiFormat(type, firstText(text(input.get("apiFormat")), existing == null ? null : text(existing.get("apiFormat"))));
         boolean transportRequested = booleanValue(input.get("transportEnabled"), existing != null && booleanValue(existing.get("transportEnabled"), false));
-        boolean transportEnabled = transportRequested && supportsOpenAiCompatibleTransport(type, apiFormat);
+        boolean transportEnabled = transportRequested && supportsProviderTransport(type, apiFormat);
         String apiKey = text(input.get("apiKey"));
         boolean hasSecret = existing != null && bool(existing.get("hasSecret")) || secretStore.get(secretKey(id)).isPresent();
         if (apiKey != null && !apiKey.isBlank()) {
@@ -275,54 +275,16 @@ public class AiCompatibilityService {
         Optional<String> storedSecret = providerId.isBlank() ? Optional.empty() : secretStore.get(secretKey(providerId));
         boolean hasStoredSecret = storedSecret.isPresent();
         boolean transportRequested = booleanValue(input == null ? null : input.get("transportEnabled"), booleanValue(savedProvider.get("transportEnabled"), false));
-        boolean modelDiscoverySupported = supportsOpenAiCompatibleTransport(type, apiFormat);
+        boolean modelDiscoverySupported = supportsProviderTransport(type, apiFormat);
         boolean transportEnabled = transportRequested && modelDiscoverySupported;
-        if (transportRequested && !modelDiscoverySupported) {
-            if (isBlank(model)) {
-                return orderedMap(
-                        "success", false,
-                        "message", "AI model is required because JavaNavi Web automatic model discovery is only supported for OpenAI-compatible providers.",
-                        "providerId", providerId.isBlank() ? "preview" : providerId,
-                        "networkTested", false,
-                        "transportEnabled", false,
-                        "transportRequested", true,
-                        "transportCapability", transportCapability(type, apiFormat),
-                        "modelDiscoverySupported", false,
-                        "modelsFetched", false
-                );
-            }
-            if (!"claude_cli".equals(type) && isBlank(apiKey) && !hasStoredSecret) {
-                return orderedMap(
-                        "success", false,
-                        "message", "AI provider API key is required or must already be stored.",
-                        "providerId", providerId.isBlank() ? "preview" : providerId,
-                        "networkTested", false,
-                        "transportEnabled", false,
-                        "transportRequested", true,
-                        "transportCapability", transportCapability(type, apiFormat),
-                        "modelDiscoverySupported", false,
-                        "modelsFetched", false
-                );
-            }
-            return orderedMap(
-                    "success", true,
-                    "message", "AI provider configuration is valid, but JavaNavi Web outbound HTTP transport and model discovery are only supported for OpenAI-compatible providers. The model ID will be kept as a manual configuration.",
-                    "providerId", providerId.isBlank() ? "preview" : providerId,
-                    "networkTested", false,
-                    "transportEnabled", false,
-                    "transportRequested", true,
-                    "transportCapability", transportCapability(type, apiFormat),
-                    "modelDiscoverySupported", false,
-                    "modelsFetched", false,
-                    "models", List.of(),
-                    "modelCount", 0
-            );
-        }
         if (!"claude_cli".equals(type) && isBlank(apiKey) && !hasStoredSecret) {
             return orderedMap(
                     "success", false,
                     "message", "AI provider API key is required or must already be stored.",
+                    "providerId", providerId.isBlank() ? "preview" : providerId,
                     "networkTested", false,
+                    "transportEnabled", false,
+                    "transportRequested", transportRequested,
                     "transportCapability", transportCapability(type, apiFormat),
                     "modelDiscoverySupported", modelDiscoverySupported,
                     "modelsFetched", false
@@ -335,14 +297,20 @@ public class AiCompatibilityService {
             provider.put("model", model);
             provider.put("baseUrl", firstText(input == null ? null : text(input.get("baseUrl")), text(savedProvider.get("baseUrl")), defaultBaseUrl(type)));
             provider.put("headers", input != null && input.get("headers") != null ? mapValue(input.get("headers")) : mapValue(savedProvider.get("headers")));
+            String effectiveApiKey = isBlank(apiKey) ? storedSecret.orElse("") : apiKey;
             try {
-                Map<String, Object> transport = invokeOpenAiCompatibleHealthCheck(provider, isBlank(apiKey) ? storedSecret.orElse("") : apiKey);
+                Map<String, Object> transport = switch (type) {
+                    case "anthropic" -> invokeAnthropicHealthCheck(provider, effectiveApiKey);
+                    case "gemini" -> invokeGeminiHealthCheck(provider, effectiveApiKey);
+                    default -> invokeOpenAiCompatibleHealthCheck(provider, effectiveApiKey);
+                };
                 return orderedMap(
                         "success", true,
-                        "message", "AI provider transport test succeeded via JavaNavi Web OpenAI-compatible HTTP check.",
+                        "message", "AI provider transport test succeeded via JavaNavi Web HTTP check.",
                         "providerId", providerId.isBlank() ? "preview" : providerId,
                         "networkTested", true,
                         "transportEnabled", true,
+                        "transportRequested", true,
                         "transportCapability", transportCapability(type, apiFormat),
                         "modelDiscoverySupported", true,
                         "modelsFetched", true,
@@ -360,6 +328,7 @@ public class AiCompatibilityService {
                         "providerId", providerId.isBlank() ? "preview" : providerId,
                         "networkTested", true,
                         "transportEnabled", true,
+                        "transportRequested", true,
                         "transportCapability", transportCapability(type, apiFormat),
                         "modelDiscoverySupported", true,
                         "modelsFetched", false
@@ -370,8 +339,10 @@ public class AiCompatibilityService {
             return orderedMap(
                     "success", false,
                     "message", "AI model is required.",
+                    "providerId", providerId.isBlank() ? "preview" : providerId,
                     "networkTested", false,
                     "transportEnabled", false,
+                    "transportRequested", transportRequested,
                     "transportCapability", transportCapability(type, apiFormat),
                     "modelDiscoverySupported", modelDiscoverySupported,
                     "modelsFetched", false
@@ -379,12 +350,11 @@ public class AiCompatibilityService {
         }
         return orderedMap(
                 "success", true,
-                "message", transportEnabled
-                        ? "AI provider configuration is valid and may use JavaNavi Web OpenAI-compatible HTTP transport."
-                        : "AI provider configuration is valid for JavaNavi Web local storage; enable transportEnabled for outbound HTTP model calls.",
+                "message", "AI provider configuration is valid for JavaNavi Web local storage; enable transportEnabled for outbound HTTP model calls.",
                 "providerId", providerId.isBlank() ? "preview" : providerId,
                 "networkTested", false,
-                "transportEnabled", transportEnabled,
+                "transportEnabled", false,
+                "transportRequested", transportRequested,
                 "transportCapability", transportCapability(type, apiFormat),
                 "modelDiscoverySupported", modelDiscoverySupported,
                 "modelsFetched", false
@@ -438,20 +408,6 @@ public class AiCompatibilityService {
         }
         Map<String, Object> selected = provider.get();
         boolean transportEnabled = booleanValue(selected.get("transportEnabled"), false);
-        boolean transportSupported = supportsOpenAiCompatibleTransport(selected);
-        if (!transportSupported) {
-            return orderedMap(
-                    "content", "JavaNavi AI provider '" + firstText(text(selected.get("name")), active) + "' is configured for "
-                            + transportCapability(selected)
-                            + ", but JavaNavi Web currently only supports OpenAI-compatible HTTP transport. Switch the provider API format to OpenAI-compatible or keep the model ID as manual configuration until provider-specific transport is added.",
-                    "choices", List.of(),
-                    "providerId", active,
-                    "model", selected.get("model"),
-                    "transport", "java-web-local-state",
-                    "transportCapability", transportCapability(selected),
-                    "transportError", false
-            );
-        }
         if (transportEnabled) {
             Optional<String> apiKey = secretStore.get(secretKey(active));
             if (apiKey.isEmpty()) {
@@ -460,12 +416,17 @@ public class AiCompatibilityService {
                         "choices", List.of(),
                         "providerId", active,
                         "model", selected.get("model"),
-                        "transport", "openai-compatible-http",
+                        "transport", transportName(selected),
                         "transportError", true
                 );
             }
+            String normalizedType = normalizeType(text(selected.get("type")));
             try {
-                return invokeOpenAiCompatibleChat(selected, input, apiKey.get(), active);
+                return switch (normalizedType) {
+                    case "anthropic" -> invokeAnthropicChat(selected, input, apiKey.get(), active);
+                    case "gemini" -> invokeGeminiChat(selected, input, apiKey.get(), active);
+                    default -> invokeOpenAiCompatibleChat(selected, input, apiKey.get(), active);
+                };
             } catch (IOException | InterruptedException | IllegalArgumentException error) {
                 if (error instanceof InterruptedException) {
                     Thread.currentThread().interrupt();
@@ -475,13 +436,13 @@ public class AiCompatibilityService {
                         "choices", List.of(),
                         "providerId", active,
                         "model", selected.get("model"),
-                        "transport", "openai-compatible-http",
+                        "transport", transportName(selected),
                         "transportError", true
                 );
             }
         }
         return orderedMap(
-                "content", "JavaNavi AI provider '" + firstText(text(selected.get("name")), active) + "' is configured with outbound model transport disabled; enable transportEnabled to use JavaNavi Web OpenAI-compatible HTTP calls.",
+                "content", "JavaNavi AI provider '" + firstText(text(selected.get("name")), active) + "' is configured with outbound model transport disabled; enable transportEnabled to use JavaNavi Web HTTP model calls.",
                 "choices", List.of(),
                 "providerId", active,
                 "model", selected.get("model"),
@@ -492,10 +453,7 @@ public class AiCompatibilityService {
 
     private Map<String, Object> invokeOpenAiCompatibleChat(Map<String, Object> provider, Map<String, Object> input, String apiKey, String providerId) throws IOException, InterruptedException {
         String model = firstText(text(input == null ? null : input.get("model")), text(provider.get("model")), defaultModel(text(provider.get("type"))));
-        List<Object> messages = objectList(input == null ? null : input.get("messages"));
-        if (messages.isEmpty()) {
-            messages = List.of(orderedMap("role", "user", "content", firstText(text(input == null ? null : input.get("prompt")), "Hello")));
-        }
+        List<Object> messages = defaultChatMessages(input);
         Map<String, Object> requestBody = openAiCompatibleChatRequestBody(provider, input, model, messages, false);
 
         HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(chatCompletionsUri(text(provider.get("baseUrl")))))
@@ -503,16 +461,10 @@ public class AiCompatibilityService {
                 .header("Content-Type", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody), StandardCharsets.UTF_8));
-        mapValue(provider.get("headers")).forEach((key, value) -> {
-            String header = text(key);
-            String headerValue = text(value);
-            if (!header.isBlank() && !headerValue.isBlank() && !"authorization".equalsIgnoreCase(header)) {
-                builder.header(header, headerValue);
-            }
-        });
+        applyAdditionalHeaders(builder, provider, "authorization");
 
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        Map<String, Object> payload = objectMapper.readValue(response.body(), MAP_TYPE);
+        Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
         }
@@ -527,23 +479,68 @@ public class AiCompatibilityService {
         );
     }
 
+    private Map<String, Object> invokeAnthropicChat(Map<String, Object> provider, Map<String, Object> input, String apiKey, String providerId) throws IOException, InterruptedException {
+        String model = firstText(text(input == null ? null : input.get("model")), text(provider.get("model")), defaultModel(text(provider.get("type"))));
+        List<Object> messages = defaultChatMessages(input);
+        Map<String, Object> requestBody = anthropicRequestBody(provider, input, model, messages);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(anthropicMessagesUri(text(provider.get("baseUrl")))))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .header("x-api-key", apiKey)
+                .header("anthropic-version", "2023-06-01")
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody), StandardCharsets.UTF_8));
+        applyAdditionalHeaders(builder, provider, "x-api-key", "anthropic-version");
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        Map<String, Object> payload = parseResponseMap(response.body());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+        }
+        return orderedMap(
+                "content", assistantContentFromAnthropic(payload),
+                "choices", payload.getOrDefault("content", List.of()),
+                "providerId", providerId,
+                "model", firstText(text(payload.get("model")), model),
+                "transport", "anthropic-http",
+                "usage", payload.getOrDefault("usage", Map.of()),
+                "responseId", text(payload.get("id"))
+        );
+    }
+
+    private Map<String, Object> invokeGeminiChat(Map<String, Object> provider, Map<String, Object> input, String apiKey, String providerId) throws IOException, InterruptedException {
+        String model = firstText(text(input == null ? null : input.get("model")), text(provider.get("model")), defaultModel(text(provider.get("type"))));
+        List<Object> messages = defaultChatMessages(input);
+        Map<String, Object> requestBody = geminiRequestBody(provider, input, messages);
+        HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(geminiGenerateContentUri(text(provider.get("baseUrl")), model)))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .header("x-goog-api-key", apiKey)
+                .POST(HttpRequest.BodyPublishers.ofString(objectMapper.writeValueAsString(requestBody), StandardCharsets.UTF_8));
+        applyAdditionalHeaders(builder, provider, "x-goog-api-key");
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        Map<String, Object> payload = parseResponseMap(response.body());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+        }
+        return orderedMap(
+                "content", assistantContentFromGemini(payload),
+                "choices", payload.getOrDefault("candidates", List.of()),
+                "providerId", providerId,
+                "model", firstText(text(payload.get("modelVersion")), model),
+                "transport", "gemini-http",
+                "usage", payload.getOrDefault("usageMetadata", Map.of()),
+                "responseId", text(payload.get("responseId"))
+        );
+    }
+
     private Map<String, Object> invokeOpenAiCompatibleHealthCheck(Map<String, Object> provider, String apiKey) throws IOException, InterruptedException {
         HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(modelsUri(text(provider.get("baseUrl")))))
                 .timeout(Duration.ofSeconds(15))
                 .header("Accept", "application/json")
                 .header("Authorization", "Bearer " + apiKey)
                 .GET();
-        mapValue(provider.get("headers")).forEach((key, value) -> {
-            String header = text(key);
-            String headerValue = text(value);
-            if (!header.isBlank() && !headerValue.isBlank() && !"authorization".equalsIgnoreCase(header)) {
-                builder.header(header, headerValue);
-            }
-        });
+        applyAdditionalHeaders(builder, provider, "authorization");
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
-        Map<String, Object> payload = response.body().isBlank()
-                ? Map.of()
-                : objectMapper.readValue(response.body(), MAP_TYPE);
+        Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
             throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
         }
@@ -554,6 +551,80 @@ public class AiCompatibilityService {
                 "modelCount", models.size(),
                 "models", models
         );
+    }
+
+    private Map<String, Object> invokeAnthropicHealthCheck(Map<String, Object> provider, String apiKey) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(anthropicModelsUri(text(provider.get("baseUrl")))))
+                .timeout(Duration.ofSeconds(15))
+                .header("Accept", "application/json")
+                .header("x-api-key", apiKey)
+                .header("anthropic-version", "2023-06-01")
+                .GET();
+        applyAdditionalHeaders(builder, provider, "x-api-key", "anthropic-version");
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        Map<String, Object> payload = parseResponseMap(response.body());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+        }
+        List<String> models = anthropicModelIds(payload);
+        return orderedMap(
+                "statusCode", response.statusCode(),
+                "endpoint", "models",
+                "modelCount", models.size(),
+                "models", models
+        );
+    }
+
+    private Map<String, Object> invokeGeminiHealthCheck(Map<String, Object> provider, String apiKey) throws IOException, InterruptedException {
+        HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(geminiModelsUri(text(provider.get("baseUrl")))))
+                .timeout(Duration.ofSeconds(15))
+                .header("Accept", "application/json")
+                .header("x-goog-api-key", apiKey)
+                .GET();
+        applyAdditionalHeaders(builder, provider, "x-goog-api-key");
+        HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        Map<String, Object> payload = parseResponseMap(response.body());
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+        }
+        List<String> models = geminiModelIds(payload);
+        return orderedMap(
+                "statusCode", response.statusCode(),
+                "endpoint", "models",
+                "modelCount", models.size(),
+                "models", models
+        );
+    }
+
+    private Map<String, Object> anthropicRequestBody(Map<String, Object> provider, Map<String, Object> input, String model, List<Object> messages) {
+        Map<String, Object> requestBody = orderedMap(
+                "model", model,
+                "messages", anthropicMessages(messages),
+                "max_tokens", positiveInt(provider.get("maxTokens"), 4096),
+                "temperature", numeric(provider.get("temperature"), 0.2)
+        );
+        String systemPrompt = firstSystemPrompt(messages);
+        if (!isBlank(systemPrompt)) {
+            requestBody.put("system", systemPrompt);
+        }
+        return requestBody;
+    }
+
+    private Map<String, Object> geminiRequestBody(Map<String, Object> provider, Map<String, Object> input, List<Object> messages) {
+        Map<String, Object> requestBody = orderedMap(
+                "contents", geminiContents(messages),
+                "generationConfig", orderedMap(
+                        "temperature", numeric(provider.get("temperature"), 0.2),
+                        "maxOutputTokens", positiveInt(provider.get("maxTokens"), 4096)
+                )
+        );
+        String systemPrompt = firstSystemPrompt(messages);
+        if (!isBlank(systemPrompt)) {
+            requestBody.put("system_instruction", orderedMap(
+                    "parts", List.of(orderedMap("text", systemPrompt))
+            ));
+        }
+        return requestBody;
     }
 
     public void chatCancel(String sessionId) {
@@ -910,6 +981,76 @@ public class AiCompatibilityService {
                 .toList();
     }
 
+    static List<String> anthropicModelIds(Map<String, Object> payload) {
+        if (payload == null) {
+            return List.of();
+        }
+        return objectListStatic(payload.get("data")).stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> firstText(text(item.get("id")), text(item.get("name"))))
+                .filter(item -> !isBlank(item))
+                .distinct()
+                .toList();
+    }
+
+    static List<String> geminiModelIds(Map<String, Object> payload) {
+        if (payload == null) {
+            return List.of();
+        }
+        return objectListStatic(payload.get("models")).stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> normalizeGeminiModelName(firstText(text(item.get("name")), text(item.get("model")))))
+                .filter(item -> !isBlank(item))
+                .distinct()
+                .toList();
+    }
+
+    private static List<Map<String, Object>> anthropicMessages(List<Object> messages) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object raw : messages) {
+            if (!(raw instanceof Map<?, ?> map)) {
+                continue;
+            }
+            String role = normalizeChatRole(text(map.get("role")));
+            if ("system".equals(role)) {
+                continue;
+            }
+            String content = firstText(text(map.get("content")), text(map.get("text")));
+            if (isBlank(content)) {
+                continue;
+            }
+            result.add(orderedMap(
+                    "role", role,
+                    "content", List.of(orderedMap("type", "text", "text", content))
+            ));
+        }
+        return result;
+    }
+
+    private static List<Map<String, Object>> geminiContents(List<Object> messages) {
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (Object raw : messages) {
+            if (!(raw instanceof Map<?, ?> map)) {
+                continue;
+            }
+            String role = normalizeChatRole(text(map.get("role")));
+            if ("system".equals(role)) {
+                continue;
+            }
+            String content = firstText(text(map.get("content")), text(map.get("text")));
+            if (isBlank(content)) {
+                continue;
+            }
+            result.add(orderedMap(
+                    "role", "assistant".equals(role) ? "model" : "user",
+                    "parts", List.of(orderedMap("text", content))
+            ));
+        }
+        return result;
+    }
+
     private static List<Object> objectListStatic(Object value) {
         if (value instanceof List<?> list) {
             return new ArrayList<>(list);
@@ -919,7 +1060,7 @@ public class AiCompatibilityService {
 
     private static URI chatCompletionsUri(String baseUrl) {
         String base = firstText(baseUrl, defaultBaseUrl("openai"));
-        String normalized = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        String normalized = trimTrailingSlash(base);
         if (normalized.endsWith("/chat/completions")) {
             return URI.create(normalized);
         }
@@ -931,7 +1072,7 @@ public class AiCompatibilityService {
 
     private static URI modelsUri(String baseUrl) {
         String base = firstText(baseUrl, defaultBaseUrl("openai"));
-        String normalized = base.endsWith("/") ? base.substring(0, base.length() - 1) : base;
+        String normalized = trimTrailingSlash(base);
         if (normalized.endsWith("/chat/completions")) {
             return URI.create(normalized.substring(0, normalized.length() - "/chat/completions".length()) + "/models");
         }
@@ -942,6 +1083,60 @@ public class AiCompatibilityService {
             return URI.create(normalized + "/models");
         }
         return URI.create(normalized + "/v1/models");
+    }
+
+    private static URI anthropicMessagesUri(String baseUrl) {
+        String normalized = trimTrailingSlash(firstText(baseUrl, defaultBaseUrl("anthropic")));
+        if (normalized.endsWith("/v1/messages")) {
+            return URI.create(normalized);
+        }
+        if (normalized.endsWith("/v1")) {
+            return URI.create(normalized + "/messages");
+        }
+        return URI.create(normalized + "/v1/messages");
+    }
+
+    private static URI anthropicModelsUri(String baseUrl) {
+        String normalized = trimTrailingSlash(firstText(baseUrl, defaultBaseUrl("anthropic")));
+        if (normalized.endsWith("/v1/models")) {
+            return URI.create(normalized);
+        }
+        if (normalized.endsWith("/v1")) {
+            return URI.create(normalized + "/models");
+        }
+        return URI.create(normalized + "/v1/models");
+    }
+
+    private static URI geminiModelsUri(String baseUrl) {
+        String normalized = trimTrailingSlash(firstText(baseUrl, defaultBaseUrl("gemini")));
+        if (normalized.endsWith("/v1beta/models")) {
+            return URI.create(normalized);
+        }
+        if (normalized.endsWith("/models")) {
+            return URI.create(normalized);
+        }
+        if (normalized.endsWith("/v1beta")) {
+            return URI.create(normalized + "/models");
+        }
+        return URI.create(normalized + "/v1beta/models");
+    }
+
+    private static URI geminiGenerateContentUri(String baseUrl, String model) {
+        String normalized = trimTrailingSlash(firstText(baseUrl, defaultBaseUrl("gemini")));
+        String normalizedModel = normalizeGeminiModelName(firstText(model, defaultModel("gemini")));
+        if (normalized.endsWith(":generateContent")) {
+            return URI.create(normalized);
+        }
+        if (normalized.endsWith("/models")) {
+            return URI.create(normalized + "/" + normalizedModel + ":generateContent");
+        }
+        if (normalized.contains("/models/") && !normalized.endsWith("/models")) {
+            return URI.create(normalized + ":generateContent");
+        }
+        if (normalized.endsWith("/v1beta")) {
+            return URI.create(normalized + "/models/" + normalizedModel + ":generateContent");
+        }
+        return URI.create(normalized + "/v1beta/models/" + normalizedModel + ":generateContent");
     }
 
     private static URI validatedProviderUri(URI uri) {
@@ -1006,9 +1201,9 @@ public class AiCompatibilityService {
     private static String providerErrorMessage(Map<String, Object> payload) {
         Object error = payload.get("error");
         if (error instanceof Map<?, ?> map) {
-            return firstText(text(map.get("message")), text(map.get("type")), "unknown provider error");
+            return firstText(text(map.get("message")), text(map.get("type")), text(map.get("status")), "unknown provider error");
         }
-        return firstText(text(error), text(payload.get("message")), "unknown provider error");
+        return firstText(text(error), text(payload.get("message")), text(payload.get("detail")), "unknown provider error");
     }
 
     private static String assistantContent(Map<String, Object> payload) {
@@ -1027,6 +1222,33 @@ public class AiCompatibilityService {
             }
         }
         return "";
+    }
+
+    private static String assistantContentFromAnthropic(Map<String, Object> payload) {
+        return objectListStatic(payload.get("content")).stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(item -> {
+                    if ("text".equals(text(item.get("type")))) {
+                        return text(item.get("text"));
+                    }
+                    return null;
+                })
+                .filter(item -> !isBlank(item))
+                .reduce("", (left, right) -> left.isEmpty() ? right : left + "\n" + right);
+    }
+
+    private static String assistantContentFromGemini(Map<String, Object> payload) {
+        return objectListStatic(payload.get("candidates")).stream()
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(candidate -> mapValueStatic(candidate.get("content")))
+                .flatMap(content -> objectListStatic(content.get("parts")).stream())
+                .filter(Map.class::isInstance)
+                .map(Map.class::cast)
+                .map(part -> text(part.get("text")))
+                .filter(item -> !isBlank(item))
+                .reduce("", (left, right) -> left.isEmpty() ? right : left + "\n" + right);
     }
 
     private String streamChunkFromLine(String line) throws JsonProcessingException {
@@ -1110,15 +1332,37 @@ public class AiCompatibilityService {
         return "openai".equals(normalizedType) || ("custom".equals(normalizedType) && "openai".equals(normalizedApiFormat));
     }
 
+    static boolean supportsProviderTransport(String type, String apiFormat) {
+        String normalizedType = normalizeType(type);
+        String normalizedApiFormat = normalizeApiFormat(firstText(apiFormat, defaultApiFormat(normalizedType)));
+        return "openai".equals(normalizedType)
+                || "anthropic".equals(normalizedType)
+                || "gemini".equals(normalizedType)
+                || ("custom".equals(normalizedType) && "openai".equals(normalizedApiFormat));
+    }
+
     private static String transportCapability(Map<String, Object> provider) {
         return transportCapability(text(provider.get("type")), text(provider.get("apiFormat")));
     }
 
     private static String transportCapability(String type, String apiFormat) {
         String normalizedType = normalizeType(type);
-        return supportsOpenAiCompatibleTransport(normalizedType, apiFormat)
-                ? "openai-compatible-http"
+        return supportsProviderTransport(normalizedType, apiFormat)
+                ? transportName(normalizedType, apiFormat)
                 : providerApiFormat(normalizedType, apiFormat);
+    }
+
+    private static String transportName(Map<String, Object> provider) {
+        return transportName(text(provider.get("type")), text(provider.get("apiFormat")));
+    }
+
+    private static String transportName(String type, String apiFormat) {
+        String normalizedType = normalizeType(type);
+        return switch (normalizedType) {
+            case "anthropic" -> "anthropic-http";
+            case "gemini" -> "gemini-http";
+            default -> supportsOpenAiCompatibleTransport(normalizedType, apiFormat) ? "openai-compatible-http" : "java-web-local-state";
+        };
     }
 
     private static String normalizeType(String type) {
@@ -1179,6 +1423,79 @@ public class AiCompatibilityService {
             case "claude_cli" -> "claude-cli";
             default -> "gpt-4o-mini";
         };
+    }
+
+    private static List<Object> defaultChatMessages(Map<String, Object> input) {
+        List<Object> messages = objectListStatic(input == null ? null : input.get("messages"));
+        if (!messages.isEmpty()) {
+            return messages;
+        }
+        return List.of(orderedMap("role", "user", "content", firstText(text(input == null ? null : input.get("prompt")), "Hello")));
+    }
+
+    private void applyAdditionalHeaders(HttpRequest.Builder builder, Map<String, Object> provider, String... excludedHeaders) {
+        Set<String> excluded = Set.of(excludedHeaders);
+        mapValue(provider.get("headers")).forEach((key, value) -> {
+            String header = text(key);
+            String headerValue = text(value);
+            if (!header.isBlank() && !headerValue.isBlank() && excluded.stream().noneMatch(item -> item.equalsIgnoreCase(header))) {
+                builder.header(header, headerValue);
+            }
+        });
+    }
+
+    private Map<String, Object> parseResponseMap(String body) throws JsonProcessingException {
+        return body == null || body.isBlank() ? Map.of() : objectMapper.readValue(body, MAP_TYPE);
+    }
+
+    private static Map<String, Object> mapValueStatic(Object value) {
+        if (value instanceof Map<?, ?>) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> map = (Map<String, Object>) value;
+            return map;
+        }
+        return Map.of();
+    }
+
+    private static String trimTrailingSlash(String value) {
+        String text = firstText(value);
+        while (text.endsWith("/")) {
+            text = text.substring(0, text.length() - 1);
+        }
+        return text;
+    }
+
+    private static String normalizeChatRole(String role) {
+        String normalized = firstText(role, "user").toLowerCase(Locale.ROOT);
+        return switch (normalized) {
+            case "assistant", "model" -> "assistant";
+            case "system" -> "system";
+            case "tool" -> "user";
+            default -> "user";
+        };
+    }
+
+    private static String firstSystemPrompt(List<Object> messages) {
+        for (Object raw : messages) {
+            if (raw instanceof Map<?, ?> map) {
+                String role = text(map.get("role"));
+                if ("system".equalsIgnoreCase(firstText(role))) {
+                    String content = firstText(text(map.get("content")), text(map.get("text")));
+                    if (!isBlank(content)) {
+                        return content;
+                    }
+                }
+            }
+        }
+        return "";
+    }
+
+    private static String normalizeGeminiModelName(String model) {
+        String normalized = firstText(model, defaultModel("gemini"));
+        if (normalized.startsWith("models/")) {
+            return normalized.substring("models/".length());
+        }
+        return normalized;
     }
 
     private static String normalizeSafety(String level) {

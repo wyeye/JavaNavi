@@ -187,6 +187,16 @@ export const supportsOpenAiCompatibleTransport = ({
   type === 'openai' || (type === 'custom' && apiFormat === 'openai')
 );
 
+export const supportsProviderTransport = ({
+  type,
+  apiFormat,
+}: Pick<ResolvePresetTransportResult, 'type' | 'apiFormat'>): boolean => (
+  type === 'openai'
+  || type === 'anthropic'
+  || type === 'gemini'
+  || (type === 'custom' && apiFormat === 'openai')
+);
+
 export const resolvePresetBaseURL = ({
   presetKey,
   presetDefaultBaseUrl,

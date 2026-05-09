@@ -11,7 +11,7 @@ import {
     resolvePresetBaseURL,
     resolvePresetModelSelection,
     resolvePresetTransport,
-    supportsOpenAiCompatibleTransport,
+    supportsProviderTransport,
 } from '../utils/aiProviderPresets';
 import {
     PROVIDER_PRESET_CARD_BASE_STYLE,
@@ -123,13 +123,13 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
     const watchedApiFormat = Form.useWatch('apiFormat', form) || 'openai';
     const watchedApiKeyInput = Form.useWatch('apiKey', form);
     const watchedModels = normalizeModelOptions(Form.useWatch('models', form));
-    const canFetchModels = supportsOpenAiCompatibleTransport({
+    const canFetchModels = supportsProviderTransport({
         type: watchedType,
         apiFormat: watchedApiFormat,
     });
     const modelFetchHelpText = canFetchModels
-        ? 'OpenAI-compatible 接口会调用 /models 自动获取模型；也可以手动输入模型 ID。'
-        : '当前 API 格式暂不支持自动获取模型；请手动填写模型 ID，聊天 HTTP transport 不会对该格式启用。';
+        ? '当前供应商会调用对应模型发现接口自动获取模型；也可以手动输入模型 ID。'
+        : '当前 API 格式暂不支持自动获取模型；请手动填写模型 ID。';
 
     const loadConfig = useCallback(async () => {
         try {
@@ -283,7 +283,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 presetFixedApiFormat: preset.fixedApiFormat,
                 valuesApiFormat: values.apiFormat,
             });
-            const transportEnabled = supportsOpenAiCompatibleTransport(resolvedTransport);
+            const transportEnabled = supportsProviderTransport(resolvedTransport);
             const hasReplacementApiKey = String(values.apiKey || '').trim() !== '';
             const secretDraft = resolveProviderSecretDraft({
                 hasSecret: editingProvider?.hasSecret,
@@ -363,10 +363,10 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 presetFixedApiFormat: preset.fixedApiFormat,
                 valuesApiFormat: values.apiFormat,
             });
-            const transportEnabled = supportsOpenAiCompatibleTransport(resolvedTransport);
+            const transportEnabled = supportsProviderTransport(resolvedTransport);
             if (!transportEnabled) {
                 setTestStatus('idle');
-                void messageApi.info('当前仅支持 OpenAI-compatible 接口自动获取模型；请手动填写模型 ID 后保存');
+                void messageApi.info('当前格式暂不支持自动获取模型；请手动填写模型 ID 后保存');
                 return;
             }
             const secretDraft = resolveProviderSecretDraft({
@@ -648,7 +648,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                         <Button onClick={handleTestProvider} loading={loading} style={{ borderRadius: 10 }}
                             disabled={!canFetchModels}
                             icon={testStatus === 'success' ? <CheckOutlined style={{ color: '#22c55e' }} /> : undefined}>
-                            {canFetchModels ? (testStatus === 'success' ? '模型已获取' : testStatus === 'error' ? '重新获取模型' : '获取模型') : '仅 OpenAI-compatible 可获取模型'}
+                            {canFetchModels ? (testStatus === 'success' ? '模型已获取' : testStatus === 'error' ? '重新获取模型' : '获取模型') : '当前格式需手动填写模型'}
                         </Button>
                         <Button type="primary" onClick={handleSaveProvider} loading={loading}
                             style={{ borderRadius: 10, fontWeight: 600 }}>

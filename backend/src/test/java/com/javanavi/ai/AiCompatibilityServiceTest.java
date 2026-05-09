@@ -105,6 +105,15 @@ class AiCompatibilityServiceTest {
     }
 
     @Test
+    void providerTransportSupportIncludesAnthropicAndGemini() {
+        assertThat(AiCompatibilityService.supportsProviderTransport("openai", null)).isTrue();
+        assertThat(AiCompatibilityService.supportsProviderTransport("anthropic", null)).isTrue();
+        assertThat(AiCompatibilityService.supportsProviderTransport("gemini", null)).isTrue();
+        assertThat(AiCompatibilityService.supportsProviderTransport("custom", "openai")).isTrue();
+        assertThat(AiCompatibilityService.supportsProviderTransport("custom", "anthropic")).isFalse();
+    }
+
+    @Test
     void transportTestDoesNotRequirePreselectedModelBeforeCredentialValidation() {
         Map<String, Object> result = service().testProvider(Map.of(
                 "type", "openai",
@@ -134,7 +143,7 @@ class AiCompatibilityServiceTest {
     }
 
     @Test
-    void transportTestDoesNotAttemptNetworkForUnsupportedProviderFormats() {
+    void transportTestAttemptsNetworkForAnthropicProvider() {
         Map<String, Object> result = service().testProvider(Map.of(
                 "type", "anthropic",
                 "baseUrl", "https://example.invalid/anthropic",
@@ -143,18 +152,18 @@ class AiCompatibilityServiceTest {
                 "transportEnabled", true
         ));
 
-        assertThat(result.get("success")).isEqualTo(true);
-        assertThat(result.get("networkTested")).isEqualTo(false);
-        assertThat(result.get("transportEnabled")).isEqualTo(false);
+        assertThat(result.get("success")).isEqualTo(false);
+        assertThat(result.get("networkTested")).isEqualTo(true);
+        assertThat(result.get("transportEnabled")).isEqualTo(true);
         assertThat(result.get("transportRequested")).isEqualTo(true);
-        assertThat(result.get("transportCapability")).isEqualTo("anthropic");
-        assertThat(result.get("modelDiscoverySupported")).isEqualTo(false);
+        assertThat(result.get("transportCapability")).isEqualTo("anthropic-http");
+        assertThat(result.get("modelDiscoverySupported")).isEqualTo(true);
         assertThat(result.get("modelsFetched")).isEqualTo(false);
-        assertThat(result.get("modelCount")).isEqualTo(0);
+        assertThat(result.get("message")).asString().startsWith("AI provider transport test failed:");
     }
 
     @Test
-    void transportTestRequiresManualModelForUnsupportedDiscoveryEvenWithTransportRequested() {
+    void transportTestAttemptsNetworkForGeminiProviderEvenWhenModelBlank() {
         Map<String, Object> result = service().testProvider(Map.of(
                 "type", "gemini",
                 "baseUrl", "https://example.invalid/gemini",
@@ -163,15 +172,16 @@ class AiCompatibilityServiceTest {
         ));
 
         assertThat(result.get("success")).isEqualTo(false);
-        assertThat(result.get("message")).isEqualTo("AI model is required because JavaNavi Web automatic model discovery is only supported for OpenAI-compatible providers.");
-        assertThat(result.get("networkTested")).isEqualTo(false);
-        assertThat(result.get("transportEnabled")).isEqualTo(false);
-        assertThat(result.get("modelDiscoverySupported")).isEqualTo(false);
+        assertThat(result.get("message")).asString().startsWith("AI provider transport test failed:");
+        assertThat(result.get("networkTested")).isEqualTo(true);
+        assertThat(result.get("transportEnabled")).isEqualTo(true);
+        assertThat(result.get("transportCapability")).isEqualTo("gemini-http");
+        assertThat(result.get("modelDiscoverySupported")).isEqualTo(true);
         assertThat(result.get("modelsFetched")).isEqualTo(false);
     }
 
     @Test
-    void saveProviderIgnoresUnsupportedTransportEnabledFlag() {
+    void saveProviderKeepsAnthropicTransportEnabledFlag() {
         Map<String, Object> saved = service().saveProvider(Map.of(
                 "id", "anthropic-save-guard",
                 "type", "anthropic",
@@ -183,12 +193,12 @@ class AiCompatibilityServiceTest {
                 "transportEnabled", true
         ));
 
-        assertThat(saved.get("transportEnabled")).isEqualTo(false);
+        assertThat(saved.get("transportEnabled")).isEqualTo(true);
         assertThat(saved.get("apiFormat")).isEqualTo("anthropic");
     }
 
     @Test
-    void chatSendDoesNotUseOpenAiTransportForStaleUnsupportedProviderState() throws Exception {
+    void chatSendUsesAnthropicTransportForStaleProviderState() throws Exception {
         AiCompatibilityService service = service();
         new ObjectMapper().writeValue(tempDir.resolve("ai-state.json").toFile(), Map.of(
                 "providers", List.of(Map.of(
@@ -213,13 +223,13 @@ class AiCompatibilityServiceTest {
                 "messages", List.of(Map.of("role", "user", "content", "hello"))
         ));
 
-        assertThat(response.get("transport")).isEqualTo("java-web-local-state");
-        assertThat(response.get("transportCapability")).isEqualTo("anthropic");
-        assertThat(response.get("content")).asString().contains("only supports OpenAI-compatible HTTP transport");
+        assertThat(response.get("transport")).isEqualTo("anthropic-http");
+        assertThat(response.get("transportError")).isEqualTo(true);
+        assertThat(response.get("content")).asString().startsWith("JavaNavi AI provider transport failed:");
     }
 
     @Test
-    void chatSendExplainsUnsupportedProviderTransportInsteadOfDisabledTransportHint() {
+    void chatSendWithoutTransportEnabledStillReturnsDisabledTransportHint() {
         AiCompatibilityService service = service();
         service.saveProvider(Map.of(
                 "id", "anthropic-manual",
@@ -235,10 +245,9 @@ class AiCompatibilityServiceTest {
         ));
 
         assertThat(response.get("transport")).isEqualTo("java-web-local-state");
-        assertThat(response.get("transportCapability")).isEqualTo("anthropic");
+        assertThat(response.get("transportCapability")).isEqualTo("anthropic-http");
         assertThat(response.get("content")).asString()
-                .contains("only supports OpenAI-compatible HTTP transport")
-                .doesNotContain("enable transportEnabled");
+                .contains("enable transportEnabled");
     }
 
     @Test
