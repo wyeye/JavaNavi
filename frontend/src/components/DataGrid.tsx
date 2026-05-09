@@ -1186,6 +1186,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const [jsonEditorValue, setJsonEditorValue] = useState('');
   const [ddlModalOpen, setDdlModalOpen] = useState(false);
   const [ddlLoading, setDdlLoading] = useState(false);
+  const [commitLoading, setCommitLoading] = useState(false);
   const [ddlText, setDdlText] = useState('');
   const ddlRequestSeqRef = useRef(0);
 
@@ -3852,7 +3853,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   };
 
   const handleCommit = async () => {
-      if (!connectionId || !tableName) return;
+      if (commitLoading || !connectionId || !tableName) return;
       const conn = connections.find(c => c.id === connectionId);
       if (!conn) return;
 
@@ -3885,43 +3886,48 @@ const DataGrid: React.FC<DataGridProps> = ({
           useSSH: conn.config.useSSH || false, 
           ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" } 
       };
-      
-      const startTime = Date.now();
-      const res = await ApplyChanges(buildRpcConnectionConfig(config) as any, dbName || '', tableName, { inserts, updates, deletes, locatorStrategy: effectiveEditLocator?.strategy } as any);
-      const duration = Date.now() - startTime;
-      
-      // Construct a pseudo-SQL representation for the log
-      let logSql = `/* Batch Apply on ${tableName} */\n`;
-      if (inserts.length > 0) logSql += `INSERT ${inserts.length} rows;\n`;
-      if (updates.length > 0) logSql += `UPDATE ${updates.length} rows;\n`;
-      if (deletes.length > 0) logSql += `DELETE ${deletes.length} rows;\n`;
-      
-      if (res.success) {
-          addSqlLog({
-              id: Date.now().toString(),
-              timestamp: Date.now(),
-              sql: logSql.trim(),
-              status: 'success',
-              duration,
-              message: res.message,
-              dbName
-          });
-          void message.success("事务提交成功");
-          setAddedRows([]);
-          setModifiedRows({});
-          setDeletedRowKeys(new Set());
-          if (onReload) onReload();
-      } else {
-          addSqlLog({
-              id: Date.now().toString(),
-              timestamp: Date.now(),
-              sql: logSql.trim(),
-              status: 'error',
-              duration,
-              message: res.message,
-              dbName
-          });
-          void message.error("提交失败: " + res.message);
+
+      setCommitLoading(true);
+      try {
+          const startTime = Date.now();
+          const res = await ApplyChanges(buildRpcConnectionConfig(config) as any, dbName || '', tableName, { inserts, updates, deletes, locatorStrategy: effectiveEditLocator?.strategy } as any);
+          const duration = Date.now() - startTime;
+
+          // Construct a pseudo-SQL representation for the log
+          let logSql = `/* Batch Apply on ${tableName} */\n`;
+          if (inserts.length > 0) logSql += `INSERT ${inserts.length} rows;\n`;
+          if (updates.length > 0) logSql += `UPDATE ${updates.length} rows;\n`;
+          if (deletes.length > 0) logSql += `DELETE ${deletes.length} rows;\n`;
+
+          if (res.success) {
+              addSqlLog({
+                  id: Date.now().toString(),
+                  timestamp: Date.now(),
+                  sql: logSql.trim(),
+                  status: 'success',
+                  duration,
+                  message: res.message,
+                  dbName
+              });
+              void message.success("事务提交成功");
+              setAddedRows([]);
+              setModifiedRows({});
+              setDeletedRowKeys(new Set());
+              if (onReload) onReload();
+          } else {
+              addSqlLog({
+                  id: Date.now().toString(),
+                  timestamp: Date.now(),
+                  sql: logSql.trim(),
+                  status: 'error',
+                  duration,
+                  message: res.message,
+                  dbName
+              });
+              void message.error("提交失败: " + res.message);
+          }
+      } finally {
+          setCommitLoading(false);
       }
   };
 
@@ -5379,7 +5385,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                            </>
                        )}
 	                   <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button icon={<SaveOutlined />} type="primary" disabled={!hasChanges} onClick={handleCommit}>提交事务 ({addedRows.length + Object.keys(modifiedRows).length + deletedRowKeys.size})</Button>
+	                   <Button icon={<SaveOutlined />} type="primary" disabled={!hasChanges || commitLoading} loading={commitLoading} onClick={handleCommit}>提交事务 ({addedRows.length + Object.keys(modifiedRows).length + deletedRowKeys.size})</Button>
 	                   {hasChanges && (<Button icon={<UndoOutlined />} onClick={() => {
 	                        setAddedRows([]);
                         setModifiedRows({});
