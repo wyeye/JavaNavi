@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
 import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
+import { useStore } from '../store';
+import { translate, type I18nKey, type I18nParams } from '../i18n';
 
 interface TableDesignerSqlPreviewProps {
   sql: string;
@@ -28,31 +30,40 @@ const SQL_PREVIEW_DARK_THEME = 'javanavi-sql-preview-dark';
 
 const CHANGE_LINE_RULES: Array<{
   kind: SqlChangeHighlightKind;
-  label: string;
   pattern: RegExp;
 }> = [
-  { kind: 'rename', label: '重命名变更', pattern: /\b(RENAME\s+COLUMN|CHANGE\s+COLUMN|RENAME\s+TO|SP_RENAME)\b/i },
-  { kind: 'add', label: '新增变更', pattern: /\b(ADD\s+COLUMN|ADD\s+PRIMARY\s+KEY)\b/i },
-  { kind: 'drop', label: '删除变更', pattern: /\b(DROP\s+COLUMN|DROP\s+PRIMARY\s+KEY)\b/i },
-  { kind: 'modify', label: '字段属性变更', pattern: /\b(MODIFY\s+COLUMN|ALTER\s+COLUMN|SET\s+DATA\s+TYPE|SET\s+DEFAULT|DROP\s+DEFAULT|SET\s+NOT\s+NULL|DROP\s+NOT\s+NULL)\b/i },
-  { kind: 'constraint', label: '约束变更', pattern: /\b(ADD\s+CONSTRAINT|DROP\s+CONSTRAINT)\b/i },
-  { kind: 'comment', label: '备注变更', pattern: /\b(COMMENT\s+ON\s+COLUMN|COMMENT\s+ON\s+TABLE)\b/i },
+  { kind: 'rename', pattern: /\b(RENAME\s+COLUMN|CHANGE\s+COLUMN|RENAME\s+TO|SP_RENAME)\b/i },
+  { kind: 'add', pattern: /\b(ADD\s+COLUMN|ADD\s+PRIMARY\s+KEY)\b/i },
+  { kind: 'drop', pattern: /\b(DROP\s+COLUMN|DROP\s+PRIMARY\s+KEY)\b/i },
+  { kind: 'modify', pattern: /\b(MODIFY\s+COLUMN|ALTER\s+COLUMN|SET\s+DATA\s+TYPE|SET\s+DEFAULT|DROP\s+DEFAULT|SET\s+NOT\s+NULL|DROP\s+NOT\s+NULL)\b/i },
+  { kind: 'constraint', pattern: /\b(ADD\s+CONSTRAINT|DROP\s+CONSTRAINT)\b/i },
+  { kind: 'comment', pattern: /\b(COMMENT\s+ON\s+COLUMN|COMMENT\s+ON\s+TABLE)\b/i },
 ];
+
+const SQL_CHANGE_LABEL_KEYS: Record<SqlChangeHighlightKind, I18nKey> = {
+  rename: 'designer.sqlPreview.rename',
+  add: 'designer.sqlPreview.add',
+  drop: 'designer.sqlPreview.drop',
+  modify: 'designer.sqlPreview.modify',
+  constraint: 'designer.sqlPreview.constraint',
+  comment: 'designer.sqlPreview.comment',
+  create: 'designer.sqlPreview.createTable',
+};
 
 const CREATE_TABLE_PATTERN = /^\s*CREATE\s+TABLE\b/i;
 
-const getCreateTableLineHighlight = (line: string, lineNumber: number): SqlChangeHighlight | null => {
+const getCreateTableLineHighlight = (line: string, lineNumber: number, label: string): SqlChangeHighlight | null => {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith('--')) return null;
   return {
     line,
     lineNumber,
     kind: 'create',
-    label: '新建表结构',
+    label,
   };
 };
 
-const getAlterLineHighlight = (line: string, lineNumber: number): SqlChangeHighlight | null => {
+const getAlterLineHighlight = (line: string, lineNumber: number, resolveLabel: (kind: SqlChangeHighlightKind) => string): SqlChangeHighlight | null => {
   const trimmed = line.trim();
   if (!trimmed || trimmed.startsWith('--')) return null;
 
@@ -63,19 +74,22 @@ const getAlterLineHighlight = (line: string, lineNumber: number): SqlChangeHighl
     line,
     lineNumber,
     kind: matchedRule.kind,
-    label: matchedRule.label,
+    label: resolveLabel(matchedRule.kind),
   };
 };
 
-export const resolveSqlChangeHighlights = (sql: string): SqlChangeHighlight[] => {
+export const resolveSqlChangeHighlights = (
+  sql: string,
+  resolveLabel: (kind: SqlChangeHighlightKind) => string,
+): SqlChangeHighlight[] => {
   const lines = sql.split(/\r?\n/);
   const isCreateTableSql = lines.some((line) => CREATE_TABLE_PATTERN.test(line));
 
   return lines
     .map((line, index) => (
       isCreateTableSql
-        ? getCreateTableLineHighlight(line, index + 1)
-        : getAlterLineHighlight(line, index + 1)
+        ? getCreateTableLineHighlight(line, index + 1, resolveLabel('create'))
+        : getAlterLineHighlight(line, index + 1, resolveLabel)
     ))
     .filter((highlight): highlight is SqlChangeHighlight => Boolean(highlight));
 };
@@ -131,10 +145,13 @@ const TableDesignerSqlPreview: React.FC<TableDesignerSqlPreviewProps> = ({
   darkMode = false,
   height = '360px',
 }) => {
+  const language = useStore((state) => state.language);
+  const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
+  const resolveLabel = useCallback((kind: SqlChangeHighlightKind) => t(SQL_CHANGE_LABEL_KEYS[kind]), [t]);
   const decorationIdsRef = useRef<string[]>([]);
   const editorRef = useRef<any>(null);
   const monacoRef = useRef<any>(null);
-  const changeHighlights = useMemo(() => resolveSqlChangeHighlights(sql), [sql]);
+  const changeHighlights = useMemo(() => resolveSqlChangeHighlights(sql, resolveLabel), [resolveLabel, sql]);
 
   const applyChangeDecorations = useCallback(() => {
     const editor = editorRef.current;

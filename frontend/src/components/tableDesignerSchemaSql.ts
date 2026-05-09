@@ -10,6 +10,7 @@ import {
   unquoteSqlIdentifierPart,
   unquoteSqlIdentifierPath,
 } from '../utils/sqlDialect';
+import { translate, type AppLanguage } from '../i18n';
 
 export interface EditableColumnSnapshot {
   _key: string;
@@ -24,6 +25,7 @@ export interface EditableColumnSnapshot {
 }
 
 export interface BuildAlterTablePreviewInput {
+  language?: AppLanguage;
   dbType: string;
   tableName: string;
   originalColumns: EditableColumnSnapshot[];
@@ -31,12 +33,19 @@ export interface BuildAlterTablePreviewInput {
 }
 
 export interface BuildCreateTablePreviewInput {
+  language?: AppLanguage;
   dbType: string;
   tableName: string;
   columns: EditableColumnSnapshot[];
   charset?: string;
   collation?: string;
 }
+
+const previewText = (
+  language: AppLanguage | undefined,
+  key: Parameters<typeof translate>[1],
+  params?: Record<string, string | number | boolean | null | undefined>,
+): string => translate(language || 'en', key, params);
 
 const escapeSqlString = (value: string) => String(value || '').replace(/'/g, "''");
 
@@ -401,7 +410,7 @@ const buildSqlServerAlterPreviewSql = (input: BuildAlterTablePreviewInput): stri
     const { objectName } = splitQualifiedName(input.tableName);
     const constraintName = quoteIdentifierPart(`PK_${objectName || 'table'}`, dbType);
     if (origPKKeys.length > 0) {
-      statements.push(`-- SQL Server 删除旧主键需要原约束名；请先在索引页确认后删除。`);
+      statements.push(`-- ${previewText(input.language, 'designer.sqlPreview.sqlServerDropPkNotice')}`);
     }
     if (newPKKeys.length > 0) {
       const pkNames = input.columns.filter((col) => col.key === 'PRI').map((col) => quoteIdentifierPart(col.name, dbType)).join(', ');
@@ -436,7 +445,7 @@ const buildSqliteAlterPreviewSql = (input: BuildAlterTablePreviewInput): string 
       currentName = curr.name;
     }
     if (physicalDefinitionChanged(curr, orig) || (curr.comment || '') !== (orig.comment || '')) {
-      statements.push(`-- SQLite 不支持直接修改字段属性，请通过创建新表、迁移数据、替换旧表的方式处理字段 ${currentName}。`);
+      statements.push(`-- ${previewText(input.language, 'designer.sqlPreview.sqliteColumnAlterNotice', { name: currentName })}`);
     }
   });
 
@@ -482,7 +491,7 @@ const buildDuckDbAlterPreviewSql = (input: BuildAlterTablePreviewInput): string 
       statements.push(`ALTER TABLE ${tableRef}\nALTER COLUMN ${quoteIdentifierPart(currentName, dbType)} ${curr.nullable === 'NO' ? 'SET NOT NULL' : 'DROP NOT NULL'};`);
     }
     if ((curr.comment || '') !== (orig.comment || '')) {
-      statements.push(`-- DuckDB 不支持通过 COMMENT ON COLUMN 持久化字段备注，字段 ${currentName} 的备注仅保留在设计器预览中。`);
+      statements.push(`-- ${previewText(input.language, 'designer.sqlPreview.duckdbCommentNotice', { name: currentName })}`);
     }
   });
 
@@ -504,7 +513,7 @@ const buildLimitedBacktickAlterPreviewSql = (input: BuildAlterTablePreviewInput,
     if (!orig) {
       statements.push(`ALTER TABLE ${tableRef}\nADD COLUMN ${quoteIdentifierPart(curr.name, dbType)} ${curr.type};`);
       if (curr.nullable === 'NO' || normalizeDefaultText(curr.default) || String(curr.comment || '').trim()) {
-        statements.push(`-- ${label} 的字段约束/默认值/备注语法与 MySQL 不同，已避免生成 MySQL 专属子句，请按目标库能力补充。`);
+        statements.push(`-- ${previewText(input.language, 'designer.sqlPreview.limitedDialectNotice', { label })}`);
       }
       return;
     }
@@ -523,7 +532,7 @@ const buildLimitedBacktickAlterPreviewSql = (input: BuildAlterTablePreviewInput,
       (curr.comment || '') !== (orig.comment || '') ||
       Boolean(curr.isAutoIncrement) !== Boolean(orig.isAutoIncrement)
     ) {
-      statements.push(`-- ${label} 的字段约束/默认值/备注语法与 MySQL 不同，已避免生成 MySQL 专属子句，请按目标库能力补充。`);
+      statements.push(`-- ${previewText(input.language, 'designer.sqlPreview.limitedDialectNotice', { label })}`);
     }
   });
 
@@ -604,7 +613,7 @@ export const buildCreateTablePreviewSql = (input: BuildCreateTablePreviewInput):
 
   const suffixComments = comments.length > 0 ? `\n${comments.join('\n')}` : '';
   if (dbType === 'tdengine' && !input.columns.some((column) => /^timestamp$/i.test(String(column.type || '').trim()))) {
-    return `${createSql};\n-- TDengine 普通表通常需要 TIMESTAMP 时间列，执行前请确认表模型。${suffixComments}`;
+    return `${createSql};\n-- ${previewText(input.language, 'designer.sqlPreview.tdengineTimestampNotice')}${suffixComments}`;
   }
 
   if (isBacktickIdentifierDialect(dbType) && dbType !== 'mysql' && dbType !== 'mariadb') {

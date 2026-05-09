@@ -1,4 +1,5 @@
 import type { ExternalSQLTreeEntry } from '../types';
+import { translate, type AppLanguage } from '../i18n';
 
 export type ExternalSQLNodeType =
   | 'external-sql-root'
@@ -21,6 +22,7 @@ type BuildExternalSQLRootNodeParams = {
   workspacePath: string;
   workspaceName: string;
   directoryTree: ExternalSQLTreeEntry[];
+  language?: AppLanguage;
 };
 
 const normalizeExternalSQLPath = (value: string): string =>
@@ -82,6 +84,7 @@ export const buildExternalSQLRootNode = ({
   workspacePath,
   workspaceName,
   directoryTree,
+  language,
 }: BuildExternalSQLRootNodeParams): ExternalSQLTreeNode => {
   const children = mapExternalSQLTreeEntries(directoryTree, {
     connectionId,
@@ -91,7 +94,9 @@ export const buildExternalSQLRootNode = ({
   });
 
   return {
-    title: children.length > 0 ? `外部 SQL 文件 (${children.length})` : '外部 SQL 文件',
+    title: children.length > 0
+      ? `${translate(language || 'en', 'sidebar.tree.externalSqlFiles')} (${children.length})`
+      : translate(language || 'en', 'sidebar.tree.externalSqlFiles'),
     key: `${dbNodeKey}-external-sql`,
     type: 'external-sql-root',
     isLeaf: children.length === 0,

@@ -13,6 +13,7 @@ import { buildAlterTablePreviewSql, buildCreateTablePreviewSql, hasAlterTableDra
 import TableDesignerSqlPreview from './TableDesignerSqlPreview';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { noAutoCapInputProps } from '../utils/inputAutoCap';
+import { translate, type I18nKey, type I18nParams } from '../i18n';
 import {
     isMysqlFamilyDialect as isMysqlFamilySqlDialect,
     isOracleLikeDialect as isOracleLikeSqlDialect,
@@ -77,9 +78,14 @@ const COMMON_DEFAULTS = [
     { value: "''" },
 ];
 
+type IndexTypeOption = {
+    value: string;
+    label?: string;
+    labelKey?: I18nKey;
+};
 
-const PGLIKE_INDEX_TYPE_OPTIONS = [
-    { label: '默认', value: 'DEFAULT' },
+const PGLIKE_INDEX_TYPE_OPTIONS: IndexTypeOption[] = [
+    { labelKey: 'common.default', value: 'DEFAULT' },
     { label: 'BTREE', value: 'BTREE' },
     { label: 'HASH', value: 'HASH' },
     { label: 'GIN', value: 'GIN' },
@@ -88,8 +94,8 @@ const PGLIKE_INDEX_TYPE_OPTIONS = [
     { label: 'SPGIST', value: 'SPGIST' },
 ];
 
-const SQLSERVER_INDEX_TYPE_OPTIONS = [
-    { label: '默认', value: 'DEFAULT' },
+const SQLSERVER_INDEX_TYPE_OPTIONS: IndexTypeOption[] = [
+    { labelKey: 'common.default', value: 'DEFAULT' },
     { label: 'CLUSTERED', value: 'CLUSTERED' },
     { label: 'NONCLUSTERED', value: 'NONCLUSTERED' },
 ];
@@ -260,7 +266,9 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   const [commentEditorValue, setCommentEditorValue] = useState('');
   
   const connections = useStore(state => state.connections);
+  const language = useStore(state => state.language);
   const theme = useStore(state => state.theme);
+  const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
   const darkMode = theme === 'dark';
   const resizeGuideColor = darkMode ? '#f6c453' : '#1890ff';
   const readOnly = !!tab.readOnly;
@@ -277,6 +285,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   const pendingFocusColumnKeyRef = useRef<string | null>(null);
   const focusHighlightTimerRef = useRef<number | null>(null);
   const [focusColumnKey, setFocusColumnKey] = useState('');
+  const defaultIndexTypeOption = useMemo(() => ({ label: t('common.default'), value: 'DEFAULT' }), [t]);
 
   const openCommentEditor = useCallback((record: EditableColumn) => {
       if (!record?._key) return;
@@ -400,7 +409,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
       const columnTypeOptions = resolveColumnTypeOptions(getDbType());
       const initialCols = [
           { 
-              title: '名', 
+              title: t('designer.columns.name'), 
               dataIndex: 'name', 
               key: 'name', 
               width: 180,
@@ -409,7 +418,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               )
           },
           { 
-              title: '类型', 
+              title: t('designer.columns.type'), 
               dataIndex: 'type', 
               key: 'type', 
               width: 150,
@@ -418,7 +427,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               )
           },
           { 
-              title: '主键', 
+              title: t('designer.columns.primaryKey'), 
               dataIndex: 'key', 
               key: 'key', 
               width: 60,
@@ -428,7 +437,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               )
           },
           {
-              title: '自增',
+              title: t('designer.columns.autoIncrement'),
               dataIndex: 'isAutoIncrement',
               key: 'isAutoIncrement',
               width: 60,
@@ -438,7 +447,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               )
           },
           { 
-              title: '不是 Null', 
+              title: t('designer.columns.notNull'), 
               dataIndex: 'nullable', 
               key: 'nullable', 
               width: 80,
@@ -448,7 +457,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               )
           },
           { 
-              title: '默认', 
+              title: t('designer.columns.default'), 
               dataIndex: 'default', 
               key: 'default', 
               width: 180, // Increased default width
@@ -457,7 +466,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               )
           },
           { 
-              title: '注释', 
+              title: t('designer.columns.comment'), 
               dataIndex: 'comment', 
               key: 'comment',
               width: 200,
@@ -473,7 +482,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
                           onDoubleClick={() => openCommentEditor(record)}
                           variant="borderless"
                       />
-                      <Tooltip title="弹框编辑注释">
+                      <Tooltip title={t('designer.commentEditor.tooltip')}>
                           <Button
                               type="text"
                               size="small"
@@ -485,7 +494,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               )
           },
           ...(readOnly ? [] : [{
-              title: '操作',
+              title: t('designer.columns.actions'),
               key: 'action',
               width: 60,
               render: (_: any, record: EditableColumn) => (
@@ -494,7 +503,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
           }])
       ];
       setTableColumns(initialCols);
-  }, [connections, openCommentEditor, readOnly, tab.connectionId]); // Re-create when datasource dialect or readonly state changes
+  }, [connections, openCommentEditor, readOnly, t, tab.connectionId]); // Re-create when datasource dialect or readonly state changes
 
   const flushResizeGhost = useCallback(() => {
     resizeRafRef.current = null;
@@ -713,6 +722,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   const generateTriggerTemplate = (): string => {
     const dbType = getDbType();
     const tblName = tab.tableName || 'table_name';
+    const triggerLogicComment = `-- ${t('designer.trigger.templateLogic')}`;
 
     switch (dbType) {
       case 'mysql':
@@ -722,7 +732,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
 BEFORE INSERT ON \`${tblName}\`
 FOR EACH ROW
 BEGIN
-    -- 触发器逻辑
+    ${triggerLogicComment}
 END;`;
       case 'postgres':
       case 'kingbase':
@@ -731,7 +741,7 @@ END;`;
         return `CREATE OR REPLACE FUNCTION trigger_function_name()
 RETURNS TRIGGER AS $$
 BEGIN
-    -- 触发器逻辑
+    ${triggerLogicComment}
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -747,7 +757,7 @@ AFTER INSERT
 AS
 BEGIN
     SET NOCOUNT ON;
-    -- 触发器逻辑
+    ${triggerLogicComment}
 END;`;
       case 'oracle':
       case 'dameng':
@@ -756,17 +766,17 @@ END;`;
 BEFORE INSERT ON "${tblName}"
 FOR EACH ROW
 BEGIN
-    -- 触发器逻辑
+    ${triggerLogicComment}
     NULL;
 END;`;
       case 'sqlite':
         return `CREATE TRIGGER trigger_name
 AFTER INSERT ON "${tblName}"
 BEGIN
-    -- 触发器逻辑
+    ${triggerLogicComment}
 END;`;
       default:
-        return `-- 请输入 CREATE TRIGGER 语句`;
+        return `-- ${t('designer.trigger.enterCreateStatement')}`;
     }
   };
 
@@ -817,7 +827,7 @@ ${selectedTrigger.timing} ${selectedTrigger.event} ON \`${tblName}\`
 FOR EACH ROW
 ${selectedTrigger.statement}`;
     } else {
-      createSql = selectedTrigger.statement || '-- 无法获取完整的触发器定义';
+      createSql = selectedTrigger.statement || `-- ${t('designer.trigger.definitionUnavailable')}`;
     }
 
     setTriggerEditSql(createSql);
@@ -828,16 +838,16 @@ ${selectedTrigger.statement}`;
     if (!selectedTrigger) return;
 
     Modal.confirm({
-      title: '确认删除触发器',
+      title: t('designer.trigger.deleteTitle'),
       icon: <ExclamationCircleOutlined />,
-      content: `确定要删除触发器 "${selectedTrigger.name}" 吗？此操作不可撤销。`,
-      okText: '删除',
+      content: t('designer.trigger.deleteContent', { name: selectedTrigger.name }),
+      okText: t('common.delete'),
       okType: 'danger',
-      cancelText: '取消',
+      cancelText: t('common.cancel'),
       onOk: async () => {
         const conn = connections.find(c => c.id === tab.connectionId);
         if (!conn) {
-          message.error('未找到连接');
+          message.error(t('designer.connectionNotFound'));
           return;
         }
 
@@ -855,14 +865,14 @@ ${selectedTrigger.statement}`;
         try {
           const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', dropSql);
           if (res.success) {
-            message.success('触发器删除成功');
+            message.success(t('designer.triggerDeleted'));
             setSelectedTrigger(null);
             fetchData(); // 刷新列表
           } else {
-            message.error('删除失败: ' + res.message);
+            message.error(t('designer.deleteFailed', { message: res.message }));
           }
         } catch (e: any) {
-          message.error('删除失败: ' + (e?.message || String(e)));
+          message.error(t('designer.deleteFailed', { message: e?.message || String(e) }));
         }
       }
     });
@@ -871,7 +881,7 @@ ${selectedTrigger.statement}`;
   const handleExecuteTriggerSql = async () => {
     const conn = connections.find(c => c.id === tab.connectionId);
     if (!conn) {
-      message.error('未找到连接');
+      message.error(t('designer.connectionNotFound'));
       return;
     }
 
@@ -892,7 +902,7 @@ ${selectedTrigger.statement}`;
         const dropSql = buildDropTriggerSql(selectedTrigger.name);
         const dropRes = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', dropSql);
         if (!dropRes.success) {
-          message.error('删除旧触发器失败: ' + dropRes.message);
+          message.error(t('designer.trigger.deleteOldFailed', { message: dropRes.message }));
           setTriggerExecuting(false);
           return;
         }
@@ -901,15 +911,15 @@ ${selectedTrigger.statement}`;
       // 执行创建语句
       const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', triggerEditSql);
       if (res.success) {
-        message.success(triggerEditMode === 'create' ? '触发器创建成功' : '触发器修改成功');
+        message.success(triggerEditMode === 'create' ? t('designer.triggerCreated') : t('designer.triggerUpdated'));
         setIsTriggerEditModalOpen(false);
         setSelectedTrigger(null);
         fetchData(); // 刷新列表
       } else {
-        message.error('执行失败: ' + res.message);
+        message.error(t('designer.executeFailed', { message: res.message }));
       }
     } catch (e: any) {
-      message.error('执行失败: ' + (e?.message || String(e)));
+      message.error(t('designer.executeFailed', { message: e?.message || String(e) }));
     } finally {
       setTriggerExecuting(false);
     }
@@ -968,7 +978,7 @@ ${selectedTrigger.statement}`;
       const selectedSet = new Set(selectedColumnRowKeys);
       const anchor = columns.find(col => selectedSet.has(col._key));
       if (!anchor) {
-          message.warning('请先选择一个字段，再执行插入。');
+          message.warning(t('designer.selectFieldFirst'));
           return;
       }
       handleAddColumn(anchor._key);
@@ -1006,7 +1016,7 @@ ${selectedTrigger.statement}`;
           const rawName = String(idx.name || '').trim();
           const key = rawName || `__unnamed_${order}`;
           const indexType = String(idx.indexType || '').trim() || '-';
-          const displayName = rawName || '(未命名索引)';
+          const displayName = rawName || t('designer.index.unnamed');
 
           if (!buckets.has(key)) {
               buckets.set(key, {
@@ -1093,7 +1103,7 @@ ${selectedTrigger.statement}`;
       safeFks.forEach((fk, order) => {
           const rawConstraint = String(fk.constraintName || fk.name || '').trim();
           const key = rawConstraint || `__unnamed_fk_${order}`;
-          const constraintName = rawConstraint || '(未命名外键)';
+          const constraintName = rawConstraint || t('designer.fk.unnamed');
           const refTableName = String(fk.refTableName || '').trim() || '-';
 
           if (!buckets.has(key)) {
@@ -1277,22 +1287,26 @@ ${selectedTrigger.statement}`;
       const dbType = getDbType();
       if (isMysqlLikeDialect(dbType)) {
           return [
-              { label: '普通索引（非聚合）', value: 'NORMAL' },
-              { label: '唯一索引', value: 'UNIQUE' },
-              { label: '主键索引（聚合）', value: 'PRIMARY' },
-              { label: '全文索引', value: 'FULLTEXT' },
-              { label: '空间索引', value: 'SPATIAL' },
+              { label: t('designer.index.kind.normalNonClustered'), value: 'NORMAL' },
+              { label: t('designer.index.kind.unique'), value: 'UNIQUE' },
+              { label: t('designer.index.kind.primaryClustered'), value: 'PRIMARY' },
+              { label: t('designer.index.kind.fulltext'), value: 'FULLTEXT' },
+              { label: t('designer.index.kind.spatial'), value: 'SPATIAL' },
           ];
       }
       return [
-          { label: '普通索引', value: 'NORMAL' },
-          { label: '唯一索引', value: 'UNIQUE' },
+          { label: t('designer.index.kind.normal'), value: 'NORMAL' },
+          { label: t('designer.index.kind.unique'), value: 'UNIQUE' },
       ];
   };
 
   const getIndexTypeOptions = (kind?: IndexKind) => {
       const dbType = getDbType();
       const k = kind || 'NORMAL';
+      const resolveIndexTypeOption = (item: IndexTypeOption) => ({
+          label: item.labelKey ? t(item.labelKey) : (item.label || item.value),
+          value: item.value,
+      });
       if (isMysqlLikeDialect(dbType)) {
           // MySQL InnoDB: 所有索引均为固定方法类型
           if (k === 'FULLTEXT') return [{ label: 'FULLTEXT', value: 'FULLTEXT' }];
@@ -1301,10 +1315,12 @@ ${selectedTrigger.statement}`;
       }
       if (isPgLikeDialect(dbType)) {
           if (k === 'PRIMARY' || k === 'UNIQUE') return [{ label: 'BTREE', value: 'BTREE' }];
-          return PGLIKE_INDEX_TYPE_OPTIONS;
+          return PGLIKE_INDEX_TYPE_OPTIONS.map(resolveIndexTypeOption);
       }
-      if (isSqlServerDialect(dbType)) return SQLSERVER_INDEX_TYPE_OPTIONS;
-      return [{ label: '默认', value: 'DEFAULT' }];
+      if (isSqlServerDialect(dbType)) {
+          return SQLSERVER_INDEX_TYPE_OPTIONS.map(resolveIndexTypeOption);
+      }
+      return [defaultIndexTypeOption];
   };
 
   /** 根据索引类别返回固定的索引方法类型，可选类别返回 undefined */
@@ -1323,6 +1339,7 @@ ${selectedTrigger.statement}`;
 
   const buildCreateTableSql = (targetTableName: string, targetColumns: EditableColumn[], targetCharset: string, targetCollation: string) => {
       return buildCreateTablePreviewSql({
+          language,
           dbType: getDbType(),
           tableName: targetTableName,
           columns: targetColumns,
@@ -1333,7 +1350,7 @@ ${selectedTrigger.statement}`;
 
   const openCopySelectedColumnsModal = () => {
       if (selectedColumns.length === 0) {
-          message.warning('请先勾选要复制的字段');
+          message.warning(t('designer.selectFieldsToCopy'));
           return;
       }
       const sourceName = (tab.tableName || 'new_table').trim();
@@ -1350,16 +1367,16 @@ ${selectedTrigger.statement}`;
 
   const handleExecuteCopySelectedColumns = async () => {
       if (!copyTableName.trim()) {
-          message.error('请输入目标表名');
+          message.error(t('designer.enterTargetTableName'));
           return;
       }
       if (selectedColumns.length === 0) {
-          message.error('未选择可复制字段');
+          message.error(t('designer.noFieldsToCopy'));
           return;
       }
       const conn = connections.find(c => c.id === tab.connectionId);
       if (!conn) {
-          message.error('Connection not found');
+          message.error(t('designer.connectionNotFound'));
           return;
       }
       const config = {
@@ -1375,10 +1392,10 @@ ${selectedTrigger.statement}`;
       try {
           const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', sql);
           if (res.success) {
-              message.success(`已将 ${selectedColumns.length} 个字段复制到新表 ${copyTableName.trim()}`);
+              message.success(t('designer.fieldsCopiedToNewTable', { count: selectedColumns.length, name: copyTableName.trim() }));
               setIsCopyColumnsModalOpen(false);
           } else {
-              message.error("执行失败: " + res.message);
+              message.error(t('designer.executeFailed', { message: res.message }));
           }
       } finally {
           setCopyExecuting(false);
@@ -1388,7 +1405,7 @@ ${selectedTrigger.statement}`;
   const executeSchemaStatements = async (sqlText: string): Promise<SchemaExecutionResult> => {
       const conn = connections.find(c => c.id === tab.connectionId);
       if (!conn) {
-          return { ok: false, message: '未找到连接', statementCount: 0 };
+          return { ok: false, message: t('designer.connectionNotFound'), statementCount: 0 };
       }
       const config = {
           ...conn.config,
@@ -1404,10 +1421,12 @@ ${selectedTrigger.statement}`;
           if (!stmt.endsWith(';')) stmt += ';';
           const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', stmt);
           if (!res.success) {
-              const prefix = statements.length > 1 ? `第 ${i + 1}/${statements.length} 条语句执行失败: ` : '执行失败: ';
+              const prefix = statements.length > 1
+                  ? `[#${i + 1}/${statements.length}] ${t('designer.executeFailed', { message: '' })}`
+                  : '';
               return {
                   ok: false,
-                  message: prefix + res.message,
+                  message: prefix ? `${prefix}${res.message}` : t('designer.executeFailed', { message: res.message }),
                   failedStatementIndex: i,
                   statementCount: statements.length,
               };
@@ -1426,28 +1445,31 @@ ${selectedTrigger.statement}`;
   const executeIndexEditSql = async (dropSql: string, addSql: string, previousIndex: IndexDisplayRow): Promise<boolean> => {
       const result = await executeSchemaStatements(`${dropSql}\n${addSql}`);
       if (result.ok) {
-          message.success('索引修改成功');
+          message.success(t('designer.indexModified'));
           await fetchData();
           return true;
       }
 
       const oldCreateSql = buildIndexCreateSql(buildIndexFormFromRow(previousIndex));
       if (!oldCreateSql) {
-          message.error((result.message || '执行失败') + '；且无法自动恢复原索引，请尽快检查');
+          message.error(t('designer.indexModifyFailed', { message: result.message || t('designer.executeFailed', { message: '' }).replace(/: $/, '') }));
           await fetchData();
           return false;
       }
 
       if (!shouldRestoreOriginalIndex(result)) {
-          message.error(result.message || '执行失败');
+          message.error(result.message || t('designer.executeFailed', { message: '' }).replace(/: $/, ''));
           return false;
       }
 
       const restoreResult = await executeSchemaStatements(oldCreateSql);
       if (restoreResult.ok) {
-          message.error((result.message || '执行失败') + '；已自动恢复原索引');
+          message.error(t('designer.indexModifyFailedRestored', { message: result.message || t('designer.executeFailed', { message: '' }).replace(/: $/, '') }));
       } else {
-          message.error((result.message || '执行失败') + `；恢复原索引失败: ${restoreResult.message || '未知错误'}`);
+          message.error(t('designer.indexModifyFailedRestoreFailed', {
+              message: result.message || t('designer.executeFailed', { message: '' }).replace(/: $/, ''),
+              restoreError: restoreResult.message || t('common.unknown'),
+          }));
       }
       await fetchData();
       return false;
@@ -1457,7 +1479,7 @@ ${selectedTrigger.statement}`;
       try {
           const result = await executeSchemaStatements(sql);
           if (!result.ok) {
-              message.error(result.message || '执行失败');
+              message.error(result.message || t('designer.executeFailed', { message: '' }).replace(/: $/, ''));
               if ((result.failedStatementIndex ?? 0) > 0) await fetchData();
               return false;
           }
@@ -1465,7 +1487,7 @@ ${selectedTrigger.statement}`;
           await fetchData();
           return true;
       } catch (e: any) {
-          message.error('执行失败: ' + (e?.message || String(e)));
+          message.error(t('designer.executeFailed', { message: e?.message || String(e) }));
           return false;
       }
   };
@@ -1519,17 +1541,17 @@ END;`;
 
   const handleSaveTableComment = async () => {
       if (!supportsTableCommentOps()) {
-          message.warning('当前数据库暂不支持在此修改表备注');
+          message.warning(t('designer.commentNotSupported'));
           return;
       }
       if (!tab.tableName) return;
       const sql = buildTableCommentSql(tableCommentDraft);
       if (!sql) {
-          message.warning('当前数据库暂不支持在此修改表备注');
+          message.warning(t('designer.commentNotSupported'));
           return;
       }
       setTableCommentSaving(true);
-      const ok = await executeSchemaSql(sql, '表备注更新成功');
+      const ok = await executeSchemaSql(sql, t('designer.tableComment.updated'));
       setTableCommentSaving(false);
       if (ok) {
           setTableComment(tableCommentDraft);
@@ -1550,7 +1572,7 @@ END;`;
 
   const openEditIndexModal = () => {
       if (!selectedIndex) {
-          message.warning('请先选择一个索引');
+          message.warning(t('designer.selectIndexFirst'));
           return;
       }
       setIndexModalMode('edit');
@@ -1565,7 +1587,7 @@ END;`;
       const indexName = String(form.name || '').trim();
       const cleanedCols = form.columnNames.map(col => String(col || '').trim()).filter(Boolean);
       if (cleanedCols.length === 0) {
-          message.error('请至少选择一个字段');
+          message.error(t('designer.selectAtLeastOneField'));
           return null;
       }
       const colSql = cleanedCols
@@ -1578,7 +1600,7 @@ END;`;
           }
 
           if (!indexName) {
-              message.error('请输入索引名');
+              message.error(t('designer.enterIndexName'));
               return null;
           }
 
@@ -1592,7 +1614,7 @@ END;`;
 
           const normalizedType = String(form.indexType || '').trim().toUpperCase() || 'DEFAULT';
           if (normalizedType === 'FULLTEXT' || normalizedType === 'SPATIAL') {
-              message.error(`请将“索引类别”切换为 ${normalizedType} 索引`);
+              message.error(t('designer.switchIndexCategory', { type: normalizedType }));
               return null;
           }
           const usingSql = normalizedType !== 'DEFAULT' ? ` USING ${normalizedType}` : '';
@@ -1601,11 +1623,11 @@ END;`;
       }
 
       if (kind === 'PRIMARY' || kind === 'FULLTEXT' || kind === 'SPATIAL') {
-          message.warning('当前数据库仅支持普通索引与唯一索引维护');
+          message.warning(t('designer.indexTypeLimited'));
           return null;
       }
       if (!indexName) {
-          message.error('请输入索引名');
+          message.error(t('designer.enterIndexName'));
           return null;
       }
 
@@ -1630,7 +1652,7 @@ END;`;
       }
 
       if (isNonRelationalDialect(dbType)) {
-          message.warning('当前数据源不支持关系型索引维护');
+          message.warning(t('designer.indexNotSupported'));
           return null;
       }
       return `CREATE ${uniquePrefix}INDEX ${indexRef} ON ${tableInfo.tableRef} (${colSql});`;
@@ -1675,22 +1697,22 @@ END;`;
 
   const handleSubmitIndex = async () => {
       if (!supportsIndexSchemaOps()) {
-          message.warning('当前数据库暂不支持在此维护索引');
+          message.warning(t('designer.indexMaintainNotSupported'));
           return;
       }
       if (!tab.tableName) return;
       const supportedKinds = new Set(getIndexKindOptions().map(item => item.value));
       if (!supportedKinds.has(indexForm.kind)) {
-          message.warning('当前数据库不支持该索引类型');
+          message.warning(t('designer.indexTypeNotSupported'));
           return;
       }
       const nextName = indexForm.kind === 'PRIMARY' ? 'PRIMARY' : String(indexForm.name || '').trim();
       if (indexForm.kind !== 'PRIMARY' && !nextName) {
-          message.error('请输入索引名');
+          message.error(t('designer.enterIndexName'));
           return;
       }
       if (indexForm.columnNames.length === 0) {
-          message.error('请至少选择一个字段');
+          message.error(t('designer.selectAtLeastOneField'));
           return;
       }
 
@@ -1700,7 +1722,7 @@ END;`;
           return idx.name.toUpperCase() === upperName;
       });
       if (duplicate) {
-          message.error(`索引名已存在：${nextName}`);
+          message.error(t('designer.indexNameExists', { name: nextName }));
           return;
       }
 
@@ -1724,13 +1746,13 @@ END;`;
           };
           if (!hasIndexFormChanged(previousForm, nextForm)) {
               setIndexSaving(false);
-              message.info('没有检测到索引变更');
+              message.info(t('designer.noIndexChanges'));
               return;
           }
           const dropSql = buildIndexDropSql(selectedIndex.name);
           if (!dropSql) {
               setIndexSaving(false);
-              message.warning('当前数据库暂不支持删除该索引');
+              message.warning(t('designer.cannotDeleteIndex'));
               return;
           }
           const ok = await executeIndexEditSql(dropSql, addSql, selectedIndex);
@@ -1741,7 +1763,7 @@ END;`;
           return;
       }
 
-      const ok = await executeSchemaSql(sql, indexModalMode === 'create' ? '索引新增成功' : '索引修改成功');
+      const ok = await executeSchemaSql(sql, indexModalMode === 'create' ? t('designer.index.created') : t('designer.indexModified'));
       setIndexSaving(false);
       if (ok) {
           setIsIndexModalOpen(false);
@@ -1750,40 +1772,45 @@ END;`;
 
   const handleDeleteIndex = () => {
       if (selectedIndexKeys.length === 0) {
-          message.warning('请先选择要删除的索引');
+          message.warning(t('designer.selectIndexToDelete'));
           return;
       }
       if (!supportsIndexSchemaOps()) {
-          message.warning('当前数据库暂不支持在此维护索引');
+          message.warning(t('designer.indexMaintainNotSupported'));
           return;
       }
       // 根据选中的 key 找到对应的索引对象
       const toDelete = groupedIndexes.filter(idx => selectedIndexKeys.includes(idx.key));
       if (toDelete.length === 0) {
-          message.warning('请先选择要删除的索引');
+          message.warning(t('designer.selectIndexToDelete'));
           return;
       }
-      const names = toDelete.map(idx => `"${idx.name}"`).join('、');
+      const names = toDelete.map(idx => `"${idx.name}"`).join(t('ai.welcome.tableJoiner'));
       Modal.confirm({
-          title: '确认删除索引',
+          title: t('designer.index.deleteTitle'),
           icon: <ExclamationCircleOutlined />,
           content: toDelete.length === 1
-              ? `确定删除索引 ${names} 吗？`
-              : `确定删除以下 ${toDelete.length} 个索引吗？\n${names}`,
-          okText: '删除',
+              ? t('designer.index.deleteContentSingle', { names })
+              : t('designer.index.deleteContentMultiple', { count: toDelete.length, names }),
+          okText: t('common.delete'),
           okType: 'danger',
-          cancelText: '取消',
+          cancelText: t('common.cancel'),
           onOk: async () => {
               const sqls: string[] = [];
               for (const idx of toDelete) {
                   const sql = buildIndexDropSql(idx.name);
                   if (!sql) {
-                      message.warning(`当前数据库暂不支持删除索引 "${idx.name}"`);
+                      message.warning(t('designer.cannotDeleteIndexName', { name: idx.name }));
                       return;
                   }
                   sqls.push(sql);
               }
-              const ok = await executeSchemaSql(sqls.join('\n'), toDelete.length === 1 ? '索引删除成功' : `${toDelete.length} 个索引删除成功`);
+              const ok = await executeSchemaSql(
+                  sqls.join('\n'),
+                  toDelete.length === 1
+                      ? t('designer.index.deleted')
+                      : t('designer.index.deletedMultiple', { count: toDelete.length }),
+              );
               if (ok) {
                   setSelectedIndexKeys([]);
               }
@@ -1804,7 +1831,7 @@ END;`;
 
   const openEditForeignKeyModal = () => {
       if (!selectedForeignKey) {
-          message.warning('请先选择一个外键');
+          message.warning(t('designer.selectFkFirst'));
           return;
       }
       setForeignKeyModalMode('edit');
@@ -1851,7 +1878,7 @@ END;`;
 
   const handleSubmitForeignKey = async () => {
       if (!supportsForeignKeySchemaOps()) {
-          message.warning('当前数据库暂不支持在此维护外键');
+          message.warning(t('designer.fkNotSupported'));
           return;
       }
       if (!tab.tableName) return;
@@ -1861,23 +1888,23 @@ END;`;
       const localCols = foreignKeyForm.columnNames.map(v => String(v || '').trim()).filter(Boolean);
 
       if (!nextConstraint) {
-          message.error('请输入外键约束名');
+          message.error(t('designer.enterFkName'));
           return;
       }
       if (localCols.length === 0) {
-          message.error('请至少选择一个本表字段');
+          message.error(t('designer.selectLocalFields'));
           return;
       }
       if (!refTable) {
-          message.error('请输入参考表');
+          message.error(t('designer.enterRefTable'));
           return;
       }
       if (refCols.length === 0) {
-          message.error('请至少填写一个参考字段');
+          message.error(t('designer.enterRefFields'));
           return;
       }
       if (localCols.length !== refCols.length) {
-          message.error('本表字段数量与参考字段数量必须一致');
+          message.error(t('designer.fkFieldCountMismatch'));
           return;
       }
 
@@ -1886,7 +1913,7 @@ END;`;
           return item.constraintName.toUpperCase() === nextConstraint.toUpperCase();
       });
       if (duplicate) {
-          message.error(`外键约束名已存在：${nextConstraint}`);
+          message.error(t('designer.fkNameExists', { name: nextConstraint }));
           return;
       }
 
@@ -1900,7 +1927,7 @@ END;`;
       });
       if (!addSql) {
           setForeignKeySaving(false);
-          message.warning('当前数据库暂不支持在此维护外键');
+          message.warning(t('designer.fkNotSupported'));
           return;
       }
       let sql = addSql;
@@ -1908,13 +1935,13 @@ END;`;
           const dropSql = buildForeignKeyDropSql(selectedForeignKey.constraintName);
           if (!dropSql) {
               setForeignKeySaving(false);
-              message.warning('当前数据库暂不支持删除该外键');
+              message.warning(t('designer.cannotDeleteFk'));
               return;
           }
           sql = `${dropSql}\n${addSql}`;
       }
 
-      const ok = await executeSchemaSql(sql, foreignKeyModalMode === 'create' ? '外键新增成功' : '外键修改成功');
+      const ok = await executeSchemaSql(sql, foreignKeyModalMode === 'create' ? t('designer.fk.created') : t('designer.fk.updated'));
       setForeignKeySaving(false);
       if (ok) {
           setIsForeignKeyModalOpen(false);
@@ -1923,27 +1950,27 @@ END;`;
 
   const handleDeleteForeignKey = () => {
       if (!selectedForeignKey) {
-          message.warning('请先选择一个外键');
+          message.warning(t('designer.selectFkToDelete'));
           return;
       }
       if (!supportsForeignKeySchemaOps()) {
-          message.warning('当前数据库暂不支持在此维护外键');
+          message.warning(t('designer.fkNotSupported'));
           return;
       }
       Modal.confirm({
-          title: '确认删除外键',
+          title: t('designer.fk.deleteTitle'),
           icon: <ExclamationCircleOutlined />,
-          content: `确定删除外键约束 "${selectedForeignKey.constraintName}" 吗？`,
-          okText: '删除',
+          content: t('designer.fk.deleteContent', { name: selectedForeignKey.constraintName }),
+          okText: t('common.delete'),
           okType: 'danger',
-          cancelText: '取消',
+          cancelText: t('common.cancel'),
           onOk: async () => {
               const sql = buildForeignKeyDropSql(selectedForeignKey.constraintName);
               if (!sql) {
-                  message.warning('当前数据库暂不支持删除该外键');
+                  message.warning(t('designer.cannotDeleteFk'));
                   return;
               }
-              await executeSchemaSql(sql, '外键删除成功');
+              await executeSchemaSql(sql, t('designer.fk.deleted'));
           }
       });
   };
@@ -1960,11 +1987,11 @@ END;`;
 
   const generateDDL = () => {
       if (isNewTable && !newTableName.trim()) {
-          message.error("请输入表名");
+          message.error(t('designer.enterTableName'));
           return;
       }
       if (columns.length === 0) {
-          message.error("请至少添加一个字段");
+          message.error(t('designer.addAtLeastOneField'));
           return;
       }
 
@@ -1976,6 +2003,7 @@ END;`;
       } else {
           const tableInfo = resolveTableInfo();
           const sql = buildAlterTablePreviewSql({
+              language,
               dbType: tableInfo.dbType,
               tableName: tableInfo.qualifiedName,
               originalColumns,
@@ -1983,7 +2011,7 @@ END;`;
           });
 
           if (!sql.trim()) {
-              message.info("没有检测到变更");
+              message.info(t('designer.noChanges'));
               return;
           }
           setPreviewSql(sql);
@@ -1998,11 +2026,11 @@ END;`;
       }
 
       Modal.confirm({
-          title: '存在未保存的字段变更',
+          title: t('designer.refresh.confirmTitle'),
           icon: <ExclamationCircleOutlined />,
-          content: '刷新后会丢失当前尚未保存的字段调整，是否仍要刷新并覆盖当前草稿？',
-          okText: '仍然刷新',
-          cancelText: '取消',
+          content: t('designer.refresh.confirmContent'),
+          okText: t('designer.refresh.confirmOk'),
+          cancelText: t('common.cancel'),
           onOk: async () => {
               await fetchData();
           },
@@ -2012,10 +2040,10 @@ END;`;
 	  const handleExecuteSave = async () => {
 	      const result = await executeSchemaStatements(previewSql);
 	      if (!result.ok) {
-	          message.error(result.message || "执行失败");
+	          message.error(result.message || t('designer.executeFailed', { message: '' }).replace(/: $/, ''));
 	          return;
 	      }
-	      message.success(isNewTable ? "表创建成功！" : "表结构修改成功！");
+	      message.success(isNewTable ? t('designer.tableCreated') : t('designer.tableModified'));
 	      setIsPreviewOpen(false);
 	      if (!isNewTable) {
               fetchData();
@@ -2084,7 +2112,7 @@ END;`;
   useEffect(() => {
       setIndexColumns([
           {
-              title: '索引名',
+              title: t('designer.index.name'),
               dataIndex: 'name',
               key: 'name',
               width: 240,
@@ -2097,7 +2125,7 @@ END;`;
               ),
           },
           {
-              title: '字段',
+              title: t('designer.index.columns'),
               dataIndex: 'columnNames',
               key: 'columnNames',
               width: 320,
@@ -2117,25 +2145,25 @@ END;`;
               }
           },
           {
-              title: '索引类型',
+              title: t('designer.index.indexType'),
               dataIndex: 'indexType',
               key: 'indexType',
               width: 140,
               render: (text: string) => text || '-',
           },
           {
-              title: '唯一性',
+              title: t('designer.index.uniqueness'),
               dataIndex: 'nonUnique',
               key: 'nonUnique',
               width: 110,
               render: (v: number) => (
                   <Tag color={v === 0 ? 'gold' : 'default'}>
-                      {v === 0 ? '唯一' : '普通'}
+                      {v === 0 ? t('designer.index.unique') : t('designer.index.regular')}
                   </Tag>
               ),
           },
       ]);
-  }, []);
+  }, [t]);
 
   // Checkbox 选择列（不参与 resize，支持全选）
   const allIndexKeys = groupedIndexes.map(idx => idx.key);
@@ -2389,7 +2417,7 @@ END;`;
                 <>
                     <Input 
                         {...noAutoCapInputProps}
-                        placeholder="请输入表名" 
+                        placeholder={t('designer.enterTableName')} 
                         value={newTableName} 
                         onChange={e => setNewTableName(e.target.value)} 
                         style={{ width: 150 }} 
@@ -2413,12 +2441,12 @@ END;`;
                     />
                 </>
             )}
-            {!readOnly && <Button size="small" icon={<SaveOutlined />} type="primary" onClick={generateDDL}>保存</Button>}
-            {!isNewTable && <Button size="small" icon={<ReloadOutlined />} onClick={handleRefreshDesigner}>刷新</Button>}
+            {!readOnly && <Button size="small" icon={<SaveOutlined />} type="primary" onClick={generateDDL}>{t('common.save')}</Button>}
+            {!isNewTable && <Button size="small" icon={<ReloadOutlined />} onClick={handleRefreshDesigner}>{t('common.refresh')}</Button>}
             {!isNewTable && !readOnly && supportsTableCommentOps() && (
-                <Button size="small" icon={<EditOutlined />} onClick={openTableCommentModal}>表备注</Button>
+                <Button size="small" icon={<EditOutlined />} onClick={openTableCommentModal}>{t('designer.tableComment.button')}</Button>
             )}
-            {!readOnly && <Button size="small" icon={<PlusOutlined />} onClick={() => handleAddColumn()}>添加字段</Button>}
+            {!readOnly && <Button size="small" icon={<PlusOutlined />} onClick={() => handleAddColumn()}>{t('designer.button.addColumn')}</Button>}
             {!readOnly && (
                 <Button
                     size="small"
@@ -2426,7 +2454,7 @@ END;`;
                     onClick={handleAddColumnAfterSelected}
                     disabled={selectedColumnRowKeys.length === 0}
                 >
-                    在选中字段后添加
+                    {t('designer.button.addAfterSelected')}
                 </Button>
             )}
             {!readOnly && (
@@ -2436,7 +2464,7 @@ END;`;
                     onClick={openCopySelectedColumnsModal}
                     disabled={selectedColumns.length === 0}
                 >
-                    复制选中到新表
+                    {t('designer.button.copySelectedToNewTable')}
                 </Button>
             )}
             <div style={{ flex: 1 }} />
@@ -2458,34 +2486,34 @@ END;`;
             items={[
                 {
                     key: 'columns',
-                    label: '字段',
+                    label: t('designer.tab.columns'),
                     children: columnsTabContent
                 },
                 ...(!isNewTable ? [
                     {
                         key: 'indexes',
-                        label: '索引',
+                        label: t('designer.tab.indexes'),
                         children: (
                             <div className="index-table-wrap" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {!readOnly && (
                                     <div style={{ display: 'flex', gap: 8 }}>
-                                        <Button size="small" icon={<PlusOutlined />} disabled={!supportsIndexSchemaOps()} onClick={openCreateIndexModal}>新增</Button>
-                                        <Button size="small" icon={<EditOutlined />} disabled={!supportsIndexSchemaOps() || selectedIndexKeys.length !== 1} onClick={openEditIndexModal}>修改</Button>
-                                        <Button size="small" icon={<DeleteOutlined />} danger disabled={!supportsIndexSchemaOps() || selectedIndexKeys.length === 0} onClick={handleDeleteIndex}>删除</Button>
+                                        <Button size="small" icon={<PlusOutlined />} disabled={!supportsIndexSchemaOps()} onClick={openCreateIndexModal}>{t('common.create')}</Button>
+                                        <Button size="small" icon={<EditOutlined />} disabled={!supportsIndexSchemaOps() || selectedIndexKeys.length !== 1} onClick={openEditIndexModal}>{t('common.edit')}</Button>
+                                        <Button size="small" icon={<DeleteOutlined />} danger disabled={!supportsIndexSchemaOps() || selectedIndexKeys.length === 0} onClick={handleDeleteIndex}>{t('common.delete')}</Button>
                                         {!supportsIndexSchemaOps() && (
                                             <span style={{ marginLeft: 'auto', color: '#faad14', fontSize: 12, alignSelf: 'center' }}>
-                                                当前数据库暂不支持索引编辑，仅支持查看
+                                                {t('designer.index.viewOnly')}
                                             </span>
                                         )}
                                         {supportsIndexSchemaOps() && selectedIndexKeys.length > 0 && (
                                             <span style={{ marginLeft: 'auto', color: '#888', fontSize: 12, alignSelf: 'center' }}>
-                                                已选择：{selectedIndexKeys.length} 个索引
+                                                {t('designer.index.selectedCount', { count: selectedIndexKeys.length })}
                                             </span>
                                         )}
                                     </div>
                                 )}
                                 <div style={{ color: '#888', fontSize: 12 }}>
-                                    索引数：{groupedIndexes.length}，索引字段：{groupedIndexFieldCount}
+                                    {t('designer.index.summary', { indexCount: groupedIndexes.length, columnCount: groupedIndexFieldCount })}
                                 </div>
                                 <Table
                                     dataSource={groupedIndexes}
@@ -2510,22 +2538,22 @@ END;`;
                     },
                     {
                         key: 'foreignKeys',
-                        label: '外键',
+                        label: t('designer.tab.foreignKeys'),
                         children: (
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                                 {!readOnly && (
                                     <div style={{ display: 'flex', gap: 8 }}>
-                                        <Button size="small" icon={<PlusOutlined />} disabled={!supportsForeignKeySchemaOps()} onClick={openCreateForeignKeyModal}>新增</Button>
-                                        <Button size="small" icon={<EditOutlined />} disabled={!supportsForeignKeySchemaOps() || !selectedForeignKey} onClick={openEditForeignKeyModal}>修改</Button>
-                                        <Button size="small" icon={<DeleteOutlined />} danger disabled={!supportsForeignKeySchemaOps() || !selectedForeignKey} onClick={handleDeleteForeignKey}>删除</Button>
+                                        <Button size="small" icon={<PlusOutlined />} disabled={!supportsForeignKeySchemaOps()} onClick={openCreateForeignKeyModal}>{t('common.create')}</Button>
+                                        <Button size="small" icon={<EditOutlined />} disabled={!supportsForeignKeySchemaOps() || !selectedForeignKey} onClick={openEditForeignKeyModal}>{t('common.edit')}</Button>
+                                        <Button size="small" icon={<DeleteOutlined />} danger disabled={!supportsForeignKeySchemaOps() || !selectedForeignKey} onClick={handleDeleteForeignKey}>{t('common.delete')}</Button>
                                         {!supportsForeignKeySchemaOps() && (
                                             <span style={{ marginLeft: 'auto', color: '#faad14', fontSize: 12, alignSelf: 'center' }}>
-                                                当前数据库暂不支持外键编辑，仅支持查看
+                                                {t('designer.fk.viewOnly')}
                                             </span>
                                         )}
                                         {supportsForeignKeySchemaOps() && selectedForeignKey && (
                                             <span style={{ marginLeft: 'auto', color: '#888', fontSize: 12, alignSelf: 'center' }}>
-                                                已选择：{selectedForeignKey.constraintName}
+                                                {t('designer.fk.selected', { name: selectedForeignKey.constraintName })}
                                             </span>
                                         )}
                                     </div>
@@ -2533,16 +2561,16 @@ END;`;
                                 <Table 
                                     dataSource={groupedForeignKeys} 
                                     columns={[
-                                        { title: '约束名', dataIndex: 'constraintName', key: 'constraintName', width: 220 },
+                                        { title: t('designer.fk.constraintName'), dataIndex: 'constraintName', key: 'constraintName', width: 220 },
                                         {
-                                            title: '字段',
+                                            title: t('designer.fk.columns'),
                                             dataIndex: 'columnNames',
                                             key: 'columnNames',
                                             render: (vals: string[]) => vals?.length ? vals.join(', ') : '-',
                                         },
-                                        { title: '参考表', dataIndex: 'refTableName', key: 'refTableName', width: 220 },
+                                        { title: t('designer.fk.refTable'), dataIndex: 'refTableName', key: 'refTableName', width: 220 },
                                         {
-                                            title: '参考字段',
+                                            title: t('designer.fk.refColumns'),
                                             dataIndex: 'refColumnNames',
                                             key: 'refColumnNames',
                                             render: (vals: string[]) => vals?.length ? vals.join(', ') : '-',
@@ -2574,7 +2602,7 @@ END;`;
                     },
                     {
                         key: 'triggers',
-                        label: '触发器',
+                        label: t('designer.tab.triggers'),
                         children: (
                             <div>
                                 <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
@@ -2584,28 +2612,28 @@ END;`;
                                         disabled={!selectedTrigger}
                                         onClick={() => setIsTriggerModalOpen(true)}
                                     >
-                                        查看语句
+                                        {t('designer.trigger.viewSql')}
                                     </Button>
-                                    <Button size="small" icon={<PlusOutlined />} onClick={handleCreateTrigger}>新增</Button>
-                                    <Button size="small" icon={<EditOutlined />} disabled={!selectedTrigger} onClick={handleEditTrigger}>修改</Button>
-                                    <Button size="small" icon={<DeleteOutlined />} danger disabled={!selectedTrigger} onClick={handleDeleteTrigger}>删除</Button>
+                                    <Button size="small" icon={<PlusOutlined />} onClick={handleCreateTrigger}>{t('common.create')}</Button>
+                                    <Button size="small" icon={<EditOutlined />} disabled={!selectedTrigger} onClick={handleEditTrigger}>{t('common.edit')}</Button>
+                                    <Button size="small" icon={<DeleteOutlined />} danger disabled={!selectedTrigger} onClick={handleDeleteTrigger}>{t('common.delete')}</Button>
                                     <span style={{ marginLeft: 'auto', color: '#888', fontSize: 12, alignSelf: 'center' }}>
-                                        {selectedTrigger ? `已选择: ${selectedTrigger.name}` : '请点击选择触发器'}
+                                        {selectedTrigger ? t('designer.trigger.selected', { name: selectedTrigger.name }) : t('designer.trigger.selectPrompt')}
                                     </span>
                                 </div>
                                 <Table
                                     dataSource={triggers}
                                     columns={[
-                                        { title: '名称', dataIndex: 'name', key: 'name' },
-                                        { title: '时机', dataIndex: 'timing', key: 'timing', width: 100 },
-                                        { title: '事件', dataIndex: 'event', key: 'event', width: 100 },
+                                        { title: t('designer.trigger.name'), dataIndex: 'name', key: 'name' },
+                                        { title: t('designer.trigger.timing'), dataIndex: 'timing', key: 'timing', width: 100 },
+                                        { title: t('designer.trigger.event'), dataIndex: 'event', key: 'event', width: 100 },
                                     ]}
                                     rowKey="name"
                                     size="small"
                                     pagination={false}
                                     loading={loading}
                                     scroll={{ y: tableHeight }}
-                                    locale={{ emptyText: <Empty description="该表暂无触发器" image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+                                    locale={{ emptyText: <Empty description={t('designer.trigger.none')} image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
                                     rowSelection={{
                                         type: 'radio',
                                         selectedRowKeys: selectedTrigger ? [selectedTrigger.name] : [],
@@ -2637,7 +2665,7 @@ END;`;
                 ] : []),
                 ...(!isNewTable ? [{
                     key: 'ddl',
-                    label: 'DDL',
+                    label: t('designer.tab.ddl'),
                     icon: <FileTextOutlined />,
                     children: (
                         <div style={{ height: 'calc(100vh - 200px)', border: `1px solid ${panelFrameColor}`, borderRadius: panelRadius, background: panelBodyBg }}>
@@ -2664,7 +2692,7 @@ END;`;
         />
 
         <Modal
-            title={`字段注释${commentEditorColumnName ? ` - ${commentEditorColumnName}` : ''}`}
+            title={t('designer.commentEditor.title', { suffix: commentEditorColumnName ? ` - ${commentEditorColumnName}` : '' })}
             open={isCommentModalOpen}
             onCancel={closeCommentEditor}
             onOk={() => {
@@ -2673,8 +2701,8 @@ END;`;
                 }
                 closeCommentEditor();
             }}
-            okText="应用"
-            cancelText="取消"
+            okText={t('common.apply')}
+            cancelText={t('common.cancel')}
             width={640}
             destroyOnHidden
         >
@@ -2682,28 +2710,28 @@ END;`;
                 value={commentEditorValue}
                 onChange={(e) => setCommentEditorValue(e.target.value)}
                 autoSize={{ minRows: 8, maxRows: 18 }}
-                placeholder="请输入字段注释"
+                placeholder={t('designer.commentEditor.placeholder')}
                 maxLength={2000}
             />
         </Modal>
 
         <Modal
-            title="复制选中字段到新表"
+            title={t('designer.modal.copyColumns')}
             open={isCopyColumnsModalOpen}
             onCancel={() => setIsCopyColumnsModalOpen(false)}
             onOk={handleExecuteCopySelectedColumns}
-            okText="创建新表"
-            cancelText="取消"
+            okText={t('designer.copy.createTable')}
+            cancelText={t('common.cancel')}
             confirmLoading={copyExecuting}
             width={560}
         >
             <Space direction="vertical" size={12} style={{ width: '100%' }}>
                 <div style={{ color: '#666' }}>
-                    已选择字段：{selectedColumns.length}
+                    {t('designer.copy.selectedCount', { count: selectedColumns.length })}
                 </div>
                 <Input
                     {...noAutoCapInputProps}
-                    placeholder="请输入目标表名"
+                    placeholder={t('designer.copy.targetTablePlaceholder')}
                     value={copyTableName}
                     onChange={e => setCopyTableName(e.target.value)}
                     maxLength={128}
@@ -2730,12 +2758,12 @@ END;`;
         </Modal>
 
         <Modal
-            title="修改表备注"
+            title={t('designer.modal.tableComment')}
             open={isTableCommentModalOpen}
             onCancel={() => setIsTableCommentModalOpen(false)}
             onOk={handleSaveTableComment}
-            okText="保存"
-            cancelText="取消"
+            okText={t('common.save')}
+            cancelText={t('common.cancel')}
             confirmLoading={tableCommentSaving}
             width={640}
         >
@@ -2743,28 +2771,28 @@ END;`;
                 value={tableCommentDraft}
                 onChange={(e) => setTableCommentDraft(e.target.value)}
                 autoSize={{ minRows: 5, maxRows: 12 }}
-                placeholder="请输入表备注"
+                placeholder={t('designer.tableComment.placeholder')}
                 maxLength={2048}
             />
             <div style={{ marginTop: 8, color: '#888', fontSize: 12 }}>
-                当前备注：{tableComment || '(空)'}
+                {t('designer.tableComment.current', { value: tableComment || t('designer.tableComment.empty') })}
             </div>
         </Modal>
 
         <Modal
-            title={indexModalMode === 'create' ? '新增索引' : '修改索引'}
+            title={indexModalMode === 'create' ? t('designer.index.modal.createTitle') : t('designer.index.modal.editTitle')}
             open={isIndexModalOpen}
             onCancel={() => setIsIndexModalOpen(false)}
             onOk={handleSubmitIndex}
-            okText={indexModalMode === 'create' ? '创建' : '保存'}
-            cancelText="取消"
+            okText={indexModalMode === 'create' ? t('common.create') : t('common.save')}
+            cancelText={t('common.cancel')}
             confirmLoading={indexSaving}
             width={620}
         >
             <Space direction="vertical" size={10} style={{ width: '100%' }}>
                 <Input
                     {...noAutoCapInputProps}
-                    placeholder={indexForm.kind === 'PRIMARY' ? '主键索引固定名称：PRIMARY' : '索引名（例如 idx_user_name）'}
+                    placeholder={indexForm.kind === 'PRIMARY' ? t('designer.index.modal.primaryNamePlaceholder') : t('designer.index.modal.namePlaceholder')}
                     value={indexForm.name}
                     onChange={(e) => setIndexForm(prev => ({ ...prev, name: e.target.value }))}
                     maxLength={128}
@@ -2773,7 +2801,7 @@ END;`;
                 <Select
                     mode="multiple"
                     allowClear
-                    placeholder="请选择索引字段（按选择顺序生效）"
+                    placeholder={t('designer.index.modal.columnsPlaceholder')}
                     value={indexForm.columnNames}
                     onChange={(vals) => setIndexForm(prev => ({ ...prev, columnNames: vals }))}
                     options={localColumnOptions}
@@ -2816,25 +2844,25 @@ END;`;
                     />
                 </Space>
                 <div style={{ color: '#888', fontSize: 12 }}>
-                    修改索引时若新索引创建失败，系统会尝试自动恢复原索引。
+                    {t('designer.index.modal.restoreHint')}
                 </div>
             </Space>
         </Modal>
 
         <Modal
-            title={foreignKeyModalMode === 'create' ? '新增外键' : '修改外键'}
+            title={foreignKeyModalMode === 'create' ? t('designer.fk.modal.createTitle') : t('designer.fk.modal.editTitle')}
             open={isForeignKeyModalOpen}
             onCancel={() => setIsForeignKeyModalOpen(false)}
             onOk={handleSubmitForeignKey}
-            okText={foreignKeyModalMode === 'create' ? '创建' : '保存'}
-            cancelText="取消"
+            okText={foreignKeyModalMode === 'create' ? t('common.create') : t('common.save')}
+            cancelText={t('common.cancel')}
             confirmLoading={foreignKeySaving}
             width={700}
         >
             <Space direction="vertical" size={10} style={{ width: '100%' }}>
                 <Input
                     {...noAutoCapInputProps}
-                    placeholder="外键约束名（例如 fk_order_user）"
+                    placeholder={t('designer.fk.modal.constraintPlaceholder')}
                     value={foreignKeyForm.constraintName}
                     onChange={(e) => setForeignKeyForm(prev => ({ ...prev, constraintName: e.target.value }))}
                     maxLength={128}
@@ -2842,7 +2870,7 @@ END;`;
                 <Select
                     mode="multiple"
                     allowClear
-                    placeholder="请选择本表字段（顺序需与参考字段一致）"
+                    placeholder={t('designer.fk.modal.localColumnsPlaceholder')}
                     value={foreignKeyForm.columnNames}
                     onChange={(vals) => setForeignKeyForm(prev => ({ ...prev, columnNames: vals }))}
                     options={localColumnOptions}
@@ -2850,7 +2878,7 @@ END;`;
                 />
                 <Input
                     {...noAutoCapInputProps}
-                    placeholder="参考表（支持 db.table）"
+                    placeholder={t('designer.fk.modal.refTablePlaceholder')}
                     value={foreignKeyForm.refTableName}
                     onChange={(e) => setForeignKeyForm(prev => ({ ...prev, refTableName: e.target.value }))}
                     maxLength={256}
@@ -2858,32 +2886,32 @@ END;`;
                 <Select
                     mode="tags"
                     tokenSeparators={[',', ' ']}
-                    placeholder="请输入参考字段（支持多个）"
+                    placeholder={t('designer.fk.modal.refColumnsPlaceholder')}
                     value={foreignKeyForm.refColumnNames}
                     onChange={(vals) => setForeignKeyForm(prev => ({ ...prev, refColumnNames: vals }))}
                     style={{ width: '100%' }}
                 />
                 <div style={{ color: '#888', fontSize: 12 }}>
-                    修改外键会执行“先删除旧外键，再创建新外键”。
+                    {t('designer.fk.modal.recreateHint')}
                 </div>
             </Space>
         </Modal>
 
         <Modal
-            title="确认 SQL 变更"
+            title={t('designer.sqlPreview.confirmChanges')}
             open={isPreviewOpen}
             onOk={handleExecuteSave}
             onCancel={() => setIsPreviewOpen(false)}
             width={700}
-            okText="执行"
-            cancelText="取消"
+            okText={t('common.execute')}
+            cancelText={t('common.cancel')}
         >
             <TableDesignerSqlPreview sql={previewSql} darkMode={darkMode} />
-            <p style={{ marginTop: 10, color: '#faad14' }}>请仔细检查 SQL，执行后不可撤销。</p>
+            <p style={{ marginTop: 10, color: '#faad14' }}>{t('designer.sqlPreview.reviewBeforeExecute')}</p>
         </Modal>
 
         <Modal
-            title={selectedTrigger ? `触发器: ${selectedTrigger.name}` : '触发器详情'}
+            title={selectedTrigger ? t('designer.trigger.detailTitleWithName', { name: selectedTrigger.name }) : t('designer.trigger.detailTitle')}
             open={isTriggerModalOpen}
             onCancel={() => setIsTriggerModalOpen(false)}
             footer={null}
@@ -2892,8 +2920,8 @@ END;`;
             {selectedTrigger && (
                 <div>
                     <div style={{ marginBottom: 12, display: 'flex', gap: 24 }}>
-                        <span><strong>时机:</strong> {selectedTrigger.timing}</span>
-                        <span><strong>事件:</strong> {selectedTrigger.event}</span>
+                        <span><strong>{t('designer.trigger.timing')}:</strong> {selectedTrigger.timing}</span>
+                        <span><strong>{t('designer.trigger.event')}:</strong> {selectedTrigger.event}</span>
                     </div>
                     <div style={{ border: `1px solid ${panelFrameColor}`, borderRadius: panelRadius, background: panelBodyBg }}>
                         <Editor
@@ -2917,18 +2945,18 @@ END;`;
         </Modal>
 
         <Modal
-            title={triggerEditMode === 'create' ? '新增触发器' : '修改触发器'}
+            title={triggerEditMode === 'create' ? t('designer.trigger.createTitle') : t('designer.trigger.editTitle')}
             open={isTriggerEditModalOpen}
             onCancel={() => setIsTriggerEditModalOpen(false)}
             width={800}
-            okText={triggerEditMode === 'create' ? '创建' : '保存'}
-            cancelText="取消"
+            okText={triggerEditMode === 'create' ? t('common.create') : t('common.save')}
+            cancelText={t('common.cancel')}
             confirmLoading={triggerExecuting}
             onOk={handleExecuteTriggerSql}
         >
             <div style={{ marginBottom: 8, color: '#888', fontSize: 12 }}>
                 {triggerEditMode === 'edit' && selectedTrigger && (
-                    <span>修改触发器时会先删除原触发器，再创建新触发器。</span>
+                    <span>{t('designer.trigger.recreateHint')}</span>
                 )}
             </div>
             <div style={{ border: `1px solid ${panelFrameColor}`, borderRadius: panelRadius, background: panelBodyBg }}>
@@ -2948,7 +2976,7 @@ END;`;
                     }}
                 />
             </div>
-            <p style={{ marginTop: 10, color: '#faad14' }}>请仔细检查 SQL 语句，执行后不可撤销。</p>
+            <p style={{ marginTop: 10, color: '#faad14' }}>{t('designer.sqlPreview.reviewSqlBeforeExecute')}</p>
         </Modal>
     </div>
   );
