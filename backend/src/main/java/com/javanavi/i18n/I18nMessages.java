@@ -302,8 +302,7 @@ public class I18nMessages {
                 Map.entry("当前后端包未内置该 JDBC 驱动；可在驱动管理器中按需下载，或首次连接时自动下载。", "drivers.missingJdbcDownloadable"),
                 Map.entry("当前后端包未内置该驱动；请在驱动管理器中按需下载，或手动上传 JDBC Jar。", "drivers.missingUseFullBuild"),
                 Map.entry("驱动包元数据已登记；", "drivers.metadataRegisteredPrefix"),
-                Map.entry("当前后端包未内置该驱动；可通过驱动管理器按需下载 JDBC Jar", "drivers.missingCanDownloadJar"),
-                Map.entry("当前后端包未内置该驱动；请在驱动管理器中按需下载，或手动上传 JDBC Jar。", "drivers.missingUseFullJdbcPackage")
+                Map.entry("当前后端包未内置该驱动；可通过驱动管理器按需下载 JDBC Jar", "drivers.missingCanDownloadJar")
         );
         String code = fallbackCodes.get(normalized);
         if (code != null) {
