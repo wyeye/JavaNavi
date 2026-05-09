@@ -77,6 +77,7 @@ function toConnectionPayload(config: any = {}): Record<string, any> {
     timeout: config?.timeout,
     redisDB: config?.redisDB,
     uri: config?.uri,
+    dsn: config?.dsn,
     hosts: config?.hosts,
     topology: config?.topology,
     replicaSet: config?.replicaSet || config?.mongoReplicaSet,

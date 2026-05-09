@@ -134,6 +134,10 @@ public class JdbcConnectionPoolRegistry {
         hikari.setConnectionTimeout(connectionTimeoutMs);
         hikari.setIdleTimeout(boundedLong(config, "idleTimeoutMs", DEFAULT_IDLE_TIMEOUT_MS, 10_000, 1_800_000));
         hikari.setMaxLifetime(boundedLong(config, "maxLifetimeMs", DEFAULT_MAX_LIFETIME_MS, 30_000, 7_200_000));
+        String connectionTestQuery = connectionTestQuery(config);
+        if (connectionTestQuery != null) {
+            hikari.setConnectionTestQuery(connectionTestQuery);
+        }
         hikari.setPoolName("javanavi-" + sanitizePoolName(connectionId) + "-" + fingerprint.substring(0, 8));
         hikari.setInitializationFailTimeout(-1);
 
@@ -391,6 +395,21 @@ public class JdbcConnectionPoolRegistry {
 
     private static String normalizeOptionKey(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).replace("-", "").replace("_", "").trim();
+    }
+
+    private static String connectionTestQuery(ConnectionConfigDto config) {
+        String configured = firstText(option(config, "connectionTestQuery"), option(config, "validationQuery"));
+        if (configured != null) {
+            return configured;
+        }
+        String logicalDriver = normalizeDriverForTimeout(config == null ? null : config.driverType());
+        if (logicalDriver.isBlank() && config != null) {
+            logicalDriver = normalizeDriverForTimeout(config.driver());
+        }
+        return switch (logicalDriver) {
+            case "oracle" -> "SELECT 1 FROM DUAL";
+            default -> "SELECT 1";
+        };
     }
 
     private static String sanitizeConnectionId(String value) {

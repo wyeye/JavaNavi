@@ -85,14 +85,21 @@ public class JdbcConnectionFactory {
         if (!isSupportedExternalDriver(config)) {
             throw new IllegalArgumentException(messages.message("connection.jdbcProfiles"));
         }
-        return requireDriverRuntimeService().openConnection(normalizeDriver(config), jdbcUrl(config), connectionProperties(config));
+        return JdbcIsolationCompatibility.wrap(
+                requireDriverRuntimeService().openConnection(normalizeDriver(config), jdbcUrl(config), connectionProperties(config)),
+                normalizeDriver(config)
+        );
     }
 
     public DataSource dataSource(ConnectionConfigDto config, Properties properties) {
         if (!isSupportedExternalDriver(config)) {
             throw new IllegalArgumentException(messages.message("connection.jdbcProfiles"));
         }
-        return new DynamicJdbcDataSource(requireDriverRuntimeService(), normalizeDriver(config), jdbcUrl(config), properties);
+        String driver = normalizeDriver(config);
+        return new JdbcIsolationCompatibilityDataSource(
+                new DynamicJdbcDataSource(requireDriverRuntimeService(), driver, jdbcUrl(config), properties),
+                driver
+        );
     }
 
     public void prepareDriver(ConnectionConfigDto config) throws SQLException {
@@ -364,6 +371,8 @@ public class JdbcConnectionFactory {
         String normalized = key.toLowerCase(Locale.ROOT).replace("-", "").replace("_", "").trim();
         return normalized.equals("querytimeout")
                 || normalized.equals("timeout")
+                || normalized.equals("validationquery")
+                || normalized.equals("connectiontestquery")
                 || normalized.equals("maxpoolsize")
                 || normalized.equals("maximumpoolsize")
                 || normalized.equals("minimumidle")
