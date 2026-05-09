@@ -7,6 +7,7 @@ import { DBGetDatabases, DBGetTables } from '@compat/javanaviApp';
 import type { OverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 import type {
     AIChatMessage,
+    AIContextLevel,
     AIToolCall,
     JVMAIPlanContext,
     JVMDiagnosticPlanContext,
@@ -22,6 +23,7 @@ import { AIHistoryDrawer } from './ai/AIHistoryDrawer';
 import type { AIComposerNotice } from '../utils/aiComposerNotice';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { buildAIReadonlyPreviewSQL } from '../utils/aiSqlLimit';
+import { buildDatabaseContextMessage } from '../utils/aiDatabaseContext';
 import { resolveAITableSchemaToolResult } from '../utils/aiTableSchemaTool';
 import { consumeAIChatSendShortcutOnKeyDown } from '../utils/aiChatSendShortcut';
 import {
@@ -224,6 +226,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const [sending, setSending] = useState(false);
     const [activeProvider, setActiveProvider] = useState<any>(null);
     const [dynamicModels, setDynamicModels] = useState<string[]>([]);
+    const [contextLevel, setContextLevel] = useState<AIContextLevel>('schema_only');
     const [showScrollBottom, setShowScrollBottom] = useState(false);
     const [loadingModels, setLoadingModels] = useState(false);
     const [composerNotice, setComposerNotice] = useState<AIComposerNotice | null>(null);
@@ -304,6 +307,38 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         };
     }, []);
 
+    useEffect(() => {
+        if (!aiPanelVisible) return;
+        let cancelled = false;
+
+        const loadContextLevel = async () => {
+            try {
+                const level = await AIService.AIGetContextLevel?.();
+                if (!cancelled) {
+                    setContextLevel((level || 'schema_only') as AIContextLevel);
+                }
+            } catch {
+                if (!cancelled) {
+                    setContextLevel('schema_only');
+                }
+            }
+        };
+
+        void loadContextLevel();
+
+        const handleContextLevelChanged = (event: Event) => {
+            const customEvent = event as CustomEvent<{ level?: AIContextLevel }>;
+            const nextLevel = customEvent.detail?.level || 'schema_only';
+            setContextLevel(nextLevel);
+        };
+
+        window.addEventListener('javanavi:ai:context-level-changed', handleContextLevelChanged as EventListener);
+        return () => {
+            cancelled = true;
+            window.removeEventListener('javanavi:ai:context-level-changed', handleContextLevelChanged as EventListener);
+        };
+    }, [aiPanelVisible]);
+
     // Auto-Context Injection Hook
     useEffect(() => {
         if (!aiPanelVisible) return;
@@ -316,20 +351,16 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 if (!currentContexts.find(c => c.dbName === dbName && c.tableName === tableName)) {
                     const conn = useStore.getState().connections.find(c => c.id === connectionId);
                     if (conn) {
-                        import('@compat/javanaviApp').then(({ DBShowCreateTable }) => {
-                            DBShowCreateTable(buildRpcConnectionConfig(conn.config) as any, dbName, tableName).then(res => {
-                                if (res.success && res.data) {
-                                    let createSql = '';
-                                    if (typeof res.data === 'string') createSql = res.data;
-                                    else if (Array.isArray(res.data) && res.data.length > 0) {
-                                        const row = res.data[0];
-                                        createSql = (Object.values(row).find(v => typeof v === 'string' && (v.toUpperCase().includes('CREATE TABLE') || v.toUpperCase().includes('CREATE'))) || Object.values(row)[1] || Object.values(row)[0]) as string;
-                                    }
-                                    if (createSql) {
-                                        useStore.getState().addAIContext(connKey, { dbName: dbName, tableName, ddl: createSql });
-                                    }
-                                }
+                        import('@compat/javanaviApp').then(async ({ DBGetColumns, DBShowCreateTable }) => {
+                            const rpcConfig = buildRpcConnectionConfig(conn.config) as any;
+                            const schemaResult = await resolveAITableSchemaToolResult({
+                                tableName,
+                                fetchDDL: () => DBShowCreateTable(rpcConfig, dbName, tableName),
+                                fetchColumns: () => DBGetColumns(rpcConfig, dbName, tableName),
                             });
+                            if (schemaResult.success && schemaResult.content) {
+                                useStore.getState().addAIContext(connKey, { dbName, tableName, ddl: schemaResult.content });
+                            }
                         }).catch(err => console.error("Failed to auto-fetch table context", err));
                     }
                 }
@@ -863,8 +894,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         // 🔧 性能优化：从 store 实时读取，避免闭包捕获导致的依赖链式重建
         const { activeContext: ctx, aiContexts: ctxMap, connections: conns, tabs: allTabs, activeTabId: tabId } = useStore.getState();
 
-        const connectionKey = ctx?.connectionId ? `${ctx.connectionId}:${ctx.dbName || ''}` : 'default';
-        const activeContextItems = ctxMap[connectionKey] || [];
         const systemMessages: { role: string; content: string; images?: string[] }[] = [];
         const matchesDiagnosticContext = (tab: typeof allTabs[number]) => {
             if (!overrideJVMDiagnosticPlanContext || tab.type !== 'jvm-diagnostic') {
@@ -970,24 +999,50 @@ ${resourcePath ? `当前资源路径：${resourcePath}` : '当前未选中具体
             }
         }
 
-        if (activeContextItems.length > 0) {
+        const connectionKey = targetConnId ? `${targetConnId}:${targetDbName || ''}` : 'default';
+        const activeContextItems = ctxMap[connectionKey] || [];
+
+        if (targetConnId && targetDbName) {
             const conn = conns.find(c => c.id === targetConnId);
             const dbType = conn?.config?.type || 'unknown';
-            const dbDisplayType = dbType === 'diros' ? 'Doris' : dbType.charAt(0).toUpperCase() + dbType.slice(1);
-            const ddlChunks = activeContextItems.map(c => `-- Table: ${c.dbName}.${c.tableName}\n${c.ddl}`).join('\n\n');
-            systemMessages.push({
-                role: 'system',
-                content: `你是一个专业的数据库助手。当前连接的数据库类型是 ${dbDisplayType}。请使用 ${dbDisplayType} 方言生成 SQL。以下是用户关联的表结构信息，请在回答时优先参考：\n\n${ddlChunks}`
+            let availableTables: string[] = [];
+            if (contextLevel === 'full' && conn) {
+                try {
+                    const tableResult = await DBGetTables(buildRpcConnectionConfig(conn.config) as any, targetDbName);
+                    if (tableResult?.success && Array.isArray(tableResult.data)) {
+                        availableTables = tableResult.data
+                            .map((row: any) => String(row?.Table || row?.table || row?.tableName || Object.values(row || {})[0] || '').trim())
+                            .filter(Boolean)
+                            .slice(0, 200);
+                    }
+                } catch {
+                    availableTables = [];
+                }
+            }
+
+            const databaseContext = buildDatabaseContextMessage({
+                contextLevel,
+                dbType,
+                connectionName: conn?.name || '',
+                dbName: targetDbName,
+                activeContextItems,
+                availableTables,
             });
-        }
-        else if (targetConnId && targetDbName) {
-            const conn = conns.find(c => c.id === targetConnId);
-            const dbType = conn?.config?.type || 'unknown';
-            const dbDisplayType = dbType === 'diros' ? 'Doris' : dbType.charAt(0).toUpperCase() + dbType.slice(1);
-            systemMessages.push({
-                role: 'system',
-                content: `你是一个专业的数据库助手。当前连接的数据库类型是 ${dbDisplayType}，当前数据库名为 ${targetDbName}。如果用户需要查询特定的表或者有关当前库的信息，你可以调用提供的 get_tables 工具来主动获取数据表信息。`
-            });
+
+            if (databaseContext) {
+                systemMessages.push({
+                    role: 'system',
+                    content: databaseContext,
+                });
+            }
+
+            if (contextLevel === 'schema_only' && activeContextItems.length === 0) {
+                const dbDisplayType = dbType === 'diros' ? 'Doris' : dbType.charAt(0).toUpperCase() + dbType.slice(1);
+                systemMessages.push({
+                    role: 'system',
+                    content: `你是一个专业的数据库助手。当前连接的数据库类型是 ${dbDisplayType}，当前数据库名为 ${targetDbName}。如果用户需要查询特定的表或者有关当前库的信息，你可以调用提供的 get_tables 工具来主动获取数据表信息。`
+                });
+            }
         }
         else {
             const connList = conns.map(c => `{id: "${c.id}", name: "${c.name}", type: "${c.config?.type || 'unknown'}"}`).join(', ');
@@ -1022,7 +1077,7 @@ SELECT * FROM users WHERE status = 1;
             });
         }
         return systemMessages;
-    }, []); // 零依赖：函数内部通过 useStore.getState() 实时读取
+    }, [contextLevel]);
 
     // 记录所有成功的 get_tables 调用结果，用于表级精确匹配
     const toolContextMapRef = useRef<Map<string, { connectionId: string; dbName: string; tables: string[] }>>(new Map());

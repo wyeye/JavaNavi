@@ -506,7 +506,7 @@ export interface StreamEntry {
 
 export type AIProviderType = "openai" | "anthropic" | "gemini" | "custom";
 export type AISafetyLevel = "readonly" | "readwrite" | "full";
-export type AIContextLevel = "schema_only" | "with_samples" | "with_results";
+export type AIContextLevel = 'none' | 'schema_only' | 'full';
 
 export interface AIContextItem {
   dbName: string;

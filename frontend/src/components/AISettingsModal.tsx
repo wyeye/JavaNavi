@@ -87,9 +87,9 @@ const SAFETY_OPTIONS: { label: string; value: AISafetyLevel; desc: string; color
 ];
 
 const CONTEXT_OPTIONS: { label: string; value: AIContextLevel; desc: string; icon: string }[] = [
+    { label: '无上下文', value: 'none', desc: '不自动注入数据库结构', icon: '🪶' },
     { label: '仅 Schema', value: 'schema_only', desc: '只传递表/列结构信息给 AI', icon: '📋' },
-    { label: '含采样数据', value: 'with_samples', desc: '包含少量采样数据帮助 AI 理解数据特征', icon: '📊' },
-    { label: '含查询结果', value: 'with_results', desc: '传递最近的查询结果作为上下文', icon: '📑' },
+    { label: '完整上下文', value: 'full', desc: '传递更完整的结构与当前数据库工作上下文', icon: '🧠' },
 ];
 
 const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMode, overlayTheme, focusProviderId }) => {
@@ -336,6 +336,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             const Service = AIService;
             await Service?.AISetContextLevel?.(level);
             setContextLevel(level);
+            window.dispatchEvent(new CustomEvent('javanavi:ai:context-level-changed', { detail: { level } }));
         } catch (e) { /* ignore */ }
     };
 
