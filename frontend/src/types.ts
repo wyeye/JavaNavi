@@ -452,15 +452,6 @@ export interface SavedQuery {
   createdAt: number;
 }
 
-export interface ExternalSQLDirectory {
-  id: string;
-  name: string;
-  path: string;
-  connectionId: string;
-  dbName: string;
-  createdAt: number;
-}
-
 export interface ExternalSQLTreeEntry {
   name: string;
   path: string;

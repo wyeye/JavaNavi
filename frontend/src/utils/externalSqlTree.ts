@@ -28,9 +28,6 @@ type BuildExternalSQLRootNodeParams = {
 const normalizeExternalSQLPath = (value: string): string =>
   String(value || '').trim().replace(/\\/g, '/');
 
-export const buildExternalSQLDirectoryId = (connectionId: string, dbName: string, directoryPath: string): string =>
-  `external-sql-dir:${String(connectionId || '').trim()}:${String(dbName || '').trim()}:${normalizeExternalSQLPath(directoryPath)}`;
-
 export const buildExternalSQLTabId = (connectionId: string, dbName: string, filePath: string): string =>
   `external-sql-tab:${String(connectionId || '').trim()}:${String(dbName || '').trim()}:${normalizeExternalSQLPath(filePath)}`;
 
