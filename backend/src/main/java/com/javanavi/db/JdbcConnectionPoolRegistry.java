@@ -26,7 +26,7 @@ import java.util.concurrent.ConcurrentMap;
 
 @Component
 public class JdbcConnectionPoolRegistry {
-    private static final int DEFAULT_MAX_POOL_SIZE = 4;
+    private static final int DEFAULT_MAX_POOL_SIZE = 6;
     private static final int MIN_POOL_SIZE = 1;
     private static final int MAX_POOL_SIZE = 20;
     private static final long DEFAULT_CONNECTION_TIMEOUT_MS = 10_000;
@@ -158,7 +158,6 @@ public class JdbcConnectionPoolRegistry {
         String publicIdentity = jdbcConnectionFactory.normalizeDriver(config)
                 + "|" + nullToEmpty(config == null ? null : config.host())
                 + "|" + String.valueOf(config == null ? null : config.port())
-                + "|" + nullToEmpty(config == null ? null : config.database())
                 + "|" + nullToEmpty(config == null ? null : config.username());
         return "adhoc-" + sha256Hex(publicIdentity).substring(0, 16);
     }
@@ -166,10 +165,14 @@ public class JdbcConnectionPoolRegistry {
     private String fingerprint(ConnectionConfigDto config) {
         StringBuilder value = new StringBuilder();
         value.append(jdbcConnectionFactory.normalizeDriver(config)).append('\n');
-        value.append(jdbcConnectionFactory.jdbcUrl(config)).append('\n');
+        value.append(nullToEmpty(config == null ? null : config.host())).append('\n');
+        value.append(String.valueOf(config == null ? null : config.port())).append('\n');
         value.append(nullToEmpty(config == null ? null : config.username())).append('\n');
         value.append(nullToEmpty(config == null ? null : config.password())).append('\n');
         value.append(String.valueOf(config == null ? null : config.timeout())).append('\n');
+        value.append(nullToEmpty(config == null ? null : config.driver())).append('\n');
+        value.append(nullToEmpty(config == null ? null : config.sslMode())).append('\n');
+        value.append(String.valueOf(config == null ? null : config.useSSL())).append('\n');
         if (config != null && config.options() != null) {
             config.options().entrySet().stream()
                     .sorted(Map.Entry.comparingByKey())
@@ -190,10 +193,13 @@ public class JdbcConnectionPoolRegistry {
     }
 
     private SQLException connectionFailure(ConnectionConfigDto config, SQLException error) {
+        String cause = conciseCause(error);
+        if (cause != null && cause.contains("Connection is not available")) {
+            return new SQLException("当前连接忙，已有 6 个任务在执行，请稍后重试", error.getSQLState(), error.getErrorCode(), error);
+        }
         String message = "Unable to connect to " + connectionTarget(config)
                 + " within " + connectionTimeoutMs(config) + "ms. "
                 + "Check that the database service is running, host/port are reachable, and credentials are valid.";
-        String cause = conciseCause(error);
         if (cause != null && !cause.isBlank()) {
             message += " Cause: " + cause;
         }

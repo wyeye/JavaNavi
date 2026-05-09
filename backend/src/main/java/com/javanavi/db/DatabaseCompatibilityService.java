@@ -175,49 +175,49 @@ public class DatabaseCompatibilityService {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listTables(resolveSavedConnectionSecret(config), requestedDatabase);
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> listTablesOnConnection(connection, config, requestedDatabase, true)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listTablesOnConnection(connection, config, requestedDatabase, true)));
     }
 
     public List<ColumnDefinitionDto> listColumns(ConnectionConfigDto config, String requestedDatabase, String tableName) {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listColumns(resolveSavedConnectionSecret(config), requestedDatabase, tableName);
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> listColumnsOnConnection(connection, config, requestedDatabase, tableName)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listColumnsOnConnection(connection, config, requestedDatabase, tableName)));
     }
 
     public List<ColumnDefinitionWithTableDto> listAllColumns(ConnectionConfigDto config, String requestedDatabase) {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listAllColumns();
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> listAllColumnsOnConnection(connection, config, requestedDatabase)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listAllColumnsOnConnection(connection, config, requestedDatabase)));
     }
 
     public List<IndexDefinitionDto> listIndexes(ConnectionConfigDto config, String requestedDatabase, String tableName) {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listIndexes(resolveSavedConnectionSecret(config), requestedDatabase, tableName);
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> listIndexesOnConnection(connection, config, requestedDatabase, tableName)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listIndexesOnConnection(connection, config, requestedDatabase, tableName)));
     }
 
     public List<ForeignKeyDefinitionDto> listForeignKeys(ConnectionConfigDto config, String requestedDatabase, String tableName) {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listForeignKeys();
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> listForeignKeysOnConnection(connection, config, requestedDatabase, tableName)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listForeignKeysOnConnection(connection, config, requestedDatabase, tableName)));
     }
 
     public List<TriggerDefinitionDto> listTriggers(ConnectionConfigDto config, String requestedDatabase, String tableName) {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listTriggers();
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> listTriggersOnConnection(connection, config, requestedDatabase, tableName)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listTriggersOnConnection(connection, config, requestedDatabase, tableName)));
     }
 
     public String showCreateTable(ConnectionConfigDto config, String requestedDatabase, String tableName) {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().showCreateTable(requestedDatabase, tableName);
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> showCreateTableOnConnection(connection, config, requestedDatabase, tableName)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> showCreateTableOnConnection(connection, config, requestedDatabase, tableName)));
     }
 
     public QueryResultDto execute(QueryRequestDto request) {
@@ -235,7 +235,7 @@ public class DatabaseCompatibilityService {
         RunningQuery running = registerQuery(queryId);
         ConnectionConfigDto connectionConfig = connectionWithRequestedDatabase(request.connection(), request.database());
         try {
-            return withRedactedSqlErrors(() -> withConnection(connectionConfig, connection -> executeSingleOnConnection(connection, request, queryId, running)));
+            return withRedactedSqlErrors(() -> withDatabaseConnection(connectionConfig, request.database(), connection -> executeSingleOnConnection(connection, request, queryId, running)));
         } finally {
             runningQueries.remove(queryId, running);
         }
@@ -253,7 +253,7 @@ public class DatabaseCompatibilityService {
         RunningQuery running = registerQuery(queryId);
         ConnectionConfigDto connectionConfig = connectionWithRequestedDatabase(request.connection(), request.database());
         try {
-            return withRedactedSqlErrors(() -> withConnection(connectionConfig, connection -> executeMultiOnConnection(connection, request, running)));
+            return withRedactedSqlErrors(() -> withDatabaseConnection(connectionConfig, request.database(), connection -> executeMultiOnConnection(connection, request, running)));
         } finally {
             runningQueries.remove(queryId, running);
         }
@@ -272,7 +272,7 @@ public class DatabaseCompatibilityService {
         if (isMongo(config)) {
             return requireMongoCompatibilityService().applyChanges(resolveSavedConnectionSecret(config), requestedDatabase, tableName, changes);
         }
-        return withRedactedSqlErrors(() -> withConnection(config, connection -> applyChangesOnConnection(connection, config, requestedDatabase, tableName, changes)));
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> applyChangesOnConnection(connection, config, requestedDatabase, tableName, changes)));
     }
 
     public Map<String, Object> clearTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames, boolean truncate) {
@@ -1494,6 +1494,13 @@ public class DatabaseCompatibilityService {
         }
     }
 
+    private <T> T withDatabaseConnection(ConnectionConfigDto config, String requestedDatabase, SqlConnectionWork<T> work) throws SQLException {
+        return withConnection(config, connection -> {
+            prepareConnectionDatabase(connection, config, requestedDatabase);
+            return work.execute(connection);
+        });
+    }
+
     private ConnectionConfigDto resolveSavedConnectionSecret(ConnectionConfigDto config) {
         return savedConnectionService == null ? config : savedConnectionService.resolveSavedSecret(config);
     }
@@ -1552,6 +1559,32 @@ public class DatabaseCompatibilityService {
 
     private String normalizedQueryId(String queryId) {
         return firstText(queryId, "query-" + UUID.randomUUID());
+    }
+
+    private void prepareConnectionDatabase(Connection connection, ConnectionConfigDto config, String requestedDatabase) throws SQLException {
+        String database = textOrNull(requestedDatabase);
+        if (database == null) {
+            return;
+        }
+        String driver = jdbcConnectionFactory.normalizeDriver(config);
+        if ("mysql".equals(driver)) {
+            try {
+                connection.setCatalog(database);
+                String current = connection.getCatalog();
+                if (database.equalsIgnoreCase(current)) {
+                    return;
+                }
+            } catch (SQLException ignored) {
+                // Fall through to USE statement.
+            }
+            try (Statement statement = connection.createStatement()) {
+                statement.execute("USE " + mysqlIdentifier(database));
+            }
+            return;
+        }
+        if ("postgresql".equals(driver)) {
+            connection.setSchema(database);
+        }
     }
 
     private void configureStatement(Statement statement, ConnectionConfigDto config, RunningQuery running) throws SQLException {
@@ -1744,6 +1777,10 @@ public class DatabaseCompatibilityService {
             return "`" + escapeBacktick(table) + "`";
         }
         return "`" + escapeBacktick(catalog) + "`.`" + escapeBacktick(table) + "`";
+    }
+
+    private static String mysqlIdentifier(String value) {
+        return "`" + escapeBacktick(value) + "`";
     }
 
     private static String tableSqlName(String driver, TableRef ref) {
