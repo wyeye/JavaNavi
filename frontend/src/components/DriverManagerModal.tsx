@@ -55,6 +55,7 @@ type DriverStatusRow = {
   type: string;
   name: string;
   builtIn: boolean;
+  managedJarUploadAllowed?: boolean;
   managedDownload?: boolean;
   downloadRequired?: boolean;
   reusedDriverType?: string;
@@ -558,6 +559,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               type: rowType,
               name: String(item.name || item.type || '').trim(),
               builtIn: !!item.builtIn,
+              managedJarUploadAllowed: !!item.managedJarUploadAllowed,
               managedDownload: !!item.managedDownload,
               downloadRequired: !!item.downloadRequired,
               reusedDriverType: String(item.reusedDriverType || '').trim() || undefined,
@@ -1372,6 +1374,10 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
   }, [appendOperationLog, downloadDir, loadVersionOptions, refreshStatus, selectedVersionMap, versionMap]);
 
   const uploadDriverFromJarFiles = useCallback(async (row: DriverStatusRow) => {
+    if (!row.managedJarUploadAllowed) {
+      message.warning(compatText('内置数据源不支持上传 Jar，请直接下载驱动', 'message'));
+      return;
+    }
     const files = await pickJarFiles();
     if (files.length === 0) {
       return;
@@ -1755,13 +1761,15 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             <Space size={8} wrap>
               {mainAction}
               {downloadAction && removeAction ? removeAction : null}
-              <Button
-                icon={<UploadOutlined />}
-                loading={loadingUpload}
-                onClick={() => uploadDriverFromJarFiles(row)}
-              >
-                {compatText('上传 Jar')}
-              </Button>
+              {row.managedJarUploadAllowed ? (
+                <Button
+                  icon={<UploadOutlined />}
+                  loading={loadingUpload}
+                  onClick={() => uploadDriverFromJarFiles(row)}
+                >
+                  {compatText('上传 Jar')}
+                </Button>
+              ) : null}
               <Button
                 type={hasLogs ? 'default' : 'text'}
                 disabled={!hasLogs}
@@ -1994,8 +2002,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                   label: compatText('查看驱动目录与复用说明'),
                   children: (
                     <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                      <Text type="secondary">{compatText('自动下载和手动上传的驱动都会落盘到以下目录；后续版本升级可重复复用已下载驱动。', 'jsx')}</Text>
-                      <Text type="secondary">{compatText(`点击上传 Jar 并选择文件后，会弹窗填写实际驱动版本，默认值为“${DEFAULT_UPLOAD_DRIVER_VERSION}”。`, 'jsx')}</Text>
+                      <Text type="secondary">{compatText('自动下载的驱动会落盘到以下目录；后续版本升级可重复复用已下载驱动。', 'jsx')}</Text>
                       <Paragraph copyable={{ text: downloadDir || '-' }} style={{ marginBottom: 0 }}>
                         {compatText(`驱动根目录：${downloadDir || '-'}`, 'jsx')}
                       </Paragraph>

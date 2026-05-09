@@ -556,6 +556,10 @@ public class DriverCompatibilityService {
             DriverDefinition definition = optionalDefinition.get();
             throw new IllegalArgumentException(builtInPackageMessage(definition, messages.message("drivers.noUploadNeeded")));
         }
+        if (optionalDefinition.isPresent() && jdbcDriverRuntimeService.isManagedDriver(optionalDefinition.get().type())) {
+            DriverDefinition definition = optionalDefinition.get();
+            throw new IllegalArgumentException(builtInPackageMessage(definition, messages.message("drivers.noUploadNeeded")));
+        }
         String normalizedDriverType = optionalDefinition
                 .map(DriverDefinition::type)
                 .orElseGet(() -> requireSafeCustomDriverType(driverType));
@@ -689,6 +693,7 @@ public class DriverCompatibilityService {
                 "name", definition.name(),
                 "engine", "java",
                 "builtIn", backendBuiltIn,
+                "managedJarUploadAllowed", false,
                 "managedDownload", managedJdbc,
                 "downloadRequired", managedJdbc && !implementedRuntime && !reusedManagedRuntime,
                 "reusedDriverType", reusedManagedRuntime ? runtimeOwnerType : "",
