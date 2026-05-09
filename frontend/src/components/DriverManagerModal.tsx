@@ -30,8 +30,11 @@ import {
   ValidateCustomDriverDefinition,
 } from '@compat/javanaviApp';
 import { filterDriverOptionsForDatabase, normalizeDriverSelectionType, resolveDefaultDriverTypeForDatabase } from '../utils/driverSelection';
+import { getRuntimeLanguage, translateCompatibilityFallback } from '../i18n';
 
 const { Paragraph, Text } = Typography;
+
+const compatText = (text: string, kind: 'text' | 'jsx' | 'message' = 'text') => translateCompatibilityFallback(getRuntimeLanguage(), text, kind);
 
 type DriverOption = {
   driverType: string;
@@ -275,7 +278,7 @@ const buildVersionSelectOptions = (options: DriverVersionOption[]) => {
   options.forEach((option) => {
     const selectOption: SelectOption = {
       value: buildVersionOptionKey(option),
-      label: option.displayLabel || option.version || '默认版本',
+      label: option.displayLabel || option.version || compatText('默认版本'),
     };
     const year = String(option.year || '').trim();
     if (!year) {
@@ -303,7 +306,7 @@ const buildVersionSelectOptions = (options: DriverVersionOption[]) => {
     options: yearGroups.get(year) || [],
   }));
   if (others.length > 0) {
-    grouped.push({ label: '其他', options: others });
+    grouped.push({ label: compatText('其他'), options: others });
   }
   return grouped;
 };
@@ -619,14 +622,14 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       }
       setStatusLoadError(lastErrorText || '拉取驱动状态失败');
       if (toastOnError) {
-        message.error(lastErrorText || '拉取驱动状态失败');
+        message.error(compatText(lastErrorText || '拉取驱动状态失败', 'message'));
       }
       return false;
     } catch (err: any) {
       const errText = err?.message || String(err);
       setStatusLoadError(errText);
       if (toastOnError) {
-        message.error(`拉取驱动状态失败：${errText}`);
+        message.error(compatText(`拉取驱动状态失败：${errText}`, 'message'));
       }
       return false;
     } finally {
@@ -655,7 +658,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const latestSources = loadCustomDataSources();
       setCustomDataSources(latestSources);
       if (toastOnError) {
-        message.error(error?.message || '加载自定义数据源定义失败');
+        message.error(compatText(error?.message || '加载自定义数据源定义失败', 'message'));
       }
       return latestSources;
     } finally {
@@ -666,7 +669,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
   const validateCustomDataSource = useCallback(async (source: CustomDataSource) => {
     const driverType = String(source.driverType || source.driver || '').trim();
     if (!driverType) {
-      message.warning('该自定义数据源缺少驱动标识，请重新上传 Jar 修复');
+      message.warning(compatText('该自定义数据源缺少驱动标识，请重新上传 Jar 修复', 'message'));
       return;
     }
     setCustomDefinitionValidating((prev) => ({ ...prev, [source.id]: true }));
@@ -683,12 +686,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const nextSources = upsertCustomDataSource(loadCustomDataSources(), merged);
       setCustomDataSources(nextSources);
       if (merged.runtimeStatus?.definitionUsable) {
-        message.success(`${merged.name} 定义可用；连接测试需在新建连接中执行`);
+        message.success(compatText(`${merged.name} 定义可用；连接测试需在新建连接中执行`, 'message'));
       } else {
-        message.warning(merged.runtimeStatus?.message || `${merged.name} 需要修复`);
+        message.warning(compatText(merged.runtimeStatus?.message || `${merged.name} 需要修复`, 'message'));
       }
     } catch (error: any) {
-      message.error(error?.message || '校验自定义数据源失败');
+      message.error(compatText(error?.message || '校验自定义数据源失败', 'message'));
     } finally {
       setCustomDefinitionValidating((prev) => ({ ...prev, [source.id]: false }));
     }
@@ -706,7 +709,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const res = await CheckDriverNetworkStatus();
       if (!res?.success) {
         if (toastOnError) {
-          message.error(res?.message || '驱动网络检测失败');
+          message.error(compatText(res?.message || '驱动网络检测失败', 'message'));
         }
         return;
       }
@@ -725,7 +728,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       }));
       const nextStatus: DriverNetworkStatus = {
         reachable: !!data.reachable,
-        summary: String(data.summary || '').trim() || '驱动网络检测已完成',
+        summary: String(data.summary || '').trim() || compatText('驱动网络检测已完成'),
         recommendedProxy: !!data.recommendedProxy,
         proxyConfigured: !!data.proxyConfigured,
         downloadChainReachable: typeof data.downloadChainReachable === 'boolean' ? data.downloadChainReachable : undefined,
@@ -755,7 +758,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       };
     } catch (err: any) {
       if (toastOnError) {
-        message.error(`驱动网络检测失败：${err?.message || String(err)}`);
+        message.error(compatText(`驱动网络检测失败：${err?.message || String(err)}`, 'message'));
       }
     } finally {
       if (showLoading) {
@@ -777,7 +780,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const res = await GetDriverVersionList(driverType, repositoryURLRef.current);
       if (!res?.success) {
         if (toastOnError) {
-          message.error(res?.message || `${row.name} 版本列表加载失败`);
+          message.error(compatText(res?.message || `${row.name} 版本列表加载失败`, 'message'));
         }
         return [] as DriverVersionOption[];
       }
@@ -794,7 +797,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           }
           const installed = !!version && installedVersions.has(version);
           const active = !!version && activeVersion === version;
-          const baseLabel = String(item.displayLabel || '').trim() || version || '默认版本';
+          const baseLabel = String(item.displayLabel || '').trim() || version || compatText('默认版本');
           const displayLabel = active
             ? `${baseLabel}（当前启用）`
             : installed
@@ -823,7 +826,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             downloadUrl: fallbackURL,
             recommended: true,
             source: 'fallback',
-            displayLabel: fallbackVersion || '默认版本',
+            displayLabel: fallbackVersion || compatText('默认版本'),
           });
         }
       }
@@ -847,7 +850,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       return options;
     } catch (err: any) {
       if (toastOnError) {
-        message.error(`加载 ${row.name} 版本列表失败：${err?.message || String(err)}`);
+        message.error(compatText(`加载 ${row.name} 版本列表失败：${err?.message || String(err)}`, 'message'));
       }
       return [] as DriverVersionOption[];
     } finally {
@@ -931,7 +934,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     try {
       const result = await ConfigureDriverRepositoryURL(targetURL);
       if (!result?.success) {
-        message.error(result?.message || '保存 Maven 源失败');
+        message.error(compatText(result?.message || '保存 Maven 源失败', 'message'));
         return;
       }
       const data = (result?.data || {}) as any;
@@ -941,9 +944,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       setSelectedVersionMap({});
       driverNetworkSnapshotCache = null;
       await checkNetworkStatus(false, { showLoading: false });
-      message.success('Maven 源已保存，后续版本列表、自动下载与首次连接会使用该源');
+      message.success(compatText('Maven 源已保存，后续版本列表、自动下载与首次连接会使用该源', 'message'));
     } catch (err: any) {
-      message.error(`保存 Maven 源失败：${err?.message || String(err)}`);
+      message.error(compatText(`保存 Maven 源失败：${err?.message || String(err)}`, 'message'));
     } finally {
       setRepositorySaving(false);
     }
@@ -959,13 +962,13 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     try {
       const result = await ConfigureDefaultDriver(row.type, targetDriverType, downloadDir);
       if (!result?.success) {
-        message.error(result?.message || '设置默认驱动失败');
+        message.error(compatText(result?.message || '设置默认驱动失败', 'message'));
         return;
       }
-      message.success(`${row.name || row.type} 默认驱动已设置为 ${result.data?.defaultDriverName || targetDriverType}`);
+      message.success(compatText(`${row.name || row.type} 默认驱动已设置为 ${result.data?.defaultDriverName || targetDriverType}`, 'message'));
       await refreshStatus(false);
     } catch (err: any) {
-      message.error(`设置默认驱动失败：${err?.message || String(err)}`);
+      message.error(compatText(`设置默认驱动失败：${err?.message || String(err)}`, 'message'));
     } finally {
       setDefaultDriverSavingKey('');
     }
@@ -1006,24 +1009,24 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const confirmVersion = () => {
         const version = currentValue.trim();
         if (!version) {
-          message.error('请输入上传 Jar 的驱动版本');
+          message.error(compatText('请输入上传 Jar 的驱动版本', 'message'));
           return;
         }
         modalRef?.destroy();
         finish(version);
       };
       modalRef = Modal.confirm({
-        title: `填写 ${row.name || row.type} 上传版本`,
-        okText: '开始上传',
-        cancelText: '取消',
+        title: compatText(`填写 ${row.name || row.type} 上传版本`),
+        okText: compatText('开始上传'),
+        cancelText: compatText('取消'),
         content: (
           <Space direction="vertical" size={8} style={{ width: '100%' }}>
-            <Text type="secondary">已选择 Jar 文件，上传前请确认写入驱动元数据的版本。</Text>
-            {fileSummary ? <Text type="secondary" style={{ fontSize: 12 }}>{fileSummary}</Text> : null}
+            <Text type="secondary">{compatText('已选择 Jar 文件，上传前请确认写入驱动元数据的版本。', 'jsx')}</Text>
+            {fileSummary ? <Text type="secondary" style={{ fontSize: 12 }}>{compatText(fileSummary, 'jsx')}</Text> : null}
             <Input
               autoFocus
               defaultValue={DEFAULT_UPLOAD_DRIVER_VERSION}
-              placeholder="上传 Jar 版本"
+              placeholder={compatText('上传 Jar 版本')}
               autoComplete="off"
               onChange={(event) => {
                 currentValue = event.target.value;
@@ -1031,14 +1034,14 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               onPressEnter={confirmVersion}
             />
             <Text type="secondary" style={{ fontSize: 12 }}>
-              默认使用“{DEFAULT_UPLOAD_DRIVER_VERSION}”；该版本仅标识手动上传来源，不影响 Maven 下载版本。
+              {compatText(`默认使用“${DEFAULT_UPLOAD_DRIVER_VERSION}”；该版本仅标识手动上传来源，不影响 Maven 下载版本。`, 'jsx')}
             </Text>
           </Space>
         ),
         onOk: () => {
           const version = currentValue.trim();
           if (!version) {
-            message.error('请输入上传 Jar 的驱动版本');
+            message.error(compatText('请输入上传 Jar 的驱动版本', 'message'));
             return Promise.reject(new Error('missing upload driver version'));
           }
           finish(version);
@@ -1067,7 +1070,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const values = await customDataSourceForm.validateFields();
       const files = customDataSourceFiles;
       if (files.length === 0) {
-        message.error('请先上传该自定义数据源的 JDBC Jar');
+        message.error(compatText('请先上传该自定义数据源的 JDBC Jar', 'message'));
         return;
       }
       const sourceName = String(values.name || '').trim();
@@ -1108,7 +1111,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const nextCustomDataSources = upsertCustomDataSource(latestSources, hydratedSource);
       setCustomDataSources(nextCustomDataSources);
       appendOperationLog(driverType, `[DONE] 自定义数据源 ${hydratedSource.name} 已创建并启用`);
-      message.success(`已新增自定义数据源：${hydratedSource.name}`);
+      message.success(compatText(`已新增自定义数据源：${hydratedSource.name}`, 'message'));
       setCustomDataSourceModalOpen(false);
       setCustomDataSourceFiles([]);
       customDataSourceForm.resetFields();
@@ -1118,7 +1121,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       if (error?.errorFields) {
         return;
       }
-      message.error(error?.message || '新增自定义数据源失败');
+      message.error(compatText(error?.message || '新增自定义数据源失败', 'message'));
     } finally {
       setCustomDataSourceSaving(false);
     }
@@ -1134,15 +1137,15 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
 
   const removeSavedCustomDataSource = useCallback((source: CustomDataSource) => {
     Modal.confirm({
-      title: `移除自定义数据源 ${source.name}`,
-      content: '这只会从新建连接的选择列表移除该数据源记录，不会删除已经上传到驱动目录的 Jar 文件。',
-      okText: '移除',
+      title: compatText(`移除自定义数据源 ${source.name}`, 'message'),
+      content: compatText('这只会从新建连接的选择列表移除该数据源记录，不会删除已经上传到驱动目录的 Jar 文件。', 'message'),
+      okText: compatText('移除'),
       okButtonProps: { danger: true },
-      cancelText: '取消',
+      cancelText: compatText('取消'),
       onOk: () => {
         const nextSources = removeCustomDataSource(loadCustomDataSources(), source.id);
         setCustomDataSources(nextSources);
-        message.success(`已移除自定义数据源：${source.name}`);
+        message.success(compatText(`已移除自定义数据源：${source.name}`, 'message'));
       },
     });
   }, []);
@@ -1354,14 +1357,14 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
 
       const result = await DownloadDriverPackage(row.type, selectedVersion, selectedDownloadURL, downloadDir);
       if (!result?.success) {
-        const errText = result?.message || `安装 ${row.name} 失败`;
+        const errText = result?.message || compatText(`安装 ${row.name} 失败`, 'message');
         appendOperationLog(row.type, `[ERROR] ${errText}`);
         message.error(errText);
         return;
       }
       const versionTip = selectedVersion ? `（${selectedVersion}）` : '';
       appendOperationLog(row.type, `[DONE] Maven 驱动版本已启用 ${versionTip}`);
-      message.success(`${row.name}${versionTip} 已下载并启用`);
+      message.success(compatText(`${row.name}${versionTip} 已下载并启用`, 'message'));
       refreshStatus(false);
     } finally {
       setActionState({ driverType: '', kind: '' });
@@ -1383,13 +1386,13 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     try {
       const result = await UploadLocalDriverPackage(row.type, files, downloadDir, selectedVersion);
       if (!result?.success) {
-        const errText = result?.message || `上传 ${row.name} JDBC Jar 失败`;
+        const errText = result?.message || compatText(`上传 ${row.name} JDBC Jar 失败`, 'message');
         appendOperationLog(row.type, `[ERROR] ${errText}`);
         message.error(errText);
         return;
       }
       appendOperationLog(row.type, `[DONE] JDBC Jar 上传安装完成 ${versionTip}`.trim());
-      message.success(`${row.name}${versionTip} JDBC Jar 已上传并启用`);
+      message.success(compatText(`${row.name}${versionTip} JDBC Jar 已上传并启用`, 'message'));
       await refreshStatus(false);
     } finally {
       setActionState({ driverType: '', kind: '' });
@@ -1407,22 +1410,22 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const pathText = String(data.path || data.directory || downloadDir || '').trim();
       const responseMessage = String(data.message || '').trim();
       if (opened) {
-        message.success(responseMessage || `已打开驱动目录：${pathText || '-'}`);
+        message.success(compatText(responseMessage || `已打开驱动目录：${pathText || '-'}`, 'message'));
         return;
       }
       if (pathText && navigator.clipboard?.writeText) {
         try {
           await navigator.clipboard.writeText(pathText);
-          message.warning(`${responseMessage || '无法自动打开驱动目录'}；路径已复制：${pathText}`);
+          message.warning(compatText(`${responseMessage || '无法自动打开驱动目录'}；路径已复制：${pathText}`, 'message'));
           return;
         } catch {
           // Clipboard is best effort only; fall through to the visible path message.
         }
       }
-      message.warning(responseMessage || `无法自动打开驱动目录，请手动打开：${pathText || '-'}`);
+      message.warning(compatText(responseMessage || `无法自动打开驱动目录，请手动打开：${pathText || '-'}`, 'message'));
     } catch (error) {
       const errMsg = error instanceof Error ? error.message : String(error || '未知错误');
-      message.error(`打开驱动目录失败: ${errMsg}`);
+      message.error(compatText(`打开驱动目录失败: ${errMsg}`, 'message'));
     }
   }, [downloadDir]);
 
@@ -1441,13 +1444,13 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     try {
       const result = await RemoveDriverPackage(row.type, downloadDir);
       if (!result?.success) {
-        const errText = result?.message || `移除 ${row.name} 失败`;
+        const errText = result?.message || compatText(`移除 ${row.name} 失败`, 'message');
         appendOperationLog(row.type, `[ERROR] ${errText}`);
         message.error(errText);
         return;
       }
       appendOperationLog(row.type, '[DONE] 驱动移除完成');
-      message.success(`${row.name} 已移除`);
+      message.success(compatText(`${row.name} 已移除`, 'message'));
       setProgressMap((prev) => {
         const next = { ...prev };
         delete next[row.type];
@@ -1462,13 +1465,13 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
   const columns = useMemo(() => {
     return [
       {
-        title: '数据源',
+        title: compatText('数据源'),
         dataIndex: 'name',
         key: 'name',
         width: 150,
       },
       {
-        title: '安装包大小',
+        title: compatText('安装包大小'),
         dataIndex: 'packageSizeText',
         key: 'packageSizeText',
         width: 120,
@@ -1485,48 +1488,48 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             options[0];
           const anyKnownSize = options.find((item) => String(item.packageSizeText || '').trim())?.packageSizeText;
           if (selectedKey && versionSizeLoadingMap[loadingKey]) {
-            return '计算中...';
+            return compatText('计算中...');
           }
           return selectedOption?.packageSizeText || anyKnownSize || row.packageSizeText || '-';
         },
       },
       {
-        title: '状态',
+        title: compatText('状态'),
         key: 'status',
         width: 140,
         render: (_: string, row: DriverStatusRow) => {
           if (row.builtIn) {
             return row.runtimeAvailable
-              ? <Tag color="success">内置可用</Tag>
-              : <Tag color="warning">内置待接入</Tag>;
+              ? <Tag color="success">{compatText('内置可用')}</Tag>
+              : <Tag color="warning">{compatText('内置待接入')}</Tag>;
           }
           if (row.reusedDriverType) {
             return row.connectable
-              ? <Tag color="blue">复用 {row.reusedDriverName || row.reusedDriverType}</Tag>
-              : <Tag color="warning">等待 {row.reusedDriverName || row.reusedDriverType}</Tag>;
+              ? <Tag color="blue">{compatText('复用')} {row.reusedDriverName || row.reusedDriverType}</Tag>
+              : <Tag color="warning">{compatText('等待')} {row.reusedDriverName || row.reusedDriverType}</Tag>;
           }
           const progress = progressMap[row.type];
           if (progress && (progress.status === 'start' || progress.status === 'downloading')) {
-            return <Tag color="processing">安装中 {Math.round(progress.percent)}%</Tag>;
+            return <Tag color="processing">{compatText('安装中')} {Math.round(progress.percent)}%</Tag>;
           }
           if (row.connectable) {
-            return <Tag color="success">已启用</Tag>;
+            return <Tag color="success">{compatText('已启用')}</Tag>;
           }
           if (row.packageInstalled) {
-            return <Tag color="warning">已安装</Tag>;
+            return <Tag color="warning">{compatText('已安装')}</Tag>;
           }
           if (row.managedDownload || row.downloadRequired) {
-            return <Tag color="warning">待下载</Tag>;
+            return <Tag color="warning">{compatText('待下载')}</Tag>;
           }
-          return <Tag color="default">未启用</Tag>;
+          return <Tag color="default">{compatText('未启用')}</Tag>;
         },
       },
       {
-        title: '来源',
+        title: compatText('来源'),
         key: 'installSource',
         width: 180,
         render: (_: string, row: DriverStatusRow) => {
-          const label = row.installSourceLabel || (row.packageInstalled || row.connectable ? '驱动元数据' : '未安装');
+          const label = compatText(row.installSourceLabel || (row.packageInstalled || row.connectable ? '驱动元数据' : '未安装'));
           return (
             <div style={{ display: 'grid', gap: 4 }}>
               <Tag color={driverSourceTagColor(row.installSource)} style={{ width: 'fit-content', marginInlineEnd: 0 }}>
@@ -1542,7 +1545,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         },
       },
       {
-        title: '默认驱动',
+        title: compatText('默认驱动'),
         key: 'defaultDriver',
         width: 220,
         render: (_: string, row: DriverStatusRow) => {
@@ -1578,15 +1581,15 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               />
               <Text type="secondary" style={{ fontSize: 12 }}>
                 {availableOptions.length > 1
-                  ? '新增连接默认使用此驱动，也可在连接表单中改选。'
-                  : '暂无多个可用兼容驱动。'}
+                  ? compatText('新增连接默认使用此驱动，也可在连接表单中改选。')
+                  : compatText('暂无多个可用兼容驱动。')}
               </Text>
             </div>
           );
         },
       },
       {
-        title: '安装进度',
+        title: compatText('安装进度'),
         key: 'progress',
         width: 170,
         render: (_: string, row: DriverStatusRow) => {
@@ -1613,7 +1616,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         },
       },
       {
-        title: '驱动版本',
+        title: compatText('驱动版本'),
         key: 'driverVersion',
         width: 280,
         render: (_: string, row: DriverStatusRow) => {
@@ -1624,7 +1627,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             const version = String(row.installedVersion || '').trim();
             return (
               <Text type="secondary">
-                {row.connectable ? '复用' : '依赖'} {row.reusedDriverName || row.reusedDriverType}{version ? ` ${version}` : ''}
+                {row.connectable ? compatText('复用') : compatText('依赖')} {row.reusedDriverName || row.reusedDriverType}{version ? ` ${version}` : ''}
               </Text>
             );
           }
@@ -1634,7 +1637,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             return (
               <div style={{ display: 'grid', gap: 4 }}>
                 <Text type="secondary">
-                  {installedVersion ? `${installedVersion}（已安装，移除后可更换）` : '已安装（移除后可更换）'}
+                  {installedVersion
+                    ? compatText(`${installedVersion}（已安装，移除后可更换）`, 'jsx')
+                    : compatText('已安装（移除后可更换）')}
                 </Text>
               </div>
             );
@@ -1643,11 +1648,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           const selectedKey = selectedVersionMap[row.type];
           const selectOptions = buildVersionSelectOptions(options);
           const mongoHint = row.type === 'mongodb'
-            ? '当前仅支持 MongoDB 1.17.x 和 2.x；更老 1.x 暂不提供安装。'
+            ? compatText('当前仅支持 MongoDB 1.17.x 和 2.x；更老 1.x 暂不提供安装。')
             : '';
           const installedVersions = (row.installedVersions || []).map((item) => item.version).filter(Boolean);
           const installedVersionsText = installedVersions.length > 0
-            ? `已下载 ${installedVersions.length} 个版本：${installedVersions.slice(0, 4).join('、')}${installedVersions.length > 4 ? '…' : ''}`
+            ? compatText(`已下载 ${installedVersions.length} 个版本：${installedVersions.slice(0, 4).join('、')}${installedVersions.length > 4 ? '…' : ''}`, 'jsx')
             : '';
           return (
             <div style={{ display: 'grid', gap: 4 }}>
@@ -1656,7 +1661,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                 style={{ width: '100%' }}
                 loading={!!versionLoadingMap[row.type]}
                 disabled={actionState.driverType === row.type}
-                placeholder={options.length > 0 ? '选择驱动版本' : '点击展开加载版本'}
+                placeholder={options.length > 0 ? compatText('选择驱动版本') : compatText('点击展开加载版本')}
                 value={selectedKey}
                 options={selectOptions as any}
                 onOpenChange={(open) => {
@@ -1674,7 +1679,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                 }}
               />
               {row.installedVersion ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>当前启用：{row.installedVersion}</Text>
+                <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`当前启用：${row.installedVersion}`, 'jsx')}</Text>
               ) : null}
               {installedVersionsText ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>{installedVersionsText}</Text>
@@ -1685,7 +1690,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         },
       },
       {
-        title: '操作',
+        title: compatText('操作'),
         key: 'actions',
         width: 300,
         render: (_: string, row: DriverStatusRow) => {
@@ -1702,13 +1707,13 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           if (row.reusedDriverType) {
             return (
               <Space size={8} wrap>
-                <Text type="secondary">由 {row.reusedDriverName || row.reusedDriverType} 管理</Text>
+                <Text type="secondary">{compatText(`由 ${row.reusedDriverName || row.reusedDriverType} 管理`, 'jsx')}</Text>
                 <Button
                   type={hasLogs ? 'default' : 'text'}
                   disabled={!hasLogs}
                   onClick={() => openDriverLog(row.type)}
                 >
-                  日志
+                  {compatText('日志')}
                 </Button>
               </Space>
             );
@@ -1722,7 +1727,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               loading={loadingInstallOrRemove}
               onClick={() => installDriver(row)}
             >
-              {row.connectable ? '下载/切换版本' : '安装启用'}
+              {row.connectable ? compatText('下载/切换版本') : compatText('安装启用')}
             </Button>
           ) : null;
           const removeAction = row.connectable ? (
@@ -1732,7 +1737,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               loading={loadingInstallOrRemove}
               onClick={() => removeDriver(row)}
             >
-              移除
+              {compatText('移除')}
             </Button>
           ) : null;
           const mainAction = downloadAction || removeAction || (
@@ -1742,7 +1747,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               loading={loadingInstallOrRemove}
               onClick={() => installDriver(row)}
             >
-              安装启用
+              {compatText('安装启用')}
             </Button>
           );
 
@@ -1755,14 +1760,14 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                 loading={loadingUpload}
                 onClick={() => uploadDriverFromJarFiles(row)}
               >
-                上传 Jar
+                {compatText('上传 Jar')}
               </Button>
               <Button
                 type={hasLogs ? 'default' : 'text'}
                 disabled={!hasLogs}
                 onClick={() => openDriverLog(row.type)}
               >
-                日志
+                {compatText('日志')}
               </Button>
             </Space>
           );
@@ -1788,16 +1793,18 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         row.type,
         row.pinnedVersion,
         row.installedVersion,
-        ...(row.installedVersions || []).map((item) => `${item.version} ${item.active ? '当前启用' : '已下载'}`),
+        ...(row.installedVersions || []).map((item) => compatText(`${item.version} ${item.active ? '当前启用' : '已下载'}`, 'jsx')),
         row.message,
         row.installSourceLabel,
         row.installSourceDetail,
         row.installMode,
-        row.defaultDriverName ? `默认驱动 ${row.defaultDriverName}` : '',
-        ...(row.driverOptions || []).map((option) => `${option.driverName} ${option.default ? '默认' : ''} ${option.reusedRuntime ? '复用 runtime' : ''}`),
-        row.reusedDriverType ? `复用 ${row.reusedDriverName || row.reusedDriverType}` : '',
-        row.builtIn ? '内置' : row.managedDownload ? '按需下载' : '外置',
-        row.reusedDriverType ? (row.connectable ? '复用' : `等待 ${row.reusedDriverName || row.reusedDriverType}`) : row.connectable ? '已启用' : row.packageInstalled ? '已安装' : '未启用',
+        row.defaultDriverName ? compatText(`默认驱动 ${row.defaultDriverName}`, 'jsx') : '',
+        ...(row.driverOptions || []).map((option) => compatText(`${option.driverName} ${option.default ? '默认' : ''} ${option.reusedRuntime ? '复用 runtime' : ''}`, 'jsx')),
+        row.reusedDriverType ? compatText(`复用 ${row.reusedDriverName || row.reusedDriverType}`, 'jsx') : '',
+        row.builtIn ? compatText('内置') : row.managedDownload ? compatText('按需下载') : compatText('外置'),
+        row.reusedDriverType
+          ? (row.connectable ? compatText('复用') : compatText(`等待 ${row.reusedDriverName || row.reusedDriverType}`, 'jsx'))
+          : row.connectable ? compatText('已启用') : row.packageInstalled ? compatText('已安装') : compatText('未启用'),
       ];
       const searchableText = normalizeDriverSearchText(searchableParts.filter(Boolean).join(' '));
       return searchableText.includes(normalizedSearchKeyword);
@@ -1805,9 +1812,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
   }, [normalizedSearchKeyword, rows]);
   const filterSummaryText = useMemo(() => {
     if (normalizedSearchKeyword) {
-      return `匹配 ${filteredRows.length} / ${rows.length}`;
+      return compatText(`匹配 ${filteredRows.length} / ${rows.length}`, 'jsx');
     }
-    return `共 ${rows.length} 个驱动`;
+    return compatText(`共 ${rows.length} 个驱动`, 'jsx');
   }, [filteredRows.length, normalizedSearchKeyword, rows.length]);
 
   const activeDriverLogs = operationLogMap[logDriverType] || [];
@@ -1834,7 +1841,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
 
   return (
     <Modal
-      title="驱动管理"
+      title={compatText('驱动管理')}
       open={open}
       onCancel={onClose}
       width={980}
@@ -1860,13 +1867,13 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           </div>
           <Space className="driver-manager-footer-actions" size={8}>
             <Button key="refresh" icon={<ReloadOutlined />} onClick={() => refreshStatus(true)} loading={loading}>
-              刷新
+              {compatText('刷新')}
             </Button>
             <Button key="network" onClick={() => checkNetworkStatus(true)} loading={networkChecking}>
-              网络检测
+              {compatText('网络检测')}
             </Button>
             <Button key="close" type="primary" onClick={onClose}>
-              关闭
+              {compatText('关闭')}
             </Button>
           </Space>
         </div>
@@ -1874,35 +1881,28 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     >
       <div ref={modalContentRef}>
       <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <Text type="secondary">JavaNavi Web 会展示每个 JavaNavi 驱动的真实 Java 可用性；外部 JDBC 驱动默认按需下载或手动上传，只有实际可用后才会显示为已启用。来源列会区分 Maven 下载、手动上传、内置 runtime 与复用 runtime。</Text>
+        <Text type="secondary">{compatText('JavaNavi Web 会展示每个 JavaNavi 驱动的真实 Java 可用性；外部 JDBC 驱动默认按需下载或手动上传，只有实际可用后才会显示为已启用。来源列会区分 Maven 下载、手动上传、内置 runtime 与复用 runtime。', 'jsx')}</Text>
         {networkStatus ? (
           networkUnreachable ? (
             <Alert
               type="error"
               showIcon
-              message={showDownloadChainAlert ? '重要提醒：驱动下载链路域名不可达' : '重要提醒：驱动下载网络不可达'}
+              message={showDownloadChainAlert ? compatText('重要提醒：驱动下载链路域名不可达') : compatText('重要提醒：驱动下载网络不可达')} 
               description={(
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
                   {showDownloadChainAlert ? (
                     <>
-                      <Text>
-                        当前 Maven 驱动源或其依赖域名不可达。
-                        请优先在 JavaNavi 顶部“代理”中启用全局代理（填写代理应用本地地址和端口）。
-                      </Text>
+                      <Text>{compatText('当前 Maven 驱动源或其依赖域名不可达。请优先在 JavaNavi 顶部“代理”中启用全局代理（填写代理应用本地地址和端口）。', 'jsx')}</Text>
                       {onOpenGlobalProxySettings ? (
-                        <Button size="small" onClick={onOpenGlobalProxySettings}>打开全局代理设置</Button>
+                        <Button size="small" onClick={onOpenGlobalProxySettings}>{compatText('打开全局代理设置')}</Button>
                       ) : null}
-                      <Text>
-                        若仍失败，请在代理规则放行：{downloadRequiredHostText}；仍无法调整规则时，再考虑开启 TUN 模式。
-                      </Text>
+                      <Text>{compatText(`若仍失败，请在代理规则放行：${downloadRequiredHostText}；仍无法调整规则时，再考虑开启 TUN 模式。`, 'jsx')}</Text>
                     </>
                   ) : (
                     <Text>{networkStatus.summary}</Text>
                   )}
                   {proxyEnvEntries.length > 0 ? (
-                    <Text type="secondary">
-                      检测到代理环境变量：{proxyEnvEntries.map(([key]) => key).join('、')}
-                    </Text>
+                    <Text type="secondary">{compatText(`检测到代理环境变量：${proxyEnvEntries.map(([key]) => key).join('、')}`, 'jsx')}</Text>
                   ) : null}
                 </Space>
               )}
@@ -1918,23 +1918,19 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                   items={[
                     {
                       key: 'checks',
-                      label: '查看网络检测明细',
+                      label: compatText('查看网络检测明细'),
                       children: (
                         <Space direction="vertical" size={4} style={{ width: '100%' }}>
                           <Text type="secondary">
-                            当前 Maven 源：{repositoryURL || '-'}；配置状态：{networkStatus.repositoryConfigured ? '已自定义' : '默认'}
+                            {compatText(`当前 Maven 源：${repositoryURL || '-'}；配置状态：${networkStatus.repositoryConfigured ? '已自定义' : '默认'}`, 'jsx')} 
                           </Text>
                           <Text type="secondary">
-                            Maven 源配置可用性：{repositoryConnectivityProbe ? (repositoryConnectivityProbe.reachable ? '可达' : '不可达') : '暂无结果'}
-                            {repositoryConnectivityLatencyMs !== undefined ? `，${repositoryConnectivityLatencyMs}ms` : ''}
-                            {repositoryConnectivityProbe?.error ? `，${repositoryConnectivityProbe.error}` : ''}
+                            {compatText(`Maven 源配置可用性：${repositoryConnectivityProbe ? (repositoryConnectivityProbe.reachable ? '可达' : '不可达') : '暂无结果'}${repositoryConnectivityLatencyMs !== undefined ? `，${repositoryConnectivityLatencyMs}ms` : ''}${repositoryConnectivityProbe?.error ? `，${repositoryConnectivityProbe.error}` : ''}`, 'jsx')} 
                           </Text>
                           {proxyEnvEntries.length > 0 ? (
-                            <Text type="secondary">
-                              检测到代理环境变量：{proxyEnvEntries.map(([key]) => key).join('、')}
-                            </Text>
+                            <Text type="secondary">{compatText(`检测到代理环境变量：${proxyEnvEntries.map(([key]) => key).join('、')}`, 'jsx')}</Text>
                           ) : (
-                            <Text type="secondary">未检测到系统代理环境变量。</Text>
+                            <Text type="secondary">{compatText('未检测到系统代理环境变量。')}</Text>
                           )}
                         </Space>
                       ),
@@ -1949,7 +1945,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             type="info"
             showIcon
             icon={sharedInfoAlertIcon}
-            message={networkChecking ? '正在检测驱动下载网络...' : '尚未完成网络检测'}
+            message={networkChecking ? compatText('正在检测驱动下载网络...') : compatText('尚未完成网络检测')} 
           />
         )}
 
@@ -1957,11 +1953,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           type="info"
           showIcon
           icon={sharedInfoAlertIcon}
-          message="Maven 源配置"
+          message={compatText('Maven 源配置')}
           description={(
             <Space direction="vertical" size={8} style={{ width: '100%' }}>
               <Text type="secondary">
-                自动安装和首次连接按需下载会使用这里配置的 Maven 仓库根地址，例如 Maven Central、阿里云或公司 Nexus/Artifactory。
+                {compatText('自动安装和首次连接按需下载会使用这里配置的 Maven 仓库根地址，例如 Maven Central、阿里云或公司 Nexus/Artifactory。', 'jsx')}
               </Text>
               <Space.Compact style={{ width: '100%' }}>
                 <Input
@@ -1971,15 +1967,14 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                   onPressEnter={() => void configureRepository()}
                 />
                 <Button loading={repositorySaving} onClick={() => void configureRepository()}>
-                  保存
+                  {compatText('保存')}
                 </Button>
                 <Button disabled={repositorySaving} onClick={() => void configureRepository('')}>
-                  恢复默认
+                  {compatText('恢复默认')}
                 </Button>
               </Space.Compact>
               <Text type="secondary">
-                当前生效：{repositoryURL || networkStatus?.defaultRepositoryURL || 'https://repo.maven.apache.org/maven2'}
-                {networkStatus?.repositoryConfigured ? '（自定义）' : '（默认）'}
+                {compatText(`当前生效：${repositoryURL || networkStatus?.defaultRepositoryURL || 'https://repo.maven.apache.org/maven2'}${networkStatus?.repositoryConfigured ? '（自定义）' : '（默认）'}`, 'jsx')} 
               </Text>
             </Space>
           )}
@@ -1989,27 +1984,27 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           type="info"
           showIcon
           icon={sharedInfoAlertIcon}
-          message="驱动目录与复用说明"
+          message={compatText('驱动目录与复用说明')}
           description={(
             <Collapse
               size="small"
               items={[
                 {
                   key: 'driver-directory',
-                  label: '查看驱动目录与复用说明',
+                  label: compatText('查看驱动目录与复用说明'),
                   children: (
                     <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                      <Text type="secondary">自动下载和手动上传的驱动都会落盘到以下目录；后续版本升级可重复复用已下载驱动。</Text>
-                      <Text type="secondary">点击上传 Jar 并选择文件后，会弹窗填写实际驱动版本，默认值为“{DEFAULT_UPLOAD_DRIVER_VERSION}”。</Text>
+                      <Text type="secondary">{compatText('自动下载和手动上传的驱动都会落盘到以下目录；后续版本升级可重复复用已下载驱动。', 'jsx')}</Text>
+                      <Text type="secondary">{compatText(`点击上传 Jar 并选择文件后，会弹窗填写实际驱动版本，默认值为“${DEFAULT_UPLOAD_DRIVER_VERSION}”。`, 'jsx')}</Text>
                       <Paragraph copyable={{ text: downloadDir || '-' }} style={{ marginBottom: 0 }}>
-                        驱动根目录：{downloadDir || '-'}
+                        {compatText(`驱动根目录：${downloadDir || '-'}`, 'jsx')}
                       </Paragraph>
                       <Button icon={<FolderOpenOutlined />} onClick={() => void openDriverDirectory()}>
-                        打开驱动目录
+                        {compatText('打开驱动目录')}
                       </Button>
                       {networkStatus?.logPath ? (
                         <Paragraph copyable={{ text: networkStatus.logPath }} style={{ marginBottom: 0 }}>
-                          运行日志文件：{networkStatus.logPath}
+                          {compatText(`运行日志文件：${networkStatus.logPath}`, 'jsx')}
                         </Paragraph>
                       ) : null}
                     </Space>
@@ -2023,7 +2018,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         <div style={{ width: '100%', display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
           <Input.Search
             allowClear
-            placeholder="搜索驱动名称/类型（如 DuckDB、clickhouse）"
+            placeholder={compatText('搜索驱动名称/类型（如 DuckDB、clickhouse）')}
             value={searchKeyword}
             onChange={(event) => setSearchKeyword(event.target.value)}
             style={{ minWidth: 300, flex: '1 1 360px' }}
@@ -2034,13 +2029,13 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               icon={<DatabaseOutlined />}
               onClick={openCustomDataSourceCreator}
             >
-              新增自定义数据源
+              {compatText('新增自定义数据源')}
             </Button>
             <Button
               icon={<FolderOpenOutlined />}
               onClick={() => void openDriverDirectory()}
             >
-              打开驱动目录
+              {compatText('打开驱动目录')}
             </Button>
           </Space>
         </div>
@@ -2049,22 +2044,22 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           items={[
             {
               key: 'custom-data-sources',
-              label: `自定义数据源定义（${customDataSources.length}）`,
+              label: compatText(`自定义数据源定义（${customDataSources.length}）`),
               children: (
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
                   <Alert
                     showIcon
                     type="info"
-                    message="自定义数据源定义保存驱动与 Jar；连接只保存 DSN、凭据和实例选项"
-                    description="后端只返回脱敏定义元数据：驱动类、版本、Jar 文件名/校验和、驱动可加载和定义可用状态；连接是否成功仅在新建连接测试后记录。"
+                    message={compatText('自定义数据源定义保存驱动与 Jar；连接只保存 DSN、凭据和实例选项')}
+                    description={compatText('后端只返回脱敏定义元数据：驱动类、版本、Jar 文件名/校验和、驱动可加载和定义可用状态；连接是否成功仅在新建连接测试后记录。', 'jsx')}
                     action={(
                       <Button size="small" icon={<ReloadOutlined />} loading={customDefinitionLoading} onClick={() => void refreshCustomDefinitions(true)}>
-                        同步后端定义
+                        {compatText('同步后端定义')}
                       </Button>
                     )}
                   />
                   {customDataSources.length === 0 ? (
-                    <Alert showIcon type="warning" message="还没有自定义数据源定义" description="点击“新增自定义数据源”上传 JDBC Jar，保存后可在新建连接中复用。" />
+                    <Alert showIcon type="warning" message={compatText('还没有自定义数据源定义')} description={compatText('点击“新增自定义数据源”上传 JDBC Jar，保存后可在新建连接中复用。', 'jsx')} />
                   ) : (
                     customDataSources.map((source) => {
                       const status = source.runtimeStatus;
@@ -2087,24 +2082,24 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                               <Text strong>{source.name}</Text>
                               {source.driverType ? <Tag color="blue">{source.driverType}</Tag> : null}
                               {source.version ? <Tag color="purple">{source.version}</Tag> : null}
-                              {status?.definitionUsable ? <Tag color="success">定义可用</Tag> : status?.driverLoadable ? <Tag color="warning">驱动可加载</Tag> : <Tag>未校验</Tag>}
-                              {source.installSource === 'manual-upload' ? <Tag color="purple">手动上传</Tag> : null}
-                              {source.installSource === 'maven-download' ? <Tag color="geekblue">Maven 下载</Tag> : null}
+                              {status?.definitionUsable ? <Tag color="success">{compatText('定义可用')}</Tag> : status?.driverLoadable ? <Tag color="warning">{compatText('驱动可加载')}</Tag> : <Tag>{compatText('未校验')}</Tag>}
+                              {source.installSource === 'manual-upload' ? <Tag color="purple">{compatText('手动上传')}</Tag> : null}
+                              {source.installSource === 'maven-download' ? <Tag color="geekblue">{compatText('Maven 下载')}</Tag> : null}
                             </Space>
-                            <Text type="secondary" style={{ fontSize: 12 }}>Driver Class：{source.driverClassName || '待后端发现/校验'}</Text>
+                            <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`Driver Class：${source.driverClassName || '待后端发现/校验'}`, 'jsx')}</Text>
                             {source.dsnTemplate ? (
-                              <Text type="secondary" ellipsis={{ tooltip: source.dsnTemplate }} style={{ maxWidth: 760 }}>DSN 模板：{source.dsnTemplate}</Text>
+                              <Text type="secondary" ellipsis={{ tooltip: source.dsnTemplate }} style={{ maxWidth: 760 }}>{compatText(`DSN 模板：${source.dsnTemplate}`, 'jsx')}</Text>
                             ) : null}
                             {source.dsnHelp ? (
-                              <Text type="secondary" ellipsis={{ tooltip: source.dsnHelp }} style={{ maxWidth: 760 }}>DSN 说明：{source.dsnHelp}</Text>
+                              <Text type="secondary" ellipsis={{ tooltip: source.dsnHelp }} style={{ maxWidth: 760 }}>{compatText(`DSN 说明：${source.dsnHelp}`, 'jsx')}</Text>
                             ) : null}
-                            {source.jarFileNames?.length ? <Text type="secondary" style={{ fontSize: 12 }}>Jar：{source.jarFileNames.join('、')}</Text> : null}
-                            {status?.message ? <Text type={status.definitionUsable ? 'secondary' : 'danger'} style={{ fontSize: 12 }}>状态：{status.message}</Text> : null}
-                            {repairHints.length > 0 ? <Text type="secondary" style={{ fontSize: 12 }}>修复建议：{repairHints.join('；')}</Text> : null}
+                            {source.jarFileNames?.length ? <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`Jar：${source.jarFileNames.join('、')}`, 'jsx')}</Text> : null}
+                            {status?.message ? <Text type={status.definitionUsable ? 'secondary' : 'danger'} style={{ fontSize: 12 }}>{compatText(`状态：${status.message}`, 'jsx')}</Text> : null}
+                            {repairHints.length > 0 ? <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`修复建议：${repairHints.join('；')}`, 'jsx')}</Text> : null}
                           </Space>
                           <Space size={8} wrap style={{ justifyContent: 'flex-end' }}>
-                            <Button size="small" loading={!!customDefinitionValidating[source.id]} onClick={() => void validateCustomDataSource(source)}>校验/修复状态</Button>
-                            <Button danger size="small" icon={<DeleteOutlined />} onClick={() => removeSavedCustomDataSource(source)}>移除记录</Button>
+                            <Button size="small" loading={!!customDefinitionValidating[source.id]} onClick={() => void validateCustomDataSource(source)}>{compatText('校验/修复状态')}</Button>
+                            <Button danger size="small" icon={<DeleteOutlined />} onClick={() => removeSavedCustomDataSource(source)}>{compatText('移除记录')}</Button>
                           </Space>
                         </div>
                       );
@@ -2120,11 +2115,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           <Alert
             type="warning"
             showIcon
-            message="驱动状态暂未加载成功"
-            description={`已自动重试；仍失败时可点击“刷新”。原因：${statusLoadError}`}
+            message={compatText('驱动状态暂未加载成功')}
+            description={compatText(`已自动重试；仍失败时可点击“刷新”。原因：${statusLoadError}`, 'jsx')}
             action={(
               <Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshStatus(true, { retryCount: DRIVER_STATUS_INITIAL_RETRY_COUNT })}>
-                刷新
+                {compatText('刷新')}
               </Button>
             )}
           />
@@ -2146,15 +2141,15 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             scroll={{ x: DRIVER_TABLE_SCROLL_X }}
             locale={{
               emptyText: normalizedSearchKeyword
-                ? `未找到匹配“${String(searchKeyword || '').trim()}”的驱动`
-                : '暂无驱动数据',
+                ? compatText(`未找到匹配“${String(searchKeyword || '').trim()}”的驱动`, 'jsx')
+                : compatText('暂无驱动数据'),
             }}
           />
         </div>
       </Space>
       </div>
       <Modal
-        title="新增自定义数据源"
+        title={compatText('新增自定义数据源')}
         open={customDataSourceModalOpen}
         onCancel={() => {
           if (!customDataSourceSaving) {
@@ -2162,8 +2157,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           }
         }}
         onOk={() => void handleCreateCustomDataSource()}
-        okText="上传并保存"
-        cancelText="取消"
+        okText={compatText('上传并保存')}
+        cancelText={compatText('取消')}
         confirmLoading={customDataSourceSaving}
         maskClosable={!customDataSourceSaving}
         destroyOnHidden
@@ -2173,11 +2168,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
           <Alert
             showIcon
             type="info"
-            message="在驱动管理中创建自定义数据源"
-            description="这里完成 Jar 上传、驱动类发现、数据源命名和 DSN 指引配置；新建连接只选择定义并填写实际 DSN/凭据。"
+            message={compatText('在驱动管理中创建自定义数据源')}
+            description={compatText('这里完成 Jar 上传、驱动类发现、数据源命名和 DSN 指引配置；新建连接只选择定义并填写实际 DSN/凭据。', 'jsx')}
           />
           <Form form={customDataSourceForm} layout="vertical">
-            <Form.Item label="JDBC Jar" required>
+            <Form.Item label={compatText('JDBC Jar')} required>
               <Space direction="vertical" size={8} style={{ width: '100%' }}>
                 <Space size={8} wrap>
                   <Button
@@ -2185,62 +2180,62 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                     onClick={() => void chooseCustomDataSourceJarFiles()}
                     disabled={customDataSourceSaving}
                   >
-                    选择 Jar 文件
+                    {compatText('选择 Jar 文件')}
                   </Button>
                   <Text type={customDataSourceFiles.length > 0 ? undefined : 'secondary'}>
-                    {summarizeJarFileNames(customDataSourceFiles)}
+                    {compatText(summarizeJarFileNames(customDataSourceFiles), 'jsx')}
                   </Text>
                 </Space>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  支持一次选择主驱动 Jar 和依赖 Jar；上传版本默认写入“{DEFAULT_UPLOAD_DRIVER_VERSION}”。
+                  {compatText(`支持一次选择主驱动 Jar 和依赖 Jar；上传版本默认写入“${DEFAULT_UPLOAD_DRIVER_VERSION}”。`, 'jsx')}
                 </Text>
               </Space>
             </Form.Item>
             <Form.Item
               name="name"
-              label="数据源名称"
+              label={compatText('数据源名称')}
               rules={[
-                { required: true, message: '请输入自定义数据源名称' },
-                { max: 64, message: '数据源名称最多 64 个字符' },
+                { required: true, message: compatText('请输入自定义数据源名称') },
+                { max: 64, message: compatText('数据源名称最多 64 个字符') },
               ]}
             >
-              <Input placeholder="例如：Trino / DB2 / 自研分析库" autoComplete="off" />
+              <Input placeholder={compatText('例如：Trino / DB2 / 自研分析库')} autoComplete="off" />
             </Form.Item>
             <Form.Item
               name="dsnTemplate"
-              label="DSN 模板（连接字符串模板）"
+              label={compatText('DSN 模板（连接字符串模板）')}
               rules={[
-                { required: true, message: '请输入 DSN 模板' },
-                { max: 4096, message: 'DSN 模板最多 4096 个字符' },
+                { required: true, message: compatText('请输入 DSN 模板') },
+                { max: 4096, message: compatText('DSN 模板最多 4096 个字符') },
               ]}
-              help="选择该数据源新建连接时会自动带出模板，保存连接时以连接表单中最终填写的 DSN 为准。"
+              help={compatText('选择该数据源新建连接时会自动带出模板，保存连接时以连接表单中最终填写的 DSN 为准。', 'jsx')}
             >
               <Input.TextArea
                 rows={4}
-                placeholder="例如：jdbc:trino://host:8080/catalog/schema"
+                placeholder={compatText('例如：jdbc:trino://host:8080/catalog/schema')} 
                 autoComplete="off"
               />
             </Form.Item>
             <Form.Item
               name="dsnHelp"
-              label="DSN 填写说明"
-              rules={[{ max: 4096, message: 'DSN 说明最多 4096 个字符' }]}
-              help="可写必填参数、常见 catalog/schema 示例或该驱动的连接注意事项。"
+              label={compatText('DSN 填写说明')}
+              rules={[{ max: 4096, message: compatText('DSN 说明最多 4096 个字符') }]}
+              help={compatText('可写必填参数、常见 catalog/schema 示例或该驱动的连接注意事项。', 'jsx')}
             >
               <Input.TextArea
                 rows={3}
-                placeholder="例如：请将 host、catalog、schema 替换为实际环境。"
+                placeholder={compatText('例如：请将 host、catalog、schema 替换为实际环境。')} 
                 autoComplete="off"
               />
             </Form.Item>
             <Form.Item
               name="description"
-              label="定义说明（可选）"
-              rules={[{ max: 1024, message: '说明最多 1024 个字符' }]}
+              label={compatText('定义说明（可选）')}
+              rules={[{ max: 1024, message: compatText('说明最多 1024 个字符') }]}
             >
               <Input.TextArea
                 rows={2}
-                placeholder="例如：公司内网 Trino，只包含主驱动和必要依赖 Jar。"
+                placeholder={compatText('例如：公司内网 Trino，只包含主驱动和必要依赖 Jar。')} 
                 autoComplete="off"
               />
             </Form.Item>
@@ -2248,12 +2243,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         </Space>
       </Modal>
       <Modal
-        title={`驱动日志 - ${activeLogRow?.name || logDriverType}`}
+        title={compatText(`驱动日志 - ${activeLogRow?.name || logDriverType}`)}
         open={logModalOpen}
         onCancel={() => setLogModalOpen(false)}
         footer={[
           <Button key="close-log" type="primary" onClick={() => setLogModalOpen(false)}>
-            关闭
+            {compatText('关闭')}
           </Button>,
         ]}
         width={780}
@@ -2261,12 +2256,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         <Space direction="vertical" size={8} style={{ width: '100%' }}>
           {activeLogRow?.installDir ? (
             <Paragraph copyable={{ text: activeLogRow.installDir }} style={{ marginBottom: 0 }}>
-              安装目录：{activeLogRow.installDir}
+              {compatText(`安装目录：${activeLogRow.installDir}`, 'jsx')}
             </Paragraph>
           ) : null}
           {activeLogRow?.executablePath ? (
             <Paragraph copyable={{ text: activeLogRow.executablePath }} style={{ marginBottom: 0 }}>
-              驱动可执行文件：{activeLogRow.executablePath}
+              {compatText(`驱动可执行文件：${activeLogRow.executablePath}`, 'jsx')}
             </Paragraph>
           ) : null}
           {activeDriverLogLines.length > 0 ? (
@@ -2274,7 +2269,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               {activeDriverLogLines.join('\n')}
             </pre>
           ) : (
-            <Text type="secondary">当前驱动暂无操作日志。</Text>
+            <Text type="secondary">{compatText('当前驱动暂无操作日志。')}</Text>
           )}
         </Space>
       </Modal>
