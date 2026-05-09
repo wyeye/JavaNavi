@@ -180,7 +180,7 @@ public class DatabaseCompatibilityService {
 
     public List<ColumnDefinitionDto> listColumns(ConnectionConfigDto config, String requestedDatabase, String tableName) {
         if (isMongo(config)) {
-            return requireMongoCompatibilityService().listColumns();
+            return requireMongoCompatibilityService().listColumns(resolveSavedConnectionSecret(config), requestedDatabase, tableName);
         }
         return withRedactedSqlErrors(() -> withConnection(config, connection -> listColumnsOnConnection(connection, config, requestedDatabase, tableName)));
     }

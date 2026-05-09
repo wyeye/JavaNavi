@@ -137,12 +137,379 @@ public class MongoCompatibilityService {
         return tables;
     }
 
-    public List<ColumnDefinitionDto> listColumns() {
-        return List.of();
+    public List<ColumnDefinitionDto> listColumns(ConnectionConfigDto config, String requestedDatabase, String tableName) {
+        String collection = requireText(tableName, "collection");
+        List<ColumnDefinitionDto> fromSchema = columnsFromJsonSchema(config, requestedDatabase, collection);
+        if (!fromSchema.isEmpty()) {
+            return fromSchema;
+        }
+        return columnsFromSampleDocuments(config, requestedDatabase, collection, 50);
     }
 
     public List<ColumnDefinitionWithTableDto> listAllColumns() {
         return List.of();
+    }
+
+    private List<ColumnDefinitionDto> columnsFromJsonSchema(ConnectionConfigDto config, String requestedDatabase, String collection) {
+        Map<String, Object> response = runCommand(config, mongoDatabase(config, requestedDatabase), orderedMap(
+                "listCollections", 1,
+                "filter", orderedMap("name", collection)
+        ));
+        for (Object item : cursorBatch(response)) {
+            if (!(item instanceof Map<?, ?> rawCollection)) {
+                continue;
+            }
+            Map<String, Object> collectionMap = toStringMap(rawCollection);
+            Map<String, Object> options = mapValue(collectionMap.get("options"));
+            Map<String, Object> validator = mapValue(options.get("validator"));
+            Map<String, Object> jsonSchema = mapValue(validator.get("$jsonSchema"));
+            if (jsonSchema.isEmpty()) {
+                continue;
+            }
+            Map<String, FieldStats> stats = new LinkedHashMap<>();
+            appendJsonSchemaFields(stats, "", jsonSchema, false);
+            return sortedColumnDefinitions(stats);
+        }
+        return List.of();
+    }
+
+    private List<ColumnDefinitionDto> columnsFromSampleDocuments(ConnectionConfigDto config, String requestedDatabase, String collection, int sampleLimit) {
+        Map<String, Object> response = runCommand(config, mongoDatabase(config, requestedDatabase), orderedMap(
+                "find", collection,
+                "limit", sampleLimit
+        ));
+        Map<String, FieldStats> stats = new LinkedHashMap<>();
+        int documentCount = 0;
+        for (Object item : cursorBatch(response)) {
+            if (!(item instanceof Map<?, ?> rawDocument)) {
+                continue;
+            }
+            documentCount++;
+            Set<String> seenInDocument = new LinkedHashSet<>();
+            Map<String, Object> document = toStringMap(rawDocument);
+            for (Map.Entry<String, Object> entry : document.entrySet()) {
+                appendSampleField(stats, entry.getKey(), entry.getValue(), seenInDocument);
+            }
+        }
+        if (documentCount == 0) {
+            return List.of();
+        }
+        final int totalDocuments = documentCount;
+        stats.values().forEach(field -> field.setTotalDocuments(totalDocuments));
+        return sortedColumnDefinitions(stats);
+    }
+
+    private void appendJsonSchemaFields(Map<String, FieldStats> stats, String parentPath, Map<String, Object> schema, boolean required) {
+        Map<String, Object> properties = mapValue(schema.get("properties"));
+        Set<String> requiredFields = stringSet(schema.get("required"));
+        if (!parentPath.isBlank()) {
+            registerSchemaField(stats, parentPath, schema, required);
+        }
+        if (!properties.isEmpty()) {
+            for (Map.Entry<String, Object> entry : properties.entrySet()) {
+                String fieldName = text(entry.getKey());
+                if (fieldName.isBlank()) {
+                    continue;
+                }
+                Map<String, Object> propertySchema = mapValue(entry.getValue());
+                if (propertySchema.isEmpty()) {
+                    registerFieldType(stats, joinPath(parentPath, fieldName), "unknown", requiredFields.contains(fieldName), false);
+                    continue;
+                }
+                appendJsonSchemaFields(stats, joinPath(parentPath, fieldName), propertySchema, requiredFields.contains(fieldName));
+            }
+        }
+
+        List<String> schemaTypes = normalizedSchemaTypes(schema);
+        boolean arrayType = schemaTypes.contains("array");
+        if (arrayType && !parentPath.isBlank()) {
+            Map<String, Object> itemSchema = mapValue(schema.get("items"));
+            if (itemSchema.isEmpty()) {
+                return;
+            }
+            String arrayPath = parentPath + "[]";
+            appendJsonSchemaArrayItems(stats, arrayPath, itemSchema, required);
+        }
+    }
+
+    private void appendJsonSchemaArrayItems(Map<String, FieldStats> stats, String arrayPath, Map<String, Object> itemSchema, boolean required) {
+        registerSchemaField(stats, arrayPath, itemSchema, required);
+        Map<String, Object> properties = mapValue(itemSchema.get("properties"));
+        Set<String> requiredFields = stringSet(itemSchema.get("required"));
+        if (!properties.isEmpty()) {
+            for (Map.Entry<String, Object> entry : properties.entrySet()) {
+                String fieldName = text(entry.getKey());
+                if (fieldName.isBlank()) {
+                    continue;
+                }
+                Map<String, Object> propertySchema = mapValue(entry.getValue());
+                if (propertySchema.isEmpty()) {
+                    registerFieldType(stats, joinPath(arrayPath, fieldName), "unknown", requiredFields.contains(fieldName), false);
+                    continue;
+                }
+                appendJsonSchemaFields(stats, joinPath(arrayPath, fieldName), propertySchema, requiredFields.contains(fieldName));
+            }
+        }
+        if (normalizedSchemaTypes(itemSchema).contains("array")) {
+            Map<String, Object> nestedItems = mapValue(itemSchema.get("items"));
+            if (!nestedItems.isEmpty()) {
+                appendJsonSchemaArrayItems(stats, arrayPath + "[]", nestedItems, required);
+            }
+        }
+    }
+
+    private void registerSchemaField(Map<String, FieldStats> stats, String path, Map<String, Object> schema, boolean required) {
+        List<String> schemaTypes = normalizedSchemaTypes(schema);
+        boolean allowsNull = schemaTypes.remove("null");
+        if (schemaTypes.isEmpty()) {
+            schemaTypes.add(inferSchemaType(schema));
+        }
+        for (String schemaType : schemaTypes) {
+            registerFieldType(stats, adjustedSchemaPath(path, schemaType), schemaType, required, allowsNull);
+        }
+    }
+
+    private void appendSampleField(Map<String, FieldStats> stats, String path, Object value) {
+        appendSampleField(stats, path, value, new LinkedHashSet<>());
+    }
+
+    private void appendSampleField(Map<String, FieldStats> stats, String path, Object value, Set<String> seenInDocument) {
+        String normalizedPath = firstText(path);
+        if (normalizedPath.isBlank()) {
+            return;
+        }
+        if (value == null) {
+            registerSampleField(stats, normalizedPath, "null", seenInDocument);
+            return;
+        }
+        if (value instanceof Map<?, ?> rawMap) {
+            registerSampleField(stats, normalizedPath, "object", seenInDocument);
+            Map<String, Object> map = toStringMap(rawMap);
+            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                String childKey = text(entry.getKey());
+                if (!childKey.isBlank()) {
+                    appendSampleField(stats, joinPath(normalizedPath, childKey), entry.getValue(), seenInDocument);
+                }
+            }
+            return;
+        }
+        if (value instanceof List<?> list) {
+            String arrayPath = normalizedPath + "[]";
+            registerSampleField(stats, arrayPath, "array", seenInDocument);
+            for (Object item : list) {
+                if (item instanceof Map<?, ?> rawItemMap) {
+                    registerSampleField(stats, arrayPath, "object", seenInDocument);
+                    Map<String, Object> itemMap = toStringMap(rawItemMap);
+                    for (Map.Entry<String, Object> entry : itemMap.entrySet()) {
+                        String childKey = text(entry.getKey());
+                        if (!childKey.isBlank()) {
+                            appendSampleField(stats, joinPath(arrayPath, childKey), entry.getValue(), seenInDocument);
+                        }
+                    }
+                } else if (item instanceof List<?> nestedList) {
+                    appendSampleField(stats, arrayPath, nestedList, seenInDocument);
+                } else {
+                    registerSampleField(stats, arrayPath, inferSampleType(arrayPath, item), seenInDocument);
+                }
+            }
+            return;
+        }
+        registerSampleField(stats, normalizedPath, inferSampleType(normalizedPath, value), seenInDocument);
+    }
+
+    private void registerSampleField(Map<String, FieldStats> stats, String path, String type, Set<String> seenInDocument) {
+        FieldStats fieldStats = stats.computeIfAbsent(path, ignored -> new FieldStats());
+        fieldStats.addType(type);
+        fieldStats.markPresent(path, seenInDocument);
+        if ("null".equals(type)) {
+            fieldStats.markNullAllowed();
+        }
+        if ("_id".equals(path)) {
+            fieldStats.markPrimary();
+        }
+    }
+
+    private void registerFieldType(Map<String, FieldStats> stats, String fieldName, String type, boolean required, boolean allowsNull) {
+        FieldStats fieldStats = stats.computeIfAbsent(fieldName, ignored -> new FieldStats());
+        fieldStats.addType(type);
+        if (required) {
+            fieldStats.markRequired();
+        }
+        if (allowsNull) {
+            fieldStats.markNullAllowed();
+        }
+        if ("_id".equals(fieldName)) {
+            fieldStats.markPrimary();
+        }
+    }
+
+    private List<ColumnDefinitionDto> sortedColumnDefinitions(Map<String, FieldStats> stats) {
+        List<ColumnDefinitionDto> columns = stats.entrySet().stream()
+                .map(entry -> toColumnDefinition(entry.getKey(), entry.getValue()))
+                .toList();
+        List<ColumnDefinitionDto> ordered = new ArrayList<>(columns);
+        ordered.sort((left, right) -> {
+            if ("_id".equals(left.name())) {
+                return "_id".equals(right.name()) ? 0 : -1;
+            }
+            if ("_id".equals(right.name())) {
+                return 1;
+            }
+            return left.name().compareToIgnoreCase(right.name());
+        });
+        return ordered;
+    }
+
+    private ColumnDefinitionDto toColumnDefinition(String fieldName, FieldStats stats) {
+        return new ColumnDefinitionDto(
+                fieldName,
+                stats.renderType(),
+                stats.nullableFlag(),
+                stats.keyFlag(),
+                "",
+                "",
+                ""
+        );
+    }
+
+    private static List<String> normalizedSchemaTypes(Map<String, Object> schema) {
+        List<String> types = new ArrayList<>();
+        appendSchemaTypes(types, schema.get("bsonType"));
+        appendSchemaTypes(types, schema.get("type"));
+        LinkedHashSet<String> unique = new LinkedHashSet<>();
+        for (String type : types) {
+            String normalized = normalizeTypeName(type);
+            if (!normalized.isBlank()) {
+                unique.add(normalized);
+            }
+        }
+        return new ArrayList<>(unique);
+    }
+
+    private static void appendSchemaTypes(List<String> target, Object rawType) {
+        if (rawType instanceof List<?> list) {
+            for (Object item : list) {
+                String type = text(item);
+                if (!type.isBlank()) {
+                    target.add(type);
+                }
+            }
+            return;
+        }
+        String type = text(rawType);
+        if (!type.isBlank()) {
+            target.add(type);
+        }
+    }
+
+    private static String inferSchemaType(Map<String, Object> schema) {
+        if (!mapValue(schema.get("properties")).isEmpty()) {
+            return "object";
+        }
+        if (!mapValue(schema.get("items")).isEmpty()) {
+            return "array";
+        }
+        return "unknown";
+    }
+
+    private static String adjustedSchemaPath(String path, String schemaType) {
+        if ("array".equals(schemaType) && !path.endsWith("[]")) {
+            return path + "[]";
+        }
+        return path;
+    }
+
+    private static String joinPath(String parent, String child) {
+        String normalizedParent = firstText(parent);
+        String normalizedChild = firstText(child);
+        if (normalizedParent.isBlank()) {
+            return normalizedChild;
+        }
+        if (normalizedChild.isBlank()) {
+            return normalizedParent;
+        }
+        return normalizedParent + "." + normalizedChild;
+    }
+
+    private static String inferSampleType(String path, Object value) {
+        if (value == null) {
+            return "null";
+        }
+        if ("_id".equals(path) && value instanceof String text && text.matches("^[0-9a-fA-F]{24}$")) {
+            return "objectId";
+        }
+        if (value instanceof Boolean) {
+            return "boolean";
+        }
+        if (value instanceof Byte || value instanceof Short || value instanceof Integer) {
+            return "int32";
+        }
+        if (value instanceof Long || value instanceof BigInteger) {
+            return "int64";
+        }
+        if (value instanceof Float || value instanceof Double || value instanceof BigDecimal) {
+            return "number";
+        }
+        if (value instanceof Map<?, ?>) {
+            return "object";
+        }
+        if (value instanceof List<?>) {
+            return "array";
+        }
+        if (value instanceof String text) {
+            if (text.startsWith("decimal128:")) {
+                return "decimal128";
+            }
+            if (text.startsWith("base64:")) {
+                return "binary";
+            }
+            if (text.startsWith("/") && text.lastIndexOf('/') > 0) {
+                return "regex";
+            }
+            return "string";
+        }
+        return normalizeTypeName(value.getClass().getSimpleName());
+    }
+
+    private static String normalizeTypeName(String rawType) {
+        String value = firstText(rawType).toLowerCase(Locale.ROOT);
+        return switch (value) {
+            case "int", "integer", "int32", "short", "byte" -> "int32";
+            case "long", "int64", "biginteger" -> "int64";
+            case "double", "float", "decimal", "bigdecimal", "number" -> "number";
+            case "bool", "boolean" -> "boolean";
+            case "date", "timestamp", "instant" -> "date";
+            case "objectid" -> "objectId";
+            case "object" -> "object";
+            case "array" -> "array";
+            case "regex" -> "regex";
+            case "decimal128" -> "decimal128";
+            case "binary", "bindata" -> "binary";
+            case "string" -> "string";
+            case "null" -> "null";
+            default -> value.isBlank() ? "unknown" : value;
+        };
+    }
+
+    private static Map<String, Object> mapValue(Object value) {
+        if (value instanceof Map<?, ?> rawMap) {
+            return toStringMap(rawMap);
+        }
+        return Map.of();
+    }
+
+    private static Set<String> stringSet(Object value) {
+        if (!(value instanceof List<?> list)) {
+            return Set.of();
+        }
+        LinkedHashSet<String> items = new LinkedHashSet<>();
+        for (Object item : list) {
+            String text = text(item);
+            if (!text.isBlank()) {
+                items.add(text);
+            }
+        }
+        return items;
     }
 
     public List<IndexDefinitionDto> listIndexes(ConnectionConfigDto config, String requestedDatabase, String tableName) {
@@ -1676,6 +2043,69 @@ public class MongoCompatibilityService {
                 return List.of();
             }
             return list.stream().map(MongoCompatibilityService::text).filter(item -> !item.isBlank()).toList();
+        }
+    }
+
+    private static final class FieldStats {
+        private final LinkedHashSet<String> observedTypes = new LinkedHashSet<>();
+        private boolean required;
+        private boolean nullAllowed;
+        private boolean primary;
+        private int presentDocuments;
+        private int totalDocuments;
+
+        void addType(String type) {
+            String normalized = normalizeTypeName(type);
+            if (!normalized.isBlank() && !"null".equals(normalized)) {
+                observedTypes.add(normalized);
+            }
+        }
+
+        void markRequired() {
+            this.required = true;
+        }
+
+        void markNullAllowed() {
+            this.nullAllowed = true;
+        }
+
+        void markPrimary() {
+            this.primary = true;
+            this.required = true;
+        }
+
+        void markPresent(String path, Set<String> seenInDocument) {
+            if (seenInDocument.add(path)) {
+                this.presentDocuments += 1;
+            }
+        }
+
+        void setTotalDocuments(int totalDocuments) {
+            this.totalDocuments = Math.max(this.totalDocuments, totalDocuments);
+        }
+
+        String renderType() {
+            if (observedTypes.isEmpty()) {
+                return "unknown";
+            }
+            if (observedTypes.size() == 1) {
+                return observedTypes.iterator().next();
+            }
+            return "mixed(" + String.join("|", observedTypes) + ")";
+        }
+
+        String nullableFlag() {
+            if (primary || required) {
+                return nullAllowed ? "YES" : "NO";
+            }
+            if (totalDocuments > 0 && presentDocuments < totalDocuments) {
+                return "YES";
+            }
+            return nullAllowed ? "YES" : "NO";
+        }
+
+        String keyFlag() {
+            return primary ? "PRI" : "";
         }
     }
 }
