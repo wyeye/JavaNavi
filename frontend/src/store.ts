@@ -11,8 +11,6 @@ import {
   AIChatMessage,
   AIContextItem,
   GlobalProxyConfig,
-  JVMDiagnosticCommandDraft,
-  JVMDiagnosticEventChunk,
 } from "./types";
 import {
   ShortcutAction,
@@ -59,12 +57,9 @@ const MAX_HOST_ENTRY_LENGTH = 512;
 const MAX_HOST_ENTRIES = 64;
 const DEFAULT_TIMEOUT_SECONDS = 30;
 const MAX_TIMEOUT_SECONDS = 3600;
-const DEFAULT_DIAGNOSTIC_TIMEOUT_SECONDS = 15;
-const MAX_DIAGNOSTIC_TIMEOUT_SECONDS = 300;
 const PERSIST_VERSION = 9;
 const PERSIST_STORAGE_KEY = "lite-db-storage";
 const DEFAULT_CONNECTION_TYPE = "mysql";
-const DEFAULT_JVM_PORT = 9010;
 const DEFAULT_GLOBAL_PROXY: GlobalProxyConfig = {
   enabled: false,
   type: "socks5",
@@ -91,7 +86,6 @@ const SUPPORTED_CONNECTION_TYPES = new Set([
   "mongodb",
   "highgo",
   "vastbase",
-  "jvm",
   "sqlite",
   "duckdb",
   "custom",
@@ -116,8 +110,6 @@ const SSL_SUPPORTED_CONNECTION_TYPES = new Set([
 
 const getDefaultPortByType = (type: string): number => {
   switch (type) {
-    case "jvm":
-      return DEFAULT_JVM_PORT;
     case "mysql":
     case "mariadb":
       return 3306;
@@ -265,138 +257,6 @@ const normalizeConnectionType = (value: unknown): string => {
   return SUPPORTED_CONNECTION_TYPES.has(type) ? type : DEFAULT_CONNECTION_TYPE;
 };
 
-const sanitizeJVMModes = (
-  value: unknown,
-): Array<"jmx" | "endpoint" | "agent"> => {
-  if (!Array.isArray(value)) return ["jmx"];
-  const result: Array<"jmx" | "endpoint" | "agent"> = [];
-  const seen = new Set<"jmx" | "endpoint" | "agent">();
-  value.forEach((entry) => {
-    const normalized = toTrimmedString(entry).toLowerCase();
-    if (
-      normalized !== "jmx" &&
-      normalized !== "endpoint" &&
-      normalized !== "agent"
-    )
-      return;
-    if (seen.has(normalized)) return;
-    seen.add(normalized);
-    result.push(normalized);
-  });
-  return result.length > 0 ? result : ["jmx"];
-};
-
-const sanitizeJVMConfig = (
-  value: unknown,
-  options: {
-    host: string;
-    port: number;
-    timeout: number;
-    persistSecrets: boolean;
-  },
-): ConnectionConfig["jvm"] => {
-  const raw =
-    value && typeof value === "object"
-      ? (value as Record<string, unknown>)
-      : {};
-  const allowedModes = sanitizeJVMModes(raw.allowedModes);
-  const preferredModeRaw = toTrimmedString(raw.preferredMode).toLowerCase();
-  const preferredMode = allowedModes.includes(
-    preferredModeRaw as "jmx" | "endpoint" | "agent",
-  )
-    ? (preferredModeRaw as "jmx" | "endpoint" | "agent")
-    : allowedModes[0];
-  const environmentRaw = toTrimmedString(raw.environment, "dev").toLowerCase();
-  const environment: "dev" | "uat" | "prod" =
-    environmentRaw === "uat"
-      ? "uat"
-      : environmentRaw === "prod"
-        ? "prod"
-        : "dev";
-  const jmxRaw =
-    raw.jmx && typeof raw.jmx === "object"
-      ? (raw.jmx as Record<string, unknown>)
-      : {};
-  const endpointRaw =
-    raw.endpoint && typeof raw.endpoint === "object"
-      ? (raw.endpoint as Record<string, unknown>)
-      : {};
-  const agentRaw =
-    raw.agent && typeof raw.agent === "object"
-      ? (raw.agent as Record<string, unknown>)
-      : {};
-  const diagnosticRaw =
-    raw.diagnostic && typeof raw.diagnostic === "object"
-      ? (raw.diagnostic as Record<string, unknown>)
-      : {};
-  const diagnosticTransportRaw = toTrimmedString(
-    diagnosticRaw.transport,
-    "agent-bridge",
-  ).toLowerCase();
-  const diagnosticTransport =
-    diagnosticTransportRaw === "arthas-tunnel"
-      ? "arthas-tunnel"
-      : "agent-bridge";
-  const fallbackPort = options.port > 0 ? options.port : DEFAULT_JVM_PORT;
-  const fallbackTimeout =
-    options.timeout > 0 ? options.timeout : DEFAULT_TIMEOUT_SECONDS;
-
-  return {
-    environment,
-    readOnly: typeof raw.readOnly === "boolean" ? raw.readOnly : true,
-    allowedModes,
-    preferredMode,
-    jmx: {
-      enabled: jmxRaw.enabled === true || allowedModes.includes("jmx"),
-      host: toTrimmedString(jmxRaw.host, options.host) || options.host,
-      port: normalizePort(jmxRaw.port, fallbackPort),
-      username: toTrimmedString(jmxRaw.username),
-      password: options.persistSecrets ? toTrimmedString(jmxRaw.password) : "",
-      domainAllowlist: sanitizeStringArray(jmxRaw.domainAllowlist, 256),
-    },
-    endpoint: {
-      enabled: endpointRaw.enabled === true,
-      baseUrl: toTrimmedString(endpointRaw.baseUrl),
-      apiKey: options.persistSecrets ? toTrimmedString(endpointRaw.apiKey) : "",
-      timeoutSeconds: normalizeIntegerInRange(
-        endpointRaw.timeoutSeconds,
-        fallbackTimeout,
-        1,
-        MAX_TIMEOUT_SECONDS,
-      ),
-    },
-    agent: {
-      enabled: agentRaw.enabled === true,
-      baseUrl: toTrimmedString(agentRaw.baseUrl),
-      apiKey: options.persistSecrets ? toTrimmedString(agentRaw.apiKey) : "",
-      timeoutSeconds: normalizeIntegerInRange(
-        agentRaw.timeoutSeconds,
-        fallbackTimeout,
-        1,
-        MAX_TIMEOUT_SECONDS,
-      ),
-    },
-    diagnostic: {
-      enabled: diagnosticRaw.enabled === true,
-      transport: diagnosticTransport,
-      baseUrl: toTrimmedString(diagnosticRaw.baseUrl),
-      targetId: toTrimmedString(diagnosticRaw.targetId),
-      apiKey: options.persistSecrets
-        ? toTrimmedString(diagnosticRaw.apiKey)
-        : "",
-      allowObserveCommands: diagnosticRaw.allowObserveCommands !== false,
-      allowTraceCommands: diagnosticRaw.allowTraceCommands === true,
-      allowMutatingCommands: diagnosticRaw.allowMutatingCommands === true,
-      timeoutSeconds: normalizeIntegerInRange(
-        diagnosticRaw.timeoutSeconds,
-        DEFAULT_DIAGNOSTIC_TIMEOUT_SECONDS,
-        1,
-        MAX_DIAGNOSTIC_TIMEOUT_SECONDS,
-      ),
-    },
-  };
-};
-
 const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
   const raw =
     value && typeof value === "object"
@@ -517,17 +377,11 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     safeConfig.options = Object.fromEntries(
       Object.entries(optionRaw)
         .map(([key, value]) => [toTrimmedString(key), toTrimmedString(value)])
-        .filter(([key, value]) => key && value && key.length <= 128 && value.length <= 4096),
+        .filter(
+          ([key, value]) =>
+            key && value && key.length <= 128 && value.length <= 4096,
+        ),
     );
-  }
-
-  if (type === "jvm") {
-    safeConfig.jvm = sanitizeJVMConfig(raw.jvm, {
-      host: safeConfig.host,
-      port: safeConfig.port,
-      timeout: safeConfig.timeout || DEFAULT_TIMEOUT_SECONDS,
-      persistSecrets: savePassword,
-    });
   }
 
   return safeConfig;
@@ -539,7 +393,6 @@ const resolveConnectionConfigPayload = (
   if (raw.config && typeof raw.config === "object") {
     return raw.config;
   }
-  // 兼容历史/导入场景：连接对象可能是扁平结构（无 config 包装）。
   const hasLegacyFlatConfig =
     raw.type !== undefined ||
     raw.host !== undefined ||
@@ -715,17 +568,6 @@ interface AppState {
   ) => void;
   clearAIContexts: (connectionKey: string) => void;
 
-  jvmDiagnosticDrafts: Record<string, JVMDiagnosticCommandDraft>;
-  jvmDiagnosticOutputs: Record<string, JVMDiagnosticEventChunk[]>;
-  setJVMDiagnosticDraft: (
-    tabId: string,
-    draft: Partial<JVMDiagnosticCommandDraft>,
-  ) => void;
-  appendJVMDiagnosticOutput: (
-    tabId: string,
-    chunks: JVMDiagnosticEventChunk[],
-  ) => void;
-  clearJVMDiagnosticOutput: (tabId: string) => void;
 
   addConnection: (conn: SavedConnection) => void;
   updateConnection: (conn: SavedConnection) => void;
@@ -1287,8 +1129,6 @@ export const useStore = create<AppState>()(
       aiChatSessions: [],
       aiActiveSessionId: null,
       aiContexts: {},
-      jvmDiagnosticDrafts: {},
-      jvmDiagnosticOutputs: {},
 
       addConnection: (conn) =>
         set((state) => ({ connections: [...state.connections, conn] })),
@@ -1869,39 +1709,6 @@ export const useStore = create<AppState>()(
           const { [connectionKey]: _, ...rest } = state.aiContexts;
           return { aiContexts: rest };
         }),
-      setJVMDiagnosticDraft: (tabId, draft) =>
-        set((state) => ({
-          jvmDiagnosticDrafts: {
-            ...state.jvmDiagnosticDrafts,
-            [tabId]: {
-              command:
-                draft.command ??
-                state.jvmDiagnosticDrafts[tabId]?.command ??
-                "",
-              sessionId:
-                draft.sessionId ?? state.jvmDiagnosticDrafts[tabId]?.sessionId,
-              source: draft.source ?? state.jvmDiagnosticDrafts[tabId]?.source,
-              reason: draft.reason ?? state.jvmDiagnosticDrafts[tabId]?.reason,
-            },
-          },
-        })),
-      appendJVMDiagnosticOutput: (tabId, chunks) =>
-        set((state) => ({
-          jvmDiagnosticOutputs: {
-            ...state.jvmDiagnosticOutputs,
-            [tabId]: [
-              ...(state.jvmDiagnosticOutputs[tabId] || []),
-              ...chunks,
-            ],
-          },
-        })),
-      clearJVMDiagnosticOutput: (tabId) =>
-        set((state) => ({
-          jvmDiagnosticOutputs: {
-            ...state.jvmDiagnosticOutputs,
-            [tabId]: [],
-          },
-        })),
     }),
     {
       name: PERSIST_STORAGE_KEY, // name of the item in the storage (must be unique)

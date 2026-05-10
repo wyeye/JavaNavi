@@ -21,11 +21,6 @@ const RedisMonitor = lazy(() => import('./RedisMonitor'));
 const TriggerViewer = lazy(() => import('./TriggerViewer'));
 const DefinitionViewer = lazy(() => import('./DefinitionViewer'));
 const TableOverview = lazy(() => import('./TableOverview'));
-const JVMOverview = lazy(() => import('./JVMOverview'));
-const JVMResourceBrowser = lazy(() => import('./JVMResourceBrowser'));
-const JVMAuditViewer = lazy(() => import('./JVMAuditViewer'));
-const JVMDiagnosticConsole = lazy(() => import('./JVMDiagnosticConsole'));
-const JVMMonitoringDashboard = lazy(() => import('./JVMMonitoringDashboard'));
 
 const TabWorkspaceFallback: React.FC<{ language: import('../i18n').AppLanguage }> = ({ language }) => (
   <div
@@ -237,16 +232,6 @@ const TabManager: React.FC = () => {
       content = <DefinitionViewer tab={tab} />;
     } else if (tab.type === 'table-overview') {
       content = <TableOverview tab={tab} />;
-    } else if (tab.type === 'jvm-overview') {
-      content = <JVMOverview tab={tab} />;
-    } else if (tab.type === 'jvm-resource') {
-      content = <JVMResourceBrowser tab={tab} />;
-    } else if (tab.type === 'jvm-audit') {
-      content = <JVMAuditViewer tab={tab} />;
-    } else if (tab.type === 'jvm-diagnostic') {
-      content = <JVMDiagnosticConsole tab={tab} />;
-    } else if (tab.type === 'jvm-monitoring') {
-      content = <JVMMonitoringDashboard tab={tab} />;
     }
 
     const menuItems: MenuProps['items'] = [

@@ -38,9 +38,9 @@ import { Tree, message, Dropdown, MenuProps, Input, Button, Modal, Form, Badge, 
 	} from '@ant-design/icons';
 import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
-	import { SavedConnection, ExternalSQLTreeEntry, JVMCapability, JVMResourceSummary } from '../types';
+	import { SavedConnection, ExternalSQLTreeEntry } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, JVMProbeCapabilities, CloseConnection } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
   import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
@@ -50,13 +50,10 @@ import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { noAutoCapInputProps } from '../utils/inputAutoCap';
 import { normalizeSidebarViewName, resolveSidebarRuntimeDatabase } from '../utils/sidebarMetadata';
 import { resolveConnectionAccentColor, resolveConnectionIconType } from '../utils/connectionVisual';
-import { buildJVMTabTitle } from '../utils/jvmRuntimePresentation';
-import { buildJVMDiagnosticActionDescriptor, buildJVMMonitoringActionDescriptors } from '../utils/jvmSidebarActions';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 import { buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
-import JVMModeBadge from './jvm/JVMModeBadge';
 import { filterSidebarTree, normalizeMySQLViewDDLForEditing, resolveCopyableSidebarNodeName, type SearchScope, type TreeNode } from './sidebarSearch';
 import { locateActiveSidebarTable } from './sidebarTreeNavigation';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
@@ -970,67 +967,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	          ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
 	      };
 
-          if (conn.config.type === 'jvm') {
-              try {
-                  const res = await JVMProbeCapabilities(buildRuntimeConfig(conn) as any);
-                  if (res.success) {
-                      setConnectionStates(prev => ({ ...prev, [conn.id]: 'success' }));
-                      const capabilities: JVMCapability[] = Array.isArray(res.data) ? res.data as JVMCapability[] : [];
-                      const modeNodes: TreeNode[] = capabilities.map((capability) => ({
-                          title: capability.displayLabel || capability.mode,
-                          key: `${conn.id}-jvm-mode-${capability.mode}`,
-                          icon: <HddOutlined />,
-                          type: 'jvm-mode',
-                          dataRef: {
-                              ...conn,
-                              providerMode: capability.mode,
-                              canBrowse: capability.canBrowse,
-                              canWrite: capability.canWrite,
-                              reason: capability.reason,
-                              displayLabel: capability.displayLabel,
-                          },
-                          isLeaf: capability.canBrowse !== true,
-                      }));
-                      const monitoringNodes: TreeNode[] = buildJVMMonitoringActionDescriptors(conn.id, capabilities).map((item) => ({
-                          title: item.title,
-                          key: item.key,
-                          icon: <DashboardOutlined />,
-                          type: 'jvm-monitoring',
-                          dataRef: {
-                              ...conn,
-                              providerMode: item.providerMode,
-                          },
-                          isLeaf: true,
-                      }));
-                      const diagnosticNode = buildJVMDiagnosticTreeNodes(conn);
-                      setTreeData(origin => updateTreeData(origin, node.key, [...monitoringNodes, ...modeNodes, ...diagnosticNode]));
-                  } else {
-                      const diagnosticNode = buildJVMDiagnosticTreeNodes(conn);
-                      setConnectionStates(prev => ({ ...prev, [conn.id]: 'error' }));
-                      if (diagnosticNode.length > 0) {
-                          setTreeData(origin => updateTreeData(origin, node.key, diagnosticNode));
-                          message.warning({ content: t('sidebar.msg.jvmProbeFailed', { message: res.message || t('common.unknown') }), key: `conn-${conn.id}-jvm-caps` });
-                      } else {
-                          setLoadedKeys(prev => prev.filter(k => k !== node.key));
-                          message.error({ content: res.message, key: `conn-${conn.id}-jvm-caps` });
-                      }
-                  }
-              } catch (e: any) {
-                  const diagnosticNode = buildJVMDiagnosticTreeNodes(conn);
-                  setConnectionStates(prev => ({ ...prev, [conn.id]: 'error' }));
-                  if (diagnosticNode.length > 0) {
-                      setTreeData(origin => updateTreeData(origin, node.key, diagnosticNode));
-                      message.warning({ content: t('sidebar.msg.jvmProbeError', { message: e?.message || String(e) }), key: `conn-${conn.id}-jvm-caps` });
-                  } else {
-                      setLoadedKeys(prev => prev.filter(k => k !== node.key));
-                      message.error({ content: t('sidebar.msg.connFailed', { message: e?.message || String(e) }), key: `conn-${conn.id}-jvm-caps` });
-                  }
-              } finally {
-                  loadingNodesRef.current.delete(loadKey);
-              }
-              return;
-          }
-
           // Handle Redis connections differently
           if (conn.config.type === 'redis') {
               try {
@@ -1105,52 +1041,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	      }
   };
 
-  const loadJVMResources = async (node: any) => {
-      const conn = node.dataRef as SavedConnection & { providerMode?: string; resourcePath?: string };
-      const providerMode = String(conn.providerMode || '').trim().toLowerCase();
-      const parentPath = String(conn.resourcePath || '').trim();
-      const loadKey = `jvm-resources-${conn.id}-${providerMode}-${parentPath}`;
-      if (loadingNodesRef.current.has(loadKey)) return;
-      loadingNodesRef.current.add(loadKey);
-
-      try {
-          const backendApp = (window as any).go?.app?.App;
-          if (typeof backendApp?.JVMListResources !== 'function') {
-              throw new Error(t('sidebar.msg.jvmResourceApiUnavailable'));
-          }
-
-          const res = await backendApp.JVMListResources(buildJVMRuntimeConfig(conn, providerMode), parentPath);
-          if (res.success) {
-              const resourceRows: JVMResourceSummary[] = Array.isArray(res.data) ? res.data as JVMResourceSummary[] : [];
-              const resourceNodes: TreeNode[] = resourceRows.map((item) => ({
-                  title: item.name || item.path || item.id,
-                  key: `${conn.id}-jvm-resource-${providerMode}-${item.path}`,
-                  icon: item.hasChildren ? <FolderOpenOutlined /> : <HddOutlined />,
-                  type: 'jvm-resource',
-                  dataRef: {
-                      ...conn,
-                      providerMode: item.providerMode || providerMode,
-                      resourcePath: item.path,
-                      resourceKind: item.kind,
-                      canRead: item.canRead,
-                      canWrite: item.canWrite,
-                      hasChildren: item.hasChildren,
-                      sensitive: item.sensitive,
-                  },
-                  isLeaf: item.hasChildren !== true,
-              }));
-              setTreeData(origin => updateTreeData(origin, node.key, resourceNodes));
-          } else {
-              setLoadedKeys(prev => prev.filter(k => k !== node.key));
-              message.error({ content: res.message, key: `jvm-resource-${node.key}` });
-          }
-      } catch (e: any) {
-          setLoadedKeys(prev => prev.filter(k => k !== node.key));
-          message.error({ content: t('sidebar.msg.jvmResourceFailed', { message: e?.message || String(e) }), key: `jvm-resource-${node.key}` });
-      } finally {
-          loadingNodesRef.current.delete(loadKey);
-      }
-  };
 
 	  const loadTables = async (node: any) => {
 	      const conn = node.dataRef; // has dbName
@@ -1480,8 +1370,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
     if (type === 'connection') {
         await loadDatabases({ key, dataRef });
-    } else if (type === 'jvm-mode' || type === 'jvm-resource') {
-        await loadJVMResources({ key, dataRef });
     } else if (type === 'database') {
         await loadTables({ key, dataRef });
     } else if (type === 'table') {
@@ -1574,8 +1462,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
       } else if (type === 'table') {
           setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
-      } else if (type === 'jvm-mode' || type === 'jvm-resource' || type === 'jvm-diagnostic' || type === 'jvm-monitoring') {
-          setActiveContext({ connectionId: dataRef.id, dbName: '' });
       } else if (type === 'view' || type === 'db-trigger' || type === 'routine') {
           setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
       } else if (type === 'saved-query') {
@@ -1652,7 +1538,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const { type, dataRef, key: nodeKey } = node;
       if (type === 'connection') setActiveContext({ connectionId: nodeKey, dbName: '' });
       else if (type === 'database') setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
-      else if (type === 'jvm-mode' || type === 'jvm-resource' || type === 'jvm-diagnostic' || type === 'jvm-monitoring') setActiveContext({ connectionId: dataRef.id, dbName: '' });
       else if (type === 'table' || type === 'view' || type === 'db-trigger' || type === 'routine') setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
       else if (type === 'saved-query') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
       else if (type === 'external-sql-root' || type === 'external-sql-folder' || type === 'external-sql-file') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
@@ -1730,25 +1615,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               routineName,
               routineType
           });
-          return;
-      } else if (node.type === 'jvm-mode') {
-          const { providerMode, id } = node.dataRef;
-          const conn = (connections.find((item) => item.id === id) || node.dataRef) as SavedConnection;
-          openJVMOverviewTab(conn, providerMode);
-          return;
-      } else if (node.type === 'jvm-resource') {
-          const { providerMode, resourcePath, resourceKind, id } = node.dataRef;
-          const conn = (connections.find((item) => item.id === id) || node.dataRef) as SavedConnection;
-          openJVMResourceTab(conn, providerMode, resourcePath, resourceKind);
-          return;
-      } else if (node.type === 'jvm-monitoring') {
-          const { providerMode, id } = node.dataRef;
-          const conn = (connections.find((item) => item.id === id) || node.dataRef) as SavedConnection;
-          openJVMMonitoringTab(conn, providerMode);
-          return;
-      } else if (node.type === 'jvm-diagnostic') {
-          const conn = (connections.find((item) => item.id === node.dataRef.id) || node.dataRef) as SavedConnection;
-          openJVMDiagnosticTab(conn);
           return;
       }
 
@@ -2591,81 +2457,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               overrideDatabase,
               clearDatabase,
           ),
-      });
-  };
-
-  const buildJVMRuntimeConfig = (conn: SavedConnection & { dbName?: string }, providerMode: string) => {
-      const sourceJVM = conn.config.jvm || {};
-      return buildRpcConnectionConfig(conn.config, {
-          database: '',
-          jvm: {
-              ...sourceJVM,
-              preferredMode: providerMode as 'jmx' | 'endpoint' | 'agent',
-              allowedModes: [providerMode as 'jmx' | 'endpoint' | 'agent'],
-          },
-      });
-  };
-
-  const openJVMOverviewTab = (conn: SavedConnection, providerMode: string) => {
-      addTab({
-          id: `jvm-overview-${conn.id}-${providerMode}`,
-          title: buildJVMTabTitle(conn.name, 'overview', providerMode),
-          type: 'jvm-overview',
-          connectionId: conn.id,
-          providerMode: providerMode as 'jmx' | 'endpoint' | 'agent',
-      });
-  };
-
-  const openJVMMonitoringTab = (conn: SavedConnection, providerMode: string) => {
-      addTab({
-          id: `jvm-monitoring-${conn.id}-${providerMode}`,
-          title: buildJVMTabTitle(conn.name, 'monitoring', providerMode),
-          type: 'jvm-monitoring',
-          connectionId: conn.id,
-          providerMode: providerMode as 'jmx' | 'endpoint' | 'agent',
-      });
-  };
-
-  const buildJVMDiagnosticTreeNodes = (conn: SavedConnection): TreeNode[] => {
-      const descriptor = buildJVMDiagnosticActionDescriptor(conn.id, conn.config.jvm?.diagnostic);
-      if (!descriptor) {
-          return [];
-      }
-      return [{
-          title: descriptor.title,
-          key: descriptor.key,
-          icon: <DashboardOutlined />,
-          type: 'jvm-diagnostic',
-          dataRef: {
-              ...conn,
-              diagnosticTransport: descriptor.transport,
-          },
-          isLeaf: true,
-      }];
-  };
-
-  const openJVMResourceTab = (conn: SavedConnection, providerMode: string, resourcePath: string, resourceKind?: string) => {
-      const trimmedResourcePath = String(resourcePath || '').trim();
-      addTab({
-          id: `jvm-resource-${conn.id}-${providerMode}-${encodeURIComponent(trimmedResourcePath)}`,
-          title: trimmedResourcePath
-              ? `${buildJVMTabTitle(conn.name, 'resource', providerMode)} · ${trimmedResourcePath}`
-              : buildJVMTabTitle(conn.name, 'resource', providerMode),
-          type: 'jvm-resource',
-          connectionId: conn.id,
-          providerMode: providerMode as 'jmx' | 'endpoint' | 'agent',
-          resourcePath: trimmedResourcePath,
-          resourceKind,
-      });
-  };
-
-  const openJVMDiagnosticTab = (conn: SavedConnection) => {
-      const transport = conn.config.jvm?.diagnostic?.transport || 'agent-bridge';
-      addTab({
-          id: `jvm-diagnostic-${conn.id}`,
-          title: buildJVMTabTitle(conn.name, 'diagnostic', transport),
-          type: 'jvm-diagnostic',
-          connectionId: conn.id,
       });
   };
 
@@ -4225,21 +4016,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         hoverTitle = buildTableHoverTitle({ tableName: rawTableName || displayTitle, comment: tableComment, tableNameLabel: t('table.hover.name'), commentLabel: t('table.hover.comment') });
     } else if (node.type === 'external-sql-folder' || node.type === 'external-sql-file') {
         hoverTitle = String(node?.dataRef?.path || displayTitle);
-    }
-
-    if (node.type === 'jvm-mode') {
-        return (
-            <span
-                title={hoverTitle}
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 8, minWidth: 0 }}
-            >
-                <JVMModeBadge
-                    mode={String(node?.dataRef?.providerMode || displayTitle)}
-                    label={displayTitle}
-                    reason={String(node?.dataRef?.reason || '').trim() || undefined}
-                />
-            </span>
-        );
     }
 
     if (node.type === 'external-sql-root') {

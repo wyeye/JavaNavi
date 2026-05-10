@@ -26,7 +26,7 @@ JavaNavi React UI 必须在没有 Wails 或 Go runtime 依赖的情况下运行�
 | `App.SomeMethod(args...) -> Promise<QueryResult>` | `fetch('/api/compat/app/some-method', { method: 'POST', body })` | Adapter 向 UI 返回 `QueryResult`。后端可在翻译层后使用内部 DTO。 |
 | AI service calls | `/api/compat/ai/*` | Streaming 使用 event channel。 |
 | `EventsOn(name, handler)` | runtime adapter 下的 SSE 或 WebSocket subscription | Adapter 隐藏传输选择。 |
-| Query / SQL file / JVM cancellation | 专用 cancel endpoint | Cancellation ID 保持 adapter-visible。 |
+| Query / SQL file cancellation | 专用 cancel endpoint | Cancellation ID 保持 adapter-visible。 |
 | 原生打开/保存文件对话框 | 浏览器上传/下载或受管 server workspace | Java Web v1 不提供任意本地路径选择。 |
 | Wails window controls | 浏览器安全 no-op、settings update 或 documented deferred desktop-only behavior | 不得破坏浏览器 UI。 |
 
@@ -83,7 +83,6 @@ Progress 与 stream event 在被视为已维护的 UI-facing workflow 前，需�
 - `driver:download-progress`
 - `update:download-progress`
 - `ai:stream:{sessionId}`
-- `jvm:diagnostic:{tabId}`
 
 每个 event payload 必须包含足够支撑 UI progress/error state 的字段，并在标记实现完成前得到文档或验证覆盖。
 

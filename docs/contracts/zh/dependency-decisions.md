@@ -4,7 +4,7 @@
 
 本文档维护 JavaNavi Java/Web/Desktop 运行时的依赖决策。产品范围参考并感谢 [GoNavi](https://github.com/Syngnat/GoNavi)；下面的依赖选择说明 JavaNavi 在哪些地方采用 Java 或 Web/Desktop 替代实现。
 
-任何 Redis、MongoDB、AI provider、JVM/JMX helper、可选数据库 driver、事件传输、打包或安全敏感代码的新 runtime 依赖，都必须先在本文档中获得批准，再加入 `backend/pom.xml`、`frontend/package.json`、根 `package.json` 或相关 lockfile。
+任何 Redis、MongoDB、AI provider、可选数据库 driver、事件传输、打包或安全敏感代码的新 runtime 依赖，都必须先在本文档中获得批准，再加入 `backend/pom.xml`、`frontend/package.json`、根 `package.json` 或相关 lockfile。
 
 ## 门禁策略
 
@@ -149,12 +149,6 @@
 - **Required verification:** 修改该区域时进行手动/runtime AI provider smoke 与 secret redaction 检查。
 - **Secret/credential impact:** API key、base URL、header、prompt 与 stream chunk 都需要脱敏/日志纪律。
 
-### Decision ID: DEP-JVM-JMX
-
-- **Status:** 当前本地诊断使用 JDK 内置 management/JMX API。
-- **Allowed artifacts only after approval:** Jolokia/OSHI 等第三方 helper 需要新增决策条目。
-- **Required verification:** 修改该区域时进行手动/runtime JVM diagnostics smoke 与 diagnostic event 浏览器适配器检查。
-- **Secret/credential impact:** 诊断输出可能包含环境 secret，进入事件/日志前必须脱敏。
 
 ### Decision ID: DEP-EVENT-TRANSPORT
 
