@@ -320,6 +320,23 @@ public class DatabaseCompatibilityService {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "rename-view", viewName, newName, requestedDatabase)));
     }
 
+    public Map<String, Object> executeDdlStatements(ConnectionConfigDto config, String requestedDatabase, List<String> statements) {
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> {
+            List<String> executed = new ArrayList<>();
+            try (Statement statement = connection.createStatement()) {
+                for (int index = 0; index < statements.size(); index++) {
+                    String sql = String.valueOf(statements.get(index)).trim();
+                    if (sql.isBlank()) {
+                        continue;
+                    }
+                    statement.execute(sql);
+                    executed.add(sql);
+                }
+            }
+            return Map.of("success", true, "executed", executed.size(), "statements", executed);
+        }));
+    }
+
     private QueryResultDto executeSingleOnConnection(Connection connection, QueryRequestDto request, String queryId, RunningQuery running) throws SQLException {
         long started = System.nanoTime();
         String sql = requireText(request.sql(), "sql");

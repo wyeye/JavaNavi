@@ -1,15 +1,16 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Modal, Form, Select, Input, Button, message, Steps, Transfer, Card, Alert, Divider, Typography, Progress, Checkbox, Table, Drawer, Tabs, theme as antdTheme } from 'antd';
+import { Modal, Form, Select, Input, Button, message, Steps, Transfer, Card, Alert, Divider, Typography, Progress, Checkbox, Table, Drawer, Tabs, theme as antdTheme, Tag } from 'antd';
 import { DatabaseOutlined, RocketOutlined, SwapOutlined, TableOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
 import { translate, type I18nKey } from '../i18n';
-import { DBGetDatabases, DBGetTables, DataSync, DataSyncAnalyze, DataSyncPreview, DataSyncCancel } from '@compat/javanaviApp';
+import { DBGetDatabases, DBGetTables, DataSync, DataSyncAnalyze, DataSyncPreview, DataSyncCancel, SchemaSyncAnalyze, SchemaSyncPreview, SchemaSyncRun, SchemaSyncCancel } from '@compat/javanaviApp';
 import { SavedConnection } from '../types';
 import { EventsOn } from '@compat/runtime';
 import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from '../utils/appearance';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { formatLocalDateTimeLiteral, normalizeTemporalLiteralText } from './dataGridCopyInsert';
 import { buildDataSyncRequest, type SourceDatasetMode, validateDataSyncSelection } from './dataSyncRequest';
+import { buildSchemaSyncAnalyzeRequest, buildSchemaSyncPreviewRequest, buildSchemaSyncRunRequest, validateSchemaSyncSelection } from './schemaSyncRequest';
 
 const { Title, Text } = Typography;
 const { Step } = Steps;
@@ -46,6 +47,33 @@ type TableOps = {
 };
 
 type WorkflowType = 'sync' | 'migration';
+type SyncDomain = 'data' | 'schema';
+type SchemaDiffItem = {
+  id: string;
+  tableName: string;
+  objectType: string;
+  objectName: string;
+  changeType: string;
+  summary: string;
+  supported: boolean;
+  unsupportedReason?: string;
+  requiresDeleteConfirm?: boolean;
+  warnings?: string[];
+  sql?: string[];
+  sqlStatements?: string[];
+};
+type SchemaDiffTable = {
+  table: string;
+  sourceExists?: boolean;
+  targetTableExists?: boolean;
+  canSync?: boolean;
+  schemaDiffCount?: number;
+  message?: string;
+  warnings?: string[];
+  items?: SchemaDiffItem[];
+  selectedItemIds?: string[];
+  deleteItemIds?: string[];
+};
 
 const quoteSqlIdent = (dbType: string, ident: string): string => {
   const raw = String(ident || '').trim();
@@ -224,6 +252,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 
   // Options
   const [workflowType, setWorkflowType] = useState<WorkflowType>('sync');
+  const [syncDomain, setSyncDomain] = useState<SyncDomain>('data');
   const [syncContent, setSyncContent] = useState<'data' | 'schema' | 'both'>('data');
   const [syncMode, setSyncMode] = useState<string>('insert_update');
   const [autoAddColumns, setAutoAddColumns] = useState<boolean>(true);
@@ -234,15 +263,20 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [diffTables, setDiffTables] = useState<TableDiffSummary[]>([]);
   const [tableOptions, setTableOptions] = useState<Record<string, TableOps>>({});
+  const [schemaDiffTables, setSchemaDiffTables] = useState<SchemaDiffTable[]>([]);
+  const [schemaSelectedItemIds, setSchemaSelectedItemIds] = useState<string[]>([]);
+  const [schemaConfirmedDeleteItemIds, setSchemaConfirmedDeleteItemIds] = useState<string[]>([]);
 
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTable, setPreviewTable] = useState<string>('');
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewData, setPreviewData] = useState<any>(null);
+  const [schemaPreviewData, setSchemaPreviewData] = useState<any>(null);
 
   // Step 3: Result
   const [syncResult, setSyncResult] = useState<any>(null);
   const [syncing, setSyncing] = useState(false);
+  const [schemaRunning, setSchemaRunning] = useState(false);
   const [syncLogs, setSyncLogs] = useState<SyncLogItem[]>([]);
   const [syncProgress, setSyncProgress] = useState<{ percent: number; current: number; total: number; table: string; stage: string }>({
       percent: 0,
@@ -306,6 +340,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
         setSourceDatasetMode('table');
         setSourceQuery('');
         setWorkflowType('sync');
+        setSyncDomain('data');
         setSyncContent('data');
         setSyncMode('insert_update');
         setAutoAddColumns(true);
@@ -315,12 +350,17 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
         setAnalyzing(false);
         setDiffTables([]);
         setTableOptions({});
+        setSchemaDiffTables([]);
+        setSchemaSelectedItemIds([]);
+        setSchemaConfirmedDeleteItemIds([]);
         setPreviewOpen(false);
         setPreviewTable('');
         setPreviewLoading(false);
         setPreviewData(null);
+        setSchemaPreviewData(null);
         setSyncResult(null);
         setSyncing(false);
+        setSchemaRunning(false);
         setSyncLogs([]);
         setSyncProgress({ percent: 0, current: 0, total: 0, table: '', stage: '' });
         jobIdRef.current = '';
@@ -453,6 +493,184 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           ...prev,
           [table]: { ...(prev[table] || { insert: true, update: true, delete: false }), [key]: value }
       }));
+  };
+
+  const updateSchemaItemSelection = (itemId: string, checked: boolean) => {
+      setSchemaSelectedItemIds(prev => {
+          if (checked) {
+              return prev.includes(itemId) ? prev : [...prev, itemId];
+          }
+          return prev.filter((item) => item !== itemId);
+      });
+      if (!checked) {
+          setSchemaConfirmedDeleteItemIds(prev => prev.filter((item) => item !== itemId));
+      }
+  };
+
+  const analyzeSchemaDiff = async () => {
+      const selectionError = validateSchemaSyncSelection({ selectedTables });
+      if (selectionError) return message.error(t(selectionError));
+      if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
+      if (!sourceDb || !targetDb) return message.error(t('dataSync.error.selectDatabasesFirst'));
+
+      setLoading(true);
+      setAnalyzing(true);
+      setSchemaDiffTables([]);
+      setSchemaSelectedItemIds([]);
+      setSchemaConfirmedDeleteItemIds([]);
+      setSyncLogs([]);
+
+      const sConn = connections.find(c => c.id === sourceConnId)!;
+      const tConn = connections.find(c => c.id === targetConnId)!;
+      const jobId = `schema-analyze-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      jobIdRef.current = jobId;
+      autoScrollRef.current = true;
+      setSyncProgress({ percent: 0, current: 0, total: selectedTables.length, table: '', stage: '结构差异分析' });
+
+      const config = buildSchemaSyncAnalyzeRequest({
+          sourceConfig: normalizeConnConfig(sConn, sourceDb),
+          targetConfig: normalizeConnConfig(tConn, targetDb),
+          sourceDatabase: sourceDb,
+          targetDatabase: targetDb,
+          selectedTables,
+          jobId,
+      });
+
+      try {
+          const res = await SchemaSyncAnalyze(config as any);
+          if (res.success) {
+              const tables = ((res.data as any)?.tables || []) as SchemaDiffTable[];
+              const defaultSelected = tables.flatMap((table) => Array.isArray(table.selectedItemIds) ? table.selectedItemIds : []);
+              setSchemaDiffTables(tables);
+              setSchemaSelectedItemIds(defaultSelected);
+              message.success(t('schemaSync.diff.analysisComplete'));
+          } else {
+              message.error(res.message || t('schemaSync.diff.analysisFailed'));
+          }
+      } catch (e: any) {
+          message.error(e?.message || t('schemaSync.diff.analysisFailed'));
+      }
+
+      setLoading(false);
+      setAnalyzing(false);
+  };
+
+  const openSchemaPreview = async (table: string) => {
+      if (!table) return;
+      const sConn = connections.find(c => c.id === sourceConnId)!;
+      const tConn = connections.find(c => c.id === targetConnId)!;
+
+      setPreviewOpen(true);
+      setPreviewTable(table);
+      setPreviewLoading(true);
+      setPreviewData(null);
+      setSchemaPreviewData(null);
+
+      const config = buildSchemaSyncPreviewRequest({
+          sourceConfig: normalizeConnConfig(sConn, sourceDb),
+          targetConfig: normalizeConnConfig(tConn, targetDb),
+          sourceDatabase: sourceDb,
+          targetDatabase: targetDb,
+          selectedTables,
+          selectedItemIds: schemaSelectedItemIds,
+      });
+
+      try {
+          const res = await SchemaSyncPreview(config as any, table);
+          if (res.success) {
+              setSchemaPreviewData(res.data);
+          } else {
+              message.error(res.message || t('schemaSync.preview.loadFailed'));
+          }
+      } catch (e: any) {
+          message.error(e?.message || t('schemaSync.preview.loadFailed'));
+      }
+
+      setPreviewLoading(false);
+  };
+
+  const runSchemaSync = async () => {
+      const selectionError = validateSchemaSyncSelection({ selectedTables });
+      if (selectionError) {
+          message.error(t(selectionError));
+          return;
+      }
+      if (schemaDiffTables.length === 0) {
+          message.error(t('schemaSync.run.compareBeforeRun'));
+          return;
+      }
+      const selectedDeleteIds = schemaDiffTables
+          .flatMap((table) => Array.isArray(table.items) ? table.items : [])
+          .filter((item) => schemaSelectedItemIds.includes(item.id) && item.requiresDeleteConfirm)
+          .map((item) => item.id);
+      const missingDeleteConfirm = selectedDeleteIds.filter((item) => !schemaConfirmedDeleteItemIds.includes(item));
+      if (missingDeleteConfirm.length > 0) {
+          const ok = await new Promise<boolean>((resolve) => {
+              Modal.confirm({
+                  title: t('schemaSync.run.deleteConfirmTitle'),
+                  content: t('schemaSync.run.deleteConfirmContent'),
+                  okText: t('common.confirm'),
+                  cancelText: t('common.cancel'),
+                  onOk: () => resolve(true),
+                  onCancel: () => resolve(false),
+              });
+          });
+          if (!ok) return;
+          setSchemaConfirmedDeleteItemIds(prev => Array.from(new Set([...prev, ...missingDeleteConfirm])));
+      }
+
+      setLoading(true);
+      setSchemaRunning(true);
+      setCurrentStep(2);
+      setSyncResult(null);
+      setSyncLogs([]);
+
+      const sConn = connections.find(c => c.id === sourceConnId)!;
+      const tConn = connections.find(c => c.id === targetConnId)!;
+      const jobId = `schema-run-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      jobIdRef.current = jobId;
+      autoScrollRef.current = true;
+      setSyncProgress({
+          percent: 0,
+          current: 0,
+          total: selectedTables.length,
+          table: '',
+          stage: t('dataSync.progress.preparing'),
+      });
+
+      const config = buildSchemaSyncRunRequest({
+          sourceConfig: normalizeConnConfig(sConn, sourceDb),
+          targetConfig: normalizeConnConfig(tConn, targetDb),
+          sourceDatabase: sourceDb,
+          targetDatabase: targetDb,
+          selectedTables,
+          selectedItemIds: schemaSelectedItemIds,
+          confirmedDeleteItemIds: Array.from(new Set([...schemaConfirmedDeleteItemIds, ...selectedDeleteIds])),
+          jobId,
+      });
+
+      try {
+          const res = await SchemaSyncRun(config as any);
+          if (res?.cancelled) {
+              setSyncResult(res);
+              setSyncLogs(Array.isArray(res.logs) ? (res.logs as string[]).map((log) => ({ level: 'warn', message: String(log || '') })) : []);
+              setLoading(false);
+              setSchemaRunning(false);
+              return;
+          }
+          setSyncResult(res);
+          if (Array.isArray(res?.logs) && res.logs.length > 0) {
+              setSyncLogs((res.logs as string[]).map((log) => ({ level: 'info', message: String(log || '') })));
+          }
+          if (res?.success) {
+              message.success(t('schemaSync.run.success'));
+          }
+      } catch (e: any) {
+          message.error(e?.message || t('schemaSync.run.failed'));
+          setSyncResult({ success: false, message: e?.message || t('schemaSync.run.failed'), logs: [] });
+      }
+      setLoading(false);
+      setSchemaRunning(false);
   };
 
   const analyzeDiff = async () => {
@@ -649,12 +867,15 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const handleCancelSync = async () => {
       if (!jobIdRef.current) return;
       try {
-          const res = await DataSyncCancel(jobIdRef.current);
+          const res = syncDomain === 'schema'
+              ? await SchemaSyncCancel(jobIdRef.current)
+              : await DataSyncCancel(jobIdRef.current);
           if (res?.cancelled) {
               setSyncResult(res);
               setSyncLogs(Array.isArray(res.logs) ? (res.logs as string[]).map((log) => ({ level: 'warn', message: String(log || '') })) : []);
               setLoading(false);
               setSyncing(false);
+              setSchemaRunning(false);
           }
       } catch {
           message.error(t('dataSync.error.executionFailed'));
@@ -676,32 +897,57 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   };
 
   const previewSql = useMemo(() => {
+      if (syncDomain === 'schema') {
+          const statements = Array.isArray(schemaPreviewData?.schemaStatements) ? schemaPreviewData.schemaStatements : [];
+          return {
+              sqlText: statements.join('\n'),
+              statementCount: statements.length,
+          };
+      }
       if (!previewData || !previewTable) return { sqlText: '', statementCount: 0 };
       const targetType = String(connections.find(c => c.id === targetConnId)?.config?.type || '');
       const ops = tableOptions[previewTable] || { insert: true, update: true, delete: false };
       return buildSqlPreview(previewData, previewTable, targetType, ops);
-  }, [previewData, previewTable, targetConnId, connections, tableOptions]);
+  }, [syncDomain, schemaPreviewData, previewData, previewTable, targetConnId, connections, tableOptions]);
   const previewHasSchemaStatements = useMemo(
-      () => Array.isArray(previewData?.schemaStatements) && previewData.schemaStatements.length > 0,
-      [previewData],
+      () => syncDomain === 'schema'
+          ? Array.isArray(schemaPreviewData?.schemaStatements) && schemaPreviewData.schemaStatements.length > 0
+          : Array.isArray(previewData?.schemaStatements) && previewData.schemaStatements.length > 0,
+      [syncDomain, schemaPreviewData, previewData],
   );
   const previewSchemaWarnings = useMemo(
-      () => Array.isArray(previewData?.schemaWarnings) ? previewData.schemaWarnings as string[] : [],
-      [previewData],
+      () => syncDomain === 'schema'
+          ? (Array.isArray(schemaPreviewData?.warnings) ? schemaPreviewData.warnings as string[] : [])
+          : (Array.isArray(previewData?.schemaWarnings) ? previewData.schemaWarnings as string[] : []),
+      [syncDomain, schemaPreviewData, previewData],
   );
   const previewHasDataDiff = useMemo(
-      () => Number(previewData?.totalInserts || 0) + Number(previewData?.totalUpdates || 0) + Number(previewData?.totalDeletes || 0) > 0,
-      [previewData],
+      () => syncDomain === 'schema'
+          ? false
+          : Number(previewData?.totalInserts || 0) + Number(previewData?.totalUpdates || 0) + Number(previewData?.totalDeletes || 0) > 0,
+      [syncDomain, previewData],
   );
 
   const analysisWarnings = useMemo(() => {
       const items: string[] = [];
-      diffTables.forEach((table) => {
-          (table.warnings || []).forEach((warning) => items.push(`${table.table}: ${warning}`));
-          (table.unsupportedObjects || []).forEach((warning) => items.push(`${table.table}: ${warning}`));
-      });
+      if (syncDomain === 'schema') {
+          schemaDiffTables.forEach((table) => {
+              (table.warnings || []).forEach((warning) => items.push(`${table.table}: ${warning}`));
+              (table.items || []).forEach((item) => {
+                  (item.warnings || []).forEach((warning) => items.push(`${table.table}: ${warning}`));
+                  if (!item.supported && item.unsupportedReason) {
+                      items.push(`${table.table}: ${item.unsupportedReason}`);
+                  }
+              });
+          });
+      } else {
+          diffTables.forEach((table) => {
+              (table.warnings || []).forEach((warning) => items.push(`${table.table}: ${warning}`));
+              (table.unsupportedObjects || []).forEach((warning) => items.push(`${table.table}: ${warning}`));
+          });
+      }
       return Array.from(new Set(items));
-  }, [diffTables]);
+  }, [syncDomain, diffTables, schemaDiffTables]);
 
   const isSourceQueryMode = sourceDatasetMode === 'query';
   const isMigrationWorkflow = workflowType === 'migration';
@@ -853,9 +1099,13 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       <div style={heroPanelStyle}>
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{isMigrationWorkflow ? '跨数据源迁移' : '数据同步'}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>
+                      {syncDomain === 'schema' ? t('schemaSync.tab.label') : (isMigrationWorkflow ? '跨数据源迁移' : '数据同步')}
+                  </div>
                   <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.7, color: darkMode ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.62)' }}>
-                      {isMigrationWorkflow
+                      {syncDomain === 'schema'
+                          ? '适合对已勾选表先做结构比对，再按项选择执行字段、索引和外键变更。'
+                          : isMigrationWorkflow
                           ? '适合把源表迁移到另一套数据库，可按策略自动建表、导入数据并补建可兼容索引。'
                           : '适合目标表已存在的场景，先做差异分析，再按勾选执行插入、更新或删除。'}
                   </div>
@@ -933,6 +1183,16 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                       </Text>
                   </div>
                   <Form layout="vertical">
+                      <Form.Item label="同步域">
+                          <Tabs
+                              activeKey={syncDomain}
+                              onChange={(key) => setSyncDomain(key as SyncDomain)}
+                              items={[
+                                  { key: 'data', label: '数据同步' },
+                                  { key: 'schema', label: t('schemaSync.tab.label') },
+                              ]}
+                          />
+                      </Form.Item>
                       <Form.Item label="功能类型">
                           <Select value={workflowType} onChange={setWorkflowType}>
                               <Option value="sync">数据同步（基于已有目标表做差异同步）</Option>
@@ -964,10 +1224,11 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                       <Form.Item label={isMigrationWorkflow ? '迁移内容' : '同步内容'}>
                           <Select value={syncContent} onChange={setSyncContent}>
                               <Option value="data">仅同步数据</Option>
-                              <Option value="schema" disabled={isSourceQueryMode}>仅同步结构</Option>
-                              <Option value="both" disabled={isSourceQueryMode}>同步结构 + 数据</Option>
+                              <Option value="schema" disabled={isSourceQueryMode || syncDomain === 'schema'}>仅同步结构</Option>
+                              <Option value="both" disabled={isSourceQueryMode || syncDomain === 'schema'}>同步结构 + 数据</Option>
                           </Select>
                       </Form.Item>
+                      {syncDomain === 'data' && (
                       <Form.Item label={isMigrationWorkflow ? '迁移模式' : '同步模式'}>
                           <Select value={syncMode} onChange={setSyncMode} disabled={syncContent === 'schema'}>
                               <Option value="insert_update">增量同步（对比差异，按插入/更新/删除勾选执行）</Option>
@@ -975,6 +1236,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                               <Option value="full_overwrite">全量覆盖（清空目标表后插入）</Option>
                           </Select>
                       </Form.Item>
+                      )}
                       <Form.Item label={isMigrationWorkflow ? '目标表处理策略' : '目标表要求'}>
                           <Select value={targetTableStrategy} onChange={setTargetTableStrategy} disabled={!isMigrationWorkflow || isSourceQueryMode}>
                               <Option value="existing_only">仅使用已有目标表</Option>
@@ -1092,7 +1354,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                   )}
               </div>
 
-              {diffTables.length > 0 && (
+              {syncDomain === 'data' && diffTables.length > 0 && (
                   <div style={quietPanelStyle}>
                       <Divider orientation="left" style={{ marginTop: 0 }}>对比结果</Divider>
                       {analysisWarnings.length > 0 && (
@@ -1220,6 +1482,73 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                       />
                   </div>
               )}
+              {syncDomain === 'schema' && schemaDiffTables.length > 0 && (
+                  <div style={quietPanelStyle}>
+                      <Divider orientation="left" style={{ marginTop: 0 }}>结构差异</Divider>
+                      {analysisWarnings.length > 0 && (
+                          <Alert
+                              type="warning"
+                              showIcon
+                              message="预检发现风险或降级项，请在执行前确认"
+                              description={
+                                  <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                      {analysisWarnings.slice(0, 8).map((item) => <li key={item}>{item}</li>)}
+                                      {analysisWarnings.length > 8 && <li>还有 {analysisWarnings.length - 8} 项未展开</li>}
+                                  </ul>
+                              }
+                              style={{ marginBottom: 12 }}
+                          />
+                      )}
+                      <Table
+                          size="small"
+                          pagination={false}
+                          rowKey={(r: any) => `${r.table}-${r.id}`}
+                          dataSource={schemaDiffTables.flatMap((table) => (table.items || []).map((item) => ({ ...item, table: table.table, targetTableExists: table.targetTableExists })))}
+                          columns={[
+                              { title: '表名', dataIndex: 'table', key: 'table', width: 160, ellipsis: true },
+                              { title: '对象类型', dataIndex: 'objectType', key: 'objectType', width: 120 },
+                              { title: '对象名', dataIndex: 'objectName', key: 'objectName', ellipsis: true },
+                              {
+                                  title: '变更',
+                                  key: 'changeType',
+                                  width: 100,
+                                  render: (_: any, r: SchemaDiffItem) => (
+                                      <Tag color={r.changeType === 'DROP' ? 'red' : (r.changeType === 'ALTER' ? 'gold' : 'blue')}>{r.changeType}</Tag>
+                                  ),
+                              },
+                              { title: '说明', dataIndex: 'summary', key: 'summary', ellipsis: true },
+                              {
+                                  title: '执行',
+                                  key: 'selected',
+                                  width: 90,
+                                  render: (_: any, r: SchemaDiffItem) => (
+                                      <Checkbox
+                                          checked={schemaSelectedItemIds.includes(r.id)}
+                                          disabled={!r.supported || analyzing}
+                                          onChange={(e) => updateSchemaItemSelection(r.id, e.target.checked)}
+                                      />
+                                  ),
+                              },
+                              {
+                                  title: '状态',
+                                  key: 'supported',
+                                  width: 180,
+                                  render: (_: any, r: SchemaDiffItem) => r.supported ? '可执行' : (r.unsupportedReason || '不可执行'),
+                              },
+                              {
+                                  title: '预览',
+                                  key: 'preview',
+                                  width: 80,
+                                  render: (_: any, r: SchemaDiffItem & { table: string }) => (
+                                      <Button size="small" onClick={() => openSchemaPreview(r.table)}>
+                                          查看
+                                      </Button>
+                                  ),
+                              },
+                          ]}
+                      />
+                  </div>
+              )}
           </div>
       )}
 
@@ -1228,20 +1557,20 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={quietPanelStyle}>
               <Alert
-                  message={syncing ? "正在同步" : (syncResult?.success ? "同步完成" : "同步失败")}
+                  message={(syncing || schemaRunning) ? "正在同步" : (syncResult?.success ? "同步完成" : "同步失败")}
                   description={
-                      syncing
+                      (syncing || schemaRunning)
                           ? `当前阶段：${syncProgress.stage || '执行中'}${syncProgress.table ? `，表：${syncProgress.table}` : ''}`
                           : (syncResult?.message || `成功同步 ${syncResult?.tablesSynced || 0} 张表. 插入: ${syncResult?.rowsInserted || 0}, 更新: ${syncResult?.rowsUpdated || 0}`)
                   }
-                  type={syncing ? "info" : (syncResult?.success ? "success" : "error")}
+                  type={(syncing || schemaRunning) ? "info" : (syncResult?.success ? "success" : "error")}
                   showIcon
               />
 
               <div style={{ marginTop: 14 }}>
                   <Progress
                       percent={syncProgress.percent}
-                      status={syncing ? "active" : (syncResult?.success ? "success" : "exception")}
+                      status={(syncing || schemaRunning) ? "active" : (syncResult?.success ? "success" : "exception")}
                       format={() => `${syncProgress.current}/${syncProgress.total}`}
                   />
               </div>
@@ -1282,24 +1611,31 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 	          {currentStep === 1 && (
 	              <>
 	                <Button onClick={() => setCurrentStep(0)} style={{ marginRight: 8 }}>上一步</Button>
-	                <Button onClick={analyzeDiff} loading={loading} disabled={syncContent === 'schema' || selectedTables.length === 0 || analyzing || (isSourceQueryMode && !sourceQuery.trim())} style={{ marginRight: 8 }}>
+	                <Button
+                        onClick={syncDomain === 'schema' ? analyzeSchemaDiff : analyzeDiff}
+                        loading={loading}
+                        disabled={selectedTables.length === 0 || analyzing || (isSourceQueryMode && !sourceQuery.trim()) || (syncDomain === 'data' && syncContent === 'schema')}
+                        style={{ marginRight: 8 }}
+                    >
 	                    对比差异
 	                </Button>
 	                <Button
 	                    type="primary"
-	                    onClick={runSync}
-                    loading={loading}
-                    disabled={selectedTables.length === 0 || (isSourceQueryMode && !sourceQuery.trim()) || (syncContent !== 'schema' && diffTables.length === 0)}
-                >
-                    开始同步
-                </Button>
+	                    onClick={syncDomain === 'schema' ? runSchemaSync : runSync}
+                        loading={loading}
+                        disabled={selectedTables.length === 0
+                            || (isSourceQueryMode && !sourceQuery.trim())
+                            || (syncDomain === 'schema' ? schemaDiffTables.length === 0 : (syncContent !== 'schema' && diffTables.length === 0))}
+                    >
+                        {syncDomain === 'schema' ? '开始结构同步' : '开始同步'}
+                    </Button>
               </>
           )}
           {currentStep === 2 && (
               <>
-                  <Button disabled={syncing} onClick={() => setCurrentStep(1)} style={{ marginRight: 8 }}>继续同步</Button>
-                  <Button disabled={!syncing} onClick={() => void handleCancelSync()} style={{ marginRight: 8 }}>取消同步</Button>
-                  <Button type="primary" disabled={syncing} onClick={onClose}>关闭</Button>
+                  <Button disabled={syncing || schemaRunning} onClick={() => setCurrentStep(1)} style={{ marginRight: 8 }}>继续同步</Button>
+                  <Button disabled={!(syncing || schemaRunning)} onClick={() => void handleCancelSync()} style={{ marginRight: 8 }}>取消同步</Button>
+                  <Button type="primary" disabled={syncing || schemaRunning} onClick={onClose}>关闭</Button>
               </>
           )}
       </div>
@@ -1309,11 +1645,11 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
         title={`差异预览：${previewTable}`}
         styles={{ body: { background: darkMode ? 'rgba(9,13,20,0.98)' : '#f8fafc' } }}
         open={previewOpen}
-        onClose={() => { setPreviewOpen(false); setPreviewTable(''); setPreviewData(null); }}
+        onClose={() => { setPreviewOpen(false); setPreviewTable(''); setPreviewData(null); setSchemaPreviewData(null); }}
         width={900}
     >
         {previewLoading && <Alert type="info" showIcon message="正在加载差异预览…" />}
-        {!previewLoading && previewData && (
+        {!previewLoading && (syncDomain === 'schema' ? schemaPreviewData : previewData) && (
             <div>
                 <Alert
                     type="info"
@@ -1321,7 +1657,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                     message={
                         previewHasDataDiff
                             ? `插入 ${previewData.totalInserts || 0}，更新 ${previewData.totalUpdates || 0}，删除 ${previewData.totalDeletes || 0}（预览最多展示 200 条/类型）`
-                            : (previewData.schemaSummary || `检测到 ${previewSql.statementCount} 条结构变更语句`)
+                            : ((syncDomain === 'schema' ? schemaPreviewData?.schemaSummary : previewData?.schemaSummary) || `检测到 ${previewSql.statementCount} 条结构变更语句`)
                     }
                 />
                 {previewSchemaWarnings.length > 0 && (
@@ -1343,11 +1679,11 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                     items={[
                         ...(previewHasSchemaStatements ? [{
                             key: 'schema',
-                            label: `结构(${Array.isArray(previewData.schemaStatements) ? previewData.schemaStatements.length : 0})`,
+                            label: `结构(${Array.isArray(syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements) ? (syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements).length : 0})`,
                             children: (
                                 <div>
                                     <Text type="secondary">
-                                        {previewData.schemaSummary || '以下为本次结构同步计划执行的语句。'}
+                                        {(syncDomain === 'schema' ? schemaPreviewData?.schemaSummary : previewData?.schemaSummary) || '以下为本次结构同步计划执行的语句。'}
                                     </Text>
                                     <pre
                                         style={{
@@ -1363,8 +1699,9 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                             wordBreak: 'break-word'
                                         }}
                                     >
-                                        {Array.isArray(previewData.schemaStatements) && previewData.schemaStatements.length > 0
-                                            ? previewData.schemaStatements.join('\n')
+                                        {Array.isArray(syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements)
+                                            && (syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements).length > 0
+                                            ? (syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements).join('\n')
                                             : '-- 当前表结构无可执行变更'}
                                     </pre>
                                 </div>

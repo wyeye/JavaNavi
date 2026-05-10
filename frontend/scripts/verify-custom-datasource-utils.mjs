@@ -32,6 +32,7 @@ try {
   const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs');
   const dataGridValue = await transpileToModule('src/components/dataGridValue.ts', 'dataGridValue.mjs');
   const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
+  const schemaSyncRequest = await transpileToModule('src/components/schemaSyncRequest.ts', 'schemaSyncRequest.mjs');
   const sidebarTreeNavigation = await transpileToModule('src/components/sidebarTreeNavigation.ts', 'sidebarTreeNavigation.mjs');
   const driverSelection = await transpileToModule('src/utils/driverSelection.ts', 'driverSelection.mjs');
   const dataSourceCapabilities = await transpileToModule('src/utils/dataSourceCapabilities.ts', 'dataSourceCapabilities.mjs');
@@ -98,6 +99,52 @@ try {
   assert.equal(
     dataSyncRequest.validateDataSyncSelection({ sourceDatasetMode: 'table', selectedTables: ['users'], sourceQuery: '', syncContent: 'data' }),
     null,
+  );
+  assert.equal(
+    schemaSyncRequest.validateSchemaSyncSelection({ selectedTables: [] }),
+    'schemaSync.selection.tableRequired',
+  );
+  assert.equal(
+    schemaSyncRequest.validateSchemaSyncSelection({ selectedTables: ['users'] }),
+    null,
+  );
+  assert.deepEqual(
+    schemaSyncRequest.buildSchemaSyncAnalyzeRequest({
+      sourceConfig: { id: 'source' },
+      targetConfig: { id: 'target' },
+      sourceDatabase: 'db_a',
+      targetDatabase: 'db_b',
+      selectedTables: ['users'],
+    }),
+    {
+      sourceConfig: { id: 'source' },
+      targetConfig: { id: 'target' },
+      sourceDatabase: 'db_a',
+      targetDatabase: 'db_b',
+      tables: ['users'],
+    },
+  );
+  assert.deepEqual(
+    schemaSyncRequest.buildSchemaSyncRunRequest({
+      sourceConfig: { id: 'source' },
+      targetConfig: { id: 'target' },
+      sourceDatabase: 'db_a',
+      targetDatabase: 'db_b',
+      selectedTables: ['users'],
+      selectedItemIds: ['users:COLUMN:name:ADD'],
+      confirmedDeleteItemIds: ['users:INDEX:idx_old:DROP'],
+      jobId: 'job-1',
+    }),
+    {
+      sourceConfig: { id: 'source' },
+      targetConfig: { id: 'target' },
+      sourceDatabase: 'db_a',
+      targetDatabase: 'db_b',
+      tables: ['users'],
+      selectedItemIds: ['users:COLUMN:name:ADD'],
+      confirmedDeleteItemIds: ['users:INDEX:idx_old:DROP'],
+      jobId: 'job-1',
+    },
   );
 
   assert.deepEqual(

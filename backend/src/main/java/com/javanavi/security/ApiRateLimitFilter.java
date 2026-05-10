@@ -29,7 +29,8 @@ public class ApiRateLimitFilter extends OncePerRequestFilter {
         String path = request.getRequestURI();
         if (!path.startsWith("/api/v1/ai/")
                 && !path.startsWith("/api/v1/query")
-                && !path.startsWith("/api/v1/data-sync/")) {
+                && !path.startsWith("/api/v1/data-sync/")
+                && !path.startsWith("/api/v1/schema-sync/")) {
             filterChain.doFilter(request, response);
             return;
         }

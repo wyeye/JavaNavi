@@ -1,5 +1,5 @@
 import { resolveEffectiveSSLMode } from '../utils/sslMode';
-import { connection, sync, app, jvm, redis } from './models';
+import { connection, sync, app, jvm, redis, schemaSync } from './models';
 import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
 
@@ -414,6 +414,24 @@ export async function DataSyncPreview(arg1:sync.SyncConfig,arg2:string,arg3:numb
 
 export async function DataSyncCancel(jobId: string): Promise<Record<string, any>> {
   return dataOrThrow<Record<string, any>>(await postJson('/data-sync/cancel', { jobId }), 'Data sync cancel failed.');
+}
+
+export async function SchemaSyncAnalyze(arg1: schemaSync.RunConfig): Promise<connection.QueryResult> {
+  const payload = await postJson('/schema-sync/analyze', arg1 || {});
+  return apiEnvelopeToQueryResult(payload, 'Schema sync analysis completed');
+}
+
+export async function SchemaSyncPreview(arg1: schemaSync.RunConfig, arg2: string): Promise<connection.QueryResult> {
+  const payload = await postJson('/schema-sync/preview', { ...(arg1 || {}), table: arg2 });
+  return apiEnvelopeToQueryResult(payload, 'Schema sync preview loaded');
+}
+
+export async function SchemaSyncRun(arg1: schemaSync.RunConfig): Promise<Record<string, any>> {
+  return dataOrThrow<Record<string, any>>(await postJson('/schema-sync/run', arg1 || {}), 'Schema sync failed.');
+}
+
+export async function SchemaSyncCancel(jobId: string): Promise<Record<string, any>> {
+  return dataOrThrow<Record<string, any>>(await postJson('/schema-sync/cancel', { jobId }), 'Schema sync cancel failed.');
 }
 
 export async function CloseConnection(arg1:string): Promise<void> {
