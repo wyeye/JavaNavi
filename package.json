@@ -4,7 +4,8 @@
   "version": "0.1.5",
   "type": "module",
   "scripts": {
-    "verify:quick": "npm --prefix frontend test && npm --prefix frontend run build && npm run scan:source-health && cd backend && mvn -q test && cd ../src-tauri && mkdir -p resources/java-runtime && touch resources/javanavi-backend.jar && cargo check",
+    "verify:quick": "npm --prefix frontend test && npm --prefix frontend run build && npm run scan:source-health && node scripts/check-java-version.mjs 17 && cd backend && mvn -q test && cd ../src-tauri && mkdir -p resources/java-runtime && touch resources/javanavi-backend.jar && cargo check",
+    "verify:java": "node scripts/check-java-version.mjs 17 && cd backend && mvn -q test",
     "scan:source-health": "node scripts/scan-source-health.mjs && node frontend/scripts/check-i18n-message-literals.mjs && node scripts/check-backend-localized-errors.mjs",
     "desktop:stage": "./scripts/package-desktop-sidecar.sh",
     "desktop:dev": "npm run desktop:stage && tauri dev",

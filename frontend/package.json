@@ -4,10 +4,10 @@
   "version": "0.1.5",
   "type": "module",
   "scripts": {
-    "dev": "vite",
-    "build": "tsc && vite build",
+    "dev": "vite --configLoader runner",
+    "build": "tsc && vite build --configLoader runner",
     "build:budget": "npm run build && node scripts/check-bundle-budget.mjs",
-    "preview": "vite preview",
+    "preview": "vite preview --configLoader runner",
     "test": "node scripts/verify-custom-datasource-utils.mjs"
   },
   "dependencies": {
