@@ -34,6 +34,7 @@ import java.sql.Statement;
 import java.sql.Types;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -45,8 +46,10 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.stream.Collectors;
 
 @Service
 public class DatabaseCompatibilityService {
@@ -335,6 +338,287 @@ public class DatabaseCompatibilityService {
             }
             return Map.of("success", true, "executed", executed.size(), "statements", executed);
         }));
+    }
+
+
+    public Map<String, Object> createTableLike(ConnectionConfigDto sourceConfig, String sourceDatabase, ConnectionConfigDto targetConfig, String targetDatabase, String tableName) {
+        if (isMongo(sourceConfig) || isMongo(targetConfig)) {
+            throw new IllegalArgumentException("Data sync table creation only supports relational JDBC databases.");
+        }
+        return withRedactedSqlErrors(() -> withDatabaseConnection(targetConfig, targetDatabase, connection ->
+                createTableLikeOnConnection(connection, sourceConfig, sourceDatabase, targetConfig, targetDatabase, tableName)));
+    }
+
+    public Map<String, Object> addMissingColumns(ConnectionConfigDto sourceConfig, String sourceDatabase, ConnectionConfigDto targetConfig, String targetDatabase, String tableName) {
+        if (isMongo(sourceConfig) || isMongo(targetConfig)) {
+            throw new IllegalArgumentException("Data sync column migration only supports relational JDBC databases.");
+        }
+        return withRedactedSqlErrors(() -> withDatabaseConnection(targetConfig, targetDatabase, connection ->
+                addMissingColumnsOnConnection(connection, sourceConfig, sourceDatabase, targetConfig, targetDatabase, tableName)));
+    }
+
+    public Map<String, Object> createCompatibleIndexes(ConnectionConfigDto sourceConfig, String sourceDatabase, ConnectionConfigDto targetConfig, String targetDatabase, String tableName) {
+        if (isMongo(sourceConfig) || isMongo(targetConfig)) {
+            throw new IllegalArgumentException("Data sync index migration only supports relational JDBC databases.");
+        }
+        return withRedactedSqlErrors(() -> withDatabaseConnection(targetConfig, targetDatabase, connection ->
+                createCompatibleIndexesOnConnection(connection, sourceConfig, sourceDatabase, targetConfig, targetDatabase, tableName)));
+    }
+
+    public ApplyChangesResultDto replaceTableData(ConnectionConfigDto config, String requestedDatabase, String tableName, List<Map<String, Object>> rows) {
+        if (isMongo(config)) {
+            throw new IllegalArgumentException("Full overwrite data sync only supports relational JDBC databases.");
+        }
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection ->
+                replaceTableDataOnConnection(connection, config, requestedDatabase, tableName, rows)));
+    }
+
+
+    private Map<String, Object> createTableLikeOnConnection(
+            Connection targetConnection,
+            ConnectionConfigDto sourceConfig,
+            String sourceDatabase,
+            ConnectionConfigDto targetConfig,
+            String targetDatabase,
+            String tableName
+    ) throws SQLException {
+        String targetDriver = jdbcConnectionFactory.normalizeDriver(targetConfig);
+        TableRef targetRef = tableRef(targetConfig, targetDatabase, tableName);
+        if (tableExists(targetConnection, targetRef)) {
+            return Map.of("created", false, "table", tableName, "statements", List.of());
+        }
+        List<ColumnDefinitionDto> sourceColumns = listColumns(sourceConfig, sourceDatabase, tableName);
+        if (sourceColumns.isEmpty()) {
+            throw new IllegalArgumentException("Source table has no readable columns: " + tableName);
+        }
+        String sql = createTableSql(targetDriver, targetRef, sourceColumns);
+        try (Statement statement = targetConnection.createStatement()) {
+            statement.execute(sql);
+        }
+        return Map.of("created", true, "table", tableName, "statements", List.of(sql));
+    }
+
+    private Map<String, Object> addMissingColumnsOnConnection(
+            Connection targetConnection,
+            ConnectionConfigDto sourceConfig,
+            String sourceDatabase,
+            ConnectionConfigDto targetConfig,
+            String targetDatabase,
+            String tableName
+    ) throws SQLException {
+        String targetDriver = jdbcConnectionFactory.normalizeDriver(targetConfig);
+        TableRef targetRef = tableRef(targetConfig, targetDatabase, tableName);
+        List<ColumnDefinitionDto> sourceColumns = listColumns(sourceConfig, sourceDatabase, tableName);
+        List<ColumnDefinitionDto> targetColumns = readColumns(targetConnection, targetRef, columnKeys(targetConnection, targetRef));
+        Map<String, ColumnDefinitionDto> targetByName = byLowerName(targetColumns, ColumnDefinitionDto::name);
+        List<String> statements = new ArrayList<>();
+        for (ColumnDefinitionDto sourceColumn : sourceColumns) {
+            if (targetByName.containsKey(normalizeName(sourceColumn.name()))) {
+                continue;
+            }
+            statements.add("ALTER TABLE " + tableSqlName(targetDriver, targetRef) + " ADD COLUMN " + columnDefinitionSql(targetDriver, sourceColumn) + ";");
+        }
+        executeStatements(targetConnection, statements);
+        return Map.of("added", statements.size(), "table", tableName, "statements", statements);
+    }
+
+    private Map<String, Object> createCompatibleIndexesOnConnection(
+            Connection targetConnection,
+            ConnectionConfigDto sourceConfig,
+            String sourceDatabase,
+            ConnectionConfigDto targetConfig,
+            String targetDatabase,
+            String tableName
+    ) throws SQLException {
+        String targetDriver = jdbcConnectionFactory.normalizeDriver(targetConfig);
+        TableRef targetRef = tableRef(targetConfig, targetDatabase, tableName);
+        List<IndexDefinitionDto> sourceIndexes = listIndexes(sourceConfig, sourceDatabase, tableName);
+        List<IndexDefinitionDto> targetIndexes = readIndexes(targetConnection, targetRef);
+        Map<String, List<IndexDefinitionDto>> targetGroups = groupIndexes(targetIndexes);
+        List<String> statements = new ArrayList<>();
+        int skipped = 0;
+        for (List<IndexDefinitionDto> group : groupIndexes(sourceIndexes).values()) {
+            if (group.isEmpty() || targetGroups.containsKey(normalizeName(group.get(0).name())) || isPrimaryIndex(group.get(0))) {
+                skipped++;
+                continue;
+            }
+            if (!isCompatibleIndexGroup(group)) {
+                skipped++;
+                continue;
+            }
+            statements.add(createIndexSql(targetDriver, targetRef, group) + ";");
+        }
+        executeStatements(targetConnection, statements);
+        return Map.of("created", statements.size(), "skipped", skipped, "table", tableName, "statements", statements);
+    }
+
+    private ApplyChangesResultDto replaceTableDataOnConnection(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            String tableName,
+            List<Map<String, Object>> rows
+    ) throws SQLException {
+        TableRef ref = tableRef(config, requestedDatabase, tableName);
+        String driver = jdbcConnectionFactory.normalizeDriver(config);
+        String tableSql = tableSqlName(driver, ref);
+        boolean previousAutoCommit = connection.getAutoCommit();
+        int inserted = 0;
+        int deleted = 0;
+        connection.setAutoCommit(false);
+        try {
+            try (Statement statement = connection.createStatement()) {
+                deleted = Math.max(statement.executeUpdate("DELETE FROM " + tableSql), 0);
+            }
+            for (Map<String, Object> row : nullSafeRows(rows)) {
+                Map<String, Object> values = nullSafeMap(row);
+                if (values.isEmpty()) {
+                    continue;
+                }
+                String columns = quotedColumns(driver, values.keySet());
+                String placeholders = String.join(", ", values.keySet().stream().map(ignored -> "?").toList());
+                try (PreparedStatement statement = connection.prepareStatement("INSERT INTO " + tableSql + " (" + columns + ") VALUES (" + placeholders + ")")) {
+                    bindValues(statement, values.values());
+                    inserted += Math.max(statement.executeUpdate(), 0);
+                }
+            }
+            connection.commit();
+            return new ApplyChangesResultDto(inserted, 0, deleted, inserted + deleted);
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private boolean tableExists(Connection connection, TableRef ref) throws SQLException {
+        if (isDuckDbConnection(connection)) {
+            String sql = "select count(*) from information_schema.tables where table_name = ? and table_schema not in ('information_schema', 'pg_catalog')";
+            try (PreparedStatement statement = connection.prepareStatement(sql)) {
+                statement.setString(1, ref.table());
+                try (ResultSet rs = statement.executeQuery()) {
+                    return rs.next() && rs.getInt(1) > 0;
+                }
+            }
+        }
+        try (ResultSet rs = connection.getMetaData().getTables(ref.catalog(), ref.schema(), ref.table(), new String[]{"TABLE"})) {
+            return rs.next();
+        }
+    }
+
+    private static String createTableSql(String driver, TableRef ref, List<ColumnDefinitionDto> sourceColumns) {
+        List<String> definitions = new ArrayList<>();
+        List<String> primaryKeys = new ArrayList<>();
+        for (ColumnDefinitionDto column : sourceColumns) {
+            definitions.add("  " + columnDefinitionSql(driver, column));
+            if (isPrimaryColumn(column)) {
+                primaryKeys.add(quoteIdentifier(driver, column.name()));
+            }
+        }
+        if (!primaryKeys.isEmpty()) {
+            definitions.add("  PRIMARY KEY (" + String.join(", ", primaryKeys) + ")");
+        }
+        return "CREATE TABLE " + tableSqlName(driver, ref) + " (\n" + String.join(",\n", definitions) + "\n)";
+    }
+
+    private static String columnDefinitionSql(String driver, ColumnDefinitionDto column) {
+        List<String> parts = new ArrayList<>();
+        parts.add(quoteIdentifier(driver, column.name()));
+        parts.add(typeForTarget(driver, column.type()));
+        if (!nullToEmpty(column.defaultValue()).isBlank()) {
+            parts.add("DEFAULT " + defaultLiteral(column.defaultValue()));
+        }
+        if ("NO".equalsIgnoreCase(nullToEmpty(column.nullable()))) {
+            parts.add("NOT NULL");
+        }
+        if ("mysql".equals(driver) && "auto_increment".equalsIgnoreCase(nullToEmpty(column.extra()).trim())) {
+            parts.add("AUTO_INCREMENT");
+        }
+        return String.join(" ", parts);
+    }
+
+    private static String typeForTarget(String driver, String rawType) {
+        String type = firstText(rawType, "VARCHAR(255)");
+        String lower = type.toLowerCase(Locale.ROOT).trim();
+        if ("postgresql".equals(driver)) {
+            if (lower.contains("tinyint") || lower.contains("mediumint")) return "INTEGER";
+            if (lower.contains("datetime")) return "TIMESTAMP";
+            if (lower.contains("longtext") || lower.contains("mediumtext")) return "TEXT";
+            if (lower.contains("double")) return "DOUBLE PRECISION";
+        }
+        if ("mysql".equals(driver)) {
+            if (lower.equals("text") || lower.equals("character varying")) return "VARCHAR(255)";
+            if (lower.equals("boolean")) return "BOOLEAN";
+        }
+        return type;
+    }
+
+    private static String defaultLiteral(String value) {
+        String text = nullToEmpty(value).trim();
+        if (text.isBlank()) {
+            return "";
+        }
+        String lower = text.toLowerCase(Locale.ROOT);
+        if (lower.startsWith("'") || lower.matches("-?\\d+(\\.\\d+)?") || "null".equals(lower) || lower.startsWith("current_timestamp") || lower.endsWith("()")) {
+            return text;
+        }
+        return "'" + text.replace("'", "''") + "'";
+    }
+
+    private static String createIndexSql(String driver, TableRef ref, List<IndexDefinitionDto> indexes) {
+        List<IndexDefinitionDto> sorted = indexes.stream().sorted(Comparator.comparingInt(IndexDefinitionDto::seqInIndex)).toList();
+        String columns = sorted.stream().map(IndexDefinitionDto::columnName).map(name -> quoteIdentifier(driver, name)).collect(Collectors.joining(", "));
+        boolean unique = sorted.get(0).nonUnique() == 0;
+        return (unique ? "CREATE UNIQUE INDEX " : "CREATE INDEX ")
+                + quoteIdentifier(driver, sorted.get(0).name())
+                + " ON "
+                + tableSqlName(driver, ref)
+                + " ("
+                + columns
+                + ")";
+    }
+
+    private static boolean isCompatibleIndexGroup(List<IndexDefinitionDto> indexes) {
+        return indexes.stream().allMatch(index -> index.subPart() <= 0 && nullToEmpty(index.columnName()).matches("[A-Za-z0-9_]+"));
+    }
+
+    private static boolean isPrimaryIndex(IndexDefinitionDto index) {
+        String name = nullToEmpty(index.name()).toLowerCase(Locale.ROOT);
+        return "primary".equals(name) || "primary_key".equals(name);
+    }
+
+    private static boolean isPrimaryColumn(ColumnDefinitionDto column) {
+        String key = nullToEmpty(column.key()).toUpperCase(Locale.ROOT);
+        return "PRI".equals(key) || "PK".equals(key);
+    }
+
+    private static Map<String, ColumnDefinitionDto> byLowerName(List<ColumnDefinitionDto> columns, Function<ColumnDefinitionDto, String> extractor) {
+        Map<String, ColumnDefinitionDto> result = new LinkedHashMap<>();
+        for (ColumnDefinitionDto column : columns) {
+            result.put(normalizeName(extractor.apply(column)), column);
+        }
+        return result;
+    }
+
+    private static Map<String, List<IndexDefinitionDto>> groupIndexes(List<IndexDefinitionDto> indexes) {
+        return indexes.stream()
+                .collect(Collectors.groupingBy(index -> normalizeName(index.name()), LinkedHashMap::new, Collectors.collectingAndThen(Collectors.toList(),
+                        list -> list.stream().sorted(Comparator.comparingInt(IndexDefinitionDto::seqInIndex)).toList())));
+    }
+
+    private static String normalizeName(String value) {
+        return nullToEmpty(value).trim().toLowerCase(Locale.ROOT);
+    }
+
+    private static void executeStatements(Connection connection, List<String> statements) throws SQLException {
+        try (Statement statement = connection.createStatement()) {
+            for (String sql : statements) {
+                if (!nullToEmpty(sql).isBlank()) {
+                    statement.execute(sql);
+                }
+            }
+        }
     }
 
     private QueryResultDto executeSingleOnConnection(Connection connection, QueryRequestDto request, String queryId, RunningQuery running) throws SQLException {

@@ -8,6 +8,7 @@ import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
 import com.javanavi.model.ColumnDefinitionDto;
 import com.javanavi.model.ConnectionConfigDto;
+import com.javanavi.model.IndexDefinitionDto;
 import com.javanavi.model.QueryRequestDto;
 import com.javanavi.model.QueryResultDto;
 import com.javanavi.model.UpdateRowDto;
@@ -46,6 +47,8 @@ public class DataSyncCompatibilityService {
         String normalized = text(jobId);
         if (!normalized.isBlank()) {
             cancelledJobs.add(normalized);
+            databaseCompatibilityService.cancelQuery(normalized + "-source");
+            databaseCompatibilityService.cancelQuery(normalized + "-target");
             publishSyncLog(normalized, "warn", "Data sync cancelled by user.");
         }
         return orderedMap("cancelled", true, "jobId", normalized);
@@ -54,6 +57,7 @@ public class DataSyncCompatibilityService {
     public Map<String, Object> run(Map<String, Object> input) {
         SyncRequest request = SyncRequest.from(input);
         try {
+            ensureRelationalOnly(request);
             if (request.hasSourceQuery()) {
                 return runSourceQuerySync(request);
             }
@@ -134,6 +138,7 @@ public class DataSyncCompatibilityService {
         SyncRequest request = SyncRequest.from(input);
         throwIfCancelled(request.jobId());
         try {
+            ensureRelationalOnly(request);
             if (request.hasSourceQuery()) {
                 return analyzeSourceQuerySync(request);
             }
@@ -192,6 +197,7 @@ public class DataSyncCompatibilityService {
         SyncRequest request = SyncRequest.from(input);
         throwIfCancelled(request.jobId());
         try {
+            ensureRelationalOnly(request);
             String table = firstText(text(input == null ? null : input.get("table")), request.tables().isEmpty() ? "" : request.tables().get(0));
             if (table.isBlank()) {
                 table = "fixture_table";
@@ -271,7 +277,6 @@ public class DataSyncCompatibilityService {
         publishSyncProgress(request.jobId(), 0, 2, context.table(), messages.message("events.readSource"));
         throwIfCancelled(request.jobId());
         if ("full_overwrite".equals(request.mode())) {
-            databaseCompatibilityService.clearTables(context.targetConfig(), jdbcScopeName(context.targetConfig()), List.of(context.table()), false);
             if (options.insert()) {
                 inserts.addAll(filteredSourceRows(context));
             }
@@ -304,7 +309,9 @@ public class DataSyncCompatibilityService {
         }
 
         throwIfCancelled(request.jobId());
-        ApplyChangesResultDto result = databaseCompatibilityService.applyChanges(
+        ApplyChangesResultDto result = "full_overwrite".equals(request.mode())
+                ? databaseCompatibilityService.replaceTableData(context.targetConfig(), jdbcScopeName(context.targetConfig()), context.table(), inserts)
+                : databaseCompatibilityService.applyChanges(
                 context.targetConfig(),
                 jdbcScopeName(context.targetConfig()),
                 context.table(),
@@ -453,7 +460,8 @@ public class DataSyncCompatibilityService {
         int total = Math.max(1, request.tables().size());
         for (String table : request.tables()) {
             throwIfCancelled(request.jobId());
-            SourceQueryContext context = loadTableSyncContext(request, table, true, true);
+            ensureTargetTableForSync(request, table);
+            SourceQueryContext context = loadTableSyncContextPaged(request, table, true, true);
             TableOptions options = request.tableOptions(context.table());
             if (!options.insert() && !options.update() && !options.delete()) {
                 logs.add("Table " + context.table() + ": skipped because no insert/update/delete operation was selected");
@@ -465,7 +473,6 @@ public class DataSyncCompatibilityService {
             List<Map<String, Object>> deletes = new ArrayList<>();
             publishSyncProgress(request.jobId(), tablesSynced, total, context.table(), messages.message("events.readSource"));
             if ("full_overwrite".equals(request.mode())) {
-                databaseCompatibilityService.clearTables(context.targetConfig(), jdbcScopeName(context.targetConfig()), List.of(context.table()), false);
                 if (options.insert()) {
                     inserts.addAll(filteredSourceRows(context));
                 }
@@ -503,7 +510,9 @@ public class DataSyncCompatibilityService {
             }
 
             throwIfCancelled(request.jobId());
-            ApplyChangesResultDto result = databaseCompatibilityService.applyChanges(
+            ApplyChangesResultDto result = "full_overwrite".equals(request.mode())
+                    ? databaseCompatibilityService.replaceTableData(context.targetConfig(), jdbcScopeName(context.targetConfig()), context.table(), inserts)
+                    : databaseCompatibilityService.applyChanges(
                     context.targetConfig(),
                     jdbcScopeName(context.targetConfig()),
                     context.table(),
@@ -546,7 +555,8 @@ public class DataSyncCompatibilityService {
         int deleted = 0;
         for (String table : request.tables()) {
             throwIfCancelled(request.jobId());
-            SourceQueryContext context = loadTableSyncContext(request, table, true, true);
+            TablePreparation preparation = previewTargetTablePreparation(request, table);
+            SourceQueryContext context = loadTableSyncContextPaged(request, table, true, true);
             SourceQueryDiff diff = sourceQueryDiff(context);
             inserted += diff.inserts().size();
             updated += diff.updates().size();
@@ -559,17 +569,15 @@ public class DataSyncCompatibilityService {
                     "updates", diff.updates().size(),
                     "deletes", diff.deletes().size(),
                     "same", diff.same(),
-                    "schemaDiffCount", 0,
+                    "schemaDiffCount", preparation.schemaDiffCount(),
                     "message", messages.message("sync.jdbcDiffDone"),
-                    "hasSchema", false,
-                    "targetTableExists", true,
-                    "plannedAction", "jdbc-table-to-table-apply",
-                    "warnings", request.syncSchema()
-                            ? List.of("Existing-table JDBC path verifies data sync; schema creation/migration remains a separate profile.")
-                            : List.of(),
+                    "hasSchema", preparation.schemaDiffCount() > 0,
+                    "targetTableExists", preparation.targetTableExists(),
+                    "plannedAction", preparation.plannedAction(),
+                    "warnings", preparation.warnings(),
                     "unsupportedObjects", List.of(),
-                    "indexesToCreate", 0,
-                    "indexesSkipped", 0
+                    "indexesToCreate", preparation.indexesToCreate(),
+                    "indexesSkipped", preparation.indexesSkipped()
             ));
         }
         return orderedMap(
@@ -590,7 +598,8 @@ public class DataSyncCompatibilityService {
 
     private Map<String, Object> previewJdbcTableSync(SyncRequest request, String table, int limit) {
         throwIfCancelled(request.jobId());
-        SourceQueryContext context = loadTableSyncContext(request.withSingleTable(table), table, true, true);
+        TablePreparation preparation = previewTargetTablePreparation(request, table);
+        SourceQueryContext context = loadTableSyncContextPaged(request.withSingleTable(table), table, true, true);
         SourceQueryDiff diff = sourceQueryDiff(context);
         List<Map<String, Object>> inserts = diff.inserts().stream().limit(limit)
                 .map(row -> orderedMap("pk", pkValue(row, context.pkColumn()), "row", row))
@@ -615,10 +624,8 @@ public class DataSyncCompatibilityService {
                 "pkColumn", context.pkColumn(),
                 "columnTypes", columnTypes(context.targetColumns()),
                 "schemaSummary", messages.message("sync.jdbcPreview"),
-                "schemaWarnings", request.syncSchema()
-                        ? List.of("Existing-table JDBC path does not create or migrate target schema in this slice.")
-                        : List.of(),
-                "schemaStatements", List.of(),
+                "schemaWarnings", preparation.warnings(),
+                "schemaStatements", preparation.statements(),
                 "totalInserts", diff.inserts().size(),
                 "totalUpdates", diff.updates().size(),
                 "totalDeletes", diff.deletes().size(),
@@ -1078,6 +1085,17 @@ public class DataSyncCompatibilityService {
         return list.stream().map(DataSyncCompatibilityService::text).filter(text -> !text.isBlank()).toList();
     }
 
+    private static boolean booleanValue(Object value, boolean fallback) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        String text = text(value).toLowerCase(Locale.ROOT);
+        if (text.isBlank()) {
+            return fallback;
+        }
+        return Set.of("true", "1", "yes", "y").contains(text);
+    }
+
     private static int positiveInt(Object value, int fallback, int max) {
         int result = intValue(value, fallback);
         if (result <= 0) {
@@ -1149,6 +1167,120 @@ public class DataSyncCompatibilityService {
         }
         String driver = firstText(text(map.get("driverType")), text(map.get("type")), text(map.get("driver"))).toLowerCase(Locale.ROOT);
         return driver.isBlank() || Set.of("demo", "h2", "fixture").contains(driver);
+    }
+
+
+    private void ensureRelationalOnly(SyncRequest request) {
+        if (request.hasExplicitFixtures()) {
+            return;
+        }
+        if (request.input().get("sourceConfig") instanceof Map<?, ?> || request.input().get("targetConfig") instanceof Map<?, ?>) {
+            ConnectionConfigDto sourceConfig = request.connectionConfig("sourceConfig");
+            ConnectionConfigDto targetConfig = request.connectionConfig("targetConfig");
+            String sourceDriver = normalizeDriverType(sourceConfig.driverType());
+            String targetDriver = normalizeDriverType(targetConfig.driverType());
+            if (!isRelationalSyncDriver(sourceDriver) || !isRelationalSyncDriver(targetDriver)) {
+                throw new IllegalArgumentException("Data sync only supports relational databases. Redis and MongoDB are not supported here.");
+            }
+        }
+    }
+
+    private void ensureTargetTableForSync(SyncRequest request, String table) {
+        TablePreparation preparation = previewTargetTablePreparation(request, table);
+        if (!preparation.targetTableExists()) {
+            if (!Set.of("auto_create_if_missing", "smart").contains(request.targetTableStrategy())) {
+                throw new IllegalArgumentException(messages.message("sync.targetTableMissing", "table", table));
+            }
+            createTargetTableFromSource(request, table);
+        } else if (request.autoAddColumns()) {
+            addMissingTargetColumns(request, table);
+        }
+        if (request.createIndexes()) {
+            migrateCompatibleIndexes(request, table);
+        }
+    }
+
+    private TablePreparation previewTargetTablePreparation(SyncRequest request, String table) {
+        ConnectionConfigDto sourceConfig = request.connectionConfig("sourceConfig");
+        ConnectionConfigDto targetConfig = request.connectionConfig("targetConfig");
+        List<String> statements = new ArrayList<>();
+        List<String> warnings = new ArrayList<>();
+        List<ColumnDefinitionDto> targetColumns = databaseCompatibilityService.listColumns(targetConfig, jdbcScopeName(targetConfig), table);
+        boolean targetExists = !targetColumns.isEmpty();
+        int missingColumns = 0;
+        int indexesToCreate = 0;
+        int indexesSkipped = 0;
+        if (!targetExists) {
+            if (Set.of("auto_create_if_missing", "smart").contains(request.targetTableStrategy())) {
+                statements.add("CREATE TABLE " + table + " LIKE source metadata");
+            } else {
+                warnings.add("Target table is missing and automatic table creation is disabled.");
+            }
+        } else if (request.autoAddColumns()) {
+            List<ColumnDefinitionDto> sourceColumns = databaseCompatibilityService.listColumns(sourceConfig, jdbcScopeName(sourceConfig), table);
+            Set<String> targetNames = targetColumns.stream().map(column -> column.name().toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+            for (ColumnDefinitionDto sourceColumn : sourceColumns) {
+                if (!targetNames.contains(sourceColumn.name().toLowerCase(Locale.ROOT))) {
+                    missingColumns++;
+                    statements.add("ALTER TABLE " + table + " ADD COLUMN " + sourceColumn.name() + " " + sourceColumn.type());
+                }
+            }
+        }
+        if (request.createIndexes()) {
+            List<IndexDefinitionDto> sourceIndexes = databaseCompatibilityService.listIndexes(sourceConfig, jdbcScopeName(sourceConfig), table);
+            List<IndexDefinitionDto> targetIndexes = targetExists ? databaseCompatibilityService.listIndexes(targetConfig, jdbcScopeName(targetConfig), table) : List.of();
+            Set<String> targetIndexNames = targetIndexes.stream().map(index -> index.name().toLowerCase(Locale.ROOT)).collect(Collectors.toSet());
+            Map<String, List<IndexDefinitionDto>> groups = sourceIndexes.stream().collect(Collectors.groupingBy(index -> index.name().toLowerCase(Locale.ROOT), LinkedHashMap::new, Collectors.toList()));
+            for (Map.Entry<String, List<IndexDefinitionDto>> entry : groups.entrySet()) {
+                if (targetIndexNames.contains(entry.getKey()) || isPrimaryIndex(entry.getKey())) {
+                    indexesSkipped++;
+                } else {
+                    indexesToCreate++;
+                    statements.add("CREATE INDEX " + entry.getValue().get(0).name() + " ON " + table);
+                }
+            }
+        }
+        String plannedAction = targetExists ? (missingColumns > 0 ? "jdbc-add-missing-columns-then-data-sync" : "jdbc-table-to-table-apply") : "jdbc-create-table-then-data-sync";
+        return new TablePreparation(targetExists, plannedAction, statements.size(), indexesToCreate, indexesSkipped, statements, warnings);
+    }
+
+    private Map<String, Object> createTargetTableFromSource(SyncRequest request, String table) {
+        return databaseCompatibilityService.createTableLike(
+                request.connectionConfig("sourceConfig"), jdbcScopeName(request.connectionConfig("sourceConfig")),
+                request.connectionConfig("targetConfig"), jdbcScopeName(request.connectionConfig("targetConfig")),
+                table
+        );
+    }
+
+    private Map<String, Object> addMissingTargetColumns(SyncRequest request, String table) {
+        return databaseCompatibilityService.addMissingColumns(
+                request.connectionConfig("sourceConfig"), jdbcScopeName(request.connectionConfig("sourceConfig")),
+                request.connectionConfig("targetConfig"), jdbcScopeName(request.connectionConfig("targetConfig")),
+                table
+        );
+    }
+
+    private Map<String, Object> migrateCompatibleIndexes(SyncRequest request, String table) {
+        return databaseCompatibilityService.createCompatibleIndexes(
+                request.connectionConfig("sourceConfig"), jdbcScopeName(request.connectionConfig("sourceConfig")),
+                request.connectionConfig("targetConfig"), jdbcScopeName(request.connectionConfig("targetConfig")),
+                table
+        );
+    }
+
+    private void cancelTableQueries(SyncRequest request, String table) {
+        String prefix = request.jobId() + "-" + safeIdentifier(table);
+        databaseCompatibilityService.cancelQuery(request.jobId() + "-" + safeIdentifier(table) + "-source-table");
+        databaseCompatibilityService.cancelQuery(prefix + "-target-table");
+    }
+
+    private static boolean isPrimaryIndex(String name) {
+        String normalized = text(name).toLowerCase(Locale.ROOT);
+        return "primary".equals(normalized) || "primary_key".equals(normalized);
+    }
+
+    private static boolean isRelationalSyncDriver(String driver) {
+        return Set.of("demo", "h2", "mysql", "postgresql", "sqlite", "duckdb", "oracle", "sqlserver", "dameng", "tdengine", "clickhouse").contains(driver);
     }
 
     private SourceQueryContext loadSourceQueryContext(SyncRequest request, boolean needTargetRows, boolean requirePk) {
@@ -1239,6 +1371,80 @@ public class DataSyncCompatibilityService {
                 rowsByPk(sourceRows, pkColumn),
                 rowsByPk(targetRows, pkColumn)
         );
+    }
+
+
+    private SourceQueryContext loadTableSyncContextPaged(SyncRequest request, String table, boolean needTargetRows, boolean requirePk) {
+        String tableName = firstText(table, request.tables().isEmpty() ? "" : request.tables().get(0));
+        if (tableName.isBlank()) {
+            throw new IllegalArgumentException(messages.message("sync.tableSelectionRequired"));
+        }
+        ConnectionConfigDto sourceConfig = request.connectionConfig("sourceConfig");
+        ConnectionConfigDto targetConfig = request.connectionConfig("targetConfig");
+        List<ColumnDefinitionDto> targetColumns = databaseCompatibilityService.listColumns(targetConfig, jdbcScopeName(targetConfig), tableName);
+        if (targetColumns.isEmpty()) {
+            throw new IllegalArgumentException(messages.message("sync.targetTableMissing", "table", tableName));
+        }
+        String pkColumn = requirePk ? resolveSinglePrimaryKey(targetColumns, messages) : firstText(targetColumns.get(0).name(), "id");
+        QueryResultDto firstSourceResult = databaseCompatibilityService.execute(new QueryRequestDto(
+                sourceConfig,
+                "",
+                "SELECT * FROM " + tableSqlName(sourceConfig, tableName),
+                1,
+                SYNC_QUERY_PAGE_SIZE,
+                request.jobId() + "-" + safeIdentifier(tableName) + "-source-table"
+        ));
+        List<ColumnDefinitionDto> comparableColumns = comparableTargetColumns(targetColumns, firstSourceResult.columns(), pkColumn, messages);
+        List<Map<String, Object>> sourceRows = normalizeAndFilterRows(readAllRowsPaged(request, sourceConfig, tableName, firstSourceResult, "source-table"), comparableColumns);
+        List<Map<String, Object>> targetRows = List.of();
+        if (needTargetRows) {
+            QueryResultDto firstTargetResult = databaseCompatibilityService.execute(new QueryRequestDto(
+                    targetConfig,
+                    "",
+                    "SELECT * FROM " + tableSqlName(targetConfig, tableName),
+                    1,
+                    SYNC_QUERY_PAGE_SIZE,
+                    request.jobId() + "-" + safeIdentifier(tableName) + "-target-table"
+            ));
+            targetRows = normalizeAndFilterRows(readAllRowsPaged(request, targetConfig, tableName, firstTargetResult, "target-table"), comparableColumns);
+        }
+        return new SourceQueryContext(
+                tableName,
+                pkColumn,
+                sourceConfig,
+                targetConfig,
+                comparableColumns,
+                sourceRows,
+                targetRows,
+                rowsByPk(sourceRows, pkColumn),
+                rowsByPk(targetRows, pkColumn)
+        );
+    }
+
+    private List<Map<String, Object>> readAllRowsPaged(SyncRequest request, ConnectionConfigDto config, String tableName, QueryResultDto firstPage, String suffix) {
+        List<Map<String, Object>> rows = new ArrayList<>(firstPage.rows());
+        int page = 2;
+        while (firstPage.rows().size() >= SYNC_QUERY_PAGE_SIZE) {
+            if (cancelledJobs.contains(request.jobId())) {
+                cancelTableQueries(request, tableName);
+            }
+            throwIfCancelled(request.jobId());
+            QueryResultDto next = databaseCompatibilityService.execute(new QueryRequestDto(
+                    config,
+                    "",
+                    "SELECT * FROM " + tableSqlName(config, tableName),
+                    page,
+                    SYNC_QUERY_PAGE_SIZE,
+                    request.jobId() + "-" + safeIdentifier(tableName) + "-" + suffix
+            ));
+            rows.addAll(next.rows());
+            if (next.rows().size() < SYNC_QUERY_PAGE_SIZE) {
+                break;
+            }
+            firstPage = next;
+            page++;
+        }
+        return rows;
     }
 
     private static SourceQueryDiff sourceQueryDiff(SourceQueryContext context) {
@@ -1486,14 +1692,40 @@ public class DataSyncCompatibilityService {
                 firstText(text(map.get("id")), label + "-connection"),
                 firstText(text(map.get("name")), label + " connection"),
                 firstText(text(map.get("driverType")), text(map.get("type")), text(map.get("driver")), "h2"),
+                text(map.get("driver")),
                 text(map.get("host")),
                 nullableInt(map.get("port")),
                 text(map.get("database")),
                 firstText(text(map.get("username")), text(map.get("user"))),
                 text(map.get("password")),
                 options,
-                nullableInt(map.get("timeout"))
+                nullableInt(map.get("timeout")),
+                booleanValue(map.get("useSSL")),
+                text(map.get("sslMode")),
+                text(map.get("uri")),
+                text(map.get("dsn")),
+                stringList(map.get("hosts")),
+                text(map.get("topology")),
+                text(map.get("replicaSet")),
+                text(map.get("authSource")),
+                text(map.get("readPreference")),
+                booleanValue(map.get("mongoSrv")),
+                text(map.get("mongoAuthMechanism")),
+                text(map.get("mongoReplicaUser")),
+                text(map.get("mongoReplicaPassword"))
         );
+    }
+
+
+    private static Boolean booleanValue(Object value) {
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        String text = text(value).toLowerCase(Locale.ROOT);
+        if (text.isBlank()) {
+            return null;
+        }
+        return Set.of("true", "1", "yes", "y").contains(text);
     }
 
     private static Integer nullableInt(Object value) {
@@ -1511,7 +1743,7 @@ public class DataSyncCompatibilityService {
         }
     }
 
-    private record SyncRequest(Map<String, Object> input, String jobId, String content, String mode, List<String> tables, boolean fixtureEligible, String sourceQuery) {
+    private record SyncRequest(Map<String, Object> input, String jobId, String content, String mode, List<String> tables, boolean fixtureEligible, String sourceQuery, String targetTableStrategy, boolean autoAddColumns, boolean createIndexes) {
         static SyncRequest from(Map<String, Object> input) {
             String jobId = text(input == null ? null : input.get("jobId"));
             if (jobId.isBlank()) {
@@ -1531,7 +1763,13 @@ public class DataSyncCompatibilityService {
             if (!sourceQuery.isBlank() && !(input != null && input.get("tables") instanceof List<?> rawTables && !rawTables.isEmpty())) {
                 tables = List.of();
             }
-            return new SyncRequest(normalizedInput, jobId, content, mode, tables, DataSyncCompatibilityService.fixtureEligible(normalizedInput), sourceQuery);
+            String targetTableStrategy = text(input == null ? null : input.get("targetTableStrategy")).toLowerCase(Locale.ROOT);
+            if (!Set.of("existing_only", "auto_create_if_missing", "smart").contains(targetTableStrategy)) {
+                targetTableStrategy = "existing_only";
+            }
+            boolean autoAddColumns = booleanValue(input == null ? null : input.get("autoAddColumns"), false);
+            boolean createIndexes = booleanValue(input == null ? null : input.get("createIndexes"), false);
+            return new SyncRequest(normalizedInput, jobId, content, mode, tables, DataSyncCompatibilityService.fixtureEligible(normalizedInput), sourceQuery, targetTableStrategy, autoAddColumns, createIndexes);
         }
 
         boolean hasSourceQuery() {
@@ -1550,7 +1788,7 @@ public class DataSyncCompatibilityService {
         }
 
         SyncRequest withSingleTable(String table) {
-            return new SyncRequest(input, jobId, content, mode, List.of(table), fixtureEligible, sourceQuery);
+            return new SyncRequest(input, jobId, content, mode, List.of(table), fixtureEligible, sourceQuery, targetTableStrategy, autoAddColumns, createIndexes);
         }
 
         String requireSingleSourceQueryTargetTable() {
@@ -1589,6 +1827,9 @@ public class DataSyncCompatibilityService {
             }
             return TableOptions.defaults();
         }
+    }
+
+    private record TablePreparation(boolean targetTableExists, String plannedAction, int schemaDiffCount, int indexesToCreate, int indexesSkipped, List<String> statements, List<String> warnings) {
     }
 
     private record TableOptions(boolean insert, boolean update, boolean delete, Set<String> selectedInsertPks, Set<String> selectedUpdatePks, Set<String> selectedDeletePks) {

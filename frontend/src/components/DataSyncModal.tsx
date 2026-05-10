@@ -7,6 +7,7 @@ import { DBGetDatabases, DBGetTables, DataSync, DataSyncAnalyze, DataSyncPreview
 import { SavedConnection } from '../types';
 import { EventsOn } from '@compat/runtime';
 import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from '../utils/appearance';
+import { resolveDataSourceType } from '../utils/dataSourceCapabilities';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { formatLocalDateTimeLiteral, normalizeTemporalLiteralText } from './dataGridCopyInsert';
 import { buildDataSyncRequest, type SourceDatasetMode, validateDataSyncSelection } from './dataSyncRequest';
@@ -16,6 +17,11 @@ const { Title, Text } = Typography;
 const { Step } = Steps;
 const { Option } = Select;
 const { TextArea } = Input;
+
+const RELATIONAL_SYNC_TYPES = new Set([
+  'demo', 'h2', 'mysql', 'mariadb', 'diros', 'sphinx', 'postgres', 'kingbase', 'highgo', 'vastbase',
+  'sqlserver', 'sqlite', 'duckdb', 'oracle', 'dameng', 'tdengine', 'clickhouse',
+]);
 
 type SyncLogEvent = { jobId: string; level?: string; message?: string; ts?: number };
 type SyncProgressEvent = { jobId: string; percent?: number; current?: number; total?: number; table?: string; stage?: string };
@@ -258,7 +264,6 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const [autoAddColumns, setAutoAddColumns] = useState<boolean>(true);
   const [targetTableStrategy, setTargetTableStrategy] = useState<'existing_only' | 'auto_create_if_missing' | 'smart'>('existing_only');
   const [createIndexes, setCreateIndexes] = useState<boolean>(false);
-  const [mongoCollectionName, setMongoCollectionName] = useState<string>('');
   const [showSameTables, setShowSameTables] = useState<boolean>(false);
   const [analyzing, setAnalyzing] = useState<boolean>(false);
   const [diffTables, setDiffTables] = useState<TableDiffSummary[]>([]);
@@ -456,6 +461,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
       if (!sourceDb) return message.error(t('dataSync.error.selectSourceDatabase'));
       if (!targetDb) return message.error(t('dataSync.error.selectTargetDatabase'));
+      if (!selectedConnectionsAreRelational) return message.error(t('dataSync.error.relationalOnly'));
 
       setLoading(true);
       try {
@@ -512,6 +518,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       if (selectionError) return message.error(t(selectionError));
       if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
       if (!sourceDb || !targetDb) return message.error(t('dataSync.error.selectDatabasesFirst'));
+      if (!selectedConnectionsAreRelational) return message.error(t('dataSync.error.relationalOnly'));
 
       setLoading(true);
       setAnalyzing(true);
@@ -678,6 +685,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       if (selectionError) return message.error(t(selectionError));
       if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
       if (!sourceDb || !targetDb) return message.error(t('dataSync.error.selectDatabasesFirst'));
+      if (!selectedConnectionsAreRelational) return message.error(t('dataSync.error.relationalOnly'));
 
       setLoading(true);
       setAnalyzing(true);
@@ -703,7 +711,6 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           autoAddColumns,
           targetTableStrategy,
           createIndexes,
-          mongoCollectionName,
           jobId,
       });
 
@@ -758,7 +765,6 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           autoAddColumns,
           targetTableStrategy,
           createIndexes,
-          mongoCollectionName,
       });
 
       try {
@@ -779,6 +785,10 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       const selectionError = validateDataSyncSelection({ sourceDatasetMode, selectedTables, sourceQuery, syncContent });
       if (selectionError) {
           message.error(t(selectionError));
+          return;
+      }
+      if (!selectedConnectionsAreRelational) {
+          message.error(t('dataSync.error.relationalOnly'));
           return;
       }
       if (syncContent !== 'schema' && diffTables.length === 0) {
@@ -830,7 +840,6 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           autoAddColumns,
           targetTableStrategy,
           createIndexes,
-          mongoCollectionName,
           tableOptions,
           jobId,
       });
@@ -953,21 +962,11 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const isMigrationWorkflow = workflowType === 'migration';
   const sourceConn = useMemo(() => connections.find(c => c.id === sourceConnId), [connections, sourceConnId]);
   const targetConn = useMemo(() => connections.find(c => c.id === targetConnId), [connections, targetConnId]);
-  const sourceType = String(sourceConn?.config?.type || '').toLowerCase();
-  const targetType = String(targetConn?.config?.type || '').toLowerCase();
-  const isRedisMongoKeyspaceMigration = isMigrationWorkflow && (
-      (sourceType === 'redis' && targetType === 'mongodb') ||
-      (sourceType === 'mongodb' && targetType === 'redis')
-  );
-  const defaultMongoCollectionName = useMemo(() => {
-      if (sourceType === 'redis' && targetType === 'mongodb') {
-          return `redis_db_${resolveRedisDbIndex(sourceDb || sourceConn?.config?.database)}_keys`;
-      }
-      if (sourceType === 'mongodb' && targetType === 'redis') {
-          return selectedTables[0] || `redis_db_${resolveRedisDbIndex(targetDb || targetConn?.config?.database)}_keys`;
-      }
-      return '';
-  }, [sourceType, targetType, sourceDb, targetDb, sourceConn, targetConn, selectedTables]);
+  const sourceType = resolveDataSourceType(sourceConn?.config as any);
+  const targetType = resolveDataSourceType(targetConn?.config as any);
+  const sourceIsRelational = !sourceConn || RELATIONAL_SYNC_TYPES.has(sourceType);
+  const targetIsRelational = !targetConn || RELATIONAL_SYNC_TYPES.has(targetType);
+  const selectedConnectionsAreRelational = sourceIsRelational && targetIsRelational;
 
   const modalPanelStyle = useMemo(() => ({
       background: darkMode
@@ -1221,6 +1220,14 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                               message="SQL 结果集同步当前只支持：源端自定义 SQL -> 单个已存在目标表；查询结果需包含目标表主键列。"
                           />
                       )}
+                      {!selectedConnectionsAreRelational && (
+                          <Alert
+                              type="warning"
+                              showIcon
+                              style={{ marginBottom: 12 }}
+                              message={t('dataSync.error.relationalOnly')}
+                          />
+                      )}
                       <Form.Item label={isMigrationWorkflow ? '迁移内容' : '同步内容'}>
                           <Select value={syncContent} onChange={setSyncContent}>
                               <Option value="data">仅同步数据</Option>
@@ -1244,22 +1251,6 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                               <Option value="smart">智能模式（存在则直接导入，不存在则自动建表）</Option>
                           </Select>
                       </Form.Item>
-                      {isRedisMongoKeyspaceMigration && (
-                          <Form.Item
-                              label="Mongo 集合名（可选）"
-                              extra={sourceType === 'redis'
-                                  ? '为空时沿用默认集合名；填写后本次 Redis 键空间会统一写入该 Mongo 集合。'
-                                  : 'MongoDB → Redis 场景下通常直接选择源集合；这里留空即可，未显式选集合时才会回退使用该名称。'}
-                          >
-                              <Input
-                                  value={mongoCollectionName}
-                                  onChange={(e) => setMongoCollectionName(e.target.value)}
-                                  placeholder={defaultMongoCollectionName || '请输入 Mongo 集合名'}
-                                  allowClear
-                                  maxLength={128}
-                              />
-                          </Form.Item>
-                      )}
                       <Form.Item>
                           <Checkbox checked={autoAddColumns} onChange={(e) => setAutoAddColumns(e.target.checked)} disabled={isSourceQueryMode}>
                               自动补齐目标表缺失字段（当前支持 MySQL 目标及 MySQL → Kingbase；SQL 结果集模式暂不支持）
@@ -1614,7 +1605,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 	                <Button
                         onClick={syncDomain === 'schema' ? analyzeSchemaDiff : analyzeDiff}
                         loading={loading}
-                        disabled={selectedTables.length === 0 || analyzing || (isSourceQueryMode && !sourceQuery.trim()) || (syncDomain === 'data' && syncContent === 'schema')}
+                        disabled={!selectedConnectionsAreRelational || selectedTables.length === 0 || analyzing || (isSourceQueryMode && !sourceQuery.trim()) || (syncDomain === 'data' && syncContent === 'schema')}
                         style={{ marginRight: 8 }}
                     >
 	                    对比差异
@@ -1623,7 +1614,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 	                    type="primary"
 	                    onClick={syncDomain === 'schema' ? runSchemaSync : runSync}
                         loading={loading}
-                        disabled={selectedTables.length === 0
+                        disabled={!selectedConnectionsAreRelational
+                            || selectedTables.length === 0
                             || (isSourceQueryMode && !sourceQuery.trim())
                             || (syncDomain === 'schema' ? schemaDiffTables.length === 0 : (syncContent !== 'schema' && diffTables.length === 0))}
                     >

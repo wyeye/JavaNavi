@@ -16,7 +16,6 @@ type BuildDataSyncRequestParams = {
   autoAddColumns: boolean;
   targetTableStrategy: TargetTableStrategy;
   createIndexes: boolean;
-  mongoCollectionName: string;
   jobId?: string;
   tableOptions?: Record<string, any>;
 };
@@ -64,7 +63,6 @@ export const buildDataSyncRequest = ({
   autoAddColumns,
   targetTableStrategy,
   createIndexes,
-  mongoCollectionName,
   jobId,
   tableOptions,
 }: BuildDataSyncRequestParams) => {
@@ -80,7 +78,6 @@ export const buildDataSyncRequest = ({
     autoAddColumns: isQueryMode ? false : autoAddColumns,
     targetTableStrategy: isQueryMode ? 'existing_only' : targetTableStrategy,
     createIndexes: isQueryMode ? false : createIndexes,
-    mongoCollectionName: String(mongoCollectionName || '').trim(),
     ...(jobId ? { jobId } : {}),
     ...(tableOptions ? { tableOptions } : {}),
   };
