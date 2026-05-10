@@ -76,16 +76,6 @@ import {
   noAutoCapInputProps,
 } from "../utils/inputAutoCap";
 import {
-  buildDefaultJVMConnectionValues,
-  buildJVMConnectionConfig,
-  hasUnsupportedJVMDiagnosticTransport,
-  hasUnsupportedJVMEditableModes,
-  JVM_EDITABLE_MODES,
-  normalizeEditableJVMModes,
-  resolveEditableJVMModeSelection,
-} from "../utils/jvmConnectionConfig";
-import { resolveJVMModeMeta } from "../utils/jvmRuntimePresentation";
-import {
   DBGetDatabases,
   GetCustomDriverDefinitions,
   GetDriverStatusList,
@@ -94,12 +84,10 @@ import {
   RedisConnect,
   SelectDatabaseFile,
   SelectSSHKeyFile,
-  TestJVMConnection,
 } from "@compat/javanaviApp";
 import { ConnectionConfig, MongoMemberInfo, SavedConnection } from "../types";
 
 const { Text } = Typography;
-type EditableJVMMode = (typeof JVM_EDITABLE_MODES)[number];
 type ChoiceCardOption = {
   value: string;
   label: string;
@@ -139,8 +127,6 @@ const createEmptyConnectionSecretClearState =
 
 const getDefaultPortByType = (type: string) => {
   switch (type) {
-    case "jvm":
-      return 9010;
     case "mysql":
       return 3306;
     case "doris":
@@ -335,13 +321,6 @@ const ConnectionModal: React.FC<{
   const mongoReadPreference =
     Form.useWatch("mongoReadPreference", form) || "primary";
   const mongoAuthMechanism = Form.useWatch("mongoAuthMechanism", form) || "";
-  const jvmEnvironment = Form.useWatch("jvmEnvironment", form) || "dev";
-  const jvmAllowedModes = Form.useWatch("jvmAllowedModes", form);
-  const jvmPreferredMode = Form.useWatch("jvmPreferredMode", form) || "jmx";
-  const jvmDiagnosticEnabled =
-    Form.useWatch("jvmDiagnosticEnabled", form) || false;
-  const jvmDiagnosticTransport =
-    Form.useWatch("jvmDiagnosticTransport", form) || "agent-bridge";
   const uriDraft = Form.useWatch("uri", form) || "";
   const connectionInputModeDraft =
     Form.useWatch("connectionInputMode", form) || "target";
@@ -349,10 +328,6 @@ const ConnectionModal: React.FC<{
     connectionInputModeDraft === "url" ? "url" : "target";
   const customDataSourceIdDraft =
     Form.useWatch("customDataSourceId", form) || "";
-  const normalizedJvmAllowedModes = useMemo(
-    () => normalizeEditableJVMModes(jvmAllowedModes),
-    [jvmAllowedModes],
-  );
   const selectedCustomDataSource = useMemo(
     () =>
       customDataSources.find(
@@ -360,17 +335,10 @@ const ConnectionModal: React.FC<{
       ),
     [customDataSourceIdDraft, customDataSources],
   );
-  const selectedCustomDataSourceStatus = selectedCustomDataSource?.runtimeStatus;
+  const selectedCustomDataSourceStatus =
+    selectedCustomDataSource?.runtimeStatus;
   const selectedCustomDataSourceRepairHints =
     selectedCustomDataSourceStatus?.repairHints || [];
-  const hasUnsupportedJvmModeSelection = useMemo(
-    () =>
-      hasUnsupportedJVMEditableModes({
-        allowedModes: jvmAllowedModes,
-        preferredMode: jvmPreferredMode,
-      }),
-    [jvmAllowedModes, jvmPreferredMode],
-  );
   const isMySQLLike =
     dbType === "mysql" ||
     dbType === "mariadb" ||
@@ -596,11 +564,6 @@ const ConnectionModal: React.FC<{
       ? "inset 0 0 0 1px rgba(255,255,255,0.028)"
       : "inset 0 0 0 1px rgba(16,24,40,0.03)",
     transition: "all 120ms ease",
-  });
-
-  const jvmSectionCardStyle = (): React.CSSProperties => ({
-    ...modalInnerSectionStyle,
-    padding: 16,
   });
 
   const renderJvmSectionHeader = (
@@ -880,51 +843,6 @@ const ConnectionModal: React.FC<{
       </div>
     </>
   );
-
-  const applyJvmModeSelection = (
-    nextModes: EditableJVMMode[],
-    preferredMode?: EditableJVMMode,
-  ) => {
-    const normalizedModes = normalizeEditableJVMModes(nextModes);
-    const resolvedModes = normalizedModes.length ? normalizedModes : ["jmx"];
-    const resolvedPreferred =
-      preferredMode && resolvedModes.includes(preferredMode)
-        ? preferredMode
-        : resolvedModes.includes(jvmPreferredMode as EditableJVMMode)
-          ? (jvmPreferredMode as EditableJVMMode)
-          : resolvedModes[0];
-    form.setFieldsValue({
-      jvmAllowedModes: resolvedModes,
-      jvmPreferredMode: resolvedPreferred,
-      jvmEndpointEnabled: resolvedModes.includes("endpoint"),
-      jvmAgentEnabled: resolvedModes.includes("agent"),
-    });
-  };
-
-  const handleJvmModeCardSelect = (mode: EditableJVMMode) => {
-    const enabled = normalizedJvmAllowedModes.includes(mode);
-    applyJvmModeSelection(
-      enabled ? normalizedJvmAllowedModes : [...normalizedJvmAllowedModes, mode],
-      mode,
-    );
-  };
-
-  const handleJvmModeToggle = (
-    mode: EditableJVMMode,
-    event: React.MouseEvent<HTMLElement>,
-  ) => {
-    event.stopPropagation();
-    const enabled = normalizedJvmAllowedModes.includes(mode);
-    if (!enabled) {
-      applyJvmModeSelection([...normalizedJvmAllowedModes, mode], mode);
-      return;
-    }
-    if (normalizedJvmAllowedModes.length <= 1) {
-      return;
-    }
-    const nextModes = normalizedJvmAllowedModes.filter((item) => item !== mode);
-    applyJvmModeSelection(nextModes, nextModes[0]);
-  };
 
   const fetchDriverStatusMap = async (): Promise<
     Record<string, DriverStatusSnapshot>
@@ -2151,14 +2069,12 @@ const ConnectionModal: React.FC<{
         setStep(2);
         const config: any = initialValues.config || {};
         const configType = String(config.type || "mysql");
-        const isJvmConfigType = configType === "jvm";
         const selectedInitialCustomDataSource =
           configType === "custom"
             ? resolveCustomDataSourceFromConfig(latestCustomDataSources, config)
             : undefined;
         const defaultPort = getDefaultPortByType(configType);
         const isFileDbConfigType = isFileDatabaseType(configType);
-        const jvmDefaultValues = buildDefaultJVMConnectionValues();
         const normalizedHosts = isFileDbConfigType
           ? []
           : normalizeAddressList(config.hosts, defaultPort);
@@ -2200,21 +2116,10 @@ const ConnectionModal: React.FC<{
         const redisIsCluster =
           String(config.topology || "").toLowerCase() === "cluster" ||
           redisHosts.length > 0;
-        const {
-          allowedModes: resolvedJvmAllowedModes,
-          preferredMode: resolvedJvmPreferredMode,
-        } = resolveEditableJVMModeSelection({
-          allowedModes: config.jvm?.allowedModes,
-          preferredMode: config.jvm?.preferredMode,
-        });
-        const resolvedJvmTimeout = isJvmConfigType
-          ? Number(config.jvm?.endpoint?.timeoutSeconds || config.timeout || 30)
-          : Number(config.timeout || 30);
         const hasHttpTunnel = !!config.useHttpTunnel;
         const hasProxy = !hasHttpTunnel && !!config.useProxy;
         const initialConnectionInputMode: ConnectionInputMode =
-          !isJvmConfigType &&
-          (String(config.uri || "").trim() || initialValues.hasOpaqueURI)
+          String(config.uri || "").trim() || initialValues.hasOpaqueURI
             ? "url"
             : "target";
         form.setFieldsValue({
@@ -2253,7 +2158,7 @@ const ConnectionModal: React.FC<{
           customDataSourceId: selectedInitialCustomDataSource?.id,
           driver: config.driver,
           dsn: config.dsn,
-          timeout: resolvedJvmTimeout,
+          timeout: Number(config.timeout || 30),
           mysqlTopology: mysqlIsReplica ? "replica" : "single",
           mysqlReplicaHosts: mysqlReplicaHosts,
           mysqlReplicaUser: config.mysqlReplicaUser || "",
@@ -2273,92 +2178,6 @@ const ConnectionModal: React.FC<{
             : 0,
           mongoReplicaUser: config.mongoReplicaUser || "",
           mongoReplicaPassword: config.mongoReplicaPassword || "",
-          jvmReadOnly: isJvmConfigType
-            ? (config.jvm?.readOnly ?? jvmDefaultValues.jvmReadOnly)
-            : jvmDefaultValues.jvmReadOnly,
-          jvmAllowedModes: isJvmConfigType
-            ? resolvedJvmAllowedModes
-            : jvmDefaultValues.jvmAllowedModes,
-          jvmPreferredMode: isJvmConfigType
-            ? resolvedJvmPreferredMode
-            : jvmDefaultValues.jvmPreferredMode,
-          jvmEnvironment: isJvmConfigType
-            ? config.jvm?.environment || jvmDefaultValues.jvmEnvironment
-            : jvmDefaultValues.jvmEnvironment,
-          jvmEndpointEnabled: isJvmConfigType
-            ? (config.jvm?.endpoint?.enabled ??
-              resolvedJvmAllowedModes.includes("endpoint"))
-            : jvmDefaultValues.jvmEndpointEnabled,
-          jvmEndpointBaseUrl: isJvmConfigType
-            ? config.jvm?.endpoint?.baseUrl || ""
-            : jvmDefaultValues.jvmEndpointBaseUrl,
-          jvmEndpointApiKey: isJvmConfigType
-            ? config.jvm?.endpoint?.apiKey || ""
-            : jvmDefaultValues.jvmEndpointApiKey,
-          jvmAgentEnabled: isJvmConfigType
-            ? (config.jvm?.agent?.enabled ??
-              resolvedJvmAllowedModes.includes("agent"))
-            : jvmDefaultValues.jvmAgentEnabled,
-          jvmAgentBaseUrl: isJvmConfigType
-            ? config.jvm?.agent?.baseUrl || ""
-            : jvmDefaultValues.jvmAgentBaseUrl,
-          jvmAgentApiKey: isJvmConfigType
-            ? config.jvm?.agent?.apiKey || ""
-            : jvmDefaultValues.jvmAgentApiKey,
-          jvmDiagnosticEnabled: isJvmConfigType
-            ? (config.jvm?.diagnostic?.enabled ??
-              jvmDefaultValues.jvmDiagnosticEnabled)
-            : jvmDefaultValues.jvmDiagnosticEnabled,
-          jvmDiagnosticTransport: isJvmConfigType
-            ? config.jvm?.diagnostic?.transport ||
-              jvmDefaultValues.jvmDiagnosticTransport
-            : jvmDefaultValues.jvmDiagnosticTransport,
-          jvmDiagnosticBaseUrl: isJvmConfigType
-            ? config.jvm?.diagnostic?.baseUrl || ""
-            : jvmDefaultValues.jvmDiagnosticBaseUrl,
-          jvmDiagnosticTargetId: isJvmConfigType
-            ? config.jvm?.diagnostic?.targetId || ""
-            : jvmDefaultValues.jvmDiagnosticTargetId,
-          jvmDiagnosticApiKey: isJvmConfigType
-            ? config.jvm?.diagnostic?.apiKey || ""
-            : jvmDefaultValues.jvmDiagnosticApiKey,
-          jvmDiagnosticAllowObserveCommands: isJvmConfigType
-            ? (config.jvm?.diagnostic?.allowObserveCommands ??
-              jvmDefaultValues.jvmDiagnosticAllowObserveCommands)
-            : jvmDefaultValues.jvmDiagnosticAllowObserveCommands,
-          jvmDiagnosticAllowTraceCommands: isJvmConfigType
-            ? (config.jvm?.diagnostic?.allowTraceCommands ??
-              jvmDefaultValues.jvmDiagnosticAllowTraceCommands)
-            : jvmDefaultValues.jvmDiagnosticAllowTraceCommands,
-          jvmDiagnosticAllowMutatingCommands: isJvmConfigType
-            ? (config.jvm?.diagnostic?.allowMutatingCommands ??
-              jvmDefaultValues.jvmDiagnosticAllowMutatingCommands)
-            : jvmDefaultValues.jvmDiagnosticAllowMutatingCommands,
-          jvmDiagnosticTimeoutSeconds: isJvmConfigType
-            ? Number(
-                config.jvm?.diagnostic?.timeoutSeconds ||
-                  jvmDefaultValues.jvmDiagnosticTimeoutSeconds,
-              )
-            : jvmDefaultValues.jvmDiagnosticTimeoutSeconds,
-          jvmEndpointTimeoutSeconds: resolvedJvmTimeout,
-          jvmJmxHost:
-            isJvmConfigType &&
-            config.jvm?.jmx?.host &&
-            config.jvm.jmx.host !== primaryHost
-              ? config.jvm.jmx.host
-              : "",
-          jvmJmxPort:
-            isJvmConfigType &&
-            Number(config.jvm?.jmx?.port) > 0 &&
-            Number(config.jvm.jmx.port) !== Number(primaryPort || defaultPort)
-              ? Number(config.jvm.jmx.port)
-              : undefined,
-          jvmJmxUsername: isJvmConfigType
-            ? config.jvm?.jmx?.username || ""
-            : "",
-          jvmJmxPassword: isJvmConfigType
-            ? config.jvm?.jmx?.password || ""
-            : "",
         });
         setUseSSL(!!config.useSSL);
         setCustomIconType(initialValues.iconType);
@@ -2470,7 +2289,6 @@ const ConnectionModal: React.FC<{
       clearSecret: clearSecrets.opaqueURI,
       forceClear:
         values.type === "custom" ||
-        values.type === "jvm" ||
         resolvedConnectionInputMode !== "url",
       trimInput: true,
     });
@@ -2751,15 +2569,11 @@ const ConnectionModal: React.FC<{
           : 30;
       const rpcTimeoutMs = (timeoutSeconds + 5) * 1000;
 
-      // Use different API for Redis / JVM
       const isRedisType = values.type === "redis";
-      const isJVMType = values.type === "jvm";
       const res = await withClientTimeout(
-        isJVMType
-          ? TestJVMConnection(config as any)
-          : isRedisType
-            ? RedisConnect(config as any)
-            : TestConnection(config as any),
+        isRedisType
+          ? RedisConnect(config as any)
+          : TestConnection(config as any),
         rpcTimeoutMs,
         `连接测试超时（>${timeoutSeconds} 秒），请检查网络/代理/SSH配置后重试`,
       );
@@ -2793,7 +2607,7 @@ const ConnectionModal: React.FC<{
         }
         if (isRedisType) {
           setRedisDbList(Array.from({ length: 16 }, (_, i) => i));
-        } else if (!isJVMType) {
+        } else {
           // Other databases: fetch database list
           const dbRes = await withClientTimeout(
             DBGetDatabases(config as any),
@@ -2915,113 +2729,6 @@ const ConnectionModal: React.FC<{
     forPersist: boolean,
   ): Promise<ConnectionConfig> => {
     const mergedValues = { ...values };
-    if (
-      String(mergedValues.type || "")
-        .trim()
-        .toLowerCase() === "jvm"
-    ) {
-      if (
-        hasUnsupportedJVMEditableModes({
-          allowedModes: mergedValues.jvmAllowedModes,
-          preferredMode: mergedValues.jvmPreferredMode,
-        })
-      ) {
-        throw new Error(
-          "当前连接包含未支持的 JVM 模式；请先调整为 JMX、Endpoint 或 Agent 后再测试或保存",
-        );
-      }
-      if (
-        hasUnsupportedJVMDiagnosticTransport(
-          mergedValues.jvmDiagnosticTransport,
-        )
-      ) {
-        throw new Error(
-          "当前连接包含未支持的 JVM 诊断 transport；请先调整为 agent-bridge 或 arthas-tunnel 后再测试或保存",
-        );
-      }
-      const existingDiagnostic = initialValues?.config?.jvm?.diagnostic;
-      if (
-        mergedValues.jvmDiagnosticEnabled === undefined &&
-        existingDiagnostic?.enabled !== undefined
-      ) {
-        mergedValues.jvmDiagnosticEnabled = existingDiagnostic.enabled;
-      }
-      if (
-        String(mergedValues.jvmDiagnosticTransport || "").trim() === "" &&
-        existingDiagnostic?.transport
-      ) {
-        mergedValues.jvmDiagnosticTransport = existingDiagnostic.transport;
-      }
-      if (
-        String(mergedValues.jvmDiagnosticBaseUrl || "").trim() === "" &&
-        existingDiagnostic?.baseUrl
-      ) {
-        mergedValues.jvmDiagnosticBaseUrl = existingDiagnostic.baseUrl;
-      }
-      if (
-        String(mergedValues.jvmDiagnosticTargetId || "").trim() === "" &&
-        existingDiagnostic?.targetId
-      ) {
-        mergedValues.jvmDiagnosticTargetId = existingDiagnostic.targetId;
-      }
-      if (
-        String(mergedValues.jvmDiagnosticApiKey || "").trim() === "" &&
-        existingDiagnostic?.apiKey
-      ) {
-        mergedValues.jvmDiagnosticApiKey = existingDiagnostic.apiKey;
-      }
-      if (
-        mergedValues.jvmDiagnosticAllowObserveCommands === undefined &&
-        existingDiagnostic?.allowObserveCommands !== undefined
-      ) {
-        mergedValues.jvmDiagnosticAllowObserveCommands =
-          existingDiagnostic.allowObserveCommands;
-      }
-      if (
-        mergedValues.jvmDiagnosticAllowTraceCommands === undefined &&
-        existingDiagnostic?.allowTraceCommands !== undefined
-      ) {
-        mergedValues.jvmDiagnosticAllowTraceCommands =
-          existingDiagnostic.allowTraceCommands;
-      }
-      if (
-        mergedValues.jvmDiagnosticAllowMutatingCommands === undefined &&
-        existingDiagnostic?.allowMutatingCommands !== undefined
-      ) {
-        mergedValues.jvmDiagnosticAllowMutatingCommands =
-          existingDiagnostic.allowMutatingCommands;
-      }
-      if (
-        (mergedValues.jvmDiagnosticTimeoutSeconds === undefined ||
-          mergedValues.jvmDiagnosticTimeoutSeconds === null ||
-          mergedValues.jvmDiagnosticTimeoutSeconds === "") &&
-        Number(existingDiagnostic?.timeoutSeconds) > 0
-      ) {
-        mergedValues.jvmDiagnosticTimeoutSeconds = Number(
-          existingDiagnostic?.timeoutSeconds,
-        );
-      }
-      const resolvedJvmAllowedModes = normalizeEditableJVMModes(
-        mergedValues.jvmAllowedModes,
-      );
-      const resolvedJvmTimeout = Number(mergedValues.timeout || 30);
-      const preferredJvmMode = String(mergedValues.jvmPreferredMode || "")
-        .trim()
-        .toLowerCase();
-      const resolvedJvmPreferredMode =
-        resolvedJvmAllowedModes.find((mode) => mode === preferredJvmMode) ||
-        resolvedJvmAllowedModes[0];
-      return buildJVMConnectionConfig({
-        ...buildDefaultJVMConnectionValues(),
-        ...mergedValues,
-        jvmAllowedModes: resolvedJvmAllowedModes,
-        jvmPreferredMode: resolvedJvmPreferredMode,
-        jvmEndpointEnabled: resolvedJvmAllowedModes.includes("endpoint"),
-        jvmAgentEnabled: resolvedJvmAllowedModes.includes("agent"),
-        timeout: resolvedJvmTimeout,
-        jvmEndpointTimeoutSeconds: resolvedJvmTimeout,
-      });
-    }
     const type = String(mergedValues.type || "").toLowerCase();
     const resolvedConnectionInputMode: ConnectionInputMode =
       mergedValues.connectionInputMode === "url" ? "url" : "target";
@@ -3254,14 +2961,12 @@ const ConnectionModal: React.FC<{
     const selectedDriverForConfig =
       type === "custom"
         ? String(mergedValues.driver || "").trim()
-        : type === "jvm"
-          ? undefined
-          : resolveDefaultDriverTypeForDatabase(
-              normalizedConfigType,
-              normalizeDriverType(String(mergedValues.driver || "")) ||
-                driverStatusMap[normalizedConfigType]?.defaultDriverType,
-              driverStatusMap[normalizedConfigType]?.driverOptions || [],
-            ) || normalizedConfigType;
+        : resolveDefaultDriverTypeForDatabase(
+            normalizedConfigType,
+            normalizeDriverType(String(mergedValues.driver || "")) ||
+              driverStatusMap[normalizedConfigType]?.defaultDriverType,
+            driverStatusMap[normalizedConfigType]?.driverOptions || [],
+          ) || normalizedConfigType;
     const selectedCustomSource =
       type === "custom"
         ? customDataSources.find(
@@ -3352,18 +3057,14 @@ const ConnectionModal: React.FC<{
     const defaultSelectedDriver =
       snapshot?.defaultDriverType || normalized || type;
     form.setFieldsValue(
-      type === "custom" || type === "jvm"
+      type === "custom"
         ? {
             type: type,
             connectionInputMode: "target",
             uri: "",
-            ...(type === "custom"
-              ? {
-                  customDataSourceId: undefined,
-                  driver: "",
-                  dsn: "",
-                }
-              : {}),
+            customDataSourceId: undefined,
+            driver: "",
+            dsn: "",
           }
         : {
             type: type,
@@ -3374,70 +3075,7 @@ const ConnectionModal: React.FC<{
     );
 
     const defaultPort = getDefaultPortByType(type);
-    if (type === "jvm") {
-      const jvmDefaultValues = buildDefaultJVMConnectionValues();
-      setUseSSL(false);
-      setUseSSH(false);
-      setUseProxy(false);
-      setUseHttpTunnel(false);
-      form.setFieldsValue({
-        ...jvmDefaultValues,
-        user: "",
-        password: "",
-        database: "",
-        useSSL: false,
-        sslMode: undefined,
-        sslCertPath: undefined,
-        sslKeyPath: undefined,
-        useSSH: false,
-        sshHost: "",
-        sshPort: 22,
-        sshUser: "",
-        sshPassword: "",
-        sshKeyPath: "",
-        useProxy: false,
-        proxyType: "socks5",
-        proxyHost: "",
-        proxyPort: 1080,
-        proxyUser: "",
-        proxyPassword: "",
-        useHttpTunnel: false,
-        httpTunnelHost: "",
-        httpTunnelPort: 8080,
-        httpTunnelUser: "",
-        httpTunnelPassword: "",
-        timeout: 30,
-        connectionInputMode: "target",
-        uri: "",
-        includeDatabases: undefined,
-        includeRedisDatabases: undefined,
-        mysqlTopology: "single",
-        redisTopology: "single",
-        mongoTopology: "single",
-        mongoSrv: false,
-        mongoReadPreference: "primary",
-        mongoReplicaSet: "",
-        mongoAuthSource: "",
-        mongoAuthMechanism: "",
-        savePassword: true,
-        mysqlReplicaHosts: [],
-        redisHosts: [],
-        mongoHosts: [],
-        mysqlReplicaUser: "",
-        mysqlReplicaPassword: "",
-        mongoReplicaUser: "",
-        mongoReplicaPassword: "",
-        redisDB: 0,
-        jvmEndpointTimeoutSeconds: 30,
-        jvmJmxHost: "",
-        jvmJmxPort: undefined,
-        jvmJmxUsername: "",
-        jvmJmxPassword: "",
-        jvmAgentEnabled: false,
-        jvmAgentBaseUrl: "",
-        jvmAgentApiKey: "",
-      });
-    } else if (isFileDatabaseType(type)) {
+    if (isFileDatabaseType(type)) {
       setUseSSL(false);
       setUseSSH(false);
       setUseProxy(false);
@@ -3594,19 +3232,14 @@ const ConnectionModal: React.FC<{
   const isFileDb = isFileDatabaseType(dbType);
   const isCustom = dbType === "custom";
   const isRedis = dbType === "redis";
-  const isJVM = dbType === "jvm";
   const isConnectionUrlMode =
-    !isCustom && !isJVM && connectionInputMode === "url";
+    !isCustom && connectionInputMode === "url";
   const hasConnectionUriDraft = String(uriDraft || "").trim() !== "";
   const keepsStoredConnectionUri =
     !!initialValues?.hasOpaqueURI &&
     !clearSecrets.opaqueURI &&
     !hasConnectionUriDraft;
   const connectionConfigLayout = resolveConnectionConfigLayout(dbType);
-  const unsupportedJvmModeMessage =
-    isJVM && hasUnsupportedJvmModeSelection
-      ? "当前连接包含未支持的 JVM 模式。此版本只支持 JMX / Endpoint / Agent，请先调整允许模式和首选模式后再继续。"
-      : "";
   const currentDriverType = normalizeDriverType(dbType);
   const currentDriverSnapshot = driverStatusMap[currentDriverType];
   const currentAvailableDriverOptions = useMemo(
@@ -3617,7 +3250,7 @@ const ConnectionModal: React.FC<{
     [currentDriverSnapshot],
   );
   const showJdbcDriverSelector =
-    !isCustom && !isJVM && currentAvailableDriverOptions.length > 1;
+    !isCustom && currentAvailableDriverOptions.length > 1;
   const currentDriverUnavailableReason =
     currentDriverType !== "custom" &&
     currentDriverSnapshot &&
@@ -3629,7 +3262,7 @@ const ConnectionModal: React.FC<{
     currentDriverType !== "custom" && !driverStatusLoaded && step === 2;
 
   useEffect(() => {
-    if (!open || step !== 2 || isCustom || isJVM || !currentDriverSnapshot) {
+    if (!open || step !== 2 || isCustom || !currentDriverSnapshot) {
       return;
     }
     const defaultDriverType =
@@ -3665,7 +3298,6 @@ const ConnectionModal: React.FC<{
     form,
     initialValues,
     isCustom,
-    isJVM,
     open,
     step,
   ]);
@@ -3780,11 +3412,6 @@ const ConnectionModal: React.FC<{
       label: "其他",
       items: [
         {
-          key: "jvm",
-          name: "JVM Runtime",
-          icon: getDbIcon("jvm", undefined, 36),
-        },
-        {
           key: "custom",
           name: "自定义数据源",
           icon: getDbIcon("custom", undefined, 36),
@@ -3796,8 +3423,6 @@ const ConnectionModal: React.FC<{
   const dbTypes = dbTypeGroups.flatMap((g) => g.items);
   const getDbTypeHint = (type: string) => {
     switch (type) {
-      case "jvm":
-        return "JMX / Endpoint / Agent";
       case "custom":
         return "先选数据源，再填驱动/DSN";
       case "redis":
@@ -4009,18 +3634,13 @@ const ConnectionModal: React.FC<{
               <Form.Item name="name" label="连接名称" style={{ marginBottom: 0 }}>
                 <Input
                   {...noAutoCapInputProps}
-                  placeholder={
-                    isJVM
-                      ? "例如：本地 JVM / 订单服务 JVM"
-                      : "例如：本地测试库"
-                  }
+                  placeholder="例如：本地测试库"
                 />
               </Form.Item>
             ),
           })}
 
           {!isCustom &&
-            !isJVM &&
             renderConfigSectionCard({
               sectionKey: "uri",
               icon: <LinkOutlined />,
@@ -4393,592 +4013,6 @@ const ConnectionModal: React.FC<{
                 ),
               })}
             </>
-          ) : isJVM ? (
-          <>
-            {unsupportedJvmModeMessage && (
-              <Alert
-                type="warning"
-                showIcon
-                style={{ marginBottom: 16 }}
-                message="检测到未支持的 JVM 模式"
-                description={unsupportedJvmModeMessage}
-              />
-            )}
-            <div style={{ display: "grid", gap: 16 }}>
-              <div style={jvmSectionCardStyle()}>
-                {renderJvmSectionHeader(
-                  <GatewayOutlined />,
-                  "目标 JVM",
-                  "定义连接树中的主机入口和基础运行环境。",
-                )}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) 120px",
-                    gap: 16,
-                    alignItems: "start",
-                  }}
-                >
-                  <Form.Item
-                    name="host"
-                    label="主机地址"
-                    rules={[{ required: true, message: "请输入 JVM 主机地址" }]}
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Input {...noAutoCapInputProps} placeholder="localhost" />
-                  </Form.Item>
-                  <Form.Item
-                    name="port"
-                    label="主端口"
-                    rules={[{ required: true, message: "请输入 JVM 端口号" }]}
-                    style={{ marginBottom: 0 }}
-                  >
-                    <InputNumber style={{ width: "100%" }} min={1} max={65535} />
-                  </Form.Item>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                    gap: 16,
-                    marginTop: 16,
-                  }}
-                >
-                  <div style={{ display: "grid", gap: 8 }}>
-                    <Text strong>环境</Text>
-                    {renderChoiceCards({
-                      fieldName: "jvmEnvironment",
-                      value: String(jvmEnvironment),
-                      minWidth: 120,
-                      options: [
-                        {
-                          value: "dev",
-                          label: "开发 / 测试",
-                          description: "本地或测试环境。",
-                        },
-                        {
-                          value: "uat",
-                          label: "预发 / 验收",
-                          description: "上线前验证环境。",
-                        },
-                        {
-                          value: "prod",
-                          label: "生产",
-                          description: "生产 JVM，默认更谨慎。",
-                        },
-                      ],
-                    })}
-                  </div>
-                  <Form.Item
-                    name="timeout"
-                    label="连接超时（秒）"
-                    rules={[
-                      {
-                        type: "number",
-                        min: 1,
-                        max: 300,
-                        message: "超时时间范围: 1-300 秒",
-                      },
-                    ]}
-                    style={{ marginBottom: 0 }}
-                  >
-                    <InputNumber
-                      style={{ width: "100%" }}
-                      min={1}
-                      max={300}
-                      placeholder="30"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="jvmReadOnly"
-                    label="安全策略"
-                    valuePropName="checked"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Checkbox>只读优先</Checkbox>
-                  </Form.Item>
-                </div>
-              </div>
-
-              <div style={jvmSectionCardStyle()}>
-                {renderJvmSectionHeader(
-                  <ClusterOutlined />,
-                  "接入模式",
-                  "通过卡片选择允许使用的 JVM 通道；已启用卡片再次点击会设为首选。",
-                )}
-                <Form.Item
-                  name="jvmAllowedModes"
-                  hidden
-                  rules={[
-                    {
-                      required: true,
-                      message: "请至少选择一种 JVM 接入模式",
-                    },
-                  ]}
-                >
-                  <Select mode="multiple" />
-                </Form.Item>
-                <Form.Item
-                  name="jvmPreferredMode"
-                  hidden
-                  rules={[
-                    {
-                      required: true,
-                      message: "请选择首选 JVM 接入模式",
-                    },
-                  ]}
-                >
-                  <Input {...noAutoCapInputProps} />
-                </Form.Item>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                    gap: 14,
-                  }}
-                >
-                  {JVM_EDITABLE_MODES.map((mode) => {
-                    const meta = resolveJVMModeMeta(mode);
-                    const enabled = normalizedJvmAllowedModes.includes(mode);
-                    const preferred = jvmPreferredMode === mode;
-                    return (
-                      <div
-                        key={mode}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => handleJvmModeCardSelect(mode)}
-                        onKeyDown={(event) => {
-                          if (event.key === "Enter" || event.key === " ") {
-                            event.preventDefault();
-                            handleJvmModeCardSelect(mode);
-                          }
-                        }}
-                        aria-pressed={enabled}
-                        style={{
-                          textAlign: "left",
-                          padding: 14,
-                          borderRadius: 16,
-                          border: enabled
-                            ? darkMode
-                              ? "1px solid rgba(255,214,102,0.36)"
-                              : "1px solid rgba(22,119,255,0.34)"
-                            : darkMode
-                              ? "1px solid rgba(255,255,255,0.08)"
-                              : "1px solid rgba(16,24,40,0.08)",
-                          background: enabled
-                            ? darkMode
-                              ? "rgba(255,214,102,0.08)"
-                              : "rgba(22,119,255,0.06)"
-                            : darkMode
-                              ? "rgba(255,255,255,0.03)"
-                              : "rgba(16,24,40,0.03)",
-                          boxShadow: preferred
-                            ? darkMode
-                              ? "0 0 0 2px rgba(255,214,102,0.12)"
-                              : "0 0 0 2px rgba(22,119,255,0.10)"
-                            : "none",
-                          color: darkMode ? "#f5f7ff" : "#162033",
-                          cursor: "pointer",
-                          transition: "all 120ms ease",
-                        }}
-                      >
-                        <Space size={8} wrap>
-                          <Tag color={enabled ? "blue" : "default"}>
-                            {meta.label}
-                          </Tag>
-                          {preferred ? <Tag color="green">首选</Tag> : null}
-                          {!enabled ? <Tag>未启用</Tag> : null}
-                        </Space>
-                        <div style={{ ...modalMutedTextStyle, marginTop: 8 }}>
-                          {mode === "jmx"
-                            ? "标准 MBean 与线程、内存、类加载等运行时指标。"
-                            : mode === "endpoint"
-                              ? "通过服务端管理接口读取 JVM 资源与配置。"
-                              : "通过 JavaNavi Java Agent 提供更完整的增强能力。"}
-                        </div>
-                        <Button
-                          size="small"
-                          type={enabled ? "default" : "primary"}
-                          disabled={enabled && normalizedJvmAllowedModes.length <= 1}
-                          onClick={(event) => handleJvmModeToggle(mode, event)}
-                          style={{ marginTop: 12, borderRadius: 999 }}
-                        >
-                          {enabled ? "停用" : "启用并设为首选"}
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{ ...modalMutedTextStyle, marginTop: 12 }}>
-                  当前首选：
-                  {resolveJVMModeMeta(String(jvmPreferredMode || "jmx")).label}
-                  。至少保留一种接入模式，停用首选模式时会自动切换到剩余模式。
-                </div>
-              </div>
-
-              <div style={jvmSectionCardStyle()}>
-                {renderJvmSectionHeader(
-                  <ApiOutlined />,
-                  "JMX",
-                  "标准 JVM 管理通道，可覆盖主机/端口并配置认证。",
-                  <Tag color={normalizedJvmAllowedModes.includes("jmx") ? "green" : "default"}>
-                    {normalizedJvmAllowedModes.includes("jmx") ? "已启用" : "未启用"}
-                  </Tag>,
-                )}
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) 120px",
-                    gap: 16,
-                  }}
-                >
-                  <Form.Item
-                    name="jvmJmxHost"
-                    label="JMX 主机覆盖（可选）"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Input
-                      {...noAutoCapInputProps}
-                      disabled={!normalizedJvmAllowedModes.includes("jmx")}
-                      placeholder="留空沿用主机地址"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="jvmJmxPort"
-                    label="JMX 端口"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <InputNumber
-                      style={{ width: "100%" }}
-                      min={1}
-                      max={65535}
-                      disabled={!normalizedJvmAllowedModes.includes("jmx")}
-                      placeholder="沿用主端口"
-                    />
-                  </Form.Item>
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                    gap: 16,
-                    marginTop: 16,
-                  }}
-                >
-                  <Form.Item
-                    name="jvmJmxUsername"
-                    label="JMX 用户名（可选）"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Input
-                      {...noAutoCapInputProps}
-                      disabled={!normalizedJvmAllowedModes.includes("jmx")}
-                      placeholder="未开启认证可留空"
-                    />
-                  </Form.Item>
-                  <Form.Item
-                    name="jvmJmxPassword"
-                    label="JMX 密码（可选）"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Input.Password
-                      {...noAutoCapInputProps}
-                      disabled={!normalizedJvmAllowedModes.includes("jmx")}
-                      placeholder="未开启认证可留空"
-                    />
-                  </Form.Item>
-                </div>
-              </div>
-
-              <div style={jvmSectionCardStyle()}>
-                {renderJvmSectionHeader(
-                  <CodeOutlined />,
-                  "Endpoint",
-                  "连接应用暴露的 JVM 管理端点，适合已有运维 API 的服务。",
-                  <Tag
-                    color={
-                      normalizedJvmAllowedModes.includes("endpoint")
-                        ? "green"
-                        : "default"
-                    }
-                  >
-                    {normalizedJvmAllowedModes.includes("endpoint")
-                      ? "已启用"
-                      : "未启用"}
-                  </Tag>,
-                )}
-                <Form.Item
-                  name="jvmEndpointBaseUrl"
-                  label="Endpoint 地址"
-                  rules={[
-                    {
-                      required: jvmPreferredMode === "endpoint",
-                      message: "启用 Endpoint 模式时请输入 Endpoint 地址",
-                    },
-                  ]}
-                  help="例如 Spring Boot Actuator 或自定义管理接口地址。"
-                >
-                  <Input
-                    {...noAutoCapInputProps}
-                    disabled={!normalizedJvmAllowedModes.includes("endpoint")}
-                    placeholder="例如：https://orders.internal/manage/jvm"
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="jvmEndpointApiKey"
-                  label="Endpoint API Key（可选）"
-                  style={{ marginBottom: 0 }}
-                >
-                  <Input.Password
-                    {...noAutoCapInputProps}
-                    disabled={!normalizedJvmAllowedModes.includes("endpoint")}
-                    placeholder="端点受 Token 保护时填写"
-                  />
-                </Form.Item>
-              </div>
-
-              <div style={jvmSectionCardStyle()}>
-                {renderJvmSectionHeader(
-                  <ThunderboltOutlined />,
-                  "Agent",
-                  "连接 JavaNavi Java Agent 管理端口，用于增强采集和诊断链路。",
-                  <Tag color={normalizedJvmAllowedModes.includes("agent") ? "green" : "default"}>
-                    {normalizedJvmAllowedModes.includes("agent") ? "已启用" : "未启用"}
-                  </Tag>,
-                )}
-                <Form.Item
-                  name="jvmAgentBaseUrl"
-                  label="Agent 地址"
-                  rules={[
-                    {
-                      required: jvmPreferredMode === "agent",
-                      message: "启用 Agent 模式时请输入 Agent 地址",
-                    },
-                  ]}
-                  help="目标 Java 服务需要以 -javaagent 方式启动 JavaNavi Agent。"
-                >
-                  <Input
-                    {...noAutoCapInputProps}
-                    disabled={!normalizedJvmAllowedModes.includes("agent")}
-                    placeholder="例如：http://127.0.0.1:19090/javanavi/agent/jvm"
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="jvmAgentApiKey"
-                  label="Agent API Key（可选）"
-                  style={{ marginBottom: 0 }}
-                >
-                  <Input.Password
-                    {...noAutoCapInputProps}
-                    disabled={!normalizedJvmAllowedModes.includes("agent")}
-                    placeholder="Agent 启用 Token 校验时填写"
-                  />
-                </Form.Item>
-              </div>
-
-              <div style={jvmSectionCardStyle()}>
-                {renderJvmSectionHeader(
-                  <SafetyCertificateOutlined />,
-                  "诊断增强",
-                  "开启后可创建 JVM 诊断会话并执行受控 Arthas/诊断命令。",
-                  <Form.Item
-                    name="jvmDiagnosticEnabled"
-                    valuePropName="checked"
-                    style={{ marginBottom: 0 }}
-                  >
-                    <Switch checkedChildren="开启" unCheckedChildren="关闭" />
-                  </Form.Item>,
-                )}
-                {jvmDiagnosticEnabled ? (
-                  <>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "220px minmax(0, 1fr)",
-                        gap: 16,
-                      }}
-                    >
-                      <div style={{ display: "grid", gap: 8 }}>
-                        <Text strong>诊断传输</Text>
-                        {renderChoiceCards({
-                          fieldName: "jvmDiagnosticTransport",
-                          value: String(jvmDiagnosticTransport),
-                          options: [
-                            {
-                              value: "agent-bridge",
-                              label: "Agent Bridge",
-                              description: "通过 JavaNavi Agent 桥接诊断命令。",
-                            },
-                            {
-                              value: "arthas-tunnel",
-                              label: "Arthas Tunnel",
-                              description: "连接官方 Tunnel / Web Console。",
-                            },
-                          ],
-                        })}
-                      </div>
-                      <Form.Item
-                        name="jvmDiagnosticBaseUrl"
-                        label={
-                          jvmDiagnosticTransport === "arthas-tunnel"
-                            ? "Arthas Tunnel 地址"
-                            : "诊断 Bridge 地址"
-                        }
-                        rules={[
-                          {
-                            required: true,
-                            message:
-                              jvmDiagnosticTransport === "arthas-tunnel"
-                                ? "请输入 Arthas Tunnel Server 地址"
-                                : "请输入诊断 Bridge 地址",
-                          },
-                        ]}
-                        help={
-                          jvmDiagnosticTransport === "arthas-tunnel"
-                            ? "例如：http://127.0.0.1:7777，支持反向代理后的访问前缀。"
-                            : "例如：http://127.0.0.1:19091/javanavi/diag"
-                        }
-                      >
-                        <Input
-                          {...noAutoCapInputProps}
-                          placeholder={
-                            jvmDiagnosticTransport === "arthas-tunnel"
-                              ? "http://127.0.0.1:7777"
-                              : "http://127.0.0.1:19091/javanavi/diag"
-                          }
-                        />
-                      </Form.Item>
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr) 220px",
-                        gap: 16,
-                      }}
-                    >
-                      <Form.Item
-                        name="jvmDiagnosticTargetId"
-                        label={
-                          jvmDiagnosticTransport === "arthas-tunnel"
-                            ? "目标实例标识（AgentId）"
-                            : "目标实例标识"
-                        }
-                        rules={
-                          jvmDiagnosticTransport === "arthas-tunnel"
-                            ? [
-                                {
-                                  required: true,
-                                  message:
-                                    "Arthas Tunnel 模式必须填写目标实例标识",
-                                },
-                              ]
-                            : undefined
-                        }
-                        help={
-                          jvmDiagnosticTransport === "arthas-tunnel"
-                            ? "填写 Arthas Tunnel 中目标 JVM 的 agentId。"
-                            : "可选，用于在桥接端区分具体 JVM 实例。"
-                        }
-                      >
-                        <Input
-                          {...noAutoCapInputProps}
-                          placeholder={
-                            jvmDiagnosticTransport === "arthas-tunnel"
-                              ? "例如：orders-app_A1B2C3D4E5"
-                              : "例如：orders-prod-01"
-                          }
-                        />
-                      </Form.Item>
-                      <Form.Item
-                        name="jvmDiagnosticTimeoutSeconds"
-                        label="诊断超时（秒）"
-                        rules={[
-                          {
-                            type: "number",
-                            min: 1,
-                            max: 300,
-                            message: "诊断超时时间范围: 1-300 秒",
-                          },
-                        ]}
-                      >
-                        <InputNumber style={{ width: "100%" }} min={1} max={300} />
-                      </Form.Item>
-                    </div>
-                    <Form.Item
-                      name="jvmDiagnosticApiKey"
-                      label="诊断 API Key（可选）"
-                    >
-                      <Input.Password
-                        {...noAutoCapInputProps}
-                        placeholder="诊断桥接端启用 Token 校验时填写"
-                      />
-                    </Form.Item>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "repeat(auto-fit, minmax(180px, 1fr))",
-                        gap: 10,
-                      }}
-                    >
-                      {[
-                        {
-                          name: "jvmDiagnosticAllowObserveCommands",
-                          label: "观察类命令",
-                          description: "thread、dashboard、jvm 等只读排查命令。",
-                        },
-                        {
-                          name: "jvmDiagnosticAllowTraceCommands",
-                          label: "跟踪类命令",
-                          description: "trace、watch 等对目标有额外开销的命令。",
-                        },
-                        {
-                          name: "jvmDiagnosticAllowMutatingCommands",
-                          label: "高风险命令",
-                          description: "可能改变运行态或造成明显性能影响的命令。",
-                        },
-                      ].map((item) => (
-                        <div
-                          key={item.name}
-                          style={{
-                            padding: 12,
-                            borderRadius: 14,
-                            background: darkMode
-                              ? "rgba(255,255,255,0.04)"
-                              : "rgba(16,24,40,0.04)",
-                          }}
-                        >
-                          <Form.Item
-                            name={item.name}
-                            valuePropName="checked"
-                            style={{ marginBottom: 6 }}
-                          >
-                            <Checkbox>{item.label}</Checkbox>
-                          </Form.Item>
-                          <div style={modalMutedTextStyle}>
-                            {item.description}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                ) : (
-                  <div
-                    style={{
-                      ...modalMutedTextStyle,
-                      padding: "10px 12px",
-                      borderRadius: 12,
-                      background: darkMode
-                        ? "rgba(255,255,255,0.04)"
-                        : "rgba(16,24,40,0.04)",
-                    }}
-                  >
-                    关闭时只保存 JVM 连接与监控能力，不显示诊断会话入口。
-                  </div>
-                )}
-              </div>
-            </div>
-          </>
           ) : (
             <>
               {!isConnectionUrlMode &&
@@ -5704,7 +4738,7 @@ const ConnectionModal: React.FC<{
     );
 
     const networkSecuritySection =
-      !isFileDb && !isJVM
+      !isFileDb
         ? (() => {
             const networkItems: Array<{
               key: "ssl" | "ssh" | "proxy" | "httpTunnel";
@@ -6489,30 +5523,6 @@ const ConnectionModal: React.FC<{
           mongoReplicaUser: "",
           mongoReplicaPassword: "",
           redisDB: 0,
-          jvmReadOnly: true,
-          jvmAllowedModes: ["jmx"],
-          jvmPreferredMode: "jmx",
-          jvmEnvironment: "dev",
-          jvmEndpointEnabled: false,
-          jvmEndpointBaseUrl: "",
-          jvmEndpointApiKey: "",
-          jvmAgentEnabled: false,
-          jvmAgentBaseUrl: "",
-          jvmAgentApiKey: "",
-          jvmDiagnosticEnabled: false,
-          jvmDiagnosticTransport: "agent-bridge",
-          jvmDiagnosticBaseUrl: "",
-          jvmDiagnosticTargetId: "",
-          jvmDiagnosticApiKey: "",
-          jvmDiagnosticAllowObserveCommands: true,
-          jvmDiagnosticAllowTraceCommands: false,
-          jvmDiagnosticAllowMutatingCommands: false,
-          jvmDiagnosticTimeoutSeconds: 15,
-          jvmEndpointTimeoutSeconds: 30,
-          jvmJmxHost: "",
-          jvmJmxPort: undefined,
-          jvmJmxUsername: "",
-          jvmJmxPassword: "",
         }}
         onValuesChange={(changed) => {
           if (testResult) {
@@ -6578,29 +5588,6 @@ const ConnectionModal: React.FC<{
             }
           }
           if (changed.type !== undefined) setDbType(changed.type);
-          if (changed.jvmAllowedModes !== undefined) {
-            const resolvedModes = normalizeEditableJVMModes(
-              changed.jvmAllowedModes,
-            );
-            const currentPreferredMode = String(
-              form.getFieldValue("jvmPreferredMode") || "",
-            )
-              .trim()
-              .toLowerCase();
-            const resolvedPreferredMode =
-              resolvedModes.find((mode) => mode === currentPreferredMode) ||
-              resolvedModes[0];
-            form.setFieldValue("jvmAllowedModes", resolvedModes);
-            form.setFieldValue("jvmPreferredMode", resolvedPreferredMode);
-            form.setFieldValue(
-              "jvmEndpointEnabled",
-              resolvedModes.includes("endpoint"),
-            );
-            form.setFieldValue(
-              "jvmAgentEnabled",
-              resolvedModes.includes("agent"),
-            );
-          }
           if (changed.redisTopology !== undefined) {
             const supportedDbs = Array.from({ length: 16 }, (_, i) => i);
             setRedisDbList(supportedDbs);
@@ -6662,12 +5649,10 @@ const ConnectionModal: React.FC<{
             {
               key: "basic",
               title: "基础信息",
-              description: isJVM
-                ? "JVM 目标、接入模式、JMX、Endpoint、Agent 与诊断增强"
-                : "名称、地址、认证、URI 与数据库范围",
+              description: "名称、地址、认证、URI 与数据库范围",
               icon: <DatabaseOutlined />,
             },
-            ...(!isCustom && !isFileDb && !isJVM
+            ...(!isCustom && !isFileDb
               ? [
                   {
                     key: "network" as const,
@@ -7065,9 +6050,7 @@ const ConnectionModal: React.FC<{
       ? summarizeConnectionTestFailureMessage(testResult?.message, "连接失败")
       : "";
     const operationBlocked =
-      !!currentDriverUnavailableReason ||
-      driverStatusChecking ||
-      !!unsupportedJvmModeMessage;
+      !!currentDriverUnavailableReason || driverStatusChecking;
     return (
       <div
         style={{

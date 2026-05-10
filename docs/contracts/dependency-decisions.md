@@ -4,7 +4,7 @@
 [中文](zh/dependency-decisions.md) | English
 This decision log is maintained for JavaNavi's Java/Web/Desktop runtime. Product scope is informed by [GoNavi](https://github.com/Syngnat/GoNavi); dependency choices below document where JavaNavi intentionally uses Java or Web/Desktop replacements.
 
-This file is the maintained dependency decision log for JavaNavi. Any new runtime dependency for Redis, MongoDB, AI providers, JVM/JMX helpers, optional database drivers, event transports, packaging, or security-sensitive code must have an approved entry here before it is added to `backend/pom.xml`, `frontend/package.json`, root `package.json`, or related lockfiles.
+This file is the maintained dependency decision log for JavaNavi. Any new runtime dependency for Redis, MongoDB, AI providers, optional database drivers, event transports, packaging, or security-sensitive code must have an approved entry here before it is added to `backend/pom.xml`, `frontend/package.json`, root `package.json`, or related lockfiles.
 
 ## Gate policy
 
@@ -149,12 +149,6 @@ Each decision entry must include:
 - **Required verification:** manual/runtime AI provider smoke and secret redaction checks when this area changes.
 - **Secret/credential impact:** API keys, base URLs, headers, prompts, and stream chunks require redaction/logging discipline.
 
-### Decision ID: DEP-JVM-JMX
-
-- **Status:** Fulfilled with JDK built-in management/JMX APIs for current local diagnostics.
-- **Allowed artifacts only after approval:** Third-party helpers such as Jolokia/OSHI require a new decision entry.
-- **Required verification:** manual/runtime JVM diagnostics smoke and browser adapter checks for diagnostic event delivery when this area changes.
-- **Secret/credential impact:** Diagnostic output can contain environment secrets and must be redacted before events/logs.
 
 ### Decision ID: DEP-EVENT-TRANSPORT
 

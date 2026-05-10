@@ -1,5 +1,5 @@
 import { resolveEffectiveSSLMode } from '../utils/sslMode';
-import { connection, sync, app, jvm, redis } from './models';
+import { connection, sync, app, redis } from './models';
 import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
 
@@ -140,7 +140,7 @@ async function getJson(path: string): Promise<any> {
   return payload;
 }
 
-type CompatFixtureFamily = 'sync' | 'sqlfile' | 'import' | 'driver' | 'jvm';
+type CompatFixtureFamily = 'sync' | 'sqlfile' | 'import' | 'driver';
 
 async function replayEventFixture(
   family: CompatFixtureFamily,
@@ -640,81 +640,6 @@ export async function InstallUpdateAndRestart(): Promise<connection.QueryResult>
   return apiEnvelopeToQueryResult(payload, 'Update install requested');
 }
 
-export async function JVMApplyChange(arg1:connection.ConnectionConfig,arg2:jvm.ChangeRequest): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/changes/apply', { connection: toConnectionPayload(arg1), ...(arg2 || {}) });
-  return apiEnvelopeToQueryResult(payload, 'JVM change applied');
-}
-
-export async function JVMCancelDiagnosticCommand(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  await replayEventFixture('jvm', { correlationId: arg2 || arg3, payload: { tabId: arg2, sessionId: arg3, commandId: arg4 } });
-  const payload = await postJson('/jvm/diagnostics/command/cancel', { connection: toConnectionPayload(arg1), tabId: arg2, sessionId: arg3, commandId: arg4 });
-  return apiEnvelopeToQueryResult(payload, 'JVM diagnostic command cancelled');
-}
-
-export async function JVMExecuteDiagnosticCommand(arg1:connection.ConnectionConfig,arg2:string,arg3:jvm.DiagnosticCommandRequest): Promise<connection.QueryResult> {
-  await replayEventFixture('jvm', {
-    correlationId: arg2 || arg3?.sessionId || arg3?.commandId,
-    payload: { tabId: arg2, sessionId: arg3?.sessionId, commandId: arg3?.commandId },
-  });
-  const payload = await postJson('/jvm/diagnostics/command/execute', { connection: toConnectionPayload(arg1), tabId: arg2, ...(arg3 || {}) });
-  return apiEnvelopeToQueryResult(payload, 'JVM diagnostic command executed');
-}
-
-export async function JVMGetMonitoringHistory(arg1:connection.ConnectionConfig,arg2:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/monitoring/history', { connection: toConnectionPayload(arg1), sessionId: arg2 });
-  return apiEnvelopeToQueryResult(payload, 'JVM monitoring history loaded');
-}
-
-export async function JVMGetValue(arg1:connection.ConnectionConfig,arg2:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/value', { connection: toConnectionPayload(arg1), resourceId: arg2 });
-  return apiEnvelopeToQueryResult(payload, 'JVM value loaded');
-}
-
-export async function JVMListAuditRecords(arg1:string,arg2:number): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/audit', { connectionId: arg1, limit: arg2 });
-  return apiEnvelopeToQueryResult(payload, 'JVM audit records loaded');
-}
-
-export async function JVMListDiagnosticAuditRecords(arg1:string,arg2:number): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/diagnostics/audit', { connectionId: arg1, limit: arg2 });
-  return apiEnvelopeToQueryResult(payload, 'JVM diagnostic audit records loaded');
-}
-
-export async function JVMListResources(arg1:connection.ConnectionConfig,arg2:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/resources', { connection: toConnectionPayload(arg1), parentPath: arg2 });
-  return apiEnvelopeToQueryResult(payload, 'JVM resources loaded');
-}
-
-export async function JVMPreviewChange(arg1:connection.ConnectionConfig,arg2:jvm.ChangeRequest): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/changes/preview', { connection: toConnectionPayload(arg1), ...(arg2 || {}) });
-  return apiEnvelopeToQueryResult(payload, 'JVM change preview loaded');
-}
-
-export async function JVMProbeCapabilities(arg1:connection.ConnectionConfig): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/capabilities', { connection: toConnectionPayload(arg1) });
-  return apiEnvelopeToQueryResult(payload, 'JVM capabilities loaded');
-}
-
-export async function JVMProbeDiagnosticCapabilities(arg1:connection.ConnectionConfig): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/diagnostics/capabilities', { connection: toConnectionPayload(arg1) });
-  return apiEnvelopeToQueryResult(payload, 'JVM diagnostic capabilities loaded');
-}
-
-export async function JVMStartDiagnosticSession(arg1:connection.ConnectionConfig,arg2:jvm.DiagnosticSessionRequest): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/diagnostics/session/start', { connection: toConnectionPayload(arg1), ...(arg2 || {}) });
-  return apiEnvelopeToQueryResult(payload, 'JVM diagnostic session started');
-}
-
-export async function JVMStartMonitoring(arg1:connection.ConnectionConfig): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/monitoring/start', { connection: toConnectionPayload(arg1) });
-  return apiEnvelopeToQueryResult(payload, 'JVM monitoring started');
-}
-
-export async function JVMStopMonitoring(arg1:connection.ConnectionConfig,arg2:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/monitoring/stop', { connection: toConnectionPayload(arg1), sessionId: arg2 });
-  return apiEnvelopeToQueryResult(payload, 'JVM monitoring stopped');
-}
-
 export async function ResolveSQLWorkspace(arg1:string,arg2:string): Promise<connection.QueryResult> {
   const payload = await postJson('/app/sql-workspace/resolve', { connectionId: arg1, dbName: arg2 });
   return apiEnvelopeToQueryResult(payload, 'SQL workspace resolved');
@@ -1030,11 +955,6 @@ export async function SetWindowTranslucency(arg1: number, arg2: number): Promise
 export async function TestConnection(arg1: connection.ConnectionConfig): Promise<connection.QueryResult> {
   const payload = await postJson('/connections/test', toConnectionPayload(arg1));
   return apiEnvelopeToQueryResult(payload, 'Connection test completed');
-}
-
-export async function TestJVMConnection(arg1:connection.ConnectionConfig): Promise<connection.QueryResult> {
-  const payload = await postJson('/jvm/test', { connection: toConnectionPayload(arg1) });
-  return apiEnvelopeToQueryResult(payload, 'JVM connection tested');
 }
 
 export async function TruncateTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {

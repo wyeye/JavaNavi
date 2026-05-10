@@ -15,7 +15,7 @@ import java.util.UUID;
 
 @Component
 public class CompatEventFixtures {
-    private static final Set<String> SUPPORTED_FAMILIES = Set.of("sync", "sqlfile", "import", "driver", "ai", "jvm");
+    private static final Set<String> SUPPORTED_FAMILIES = Set.of("sync", "sqlfile", "import", "driver", "ai");
 
     private final I18nMessages messages;
 
@@ -46,7 +46,6 @@ public class CompatEventFixtures {
             case "import" -> importFixtures(correlationId, overrides);
             case "driver" -> driverFixtures(correlationId, overrides);
             case "ai" -> aiFixtures(correlationId, request == null ? null : request.eventName(), overrides);
-            case "jvm" -> jvmFixtures(correlationId, overrides);
             default -> List.of();
         };
     }
@@ -181,37 +180,6 @@ public class CompatEventFixtures {
         );
     }
 
-    private List<CompatEventDto> jvmFixtures(String correlationId, Map<String, Object> overrides) {
-        String tabId = stringValue(overrides, "tabId", correlationId);
-        String sessionId = stringValue(overrides, "sessionId", correlationId);
-        String commandId = stringValue(overrides, "commandId", "jvm-fixture-command");
-        return List.of(
-                event("jvm:diagnostic:chunk", "jvm", correlationId, "running", "JVM diagnostic fixture output", map(
-                        "tabId", tabId,
-                        "chunk", map(
-                                "sessionId", sessionId,
-                                "commandId", commandId,
-                                "event", "stdout",
-                                "phase", "running",
-                                "content", "JavaNavi JVM diagnostic fixture output",
-                                "timestamp", Instant.now().toEpochMilli(),
-                                "metadata", map("source", "compat-fixture")
-                        )
-                )),
-                event("jvm:diagnostic:chunk", "jvm", correlationId, "completed", "JVM diagnostic fixture completed", map(
-                        "tabId", tabId,
-                        "chunk", map(
-                                "sessionId", sessionId,
-                                "commandId", commandId,
-                                "event", "lifecycle",
-                                "phase", "completed",
-                                "content", "JavaNavi JVM diagnostic fixture completed",
-                                "timestamp", Instant.now().toEpochMilli(),
-                                "metadata", map("source", "compat-fixture")
-                        )
-                ))
-        );
-    }
 
     private static CompatEventDto event(String eventName, String family, String correlationId, String phase, String message, Map<String, Object> payload) {
         return new CompatEventDto(

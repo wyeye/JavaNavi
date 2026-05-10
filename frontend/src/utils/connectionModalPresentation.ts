@@ -29,8 +29,7 @@ export type ConnectionConfigSectionKey =
   | 'credentials'
   | 'databaseScope'
   | 'customDriver'
-  | 'customDsn'
-  | 'jvmRuntime';
+  | 'customDsn';
 
 export type ConnectionConfigLayoutKind =
   | 'mysql-compatible'
@@ -40,7 +39,6 @@ export type ConnectionConfigLayoutKind =
   | 'oracle'
   | 'file'
   | 'custom'
-  | 'jvm'
   | 'generic-sql';
 
 export type ConnectionConfigLayout = {
@@ -128,10 +126,6 @@ const CONNECTION_CONFIG_SECTION_COPY: Record<
     title: '连接字符串',
     description: '直接填写所选自定义数据源的 DSN，适合非内置数据库或特殊参数。',
   },
-  jvmRuntime: {
-    title: 'JVM 运行时',
-    description: 'JVM 目标、接入模式、JMX、Endpoint、Agent 与诊断增强。',
-  },
 };
 
 export const getConnectionConfigSectionCopy = (
@@ -156,8 +150,6 @@ export const getConnectionConfigLayoutKindLabel = (
       return '文件型数据库';
     case 'custom':
       return '自定义连接';
-    case 'jvm':
-      return 'JVM 运行时';
     case 'generic-sql':
     default:
       return '标准 SQL';
@@ -169,12 +161,7 @@ export const resolveConnectionConfigLayout = (
 ): ConnectionConfigLayout => {
   const type = String(rawType || '').trim().toLowerCase();
 
-  if (type === 'jvm') {
-    return {
-      kind: 'jvm',
-      sections: ['identity', 'jvmRuntime'],
-    };
-  }
+
   if (type === 'custom') {
     return {
       kind: 'custom',

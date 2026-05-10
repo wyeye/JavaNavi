@@ -9,8 +9,6 @@ import type {
     AIChatMessage,
     AIContextLevel,
     AIToolCall,
-    JVMAIPlanContext,
-    JVMDiagnosticPlanContext,
 } from '../types';
 import { DownOutlined } from '@ant-design/icons';
 import './AIChatPanel.css';
@@ -243,8 +241,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const nudgeCountRef = useRef(0);    // 催促模型使用 function call 的次数
     const panelRef = useRef<HTMLDivElement>(null); // 面板 DOM ref，用于拖拽时直接操作宽度
     const dragWidthRef = useRef(0); // 拖拽过程中的实时宽度（不触发 React 重渲染）
-    const pendingJVMPlanContextRef = useRef<JVMAIPlanContext | undefined>(undefined);
-    const pendingJVMDiagnosticPlanContextRef = useRef<JVMDiagnosticPlanContext | undefined>(undefined);
 
     const aiChatHistory = useStore(state => state.aiChatHistory);
     const aiActiveSessionId = useStore(state => state.aiActiveSessionId);
@@ -262,50 +258,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const activeTabId = useStore(state => state.activeTabId);
     const aiPanelVisible = useStore(state => state.aiPanelVisible);
     const aiChatSendShortcutBinding = useStore(state => state.shortcutOptions.sendAIChatMessage);
-
-    const getCurrentJVMPlanContext = useCallback((): JVMAIPlanContext | undefined => {
-        const state = useStore.getState();
-        const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-        if (!activeTab || activeTab.type !== 'jvm-resource') {
-            return undefined;
-        }
-
-        const activeConnection = state.connections.find(c => c.id === activeTab.connectionId);
-        if (activeConnection?.config?.type !== 'jvm') {
-            return undefined;
-        }
-
-        const resourcePath = String(activeTab.resourcePath || '').trim();
-        if (!resourcePath) {
-            return undefined;
-        }
-
-        return {
-            tabId: activeTab.id,
-            connectionId: activeTab.connectionId,
-            providerMode: (activeTab.providerMode || activeConnection.config.jvm?.preferredMode || 'jmx') as JVMAIPlanContext['providerMode'],
-            resourcePath,
-        };
-    }, []);
-
-    const getCurrentJVMDiagnosticPlanContext = useCallback((): JVMDiagnosticPlanContext | undefined => {
-        const state = useStore.getState();
-        const activeTab = state.tabs.find(t => t.id === state.activeTabId);
-        if (!activeTab || activeTab.type !== 'jvm-diagnostic') {
-            return undefined;
-        }
-
-        const activeConnection = state.connections.find(c => c.id === activeTab.connectionId);
-        if (activeConnection?.config?.type !== 'jvm') {
-            return undefined;
-        }
-
-        return {
-            tabId: activeTab.id,
-            connectionId: activeTab.connectionId,
-            transport: activeConnection.config.jvm?.diagnostic?.transport || 'agent-bridge',
-        };
-    }, []);
 
     useEffect(() => {
         if (!aiPanelVisible) return;
@@ -592,8 +544,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                         content: `❌ 错误: ${cleanErr}`,
                         rawError: rawErr,
                         timestamp: Date.now(),
-                        jvmPlanContext: pendingJVMPlanContextRef.current,
-                        jvmDiagnosticPlanContext: pendingJVMDiagnosticPlanContextRef.current,
                     });
                 }
                 assistantMsgId = '';
@@ -614,8 +564,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                         tool_calls: data.tool_calls,
                         timestamp: Date.now(),
                         loading: true,
-                        jvmPlanContext: pendingJVMPlanContextRef.current,
-                        jvmDiagnosticPlanContext: pendingJVMDiagnosticPlanContextRef.current,
                     });
                 }
             }
@@ -632,8 +580,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                         thinking: data.thinking,
                         timestamp: Date.now(),
                         loading: true,
-                        jvmPlanContext: pendingJVMPlanContextRef.current,
-                        jvmDiagnosticPlanContext: pendingJVMDiagnosticPlanContextRef.current,
                     });
                     if (sending) setSending(false);
                 } else {
@@ -652,8 +598,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                         content: data.content,
                         timestamp: Date.now(),
                         loading: true,
-                        jvmPlanContext: pendingJVMPlanContextRef.current,
-                        jvmDiagnosticPlanContext: pendingJVMDiagnosticPlanContextRef.current,
                     });
                     setSending(false);
                     const currentHistory = useStore.getState().aiChatHistory[sid] || [];
@@ -714,10 +658,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                                         if (m.tool_call_id) mapped.tool_call_id = m.tool_call_id;
                                         return mapped;
                                     });
-                                    const sysMessages = await buildSystemContextMessages(
-                                        existing.jvmPlanContext,
-                                        existing.jvmDiagnosticPlanContext,
-                                    );
+                                    const sysMessages = await buildSystemContextMessages();
                                     // 追加催促消息
                                     messagesPayload.push({ role: 'user', content: '请直接使用 function call 调用工具执行操作，不要只用文字描述计划。' });
                                     const allMsg = [...sysMessages, ...messagesPayload];
@@ -818,11 +759,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             toolCallRoundRef.current = 0;
             totalToolRoundRef.current = 0;
             nudgeCountRef.current = 0;
-            const retryJVMPlanContext = msg.jvmPlanContext || getCurrentJVMPlanContext();
-            const retryJVMDiagnosticPlanContext =
-                msg.jvmDiagnosticPlanContext || getCurrentJVMDiagnosticPlanContext();
-            pendingJVMPlanContextRef.current = retryJVMPlanContext;
-            pendingJVMDiagnosticPlanContextRef.current = retryJVMDiagnosticPlanContext;
 
             setSending(true);
 
@@ -830,8 +766,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             const connectingMsg: AIChatMessage = {
                 id: genId(), role: 'assistant', phase: 'connecting', content: '',
                 timestamp: Date.now(), loading: true,
-                jvmPlanContext: retryJVMPlanContext,
-                jvmDiagnosticPlanContext: retryJVMDiagnosticPlanContext,
             };
             addAIChatMessage(sid, connectingMsg);
 
@@ -839,10 +773,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             const messagesPayload = truncatedHistory.map(m => ({ role: m.role, content: m.content, images: m.images }));
             
             try {
-                const sysMessages = await buildSystemContextMessages(
-                    retryJVMPlanContext,
-                    retryJVMDiagnosticPlanContext,
-                );
+                const sysMessages = await buildSystemContextMessages();
                 const allMessages = [...sysMessages, ...messagesPayload];
                 
                 const Service = AIService;
@@ -857,8 +788,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                          content: result?.success ? result.content : `❌ ${errClean}`,
                          rawError: (!result?.success && errClean !== errRaw) ? errRaw : undefined,
                          timestamp: Date.now(),
-                         jvmPlanContext: retryJVMPlanContext,
-                         jvmDiagnosticPlanContext: retryJVMDiagnosticPlanContext,
                      });
                      setSending(false);
                 } else {
@@ -873,8 +802,6 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                     content: `❌ 发送失败: ${cleanE}`,
                     rawError: cleanE !== rawE ? rawE : undefined,
                     timestamp: Date.now(),
-                    jvmPlanContext: retryJVMPlanContext,
-                    jvmDiagnosticPlanContext: retryJVMDiagnosticPlanContext,
                 });
                 setSending(false);
             }
@@ -883,113 +810,15 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         sid,
         truncateAIChatMessages,
         addAIChatMessage,
-        getCurrentJVMPlanContext,
-        getCurrentJVMDiagnosticPlanContext,
     ]);
 
-    const buildSystemContextMessages = useCallback(async (
-        overrideJVMPlanContext?: JVMAIPlanContext,
-        overrideJVMDiagnosticPlanContext?: JVMDiagnosticPlanContext,
-    ) => {
+    const buildSystemContextMessages = useCallback(async () => {
         // 🔧 性能优化：从 store 实时读取，避免闭包捕获导致的依赖链式重建
         const { activeContext: ctx, aiContexts: ctxMap, connections: conns, tabs: allTabs, activeTabId: tabId } = useStore.getState();
 
         const systemMessages: { role: string; content: string; images?: string[] }[] = [];
-        const matchesDiagnosticContext = (tab: typeof allTabs[number]) => {
-            if (!overrideJVMDiagnosticPlanContext || tab.type !== 'jvm-diagnostic') {
-                return false;
-            }
-            const tabConnection = conns.find(c => c.id === tab.connectionId);
-            const tabTransport = tabConnection?.config?.jvm?.diagnostic?.transport || 'agent-bridge';
-            return (
-                tab.connectionId === overrideJVMDiagnosticPlanContext.connectionId &&
-                tabTransport === overrideJVMDiagnosticPlanContext.transport
-            );
-        };
-        const activeTab = overrideJVMDiagnosticPlanContext
-            ? (
-                allTabs.find(t => t.id === overrideJVMDiagnosticPlanContext.tabId && matchesDiagnosticContext(t)) ||
-                allTabs.find(t => matchesDiagnosticContext(t))
-            )
-            : overrideJVMPlanContext
-                ? (
-                    allTabs.find(t => t.id === overrideJVMPlanContext.tabId) ||
-                    allTabs.find(
-                        t =>
-                            t.type === 'jvm-resource' &&
-                            t.connectionId === overrideJVMPlanContext.connectionId &&
-                            t.providerMode === overrideJVMPlanContext.providerMode &&
-                            String(t.resourcePath || '').trim() === overrideJVMPlanContext.resourcePath,
-                    )
-                )
-                : allTabs.find(t => t.id === tabId);
-        const activeConnection = activeTab?.connectionId
-            ? conns.find(c => c.id === activeTab.connectionId)
-            : undefined;
+        const activeTab = allTabs.find(t => t.id === tabId);
 
-        if (
-            activeTab &&
-            activeTab.type === 'jvm-diagnostic' &&
-            activeConnection?.config?.type === 'jvm'
-        ) {
-            const diagnostic = activeConnection.config.jvm?.diagnostic;
-            const diagnosticTransport = overrideJVMDiagnosticPlanContext?.transport || diagnostic?.transport || 'agent-bridge';
-            const readOnly = activeConnection.config.jvm?.readOnly !== false;
-            const environment = activeConnection.config.jvm?.environment || 'unknown';
-            systemMessages.push({
-                role: 'system',
-                content: `你是 JavaNavi 的 JVM 诊断助手。当前页签是 Arthas 兼容诊断工作台，目标是输出可回填到诊断控制台的结构化诊断计划。
-
-当前连接：${activeConnection.name}
-目标主机：${activeConnection.config.host || '-'}
-诊断 transport：${diagnosticTransport}
-运行环境：${environment}
-连接策略：${readOnly ? '默认按只读诊断思路回答，只生成观察、trace、排障命令，不要假设已经执行。' : '允许生成诊断命令，但仍然必须先给计划，再由用户决定是否执行。'}
-命令权限：observe=${diagnostic?.allowObserveCommands !== false ? '允许' : '禁止'}，trace=${diagnostic?.allowTraceCommands === true ? '允许' : '禁止'}，mutating=${diagnostic?.allowMutatingCommands === true ? '允许' : '禁止'}
-
-回答规则：
-1. 可以先给一小段分析，但必须包含且只包含一个 \`\`\`json 代码块。
-2. JSON 字段严格限定为 intent、transport、command、riskLevel、reason、expectedSignals。
-3. transport 必须填写当前值 ${diagnosticTransport}，不要编造其他 transport。
-4. command 必须是单条诊断命令，不要带 shell 提示符、换行拼接、多条命令或代码围栏。
-5. riskLevel 只能是 low、medium、high。
-6. expectedSignals 必须是字符串数组，描述执行后需要重点观察的信号。
-7. 如果命令权限不允许某类操作，就不要输出该类命令；无法满足时直接说明限制。`,
-            });
-            return systemMessages;
-        }
-
-        if (
-            activeTab &&
-            (activeTab.type === 'jvm-resource' || activeTab.type === 'jvm-overview' || activeTab.type === 'jvm-audit') &&
-            activeConnection?.config?.type === 'jvm'
-        ) {
-            const providerMode = activeTab.providerMode || activeConnection.config.jvm?.preferredMode || 'jmx';
-            const resourcePath = activeTab.resourcePath || '';
-            const readOnly = activeConnection.config.jvm?.readOnly !== false;
-            const environment = activeConnection.config.jvm?.environment || 'unknown';
-            systemMessages.push({
-                role: 'system',
-                content: `你是 JavaNavi 的 JVM 运行时分析助手。当前上下文不是 SQL，而是 JVM 资源工作台。
-
-当前连接：${activeConnection.name}
-目标主机：${activeConnection.config.host || '-'}
-Provider 模式：${providerMode}
-运行环境：${environment}
-连接策略：${readOnly ? '只读连接，只能分析和生成变更计划，绝不能假设已执行写入。' : '可写连接，但任何修改都必须先生成预览并等待人工确认。'}
-${resourcePath ? `当前资源路径：${resourcePath}` : '当前未选中具体资源路径。'}
-
-回答规则：
-1. 你可以解释资源结构、风险、修改建议和回滚建议。
-2. 如果用户要求生成 JVM 修改方案，必须输出一个唯一的 \`\`\`json 代码块，并且 JSON 字段严格限定为 targetType、selector、action、payload、reason。
-3. action 优先使用当前资源快照或元数据里已经声明的 supportedActions；如果当前资源没有声明，再基于快照内容谨慎推断。
-4. selector.resourcePath 优先使用当前资源路径；如果当前路径未知，就明确说明无法精确定位，不要编造路径。
-5. payload 只能使用 {"format":"json","value":{...}} 或 {"format":"text","value":"..."} 这两种包装形式，不要输出脚本、命令或裸值。
-6. 不要输出脚本、命令或“已经执行成功”之类的表述。`
-            });
-            return systemMessages;
-        }
-        
         let targetConnId = ctx?.connectionId;
         let targetDbName = ctx?.dbName;
         if (!targetConnId || !targetDbName) {
@@ -1084,11 +913,6 @@ SELECT * FROM users WHERE status = 1;
 
     const executeLocalTools = useCallback(async (toolCalls: AIToolCall[], currentAsstMsgId: string) => {
         const currentAsstMsg = (useStore.getState().aiChatHistory[sid] || []).find(m => m.id === currentAsstMsgId);
-        const inheritedJVMPlanContext = currentAsstMsg?.jvmPlanContext || pendingJVMPlanContextRef.current;
-        const inheritedJVMDiagnosticPlanContext =
-            currentAsstMsg?.jvmDiagnosticPlanContext || pendingJVMDiagnosticPlanContextRef.current;
-        pendingJVMPlanContextRef.current = inheritedJVMPlanContext;
-        pendingJVMDiagnosticPlanContextRef.current = inheritedJVMDiagnosticPlanContext;
 
         // 【全局轮次熔断】防止模型（如 DeepSeek）在已生成答案后仍无限循环调用工具
         const MAX_TOOL_CALL_ROUNDS = 15;
@@ -1099,8 +923,6 @@ SELECT * FROM users WHERE status = 1;
                 id: genId(), role: 'assistant',
                 content: `⚠️ 工具调用已达 ${MAX_TOOL_CALL_ROUNDS} 轮上限，自动终止循环。如需继续探索，请发送新的消息。`,
                 timestamp: Date.now(),
-                jvmPlanContext: inheritedJVMPlanContext,
-                jvmDiagnosticPlanContext: inheritedJVMDiagnosticPlanContext,
             });
             setSending(false);
             return;
@@ -1286,8 +1108,6 @@ SELECT * FROM users WHERE status = 1;
                     id: genId(), role: 'assistant',
                     content: '⚠️ 探针连续 3 轮执行失败，自动终止。请检查连接状态后重试。',
                     timestamp: Date.now(),
-                    jvmPlanContext: inheritedJVMPlanContext,
-                    jvmDiagnosticPlanContext: inheritedJVMDiagnosticPlanContext,
                 });
                 setSending(false);
                 return;
@@ -1302,8 +1122,6 @@ SELECT * FROM users WHERE status = 1;
                 id: genId(), role: 'assistant', phase: 'connecting', 
                 content: '汇总探针执行结果中',
                 timestamp: Date.now(), loading: true,
-                jvmPlanContext: inheritedJVMPlanContext,
-                jvmDiagnosticPlanContext: inheritedJVMDiagnosticPlanContext,
             };
             useStore.getState().addAIChatMessage(sid, chainConnectingMsg);
             
@@ -1330,10 +1148,7 @@ SELECT * FROM users WHERE status = 1;
                 if (m.tool_call_id) mapped.tool_call_id = m.tool_call_id;
                 return mapped;
             });
-            const sysMessages = await buildSystemContextMessages(
-                inheritedJVMPlanContext,
-                inheritedJVMDiagnosticPlanContext,
-            );
+            const sysMessages = await buildSystemContextMessages();
 
             let finalMessagesPayload = messagesPayload;
             // 在这里加入长度检查和自动摘要（带上动态限额）
@@ -1371,8 +1186,6 @@ SELECT * FROM users WHERE status = 1;
                     content: result?.success ? result.content : `❌ ${errC}`,
                     rawError: (!result?.success && errC !== errR) ? errR : undefined,
                     timestamp: Date.now(),
-                    jvmPlanContext: inheritedJVMPlanContext,
-                    jvmDiagnosticPlanContext: inheritedJVMDiagnosticPlanContext,
                 });
                 setSending(false);
             }
@@ -1400,10 +1213,6 @@ SELECT * FROM users WHERE status = 1;
         toolCallRoundRef.current = 0; // 重置工具调用轮次计数
         totalToolRoundRef.current = 0; // 重置总轮次计数
         nudgeCountRef.current = 0;     // 重置催促计数
-        const currentJVMPlanContext = getCurrentJVMPlanContext();
-        const currentJVMDiagnosticPlanContext = getCurrentJVMDiagnosticPlanContext();
-        pendingJVMPlanContextRef.current = currentJVMPlanContext;
-        pendingJVMDiagnosticPlanContextRef.current = currentJVMDiagnosticPlanContext;
 
         const currentImages = [...draftImages];
         setInput('');
@@ -1423,15 +1232,10 @@ SELECT * FROM users WHERE status = 1;
         const connectingMsg: AIChatMessage = {
             id: genId(), role: 'assistant', phase: 'connecting', content: '', 
             timestamp: Date.now(), loading: true,
-            jvmPlanContext: currentJVMPlanContext,
-            jvmDiagnosticPlanContext: currentJVMDiagnosticPlanContext,
         };
         addAIChatMessage(sid, connectingMsg);
 
-        const systemMessages = await buildSystemContextMessages(
-            currentJVMPlanContext,
-            currentJVMDiagnosticPlanContext,
-        );
+        const systemMessages = await buildSystemContextMessages();
 
         // 【过渡状态 2】上下文已组装完成，即将接入模型
         updateAIChatMessage(sid, connectingMsg.id, { content: '模型接入中' });
@@ -1479,8 +1283,6 @@ SELECT * FROM users WHERE status = 1;
                     content: result?.success ? result.content : `❌ ${errC2}`,
                     rawError: (!result?.success && errC2 !== errR2) ? errR2 : undefined,
                     timestamp: Date.now(),
-                    jvmPlanContext: currentJVMPlanContext,
-                    jvmDiagnosticPlanContext: currentJVMDiagnosticPlanContext,
                 };
                 addAIChatMessage(sid, assistantMsg);
                 setSending(false);
@@ -1495,8 +1297,6 @@ SELECT * FROM users WHERE status = 1;
                     role: 'assistant',
                     content: '❌ AI Service 未就绪',
                     timestamp: Date.now(),
-                    jvmPlanContext: currentJVMPlanContext,
-                    jvmDiagnosticPlanContext: currentJVMDiagnosticPlanContext,
                 });
                 setSending(false);
             }
@@ -1509,8 +1309,6 @@ SELECT * FROM users WHERE status = 1;
                 content: `❌ 发送失败: ${cleanE2}`,
                 rawError: cleanE2 !== rawE2 ? rawE2 : undefined,
                 timestamp: Date.now(),
-                jvmPlanContext: currentJVMPlanContext,
-                jvmDiagnosticPlanContext: currentJVMDiagnosticPlanContext,
             });
             setSending(false);
         }
@@ -1523,8 +1321,6 @@ SELECT * FROM users WHERE status = 1;
         sid,
         activeProvider,
         buildSystemContextMessages,
-        getCurrentJVMPlanContext,
-        getCurrentJVMDiagnosticPlanContext,
     ]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {

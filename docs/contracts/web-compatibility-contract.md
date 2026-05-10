@@ -26,7 +26,7 @@ Application components should import only these modules or path aliases that poi
 | `App.SomeMethod(args...) -> Promise<QueryResult>` | `fetch('/api/compat/app/some-method', { method: 'POST', body })` | Adapter returns `QueryResult` to UI. Backend may use internal DTOs behind translation. |
 | AI service calls | `/api/compat/ai/*` | Streaming uses event channel. |
 | `EventsOn(name, handler)` | SSE or WebSocket subscription through runtime adapter | Adapter hides transport choice. |
-| Query / SQL file / JVM cancellation | Dedicated cancel endpoints | Cancellation IDs remain adapter-visible. |
+| Query / SQL file cancellation | Dedicated cancel endpoints | Cancellation IDs remain adapter-visible. |
 | Native file open/save dialogs | Browser upload/download or managed server workspace | No arbitrary local path selection in Java Web v1. |
 | Wails window controls | Browser-safe no-op, settings update, or documented deferred desktop-only behavior | Must not break UI in browser. |
 
@@ -83,7 +83,6 @@ Progress and stream events require fixtures or runtime smoke coverage before a U
 - `driver:download-progress`
 - `update:download-progress`
 - `ai:stream:{sessionId}`
-- `jvm:diagnostic:{tabId}`
 
 Each event payload must include enough fields for UI progress/error state and must be documented in fixtures before implementation is marked complete.
 
