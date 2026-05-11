@@ -1,5 +1,5 @@
 import type { IndexDefinition } from '../types';
-import { resolveUniqueKeyGroupsFromIndexes } from '../components/dataGridCopyInsert';
+import { resolveUniqueKeyGroupsFromIndexes } from '../components/dataGrid/dataGridCopyInsert';
 
 export type RowLocatorStrategy = 'primary-key' | 'unique-key' | 'rowid' | 'none';
 

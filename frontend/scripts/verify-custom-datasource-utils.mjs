@@ -30,7 +30,7 @@ try {
   const customDataSources = await transpileToModule('src/utils/customDataSources.ts', 'customDataSources.mjs');
   const presentation = await transpileToModule('src/utils/connectionModalPresentation.ts', 'connectionModalPresentation.mjs');
   const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs');
-  const dataGridValue = await transpileToModule('src/components/dataGridValue.ts', 'dataGridValue.mjs');
+  const dataGridValue = await transpileToModule('src/components/dataGrid/dataGridValue.ts', 'dataGridValue.mjs');
   const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
   const schemaSyncRequest = await transpileToModule('src/components/schemaSyncRequest.ts', 'schemaSyncRequest.mjs');
   const sidebarTreeNavigation = await transpileToModule('src/components/sidebarTreeNavigation.ts', 'sidebarTreeNavigation.mjs');

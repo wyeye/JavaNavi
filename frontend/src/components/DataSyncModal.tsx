@@ -9,7 +9,7 @@ import { EventsOn } from '@compat/runtime';
 import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from '../utils/appearance';
 import { resolveDataSourceType } from '../utils/dataSourceCapabilities';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
-import { formatLocalDateTimeLiteral, normalizeTemporalLiteralText } from './dataGridCopyInsert';
+import { formatLocalDateTimeLiteral, normalizeTemporalLiteralText } from './dataGrid/dataGridCopyInsert';
 import { buildDataSyncRequest, type SourceDatasetMode, validateDataSyncSelection } from './dataSyncRequest';
 import { buildSchemaSyncAnalyzeRequest, buildSchemaSyncPreviewRequest, buildSchemaSyncRunRequest, validateSchemaSyncSelection } from './schemaSyncRequest';
 

@@ -1,6 +1,6 @@
-import type { IndexDefinition } from '../types';
-import { escapeLiteral, quoteIdentPart, quoteQualifiedIdent } from '../utils/sql';
-import { isOracleLikeDialect } from '../utils/sqlDialect';
+import type { IndexDefinition } from '../../types';
+import { escapeLiteral, quoteIdentPart, quoteQualifiedIdent } from '../../utils/sql';
+import { isOracleLikeDialect } from '../../utils/sqlDialect';
 
 type BuildCopyInsertSQLParams = {
   dbType: string;

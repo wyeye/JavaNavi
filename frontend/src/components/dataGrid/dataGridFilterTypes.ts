@@ -1,4 +1,4 @@
-import type { FilterCondition } from '../utils/sql';
+import type { FilterCondition } from '../../utils/sql';
 
 export type GridFilterCondition = FilterCondition & {
     id: number;

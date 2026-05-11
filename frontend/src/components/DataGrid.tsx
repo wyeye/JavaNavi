@@ -38,17 +38,17 @@ import {
 } from '../utils/dataGridDisplay';
 import { resolvePaginationPageText, resolvePaginationSummaryText } from '../utils/dataGridPagination';
 import { resolveGridSortInfoFromTableSorter } from '../utils/dataGridSort';
-import { calculateTableBodyBottomPadding, calculateVirtualTableScrollX } from './dataGridLayout';
+import { calculateTableBodyBottomPadding, calculateVirtualTableScrollX } from './dataGrid/dataGridLayout';
 import {
     buildCopyDeleteSQL,
     buildCopyInsertSQL,
     buildCopyUpdateSQL,
     normalizeTemporalLiteralText,
     resolveUniqueKeyGroupsFromIndexes,
-} from './dataGridCopyInsert';
-import { calculateAutoFitColumnWidth } from './dataGridAutoWidth';
-import { buildSelectedCellClipboardText } from './dataGridSelectionCopy';
-import { buildCopiedRowsForPaste, buildPastedRowsFromCopiedRows } from './dataGridRowClipboard';
+} from './dataGrid/dataGridCopyInsert';
+import { calculateAutoFitColumnWidth } from './dataGrid/dataGridAutoWidth';
+import { buildSelectedCellClipboardText } from './dataGrid/dataGridSelectionCopy';
+import { buildCopiedRowsForPaste, buildPastedRowsFromCopiedRows } from './dataGrid/dataGridRowClipboard';
 import { applyNoAutoCapAttributesWithin, noAutoCapInputProps } from '../utils/inputAutoCap';
 import { resolveEditRowLocator, resolveRowLocatorValues, type EditRowLocator } from '../utils/rowLocator';
 import { translate } from '../i18n';
@@ -60,7 +60,7 @@ import {
     isTemporalColumnType,
     parseToDayjs,
     type TemporalPickerType,
-} from './dataGridTemporal';
+} from './dataGrid/dataGridTemporal';
 import {
     coerceJsonEditorValueForStorage,
     formatCellDisplayText,
@@ -73,7 +73,7 @@ import {
     normalizeDateTimeString,
     toEditableText,
     toFormText,
-} from './dataGridValue';
+} from './dataGrid/dataGridValue';
 import {
     buildEffectiveFilterConditions,
     normalizeQuickWhereCondition,
@@ -100,13 +100,13 @@ import {
     EditableContext,
     JAVANAVI_ROW_KEY,
     SortableHeaderCell,
-} from './dataGridCells';
-import { DataGridToolbar } from './dataGridToolbar';
-import { DataGridFilterPanel } from './dataGridFilterPanel';
-import type { GridFilterCondition, GridSortInfo } from './dataGridFilterTypes';
-import { DataGridFooterControls, type DataGridViewMode } from './dataGridFooterControls';
-import { DataGridPreviewPanel, type DataGridFocusedCellInfo } from './dataGridPreviewPanel';
-export { JAVANAVI_ROW_KEY } from './dataGridCells';
+} from './dataGrid/dataGridCells';
+import { DataGridToolbar } from './dataGrid/dataGridToolbar';
+import { DataGridFilterPanel } from './dataGrid/dataGridFilterPanel';
+import type { GridFilterCondition, GridSortInfo } from './dataGrid/dataGridFilterTypes';
+import { DataGridFooterControls, type DataGridViewMode } from './dataGrid/dataGridFooterControls';
+import { DataGridPreviewPanel, type DataGridFocusedCellInfo } from './dataGrid/dataGridPreviewPanel';
+export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
     const ranges = findDataGridTextRanges(text, query);

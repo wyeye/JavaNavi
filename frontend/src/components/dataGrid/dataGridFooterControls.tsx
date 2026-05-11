@@ -1,8 +1,8 @@
 import React from 'react';
 import { Button, Input, Pagination, Popover, Select, Segmented, Tooltip } from 'antd';
 import { EditOutlined, FileTextOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
-import { resolvePaginationTotalForControl } from '../utils/dataGridPagination';
-import type { DataGridFindNavigationDirection, DataGridFindSummary } from '../utils/dataGridFind';
+import { resolvePaginationTotalForControl } from '../../utils/dataGridPagination';
+import type { DataGridFindNavigationDirection, DataGridFindSummary } from '../../utils/dataGridFind';
 
 export type DataGridViewMode = 'table' | 'json' | 'text';
 
