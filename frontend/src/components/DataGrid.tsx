@@ -135,6 +135,15 @@ import {
     resolveDataGridCellContextMenuPosition,
     type DataGridCellContextMenuState,
 } from './dataGrid/dataGridCellContextMenu';
+import {
+    applyVirtualHorizontalOffset as applyVirtualHorizontalOffsetHelper,
+    isDataGridTableAreaTarget,
+    pickHorizontalScrollTargets,
+    pickVerticalScrollTarget,
+    pickVirtualHorizontalFallbackTargets,
+    readVirtualHorizontalOffset,
+    resolveHorizontalWheelDelta,
+} from './dataGrid/dataGridScrollSync';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 interface Item {
@@ -3263,64 +3272,9 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [enableInlineEditableCell, useContextMenuRow]);
   const tableOnRow = useMemo(() => (useContextMenuRow ? rowPropsFactory : undefined), [useContextMenuRow, rowPropsFactory]);
 
-  const resolveVirtualHorizontalElements = useCallback((tableContainer: HTMLElement) => {
-      const holderEl = tableContainer.querySelector('.ant-table-tbody-virtual-holder') as HTMLElement | null;
-      const innerEl = holderEl?.querySelector('.ant-table-tbody-virtual-holder-inner') as HTMLElement | null;
-      const headerEl = tableContainer.querySelector('.ant-table-header') as HTMLElement | null;
-      return { holderEl, innerEl, headerEl };
-  }, []);
-
-  const readVirtualHorizontalOffset = useCallback((tableContainer: HTMLElement): number => {
-      const { innerEl, headerEl } = resolveVirtualHorizontalElements(tableContainer);
-      const marginLeft = innerEl ? Math.abs(parseFloat(innerEl.style.marginLeft) || 0) : 0;
-      const headerLeft = headerEl ? Math.max(0, headerEl.scrollLeft) : 0;
-      return Math.max(marginLeft, headerLeft);
-  }, [resolveVirtualHorizontalElements]);
-
   const applyVirtualHorizontalOffset = useCallback((tableContainer: HTMLElement, nextOffset: number) => {
-      const { holderEl, innerEl } = resolveVirtualHorizontalElements(tableContainer);
-      if (!(holderEl instanceof HTMLElement) || !(innerEl instanceof HTMLElement)) {
-          return false;
-      }
-
-      const maxScroll = Math.max(0, tableScrollX - holderEl.clientWidth);
-      const clampedOffset = Math.max(0, Math.min(maxScroll, nextOffset));
-      const currentOffset = Math.abs(parseFloat(innerEl.style.marginLeft) || 0);
-      const deltaX = clampedOffset - currentOffset;
-      if (Math.abs(deltaX) < 0.5) return true;
-
-      // 通过合成 WheelEvent 驱动 rc-virtual-list 内部 offsetLeft state，
-      // 让 rc-table onInternalScroll 自动同步 header scrollLeft。
-      // 不直接操作 DOM marginLeft，避免 React re-render 覆盖。
-
-      holderEl.dispatchEvent(new WheelEvent('wheel', {
-          deltaX: deltaX,
-          deltaY: 0,
-          bubbles: true,
-          cancelable: true,
-      }));
-      return true;
-  }, [resolveVirtualHorizontalElements, tableScrollX]);
-
-  const pickHorizontalScrollTargets = useCallback((tableContainer: HTMLElement): HTMLElement[] => {
-      const virtualBody = tableContainer.querySelector('.ant-table-tbody-virtual-holder');
-      const body = tableContainer.querySelector('.ant-table-body');
-      const content = tableContainer.querySelector('.ant-table-content');
-      const virtualHolder = tableContainer.querySelector('.rc-virtual-list-holder');
-      const candidates = [virtualBody, virtualHolder, body, content].filter((node): node is HTMLElement => node instanceof HTMLElement);
-      if (candidates.length === 0) {
-          return [];
-      }
-      const active = candidates.find((target) => target.scrollWidth > target.clientWidth + 1) || candidates[0];
-      return active ? [active] : [];
-  }, []);
-
-  const pickVerticalScrollTarget = useCallback((tableContainer: HTMLElement): HTMLElement | null => {
-      const virtualHolder = tableContainer.querySelector('.ant-table-tbody-virtual-holder') as HTMLElement | null;
-      const rcVirtualHolder = tableContainer.querySelector('.rc-virtual-list-holder') as HTMLElement | null;
-      const body = tableContainer.querySelector('.ant-table-body') as HTMLElement | null;
-      return virtualHolder || rcVirtualHolder || body;
-  }, []);
+      return applyVirtualHorizontalOffsetHelper({ tableContainer, nextOffset, tableScrollX });
+  }, [tableScrollX]);
 
   const focusPageFindMatch = useCallback((match: DataGridFindMatch) => {
       if (!match) return;
@@ -3449,9 +3403,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               return;
           }
           // 空数据回退：virtual-holder 不存在时，直接滚动表头
-          const headerEl = tableContainer.querySelector('.ant-table-header') as HTMLElement | null;
-          const contentEl = tableContainer.querySelector('.ant-table-content') as HTMLElement | null;
-          const fallbackTargets = [headerEl, contentEl].filter((el): el is HTMLElement => el instanceof HTMLElement && el.scrollWidth > el.clientWidth + 1);
+          const fallbackTargets = pickVirtualHorizontalFallbackTargets(tableContainer);
           if (fallbackTargets.length > 0) {
               fallbackTargets.forEach((target) => {
                   target.scrollLeft = externalScroll.scrollLeft;
@@ -3513,33 +3465,14 @@ const DataGrid: React.FC<DataGridProps> = ({
       const container = tableContainerRef.current;
       if (!(container instanceof HTMLElement)) return;
 
-      const resolveHorizontalDelta = (event: WheelEvent) => {
-          if (Math.abs(event.deltaX) > 0.5) {
-              return event.deltaX;
-          }
-          if (event.shiftKey && Math.abs(event.deltaY) > 0.5) {
-              return event.deltaY;
-          }
-          return 0;
-      };
-
-      const isTableDataAreaTarget = (target: EventTarget | null) => {
-          const element = target instanceof HTMLElement ? target : null;
-          if (!element) return false;
-          // 排除外部滚动条与工具栏，其余容器内元素一律视为数据区域
-          if (element.closest('.data-grid-external-horizontal-scroll')) return false;
-          if (element.closest('.data-grid-toolbar')) return false;
-          return true;
-      };
-
       const handleContainerHorizontalWheel = (event: WheelEvent) => {
           // applyVirtualHorizontalOffset 分发的合成 WheelEvent（isTrusted=false）
           // 需要传播到 rc-virtual-list 的内部 handler，此处不拦截。
           if (!event.isTrusted) return;
 
-          const horizontalDelta = resolveHorizontalDelta(event);
+          const horizontalDelta = resolveHorizontalWheelDelta(event);
           if (!Number.isFinite(horizontalDelta) || Math.abs(horizontalDelta) < 0.5) return;
-          if (!isTableDataAreaTarget(event.target)) return;
+          if (!isDataGridTableAreaTarget(event.target)) return;
 
           if (enableVirtual) {
               event.preventDefault();
@@ -3549,9 +3482,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               // 空数据回退：virtual-holder 不存在时，手动滚动表头
               const virtualHolder = container.querySelector('.ant-table-tbody-virtual-holder') as HTMLElement | null;
               if (!virtualHolder) {
-                  const headerEl = container.querySelector('.ant-table-header') as HTMLElement | null;
-                  const contentEl = container.querySelector('.ant-table-content') as HTMLElement | null;
-                  const fallbackTargets = [headerEl, contentEl].filter((el): el is HTMLElement => el instanceof HTMLElement && el.scrollWidth > el.clientWidth + 1);
+                  const fallbackTargets = pickVirtualHorizontalFallbackTargets(container);
                   if (fallbackTargets.length > 0) {
                       fallbackTargets.forEach((target) => {
                           const max = Math.max(0, target.scrollWidth - target.clientWidth);
