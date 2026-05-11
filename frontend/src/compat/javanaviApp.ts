@@ -362,6 +362,11 @@ export async function DBGetTables(arg1: connection.ConnectionConfig, arg2: strin
   return apiEnvelopeToTableResult(payload, arg1);
 }
 
+export async function DBGetSchemaObjects(arg1: connection.ConnectionConfig, arg2: string): Promise<connection.QueryResult> {
+  const payload = await postJson('/schema/objects', { connection: toConnectionPayload(arg1), database: arg2 });
+  return apiEnvelopeToTableResult(payload, arg1);
+}
+
 export async function DBGetTriggers(arg1:connection.ConnectionConfig,arg2:string,arg3:string): Promise<connection.QueryResult> {
   const payload = await postJson('/schema/triggers', tableMetadataPayload(arg1, arg2, arg3));
   return apiEnvelopeToQueryResult(payload, 'Triggers loaded');

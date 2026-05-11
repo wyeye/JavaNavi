@@ -38,9 +38,9 @@ import { Tree, message, Dropdown, MenuProps, Input, Button, Modal, Form, Badge, 
 	} from '@ant-design/icons';
 import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
-	import { SavedConnection, ExternalSQLTreeEntry } from '../types';
+	import { SavedConnection, ExternalSQLTreeEntry, type TabData } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
   import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
@@ -85,6 +85,15 @@ type BatchTableExportMode = 'schema' | 'backup' | 'dataOnly';
 type BatchObjectType = 'table' | 'view';
 type BatchObjectFilterType = 'all' | BatchObjectType;
 type BatchSelectionScope = 'filtered' | 'all';
+type TableOverviewTabData = Extract<TabData, { type: 'table-overview' }> & { schemaName?: string };
+type SchemaObjectRow = Record<string, unknown> & {
+  Table?: unknown;
+  tableName?: unknown;
+  table?: unknown;
+  tableType?: unknown;
+  table_type?: unknown;
+  TABLE_TYPE?: unknown;
+};
 
 interface BatchObjectItem {
   title: string;
@@ -93,6 +102,14 @@ interface BatchObjectItem {
   objectType: BatchObjectType;
   dataRef: any;
 }
+
+const schemaObjectName = (row: SchemaObjectRow): string => (
+  String(row.Table || row.tableName || row.table || Object.values(row)[0] || '').trim()
+);
+
+const isSchemaViewObject = (row: SchemaObjectRow): boolean => (
+  String(row.tableType || row.table_type || row.TABLE_TYPE || '').toUpperCase().includes('VIEW')
+);
 
 const SEARCH_SCOPE_OPTIONS: Array<{ value: SearchScope; labelKey: I18nKey }> = [
   { value: 'smart', labelKey: 'sidebar.searchScope.smart' },
@@ -757,18 +774,22 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	          ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
 	      };
 	      try {
-	          const res = await DBGetTables(buildRpcConnectionConfig(config) as any, conn.dbName);
+	          const res = await DBGetSchemaObjects(buildRpcConnectionConfig(config) as any, conn.dbName);
 	          if (res.success) {
 	            setConnectionStates(prev => ({ ...prev, [key as string]: 'success' }));
 
-                const tableRows: any[] = Array.isArray(res.data) ? res.data : [];
-                const baseTableRows = tableRows.filter((row: any) => !String(row?.tableType || row?.table_type || row?.TABLE_TYPE || '').toUpperCase().includes('VIEW'));
-	            const tableEntries = baseTableRows.map((row: any) => {
-	                const tableName = String(row?.Table || row?.tableName || row?.table || Object.values(row || {})[0] || '').trim();
+                const objectRows: SchemaObjectRow[] = Array.isArray(res.data) ? res.data : [];
+                const baseTableRows = objectRows.filter((row) => !isSchemaViewObject(row));
+	            const tableEntries = baseTableRows.map((row) => {
+	                const tableName = schemaObjectName(row);
 	                const parsed = splitQualifiedName(tableName);
 	                return { tableName, schemaName: parsed.schemaName || String(row?.schemaName || '').trim(), displayName: getSidebarTableDisplayName(conn, tableName), comment: String(row?.comment || row?.tableComment || '').trim() };
 	            });
 
+                const metadataViewRows = objectRows
+                    .filter(isSchemaViewObject)
+                    .map(schemaObjectName)
+                    .filter(Boolean);
 	            const [viewsResult, triggersResult, routinesResult] = await Promise.all([
 	                loadViews(conn, conn.dbName),
 	                loadDatabaseTriggers(conn, conn.dbName),
@@ -808,7 +829,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                     language,
                 }));
 
-            const viewRows: string[] = Array.isArray(viewsResult.views) ? viewsResult.views : [];
+            const viewRows: string[] = Array.from(new Set([
+                ...metadataViewRows,
+                ...(Array.isArray(viewsResult.views) ? viewsResult.views : []),
+            ]));
             const triggerRows: any[] = Array.isArray(triggersResult.triggers) ? triggersResult.triggers : [];
             const routineRows: any[] = Array.isArray(routinesResult.routines) ? routinesResult.routines : [];
 
@@ -1165,12 +1189,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               clickTimerRef.current = null;
               addTab({
                   id: `table-overview-${id}-${gDbName}${schemaName ? `-${schemaName}` : ''}`,
-                  title: t('sidebar.tree.tableOverview', { name: `${gDbName}${schemaName ? ` (${schemaName})` : ''}` }),
-                  type: 'table-overview' as any,
-                  connectionId: id,
-                  dbName: gDbName,
-                  schemaName,
-              } as any);
+	                  title: t('sidebar.tree.tableOverview', { name: `${gDbName}${schemaName ? ` (${schemaName})` : ''}` }),
+	                  type: 'table-overview',
+	                  connectionId: id,
+	                  dbName: gDbName,
+	                  schemaName,
+	              } as TableOverviewTabData);
           }, 250);
       }
   };
@@ -1464,7 +1488,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       };
 
       const [res, viewResult] = await Promise.all([
-          DBGetTables(buildRpcConnectionConfig(config) as any, dbName),
+          DBGetSchemaObjects(buildRpcConnectionConfig(config) as any, dbName),
           loadViews(conn, dbName).catch(() => ({ views: [], supported: false })),
       ]);
 
@@ -1473,13 +1497,20 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           return;
       }
 
-      const tableRows: any[] = Array.isArray(res.data) ? res.data : [];
-      const viewRows: string[] = Array.isArray(viewResult.views) ? viewResult.views : [];
-      const viewSet = new Set(viewRows.map((view: string) => view.toLowerCase()));
+      const objectRows: SchemaObjectRow[] = Array.isArray(res.data) ? res.data : [];
+      const metadataViewRows = objectRows
+          .filter(isSchemaViewObject)
+          .map(schemaObjectName)
+          .filter(Boolean);
+      const viewRows: string[] = Array.from(new Set([
+          ...metadataViewRows,
+          ...(Array.isArray(viewResult.views) ? viewResult.views : []),
+      ]));
 
-      const tableObjects: BatchObjectItem[] = tableRows
-          .map((row: any) => Object.values(row)[0] as string)
-          .filter((tableName: string) => !viewSet.has(tableName.toLowerCase()))
+      const tableObjects: BatchObjectItem[] = objectRows
+          .filter((row) => !isSchemaViewObject(row))
+          .map(schemaObjectName)
+          .filter(Boolean)
           .map((tableName: string) => ({
               title: getSidebarTableDisplayName(conn, tableName),
               key: `${conn.id}-${dbName}-table-${tableName}`,
