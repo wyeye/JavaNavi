@@ -904,21 +904,6 @@ export async function SaveLanguage(arg1:string): Promise<connection.QueryResult>
   return apiEnvelopeToQueryResult(await postJson('/app/language', { language: arg1 }), 'Language saved');
 }
 
-export async function SelectDriverDownloadDirectory(arg1:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/drivers/download-directory/select', { currentPath: arg1 });
-  return apiEnvelopeToQueryResult(payload, 'Driver download directory selected');
-}
-
-export async function SelectDriverPackageDirectory(arg1:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/drivers/package-directory/select', { currentPath: arg1 });
-  return apiEnvelopeToQueryResult(payload, 'Driver package directory selected');
-}
-
-export async function SelectDriverPackageFile(arg1:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/drivers/package-file/select', { currentPath: arg1 });
-  return apiEnvelopeToQueryResult(payload, 'Driver package file selected');
-}
-
 export async function SelectSQLDirectory(arg1:string): Promise<connection.QueryResult> {
   const payload = await postJson('/app/sql-directory/select', { currentPath: arg1 });
   return apiEnvelopeToQueryResult(payload, 'SQL workspace directory selected');

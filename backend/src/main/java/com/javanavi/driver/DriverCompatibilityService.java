@@ -286,44 +286,6 @@ public class DriverCompatibilityService {
         );
     }
 
-    public Map<String, Object> selectDownloadDirectory(String currentPath) {
-        return configureRuntimeDirectory(currentPath);
-    }
-
-    public Map<String, Object> selectPackageDirectory(String currentPath) {
-        Path base = resolveManagedDriverDirectory(currentPath).resolve("imports").normalize();
-        ensureDirectory(base);
-        return orderedMap(
-                "path", base.toString(),
-                "directory", base.toString(),
-                "workspaceRoot", defaultDriverDirectory.toString(),
-                "webManaged", true,
-                "browserUploadRequired", true,
-                "message", messages.message("drivers.importDirectoryManaged")
-        );
-    }
-
-    public Map<String, Object> selectPackageFile(String currentPath) {
-        Path directory = resolveManagedDriverDirectory(currentPath).resolve("imports").normalize();
-        ensureDirectory(directory);
-        Path placeholder = directory.resolve("driver-package-upload-placeholder.zip").normalize();
-        if (!Files.exists(placeholder)) {
-            try {
-                Files.writeString(placeholder, "JavaNavi managed browser-upload placeholder\n", StandardCharsets.UTF_8);
-            } catch (IOException error) {
-                throw new IllegalStateException(messages.message("drivers.placeholderWriteFailed"), error);
-            }
-        }
-        return orderedMap(
-                "path", placeholder.toString(),
-                "filePath", placeholder.toString(),
-                "workspaceRoot", defaultDriverDirectory.toString(),
-                "webManaged", true,
-                "browserUploadRequired", true,
-                "message", messages.message("drivers.uploadPlaceholder")
-        );
-    }
-
     public Map<String, Object> resolveDownloadDirectory(String directory) {
         Path resolved = resolveManagedDriverDirectory(directory);
         return orderedMap(

@@ -46,24 +46,9 @@ public class DriverCompatibilityController {
         return ApiEnvelope.ok(driverCompatibilityService.openDownloadDirectory(stringValue(input, "path", "directory")));
     }
 
-    @PostMapping("/download-directory/select")
-    public ApiEnvelope<Map<String, Object>> selectDownloadDirectory(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.selectDownloadDirectory(stringValue(input, "path", "directory", "currentPath")));
-    }
-
     @PostMapping("/download-directory/resolve")
     public ApiEnvelope<Map<String, Object>> resolveDownloadDirectory(@RequestBody(required = false) Map<String, Object> input) {
         return ApiEnvelope.ok(driverCompatibilityService.resolveDownloadDirectory(stringValue(input, "path", "directory")));
-    }
-
-    @PostMapping("/package-directory/select")
-    public ApiEnvelope<Map<String, Object>> selectPackageDirectory(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.selectPackageDirectory(stringValue(input, "path", "directory", "currentPath")));
-    }
-
-    @PostMapping("/package-file/select")
-    public ApiEnvelope<Map<String, Object>> selectPackageFile(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.selectPackageFile(stringValue(input, "path", "directory", "currentPath")));
     }
 
     @PostMapping("/repository/resolve")
