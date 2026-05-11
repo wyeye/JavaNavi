@@ -191,7 +191,7 @@ let sharedVisibleDbs: string[] = [];
 let sharedColumnsCacheData: Record<string, any[]> = {};
 
 type RunMode = 'all' | 'current' | 'selected';
-type RunSource = 'executionPlan';
+type RunSource = 'executionPlan' | 'reload' | 'query';
 type RunRequest = RunMode | { sql: string; source?: RunSource };
 
 const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isActive = true }) => {
@@ -1314,7 +1314,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           } catch {
               queryId = 'reload-' + Date.now();
           }
-          const res = await DBQueryMulti(buildRpcConnectionConfig(config) as any, currentDb, sql, queryId);
+          const res = await DBQueryMulti(buildRpcConnectionConfig(config) as any, currentDb, sql, queryId, 'reload');
           if (!res?.success) {
               message.error('刷新失败: ' + (res?.message || '未知错误'));
               return;
@@ -1461,7 +1461,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 }
                 setQueryId(queryId);
 
-                const res = await DBQueryWithCancel(rpcConfig, currentDb, executedSql, queryId);
+                const res = await DBQueryWithCancel(rpcConfig, currentDb, executedSql, queryId, runSource || 'query');
                 const duration = Date.now() - startTime;
                 addSqlLog({
                     id: `log-${Date.now()}-query-${idx + 1}`,
@@ -1567,7 +1567,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             }
             setQueryId(queryId);
 
-            const res = await DBQueryMulti(rpcConfig, currentDb, fullSQL, queryId);
+            const res = await DBQueryMulti(rpcConfig, currentDb, fullSQL, queryId, runSource || 'query');
             const duration = Date.now() - startTime;
 
             addSqlLog({

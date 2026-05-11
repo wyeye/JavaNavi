@@ -7,6 +7,14 @@ export type QueryResult = connection.QueryResult;
 
 const API_BASE = '/api/v1';
 
+type PostJsonOptions = {
+  requestSource?: string;
+};
+
+function requestSourceHeaders(source?: string): Record<string, string> {
+  if (!source) return {};
+  return { 'X-JavaNavi-Request-Source': source };
+}
 
 function currentAppLanguage(): AppLanguage {
   const runtimeLanguage = getRuntimeLanguage();
@@ -104,11 +112,11 @@ function tableMetadataPayload(config: any, database: string, table: string): Rec
   return { connection: toConnectionPayload(config), database, table };
 }
 
-async function postJson(path: string, body: unknown): Promise<any> {
+async function postJson(path: string, body: unknown, options: PostJsonOptions = {}): Promise<any> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(await localSessionHeaders()) },
+    headers: { 'Content-Type': 'application/json', ...(await localSessionHeaders()), ...requestSourceHeaders(options.requestSource) },
     body: JSON.stringify(body),
   });
   const payload = await response.json().catch(() => null);
@@ -378,7 +386,7 @@ export async function DBGetTriggers(arg1:connection.ConnectionConfig,arg2:string
 }
 
 export async function DBQuery(arg1: connection.ConnectionConfig, arg2: string, arg3: string): Promise<connection.QueryResult> {
-  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3 });
+  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3 }, { requestSource: 'query' });
   return apiEnvelopeToQueryResult(payload, 'Query executed');
 }
 
@@ -386,8 +394,8 @@ export async function DBQueryIsolated(arg1: connection.ConnectionConfig, arg2: s
   return DBQuery(arg1, arg2, arg3);
 }
 
-export async function DBQueryMulti(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string): Promise<connection.QueryResult> {
-  const payload = await postJson('/query/multi', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4 });
+export async function DBQueryMulti(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string, requestSource = 'query'): Promise<connection.QueryResult> {
+  const payload = await postJson('/query/multi', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4 }, { requestSource });
   const result = apiEnvelopeToQueryResult(payload, 'Query batch executed');
   if (result.success && !Array.isArray(result.data)) {
     result.data = [];
@@ -396,8 +404,8 @@ export async function DBQueryMulti(arg1: connection.ConnectionConfig, arg2: stri
   return result;
 }
 
-export async function DBQueryWithCancel(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string): Promise<connection.QueryResult> {
-  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4 });
+export async function DBQueryWithCancel(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string, requestSource = 'query'): Promise<connection.QueryResult> {
+  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4 }, { requestSource });
   const result = apiEnvelopeToQueryResult(payload, 'Query executed');
   result.queryId = result.queryId || arg4;
   return result;
@@ -532,7 +540,7 @@ export async function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:strin
     database: arg2,
     sql: arg3,
     queryId: arg4,
-  });
+  }, { requestSource: 'sql-file' });
   const result = apiEnvelopeToQueryResult(payload, 'SQL file executed');
   if (result.success && !Array.isArray(result.data)) {
     result.data = [];
