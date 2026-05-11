@@ -3149,6 +3149,12 @@ const DataGrid: React.FC<DataGridProps> = ({
       { key: 'html', label: 'HTML', onClick: () => handleExport('html') },
   ];
 
+  const formatColumnInfoLabel = useCallback((columnName: string): string => {
+      const normalizedName = String(columnName || '');
+      const comment = resolveColumnComment(normalizedName);
+      return comment ? `${normalizedName}（${comment}）` : normalizedName;
+  }, [resolveColumnComment]);
+
   const columnInfoSettingContent = (
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8, minWidth: 200, maxWidth: 300 }}>
           <div style={{ fontWeight: 600, fontSize: 13, color: darkMode ? '#ddd' : '#666' }}>显示设置</div>
@@ -3181,16 +3187,19 @@ const DataGrid: React.FC<DataGridProps> = ({
               allowClear
           />
           <div className="custom-scrollbar" style={{ maxHeight: 240, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {allOrderedColumnNames.filter(col => !columnSearchText || col.toLowerCase().includes(columnSearchText.toLowerCase())).map(col => (
-                  <Checkbox
-                      key={col}
-                      checked={!localHiddenColumns.includes(col)}
-                      onChange={(e) => toggleColumnVisibility(col, e.target.checked)}
-                      style={{ marginLeft: 0 }}
-                  >
-                      {col}
-                  </Checkbox>
-              ))}
+              {allOrderedColumnNames.filter(col => !columnSearchText || col.toLowerCase().includes(columnSearchText.toLowerCase())).map(col => {
+                  const label = formatColumnInfoLabel(col);
+                  return (
+                      <Checkbox
+                          key={col}
+                          checked={!localHiddenColumns.includes(col)}
+                          onChange={(e) => toggleColumnVisibility(col, e.target.checked)}
+                          style={{ marginLeft: 0 }}
+                      >
+                          {label}
+                      </Checkbox>
+                  );
+              })}
           </div>
 
           <div style={{ height: 1, backgroundColor: darkMode ? '#424242' : '#f0f0f0', margin: '4px 0' }} />
