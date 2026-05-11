@@ -2,11 +2,11 @@ import * as compatibilityApp from './compat/javanaviApp'
 import * as compatibilityAI from './compat/aiService'
 import * as compatibilityRuntime from './compat/runtime'
 
-if (typeof window !== 'undefined' && !(window as any).runtime) {
-    (window as any).runtime = compatibilityRuntime;
+if (typeof window !== 'undefined' && !window.runtime) {
+    window.runtime = compatibilityRuntime;
 }
 
-if (typeof window !== 'undefined' && !(window as any).go) {
+if (typeof window !== 'undefined' && !window.go) {
     const appBridge = {
         ...compatibilityApp,
         CheckUpdate: compatibilityApp.CheckForUpdates,
@@ -20,9 +20,9 @@ if (typeof window !== 'undefined' && !(window as any).go) {
         GetTables: compatibilityApp.DBGetTables,
         GetTableColumns: compatibilityApp.DBGetColumns,
         ExecuteQuery: compatibilityApp.DBQuery,
-    };
+    } satisfies JavaNaviAppBridge;
 
-    (window as any).go = {
+    window.go = {
         app: {
             App: appBridge,
         },

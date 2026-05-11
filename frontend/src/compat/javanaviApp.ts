@@ -39,7 +39,7 @@ function driverTypeOf(config: any): string {
 function browserMockConnectionPassword(config: any = {}): string | undefined {
   const id = config?.id || config?.connectionId;
   if (!id || typeof window === 'undefined') return undefined;
-  const resolver = (window as any).__javanaviBrowserSecrets?.getConnectionPassword;
+  const resolver = window.__javanaviBrowserSecrets?.getConnectionPassword;
   if (typeof resolver !== 'function') return undefined;
   const value = resolver(String(id));
   return typeof value === 'string' && value !== '' ? value : undefined;
