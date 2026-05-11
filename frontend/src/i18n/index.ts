@@ -363,6 +363,10 @@ export const enUS = {
   'backend.fallback.connectionsPackageExported': 'Connections package exported',
   'backend.fallback.emptyResponse': 'Empty response',
   'backend.fallback.requestFailed': 'Request failed',
+  'backend.fallback.internalServerError': 'Internal server error',
+  'backend.fallback.badRequest': 'Bad request',
+  'backend.fallback.forbidden': 'Access denied',
+  'backend.fallback.tooManyRequests': 'Too many requests. Please retry later.',
 
   // AI Chat
   'ai.welcome.greeting': 'Hi, I\'m JavaNavi AI',
@@ -1514,6 +1518,10 @@ const zhOverrides = {
   'backend.fallback.connectionsPackageExported': '连接包已导出',
   'backend.fallback.emptyResponse': '空响应',
   'backend.fallback.requestFailed': '请求失败',
+  'backend.fallback.internalServerError': '服务内部异常。',
+  'backend.fallback.badRequest': '请求无效。',
+  'backend.fallback.forbidden': '访问被拒绝。',
+  'backend.fallback.tooManyRequests': '请求过于频繁，请稍后再试。',
   'ai.chat.compressionConnecting': '⚙️ 对话内容过长，开始压缩记忆...',
   'ai.chat.compressionFailed': '❌ 记忆压缩失败，将尝试继续当前上下文...',
   'ai.chat.error': '❌ 错误：{message}',
@@ -1947,9 +1955,19 @@ export const translateBackendFallback = (language: AppLanguage, fallback: string
     'Connections package exported': 'backend.fallback.connectionsPackageExported',
     'Empty response': 'backend.fallback.emptyResponse',
     'Request failed': 'backend.fallback.requestFailed',
+    'Internal Server Error': 'backend.fallback.internalServerError',
+    'Bad Request': 'backend.fallback.badRequest',
+    'Forbidden': 'backend.fallback.forbidden',
+    'Too Many Requests': 'backend.fallback.tooManyRequests',
+    'Too many requests. Please retry later.': 'backend.fallback.tooManyRequests',
+    '请求过于频繁，请稍后再试。': 'backend.fallback.tooManyRequests',
   };
   const key = fallbackMap[normalized];
-  return key ? translate(language, key) : normalized;
+  if (key) return translate(language, key);
+  if (sanitizeLanguage(language) === 'zh' && !containsCjk(normalized)) {
+    return translate(language, 'backend.fallback.requestFailed');
+  }
+  return normalized;
 };
 
 

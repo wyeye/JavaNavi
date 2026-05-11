@@ -4,9 +4,14 @@
 
 import { localSessionHeaders } from './localSession';
 import { EventsEmit } from './runtime';
-import { currentLanguageHeaderValue, getRuntimeLanguage } from '../i18n';
+import { currentLanguageHeaderValue, getRuntimeLanguage, translateBackendFallback } from '../i18n';
 
 const API_BASE = '/api/v1';
+
+function localizeAIBackendMessage(message: unknown, fallbackMessage = 'JavaNavi AI request failed.'): string {
+  const raw = String(message || fallbackMessage || 'JavaNavi AI request failed.');
+  return translateBackendFallback(getRuntimeLanguage(), raw);
+}
 
 async function getJson(path: string): Promise<any> {
   const response = await fetch(`${API_BASE}${path}`, {
@@ -16,7 +21,7 @@ async function getJson(path: string): Promise<any> {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(payload?.error?.message || response.statusText || 'JavaNavi AI request failed.');
+    throw new Error(localizeAIBackendMessage(payload?.error?.message || response.statusText, 'JavaNavi AI request failed.'));
   }
   return payload;
 }
@@ -30,7 +35,7 @@ async function postJson(path: string, body: unknown): Promise<any> {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    throw new Error(payload?.error?.message || response.statusText || 'JavaNavi AI request failed.');
+    throw new Error(localizeAIBackendMessage(payload?.error?.message || response.statusText, 'JavaNavi AI request failed.'));
   }
   return payload;
 }
@@ -46,7 +51,7 @@ async function aiServiceHeaders(): Promise<Record<string, string>> {
 
 function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
   if (!payload || payload.success === false) {
-    throw new Error(payload?.error?.message || payload?.message || fallbackMessage);
+    throw new Error(localizeAIBackendMessage(payload?.error?.message || payload?.message, fallbackMessage));
   }
   return (payload.data ?? payload) as T;
 }

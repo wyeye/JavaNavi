@@ -60,4 +60,10 @@ public class GlobalApiExceptionHandler {
     public ApiEnvelope<Void> rateLimited(ApiRateLimitExceededException error) {
         return ApiEnvelope.failKey(messages, error.code(), error.args());
     }
+
+    @ExceptionHandler(Exception.class)
+    @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
+    public ApiEnvelope<Void> unexpected(Exception error) {
+        return ApiEnvelope.failKey(messages, "request.unexpected", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+    }
 }

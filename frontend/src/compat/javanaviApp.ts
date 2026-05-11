@@ -112,6 +112,11 @@ function tableMetadataPayload(config: any, database: string, table: string): Rec
   return { connection: toConnectionPayload(config), database, table };
 }
 
+function localizeBackendMessage(message: unknown, fallbackMessage = 'Request failed'): string {
+  const raw = String(message || fallbackMessage || 'Request failed');
+  return translateBackendFallback(currentAppLanguage(), raw);
+}
+
 async function postJson(path: string, body: unknown, options: PostJsonOptions = {}): Promise<any> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
@@ -121,7 +126,7 @@ async function postJson(path: string, body: unknown, options: PostJsonOptions = 
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    return { success: false, message: payload?.error?.message || response.statusText, data: null };
+    return { success: false, message: localizeBackendMessage(payload?.error?.message || response.statusText), data: null };
   }
   return payload;
 }
@@ -135,7 +140,7 @@ async function postMultipart(path: string, body: FormData): Promise<any> {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    return { success: false, message: payload?.error?.message || response.statusText, data: null };
+    return { success: false, message: localizeBackendMessage(payload?.error?.message || response.statusText), data: null };
   }
   return payload;
 }
@@ -148,7 +153,7 @@ async function getJson(path: string): Promise<any> {
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
-    return { success: false, message: payload?.error?.message || response.statusText, data: null };
+    return { success: false, message: localizeBackendMessage(payload?.error?.message || response.statusText), data: null };
   }
   return payload;
 }
@@ -176,7 +181,7 @@ async function replayEventFixture(
 
 function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
   if (!payload || payload.success === false) {
-    throw new Error(payload?.error?.message || payload?.message || fallbackMessage);
+    throw new Error(localizeBackendMessage(payload?.error?.message || payload?.message, fallbackMessage));
   }
   return (payload.data ?? payload) as T;
 }
@@ -231,7 +236,7 @@ function apiEnvelopeToQueryResult(payload: any, fallbackMessage = 'OK'): QueryRe
   const language = currentAppLanguage();
   const localizedFallback = translateBackendFallback(language, fallbackMessage);
   if (!payload) return { success: false, message: translateBackendFallback(language, 'Empty response'), data: null } as QueryResult;
-  if (payload.success === false) return { success: false, message: payload.error?.message || payload.message || translateBackendFallback(language, 'Request failed'), data: payload.data ?? null } as QueryResult;
+  if (payload.success === false) return { success: false, message: localizeBackendMessage(payload.error?.message || payload.message, 'Request failed'), data: payload.data ?? null } as QueryResult;
   const data = payload.data ?? payload;
   const fields = Array.isArray(data?.columns) ? data.columns : undefined;
   const revealFields = {
@@ -455,14 +460,14 @@ export async function SchemaSyncCancel(jobId: string): Promise<Record<string, an
 export async function CloseConnection(arg1:string): Promise<void> {
   const payload = await postJson('/connections/close', { connectionId: arg1 });
   if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to close JavaNavi connection pool.');
+    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to close JavaNavi connection pool.'));
   }
 }
 
 export async function DeleteConnection(arg1:string): Promise<void> {
   const payload = await postJson('/connections/saved/delete', { connectionId: arg1 });
   if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to delete JavaNavi saved connection.');
+    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to delete JavaNavi saved connection.'));
   }
 }
 
@@ -528,7 +533,7 @@ export async function DropView(arg1:connection.ConnectionConfig,arg2:string,arg3
 export async function DuplicateConnection(arg1:string): Promise<connection.SavedConnectionView> {
   const payload = await postJson('/connections/saved/duplicate', { connectionId: arg1 });
   if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to duplicate JavaNavi connection.');
+    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to duplicate JavaNavi connection.'));
   }
   return payload.data as connection.SavedConnectionView;
 }
@@ -622,7 +627,7 @@ export async function GetLanguage(): Promise<connection.QueryResult> {
 export async function GetSavedConnections(): Promise<Array<connection.SavedConnectionView>> {
   const payload = await postJson('/connections/saved/list', {});
   if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to load JavaNavi saved connections.');
+    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to load JavaNavi saved connections.'));
   }
   return Array.isArray(payload?.data) ? payload.data : [];
 }
@@ -638,7 +643,7 @@ export async function ImportConnectionsPayload(arg1:string,arg2:string): Promise
     password: arg2 || '',
   });
   if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to import JavaNavi saved connections.');
+    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to import JavaNavi saved connections.'));
   }
   return Array.isArray(payload?.data) ? payload.data : [];
 }
@@ -689,7 +694,7 @@ export async function ListSQLDirectory(arg1:string): Promise<connection.QueryRes
 export async function LogWindowDiagnostic(arg1: string, arg2: string): Promise<void> {
   const payload = await postJson('/app/diagnostics/window', { stage: arg1, payload: arg2 });
   if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to log JavaNavi window diagnostic.');
+    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to log JavaNavi window diagnostic.'));
   }
 }
 
@@ -932,7 +937,7 @@ export async function ResolveDriverRepositoryURL(arg1:string): Promise<connectio
 export async function SaveConnection(arg1:connection.SavedConnectionInput): Promise<connection.SavedConnectionView> {
   const payload = await postJson('/connections/saved/save', arg1);
   if (payload?.success === false) {
-    throw new Error(payload?.error?.message || 'Failed to save JavaNavi connection.');
+    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to save JavaNavi connection.'));
   }
   return payload.data as connection.SavedConnectionView;
 }

@@ -16,6 +16,8 @@ public class I18nMessages {
         put("request.notFound", "Requested API endpoint was not found.", "请求的 API 不存在。");
         put("request.nullPointer", "Internal server error.", "服务内部异常。");
         put("request.rateLimited", "Too many requests. Please retry later.", "请求过于频繁，请稍后再试。");
+        put("request.unexpected", "Request failed: {message}", "请求处理失败：{message}");
+        put("backend.untranslatedError", "Operation failed.", "操作失败，请查看后端日志。");
         put("app.state", "Application state error: {message}", "应用状态异常：{message}");
         put("app.browserNativeUnavailable", "JavaNavi Web cannot open an OS directory picker from the backend package.", "JavaNavi Web 后端包无法打开系统目录选择器。");
         put("app.restartRequiredUnsupported", "Changing the JavaNavi Web data directory at runtime is not supported; set JAVANAVI_DATA_DIR before startup.", "JavaNavi Web 暂不支持运行时切换数据目录；请在启动前设置 JAVANAVI_DATA_DIR。");
@@ -215,6 +217,66 @@ public class I18nMessages {
                 Map.entry("Too many requests for /api/v1/query", "request.rateLimited"),
                 Map.entry("Too many requests for /api/v1/query/multi", "request.rateLimited"),
                 Map.entry("request.rateLimited", "request.rateLimited"),
+                Map.entry("Internal Server Error", "request.nullPointer"),
+                Map.entry("AI provider payload is required.", "request.invalid"),
+                Map.entry("AI provider endpoint is required.", "request.invalid"),
+                Map.entry("AI provider endpoint must use http or https.", "request.invalid"),
+                Map.entry("AI provider endpoint host is required.", "request.invalid"),
+                Map.entry("AI provider/session id is required.", "request.invalid"),
+                Map.entry("Unable to read JavaNavi AI state.", "app.state"),
+                Map.entry("Unable to write JavaNavi AI state.", "app.state"),
+                Map.entry("Unable to write JavaNavi app state.", "app.state"),
+                Map.entry("Unable to read JavaNavi app state.", "app.state"),
+                Map.entry("Unable to write JavaNavi diagnostic log.", "app.state"),
+                Map.entry("Unable to export JavaNavi connections package.", "app.state"),
+                Map.entry("Unable to derive JavaNavi connection package app key.", "app.state"),
+                Map.entry("Unable to read JavaNavi saved connections.", "app.state"),
+                Map.entry("Unable to write JavaNavi saved connections.", "app.state"),
+                Map.entry("Please upload a non-empty SQL file.", "request.invalid"),
+                Map.entry("Selected path does not exist in the JavaNavi managed SQL workspace.", "request.invalid"),
+                Map.entry("Selected path is not a SQL file in the JavaNavi managed workspace.", "request.invalid"),
+                Map.entry("Selected path is a directory, not a SQL file.", "request.invalid"),
+                Map.entry("SQL workspace path must not be empty.", "request.invalid"),
+                Map.entry("SQL file names must not contain path separators.", "request.invalid"),
+                Map.entry("Workspace name must not be empty.", "request.invalid"),
+                Map.entry("Workspace names must not contain path separators.", "request.invalid"),
+                Map.entry("Connection payload is required.", "request.invalid"),
+                Map.entry("Connection package item is required.", "request.invalid"),
+                Map.entry("Connection id is required.", "request.invalid"),
+                Map.entry("At least one table is required.", "request.invalid"),
+                Map.entry("New database name must differ from the old database name.", "request.invalid"),
+                Map.entry("Function signature must end with ')'.", "request.invalid"),
+                Map.entry("Function signature contains unsupported SQL control characters.", "request.invalid"),
+                Map.entry("MongoDB compatibility service is not available.", "mongodb.configRequired"),
+                Map.entry("Demo/H2 connection is not available in this service context.", "connection.demoOnly"),
+                Map.entry("Managed JDBC pools are currently available for mysql-compatible, postgresql-compatible, sqlite, and duckdb runtime profiles.", "connection.compatProfiles"),
+                Map.entry("SHA-256 is required for JavaNavi pool fingerprints.", "app.state"),
+                Map.entry("Resolved JDBC driver artifact path escaped the install directory.", "drivers.workspacePathManaged"),
+                Map.entry("Resolved custom JDBC driver artifact path escaped the install directory.", "drivers.workspacePathManaged"),
+                Map.entry("Custom JDBC driver directory escaped the managed driver root.", "drivers.workspacePathManaged"),
+                Map.entry("Unable to list custom JDBC driver definitions.", "drivers.readMetadataFailed"),
+                Map.entry("Unable to inspect installed JDBC driver versions.", "drivers.readMetadataFailed"),
+                Map.entry("Unable to read JDBC driver package metadata.", "drivers.readMetadataFailed"),
+                Map.entry("Unable to write JDBC driver package metadata.", "drivers.writeMetadataFailed"),
+                Map.entry("Unable to read JDBC driver runtime settings.", "drivers.readDefaultsFailed"),
+                Map.entry("Unable to write JDBC driver runtime settings.", "drivers.writeDefaultsFailed"),
+                Map.entry("Driver version is required.", "drivers.versionRequiredBeforeUpload"),
+                Map.entry("orderedMap requires key/value pairs", "request.invalid"),
+                Map.entry("Unsupported compatibility event fixture family", "events.invalidFixture"),
+                Map.entry("Upload a non-empty CSV or JSON import file.", "files.invalidRequest"),
+                Map.entry("Only CSV and JSON import files are supported.", "files.invalidRequest"),
+                Map.entry("Import files must stay inside the JavaNavi managed import workspace.", "files.invalidRequest"),
+                Map.entry("Import file does not exist in the JavaNavi managed workspace.", "files.invalidRequest"),
+                Map.entry("File workflow path must stay inside the JavaNavi managed workspace.", "files.invalidRequest"),
+                Map.entry("MongoDB command cannot be empty.", "request.invalid"),
+                Map.entry("MongoDB command must be a JSON object or supported SELECT statement.", "request.invalid"),
+                Map.entry("MongoDB OP_MSG body is too short.", "request.invalid"),
+                Map.entry("Only MongoDB OP_MSG body section kind 0 is supported.", "request.invalid"),
+                Map.entry("Unterminated BSON cstring.", "request.invalid"),
+                Map.entry("Secret key must not be blank.", "request.invalid"),
+                Map.entry("Secret store format is not recognized.", "app.state"),
+                Map.entry("SHA-256 digest is required for JavaNavi session fingerprints", "app.state"),
+                Map.entry("Data sync only supports relational databases. Redis and MongoDB are not supported here.", "request.invalid"),
                 Map.entry("MongoDB connection config is required.", "mongodb.configRequired"),
                 Map.entry("JavaNavi skipped MongoDB network probing for documentation/example host.", "mongodb.skipExampleHost"),
                 Map.entry("JavaNavi currently wires JDBC drivers for bundled relational, file, analytics, time-series, and custom DSN runtime profiles.", "connection.jdbcProfiles"),
@@ -319,6 +381,64 @@ public class I18nMessages {
         if (normalized.contains("ApiRateLimitExceededException") || normalized.contains("Too many requests")) {
             return message("request.rateLimited");
         }
+        if (normalized.startsWith("Provider returned HTTP")) {
+            return message("request.invalid", "message", message("backend.untranslatedError"));
+        }
+        if (normalized.startsWith("AI provider endpoint targets a local or private network host")) {
+            return message("request.invalid", "message", message("backend.untranslatedError"));
+        }
+        if (normalized.contains("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.")) {
+            return message("request.invalid", "message", "SQL 工作区路径必须位于 JavaNavi 管理的 SQL 工作区内。");
+        }
+        if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi app state")) {
+            return message("app.state", "message", "无法读写 JavaNavi 应用状态。");
+        }
+        if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi SQL workspace")) {
+            return message("app.state", "message", "无法访问 JavaNavi SQL 工作区。");
+        }
+        if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi import")) {
+            return message("files.state", "message", "无法处理 JavaNavi 导入文件。");
+        }
+        if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi export")) {
+            return message("files.state", "message", "无法处理 JavaNavi 导出文件。");
+        }
+        if (normalized.startsWith("Data sync ") || normalized.startsWith("Full overwrite data sync") || normalized.startsWith("Source table has no readable columns:")) {
+            return message("request.invalid", "message", "数据同步请求无效。");
+        }
+        if (normalized.startsWith("Unsupported DDL operation:")) {
+            return message("request.invalid", "message", "不支持的 DDL 操作。");
+        }
+        if (normalized.startsWith("File databases do not support") || normalized.startsWith("MySQL/MariaDB-compatible JDBC does not support") || normalized.startsWith("Current PostgreSQL connection") || normalized.startsWith("Current driver does not support")) {
+            return message("request.invalid", "message", "当前数据源不支持该数据库操作。");
+        }
+        if (normalized.startsWith("No PostgreSQL metadata columns found for table:") || normalized.startsWith("No metadata columns found for table:")) {
+            String table = normalized.substring(normalized.lastIndexOf(':') + 1).trim();
+            return message("request.invalid", "message", "未读取到表字段元数据：" + table);
+        }
+        if (normalized.startsWith("Schema metadata") && normalized.endsWith("is required.")) {
+            return message("request.invalid", "message", "结构元数据不能为空。");
+        }
+        if (normalized.startsWith("Local JDBC driver package path does not exist:")) {
+            return message("drivers.invalidRequest", "message", "本地 JDBC 驱动包路径不存在。");
+        }
+        if (normalized.startsWith("No JDBC jar files found")) {
+            return message("drivers.invalidRequest", "message", "未找到 JDBC Jar 文件。");
+        }
+        if (normalized.startsWith("Unable to copy") || normalized.startsWith("Unable to load JDBC driver") || normalized.startsWith("Unable to download JDBC driver") || normalized.startsWith("Interrupted while downloading JDBC driver") || normalized.startsWith("HTTP ")) {
+            return message("drivers.state", "message", message("backend.untranslatedError"));
+        }
+        if (normalized.startsWith("Invalid custom JDBC driver type:") || normalized.startsWith("Invalid Maven JDBC driver version:")) {
+            return message("drivers.invalidRequest", "message", message("backend.untranslatedError"));
+        }
+        if (normalized.startsWith("MongoDB command returned") || normalized.startsWith("MongoDB command failed:")) {
+            return message("request.invalid", "message", "MongoDB 命令执行失败。");
+        }
+        if (normalized.startsWith("Invalid BSON") || normalized.startsWith("Unsupported BSON") || normalized.startsWith("MongoDB response") || normalized.startsWith("Unsupported MongoDB wire opcode:")) {
+            return message("request.invalid", "message", "MongoDB 响应格式无效。");
+        }
+        if (normalized.startsWith("MongoDB ") && normalized.endsWith(" is required.")) {
+            return message("request.invalid", "message", "MongoDB 必填字段不能为空。");
+        }
         if (normalized.startsWith("不支持的 Redis 数据类型:")) {
             return message("redis.unsupportedType", "type", normalized.substring("不支持的 Redis 数据类型:".length()).trim());
         }
@@ -390,7 +510,14 @@ public class I18nMessages {
         if (normalized.startsWith("Export completed, but the exported file location could not be opened automatically. Copy the file path manually:")) {
             return message("files.revealExportFailed", "path", normalized.substring("Export completed, but the exported file location could not be opened automatically. Copy the file path manually:".length()).trim(), "suffix", "");
         }
+        if (I18nContext.language() == AppLanguage.ZH && !containsCjk(normalized)) {
+            return message("backend.untranslatedError");
+        }
         return normalized;
+    }
+
+    private boolean containsCjk(String value) {
+        return value != null && value.codePoints().anyMatch(codePoint -> codePoint >= 0x4E00 && codePoint <= 0x9FFF);
     }
 
     private void put(String code, String enMessage, String zhMessage) {
