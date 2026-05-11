@@ -39,6 +39,7 @@ try {
   const shortcuts = await transpileToModule('src/utils/shortcuts.ts', 'shortcuts.mjs');
   const aiProviderPresets = await transpileToModule('src/utils/aiProviderPresets.ts', 'aiProviderPresets.mjs');
   const providerSecretDraft = await transpileToModule('src/utils/providerSecretDraft.ts', 'providerSecretDraft.mjs');
+  const dataModificationRisk = await transpileToModule('src/utils/dataModificationRisk.ts', 'dataModificationRisk.mjs');
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
@@ -277,6 +278,64 @@ try {
     }),
     { mode: 'replace', apiKey: 'replacement-secret', hasSecret: true },
     'typed replacement API key should win after stale clear intent is suppressed',
+  );
+
+  const gridRisk = dataModificationRisk.buildDataGridModificationRiskSummary({
+    tableName: 'users',
+    dbName: 'crm',
+    inserts: [{ id: 3 }],
+    updates: [{ id: 1 }],
+    deletes: [{ id: 2 }, { id: 4 }],
+  });
+  assert.equal(gridRisk.level, 'high');
+  assert.equal(gridRisk.requiresExplicitConfirm, true);
+  assert.equal(gridRisk.shortText, '新增 1，更新 1，删除 2');
+  assert.equal(
+    gridRisk.lines.some((line) => line.includes('DELETE 2 rows')),
+    true,
+    'table edit risk summary should expose delete count',
+  );
+
+  const syncRisk = dataModificationRisk.buildDataSyncExecutionRiskSummary({
+    syncMode: 'full_overwrite',
+    syncContent: 'both',
+    targetDatabase: 'target_db',
+    diffTables: [
+      { table: 'users', canSync: true, inserts: 10, updates: 2, deletes: 4, schemaDiffCount: 1, warnings: ['type changed'] },
+      { table: 'orders', canSync: true, inserts: 5, updates: 0, deletes: 0, schemaDiffCount: 0 },
+    ],
+    tableOptions: {
+      users: { insert: true, update: true, delete: true, selectedDeletePks: ['1', '2'] },
+      orders: { insert: false, update: true, delete: false },
+    },
+  });
+  assert.equal(syncRisk.level, 'high');
+  assert.equal(syncRisk.requiresExplicitConfirm, true);
+  assert.equal(syncRisk.shortText, '插入 10，更新 2，删除 2，结构 1');
+  assert.equal(
+    syncRisk.lines.some((line) => line.includes('Full overwrite')),
+    true,
+    'full overwrite risk summary should be explicit',
+  );
+
+  const schemaRisk = dataModificationRisk.buildSchemaSyncExecutionRiskSummary({
+    targetDatabase: 'target_db',
+    selectedItemIds: ['users:column:name:alter', 'users:index:old:drop'],
+    schemaDiffTables: [{
+      table: 'users',
+      items: [
+        { id: 'users:column:name:alter', changeType: 'ALTER', objectType: 'COLUMN', objectName: 'name', supported: true },
+        { id: 'users:index:old:drop', changeType: 'DROP', objectType: 'INDEX', objectName: 'old_idx', requiresDeleteConfirm: true, supported: true },
+      ],
+    }],
+  });
+  assert.equal(schemaRisk.level, 'high');
+  assert.equal(schemaRisk.requiresExplicitConfirm, true);
+  assert.equal(schemaRisk.shortText, '结构变更 2 项，DROP 1 项');
+  assert.equal(
+    schemaRisk.lines.some((line) => line.includes('DROP 1')),
+    true,
+    'schema risk summary should expose DROP count',
   );
 
   const frontendFallback = customDataSources.createCustomDataSource({
