@@ -1,8 +1,11 @@
 import React, { useMemo } from 'react';
-import { Alert, Tag, Typography } from 'antd';
+import { Tag, Typography } from 'antd';
 import { analyzeExecutionPlanResult, type ExecutionPlanStep } from '../utils/executionPlanPresentation';
 
 const { Text } = Typography;
+
+const EXECUTION_PLAN_SUMMARY_MAX_HEIGHT = 112;
+const ORIGINAL_RESULT_MIN_HEIGHT = 380;
 
 type ExecutionPlanResultViewProps = {
   rows: Array<Record<string, unknown>>;
@@ -20,9 +23,9 @@ const formatNumber = (value: number | null | undefined): string => {
 const metricStyle = (darkMode: boolean): React.CSSProperties => ({
   border: `1px solid ${darkMode ? 'rgba(255,255,255,0.10)' : '#e5e7eb'}`,
   borderRadius: 10,
-  padding: '10px 12px',
+  padding: '8px 10px',
   background: darkMode ? 'rgba(255,255,255,0.04)' : '#ffffff',
-  minWidth: 120,
+  minWidth: 110,
 });
 
 const fieldStyle: React.CSSProperties = {
@@ -107,23 +110,23 @@ const ExecutionPlanResultView: React.FC<ExecutionPlanResultViewProps> = ({ rows,
   const hasWarnings = plan.summary.warningCount > 0;
 
   return (
-    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 10, padding: 10 }}>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(130px, 1fr))', gap: 8 }}>
+    <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 8, padding: 8 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 6 }}>
         <div style={metricStyle(darkMode)}>
           <Text type="secondary" style={{ fontSize: 12 }}>计划行数</Text>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>{formatNumber(plan.summary.totalRows)}</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>{formatNumber(plan.summary.totalRows)}</div>
         </div>
         <div style={metricStyle(darkMode)}>
           <Text type="secondary" style={{ fontSize: 12 }}>全表扫描</Text>
-          <div style={{ fontSize: 20, fontWeight: 600, color: plan.summary.fullScanCount > 0 ? '#ff4d4f' : '#52c41a' }}>{formatNumber(plan.summary.fullScanCount)}</div>
+          <div style={{ fontSize: 18, fontWeight: 600, color: plan.summary.fullScanCount > 0 ? '#ff4d4f' : '#52c41a' }}>{formatNumber(plan.summary.fullScanCount)}</div>
         </div>
         <div style={metricStyle(darkMode)}>
           <Text type="secondary" style={{ fontSize: 12 }}>索引命中</Text>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>{formatNumber(plan.summary.indexUsageCount)}</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>{formatNumber(plan.summary.indexUsageCount)}</div>
         </div>
         <div style={metricStyle(darkMode)}>
           <Text type="secondary" style={{ fontSize: 12 }}>预估扫描行数</Text>
-          <div style={{ fontSize: 20, fontWeight: 600 }}>{formatNumber(plan.summary.estimatedRows)}</div>
+          <div style={{ fontSize: 18, fontWeight: 600 }}>{formatNumber(plan.summary.estimatedRows)}</div>
         </div>
       </div>
 
@@ -135,15 +138,13 @@ const ExecutionPlanResultView: React.FC<ExecutionPlanResultViewProps> = ({ rows,
       </div>
 
       {hasWarnings && (
-        <Alert
-          type="warning"
-          showIcon
-          message={`发现 ${plan.summary.warningCount} 个可关注点`}
-          description="重点查看全表扫描、临时表、文件排序和未使用候选索引。"
-        />
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', fontSize: 12, color: darkMode ? '#fbbf24' : '#b45309' }}>
+          <span>可关注点：{plan.summary.warningCount}</span>
+          <span>重点查看全表扫描、临时表、文件排序和未使用候选索引。</span>
+        </div>
       )}
 
-      <div style={{ flex: '0 1 42%', minHeight: 150, overflow: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+      <div style={{ flex: '0 0 auto', maxHeight: EXECUTION_PLAN_SUMMARY_MAX_HEIGHT, minHeight: 96, overflowY: 'auto', overflowX: 'hidden', display: 'flex', flexDirection: 'column', gap: 8 }}>
         {plan.isStructured ? (
           plan.steps.map((step) => <ExecutionPlanStepCard key={`${step.stepNo}-${step.tableName}`} step={step} darkMode={darkMode} />)
         ) : (
@@ -151,7 +152,7 @@ const ExecutionPlanResultView: React.FC<ExecutionPlanResultViewProps> = ({ rows,
         )}
       </div>
 
-      <div style={{ flex: '1 1 0', minHeight: 210, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <div style={{ flex: '1 1 auto', minHeight: ORIGINAL_RESULT_MIN_HEIGHT, overflow: 'hidden', display: 'flex', flexDirection: 'column', gap: 6 }}>
         <Text type="secondary" style={{ fontSize: 12 }}>原始结果</Text>
         <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
           {children}
