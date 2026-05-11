@@ -228,6 +228,9 @@ const DataGrid: React.FC<DataGridProps> = ({
   const setTableHiddenColumns = useStore(state => state.setTableHiddenColumns);
   const setEnableHiddenColumnMemory = useStore(state => state.setEnableHiddenColumnMemory);
   const clearTableHiddenColumns = useStore(state => state.clearTableHiddenColumns);
+  const tableColumnWidths = useStore(state => state.tableColumnWidths);
+  const setTableColumnWidths = useStore(state => state.setTableColumnWidths);
+  const clearTableColumnWidths = useStore(state => state.clearTableColumnWidths);
   
   const isMacLike = useMemo(() => isMacLikePlatform(), []);
   const darkMode = theme === 'dark';
@@ -571,6 +574,29 @@ const DataGrid: React.FC<DataGridProps> = ({
   const columnMetaSeqRef = useRef(0);
   const uniqueKeyGroupsCacheRef = useRef<Record<string, string[][]>>({});
   const uniqueKeyGroupsSeqRef = useRef(0);
+  const tableColumnMemoryKey = useMemo(() => {
+      if (!connectionId || !dbName || !tableName) return '';
+      return `${connectionId}-${dbName}-${tableName}`;
+  }, [connectionId, dbName, tableName]);
+
+  useEffect(() => {
+      if (!tableColumnMemoryKey) {
+          setColumnWidths({});
+          return;
+      }
+      const storedWidths = tableColumnWidths[tableColumnMemoryKey];
+      setColumnWidths(storedWidths && typeof storedWidths === 'object' ? storedWidths : {});
+  }, [tableColumnMemoryKey, tableColumnWidths]);
+
+  const persistTableColumnWidth = useCallback((key: string, width: number) => {
+      setColumnWidths((prev) => {
+          const next = { ...prev, [key]: width };
+          if (connectionId && dbName && tableName) {
+              setTableColumnWidths(connectionId, dbName, tableName, next);
+          }
+          return next;
+      });
+  }, [connectionId, dbName, tableName, setTableColumnWidths]);
 
   useEffect(() => {
       const ext = sortInfoExternal || [];
@@ -1736,13 +1762,14 @@ const DataGrid: React.FC<DataGridProps> = ({
           maxWidth: Math.max(720, Math.floor(containerWidth * 0.85)),
       });
 
-      setColumnWidths((prev) => ({ ...prev, [key]: nextWidth }));
+      persistTableColumnWidth(key, nextWidth);
   }, [
       buildAutoFitMeasurer,
       columnMetaMap,
       columnMetaMapByLowerName,
       columnWidths,
       dataTableColumnWidthMode,
+      persistTableColumnWidth,
       showColumnComment,
       showColumnType,
   ]);
@@ -1763,8 +1790,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       const deltaX = e.clientX - startX;
       const newWidth = Math.max(50, startWidth + deltaX);
 
-      // Commit State
-      setColumnWidths(prev => ({ ...prev, [key]: newWidth }));
+      persistTableColumnWidth(key, newWidth);
 
       // Cleanup
       if (resizeRafRef.current !== null) {
@@ -1783,7 +1809,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       setTimeout(() => {
           isResizingRef.current = false;
       }, 100);
-  }, []);
+  }, [handleResizeMove, persistTableColumnWidth]);
 
   const handleCellSave = useCallback((row: any) => {
       const rowKey = row?.[JAVANAVI_ROW_KEY];
@@ -3246,6 +3272,20 @@ const DataGrid: React.FC<DataGridProps> = ({
                   重置隐藏
               </Button>
           </div>
+          <Button
+              size="small"
+              danger
+              disabled={!connectionId || !dbName || !tableName || !tableColumnWidths[`${connectionId}-${dbName}-${tableName}`]}
+              onClick={() => {
+                  if (connectionId && dbName && tableName) {
+                      clearTableColumnWidths(connectionId, dbName, tableName);
+                      setColumnWidths({});
+                      void message.success('已恢复默认列宽');
+                  }
+              }}
+          >
+              重置列宽
+          </Button>
       </div>
   );
 
