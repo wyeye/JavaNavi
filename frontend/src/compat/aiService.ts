@@ -1,9 +1,7 @@
 // JavaNavi AI service compatibility adapter.
-// Provider/session/settings state is stored by the Java backend; streaming keeps
-// the existing compatibility event fixture until outbound provider transport lands.
+// Provider/session/settings state is stored by the Java backend; stream failures surface as real errors.
 
 import { localSessionHeaders } from './localSession';
-import { EventsEmit } from './runtime';
 import { currentLanguageHeaderValue, getRuntimeLanguage, translateBackendFallback } from '../i18n';
 
 const API_BASE = '/api/v1';
@@ -56,21 +54,6 @@ function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
   return (payload.data ?? payload) as T;
 }
 
-async function replayAIEventFixture(sessionId: string): Promise<void> {
-  const payload = await postJson('/events/fixtures/replay', {
-    family: 'ai',
-    correlationId: sessionId,
-    eventName: `ai:stream:${sessionId}`,
-  });
-  dataOrThrow(payload, 'AI event fixture replay failed.');
-}
-
-function emitLocalAIEventFixture(sessionId: string): void {
-  const eventName = `ai:stream:${sessionId}`;
-  EventsEmit(eventName, { content: 'JavaNavi AI streaming fixture: Java backend local-state bridge emitted fallback content.' });
-  EventsEmit(eventName, { done: true });
-}
-
 export async function AIChatCancel(arg1: string): Promise<void> {
   await postJson('/ai/chat/cancel', { sessionId: arg1 });
 }
@@ -83,21 +66,11 @@ export async function AIChatSend(arg1: any[] = [], arg2: any[] = []): Promise<Re
 }
 
 export async function AIChatStream(arg1: string, arg2: any[] = [], arg3: any[] = []): Promise<void> {
-  try {
-    await postJson('/ai/chat/stream', {
-      sessionId: arg1,
-      messages: Array.isArray(arg2) ? arg2 : [],
-      tools: Array.isArray(arg3) ? arg3 : [],
-    });
-  } catch (error) {
-    console.warn('JavaNavi AI stream transport failed; replaying compatibility fixture.', error);
-    try {
-      await replayAIEventFixture(arg1);
-    } catch (fixtureError) {
-      console.warn('JavaNavi AI event fixture replay failed; using local runtime fallback.', fixtureError);
-      emitLocalAIEventFixture(arg1);
-    }
-  }
+  await postJson('/ai/chat/stream', {
+    sessionId: arg1,
+    messages: Array.isArray(arg2) ? arg2 : [],
+    tools: Array.isArray(arg3) ? arg3 : [],
+  });
 }
 
 export async function AICheckSQL(arg1: string): Promise<any> {
