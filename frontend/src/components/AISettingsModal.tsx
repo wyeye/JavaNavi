@@ -35,6 +35,8 @@ interface AISettingsModalProps {
     focusProviderId?: string;
 }
 
+type AIProviderEditorConfig = AIProviderConfig & { presetKey?: string };
+
 // 预设配置：每个预设映射到后端 type（openai/anthropic/gemini/custom）并附带默认 URL 和 Model
 interface ProviderPreset {
     key: string;
@@ -72,9 +74,26 @@ const normalizeModelOptions = (models: unknown): string[] => {
     return Array.from(new Set(models.map(model => String(model || '').trim()).filter(Boolean)));
 };
 
-const modelOptionsFromTestResponse = (response: Record<string, any> | undefined): string[] => {
+const messageFromError = (error: unknown, fallback: string): string => {
+    if (error instanceof Error && error.message) return error.message;
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+        const message = (error as { message?: unknown }).message;
+        if (typeof message === 'string' && message.trim()) return message;
+    }
+    return fallback;
+};
+
+const isFormValidationError = (error: unknown): boolean => (
+    typeof error === 'object' && error !== null && 'errorFields' in error
+);
+
+const modelOptionsFromTestResponse = (response: Record<string, unknown> | undefined): string[] => {
     const topLevelModels = normalizeModelOptions(response?.models);
-    return topLevelModels.length > 0 ? topLevelModels : normalizeModelOptions(response?.transport?.models);
+    const transport = response?.transport;
+    const transportModels = typeof transport === 'object' && transport !== null && 'models' in transport
+        ? (transport as { models?: unknown }).models
+        : undefined;
+    return topLevelModels.length > 0 ? topLevelModels : normalizeModelOptions(transportModels);
 };
 
 const matchProviderPreset = (provider: Pick<AIProviderConfig, 'type' | 'baseUrl' | 'apiFormat'>): ProviderPreset => {
@@ -99,7 +118,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
     const [activeProviderId, setActiveProviderId] = useState<string>('');
     const [safetyLevel, setSafetyLevel] = useState<AISafetyLevel>('readonly');
     const [contextLevel, setContextLevel] = useState<AIContextLevel>('schema_only');
-    const [editingProvider, setEditingProvider] = useState<AIProviderConfig | null>(null);
+    const [editingProvider, setEditingProvider] = useState<AIProviderEditorConfig | null>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [loading, setLoading] = useState(false);
     const [testStatus, setTestStatus] = useState<'idle' | 'success' | 'error'>('idle');
@@ -170,7 +189,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
     }, [focusProviderId, open, providers]);
 
     const applyProviderEditorSession = useCallback((session: ProviderEditorSession) => {
-        setEditingProvider(session.editingProvider as AIProviderConfig | null);
+        setEditingProvider(session.editingProvider as AIProviderEditorConfig | null);
         setIsEditing(session.isEditing);
         setTestStatus(session.testStatus);
         setClearProviderSecret(session.clearProviderSecret);
@@ -222,7 +241,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             valuesApiFormat: p.apiFormat,
         });
         applyProviderEditorSession(buildEditProviderEditorSession({
-            provider: { ...p, presetKey: matchedPreset.key } as any,
+            provider: { ...p, presetKey: matchedPreset.key },
             formValues: {
                 ...p,
                 type: resolvedTransport.type,
@@ -241,7 +260,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             await loadConfig();
             // 合并提示：删除的是当前激活的供应商时，附带自动切换信息
             if (wasActive) {
-                const newProviders: any[] = await Service?.AIGetProviders?.() || [];
+                const newProviders = await Service?.AIGetProviders?.() || [];
                 if (newProviders.length > 0) {
                     const newActiveName = newProviders[0]?.name || t('ai.settings.provider.nextProvider');
                     void messageApi.success(t('ai.settings.message.deletedAndSwitched', { name: newActiveName }));
@@ -252,7 +271,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 void messageApi.success(t('ai.settings.message.deleted'));
             }
             window.dispatchEvent(new CustomEvent('javanavi:ai:provider-changed'));
-        } catch (e: any) { void messageApi.error(e?.message || t('ai.settings.message.deleteFailed')); }
+        } catch (e) { void messageApi.error(messageFromError(e, t('ai.settings.message.deleteFailed'))); }
     };
 
     const handleSaveProvider = async () => {
@@ -312,9 +331,9 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             await Service?.AISaveProvider?.(payload);
             void messageApi.success(t('ai.settings.message.saved')); resetProviderEditorSession(); void loadConfig();
             window.dispatchEvent(new CustomEvent('javanavi:ai:provider-changed'));
-        } catch (e: any) {
-            if (e?.errorFields) { /* antd form validation error, ignore */ }
-            else void messageApi.error(e?.message || t('ai.settings.message.saveFailed'));
+        } catch (e) {
+            if (isFormValidationError(e)) { /* antd form validation error, ignore */ }
+            else void messageApi.error(messageFromError(e, t('ai.settings.message.saveFailed')));
         } finally { setLoading(false); }
     };
 
@@ -324,7 +343,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             await Service?.AISetActiveProvider?.(id);
             setActiveProviderId(id); void messageApi.success(t('ai.settings.message.switched'));
             window.dispatchEvent(new CustomEvent('javanavi:ai:provider-changed'));
-        } catch (e: any) { void messageApi.error(e?.message || t('ai.settings.message.switchFailed')); }
+        } catch (e) { void messageApi.error(messageFromError(e, t('ai.settings.message.switchFailed'))); }
     };
 
     const handleSafetyChange = async (level: AISafetyLevel) => {
@@ -409,7 +428,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                 }
             }
             else { setTestStatus('error'); void messageApi.error(t('ai.settings.message.testFailedWithMessage', { message: res?.message || t('common.unknown') })); }
-        } catch (e: any) { setTestStatus('error'); void messageApi.error(e?.message || t('ai.settings.message.testFailed')); }
+        } catch (e) { setTestStatus('error'); void messageApi.error(messageFromError(e, t('ai.settings.message.testFailed'))); }
         finally { setLoading(false); }
     };
 
@@ -506,7 +525,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
 
     // ===== Provider 编辑表单 =====
     const renderProviderForm = () => {
-        const presetKeyFromForm = watchedPresetKey || (editingProvider as any)?.presetKey || 'openai';
+        const presetKeyFromForm = watchedPresetKey || editingProvider?.presetKey || 'openai';
         return (
             <div>
                 {/* 顶部返回 */}
