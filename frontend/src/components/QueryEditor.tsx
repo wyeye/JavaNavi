@@ -188,7 +188,7 @@ let sharedAllColumnsData: {dbName: string, tableName: string, name: string, type
 let sharedVisibleDbs: string[] = [];
 let sharedColumnsCacheData: Record<string, any[]> = {};
 
-type RunMode = 'selected' | 'all';
+type RunMode = 'all' | 'current' | 'selected';
 type RunRequest = RunMode | { sql: string; source?: 'executionPlan' };
 
 const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isActive = true }) => {
@@ -212,7 +212,6 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const [resultSets, setResultSets] = useState<ResultSet[]>([]);
   const [activeResultKey, setActiveResultKey] = useState<string>('');
   const [loading, setLoading] = useState(false);
-  const [runMode, setRunMode] = useState<RunMode>('selected');
   const [executionError, setExecutionError] = useState<string>('');
   const [, setCurrentQueryId] = useState<string>('');
   const runSeqRef = useRef(0);
@@ -1204,13 +1203,52 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       return selected;
   };
 
-  const resolveRunnableSQL = (modeOverride?: RunMode): string => {
+  const resolveCurrentStatementSQL = (): string => {
+      const editor = editorRef.current;
       const fullSQL = getCurrentQuery();
-      const mode = modeOverride || runMode;
-      if (mode === 'all') return fullSQL;
-      const selected = getSelectedSQL();
-      return selected || fullSQL;
+      if (!editor || !fullSQL.trim()) return fullSQL;
+
+      const model = editor.getModel?.();
+      const position = editor.getPosition?.();
+      if (!model || !position) return fullSQL;
+
+      const offset = model.getOffsetAt?.(position);
+      if (typeof offset !== 'number') return fullSQL;
+
+      const statements = splitSQLStatements(fullSQL);
+      let searchFrom = 0;
+      for (const statement of statements) {
+          const start = fullSQL.indexOf(statement, searchFrom);
+          if (start < 0) continue;
+          const end = start + statement.length;
+          searchFrom = end;
+          if (offset >= start && offset <= end) {
+              return statement;
+          }
+      }
+
+      return fullSQL;
   };
+
+  const resolveRunnableSQL = (mode: RunMode): string => {
+      const fullSQL = getCurrentQuery();
+      if (mode === 'all') return fullSQL;
+      if (mode === 'current') return resolveCurrentStatementSQL();
+      return getSelectedSQL();
+  };
+
+  const runMenuItems: MenuProps['items'] = [
+      {
+          key: 'current',
+          label: '运行当前语句',
+          onClick: () => handleRun('current'),
+      },
+      {
+          key: 'selected',
+          label: '运行已选择',
+          onClick: () => handleRun('selected'),
+      },
+  ];
 
   const buildExplainSQL = (sourceSql: string, dbType: string, driver = ''): { sql: string; error?: string } => {
       const statements = splitSQLStatements(sourceSql);
@@ -1321,8 +1359,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const handleRun = async (request?: RunRequest) => {
     const explicitSQL = typeof request === 'object' && typeof request.sql === 'string' ? request.sql : '';
-    const modeOverride = request === 'selected' || request === 'all' ? request : undefined;
-    const runSQL = explicitSQL || resolveRunnableSQL(modeOverride);
+    const mode = request === 'selected' || request === 'current' || request === 'all' ? request : 'all';
+    const runSQL = explicitSQL || resolveRunnableSQL(mode);
     if (!runSQL.trim()) return;
     if (!currentDb) {
         message.error("请先选择数据库");
@@ -1729,7 +1767,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   };
 
   const handleExplainPlan = async () => {
-    const sourceSQL = resolveRunnableSQL();
+    const selectedSQL = getSelectedSQL();
+    const sourceSQL = selectedSQL || resolveCurrentStatementSQL();
     if (!sourceSQL.trim()) return;
     if (!currentDb) {
         message.error("请先选择数据库");
@@ -1837,7 +1876,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           }
           event.preventDefault();
           event.stopPropagation();
-          void handleRun();
+          void handleRun('all');
       };
 
       window.addEventListener('keydown', handleRunShortcut);
@@ -1851,7 +1890,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           if (activeTabId !== tab.id) {
               return;
           }
-          void handleRun();
+          void handleRun('all');
       };
 
       window.addEventListener('javanavi:run-active-query', handleRunActiveQuery as EventListener);
@@ -1893,7 +1932,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       const maxCol = model.getLineMaxColumn(lineCount);
                       editor.setSelection(new monaco.Range(1, 1, lineCount, maxCol));
                       editor.focus();
-                      setTimeout(() => handleRun(), 500);
+                      setTimeout(() => handleRun('all'), 500);
                   }
               } else {
               let position = editor.getPosition();
@@ -1930,7 +1969,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                           endPosition.lineNumber, endPosition.column
                       ));
                       // 🔧 延迟 500ms 等待连接/数据库切换的 setState 生效后再执行
-                      setTimeout(() => handleRun(), 500);
+                      setTimeout(() => handleRun('all'), 500);
                   }
               }
               }
@@ -2164,26 +2203,23 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             />
         </Tooltip>
         <Button.Group>
-          <Select
-              style={{ width: 110 }}
-              value={runMode}
-              onChange={setRunMode}
-              disabled={loading}
-              options={[
-                  { label: '选择运行', value: 'selected' },
-                  { label: '全部运行', value: 'all' },
-              ]}
-          />
           <Tooltip
               title={
                   shortcutOptions.runQuery?.enabled && shortcutOptions.runQuery?.combo
-                      ? `运行（${getShortcutDisplay(shortcutOptions.runQuery.combo)}）`
-                      : '运行'
+                      ? `运行全部（${getShortcutDisplay(shortcutOptions.runQuery.combo)}）`
+                      : '运行全部'
               }
           >
-              <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => handleRun()} loading={loading}>
+              <Dropdown.Button
+                  type="primary"
+                  icon={<PlayCircleOutlined />}
+                  onClick={() => handleRun('all')}
+                  loading={loading}
+                  disabled={loading}
+                  menu={{ items: runMenuItems }}
+              >
                 运行
-              </Button>
+              </Dropdown.Button>
           </Tooltip>
           {loading && (
             <Button type="primary" danger icon={<StopOutlined />} onClick={handleCancel}>
