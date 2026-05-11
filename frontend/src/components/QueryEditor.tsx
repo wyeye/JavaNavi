@@ -2350,6 +2350,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                               </div>
                           );
                       }
+                      const isExecutionPlanResult = rs.source === 'executionPlan' || isExecutionPlanSql(rs.sql);
                       const grid = (
                           <DataGrid
                               data={rs.rows}
@@ -2362,11 +2363,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                               connectionId={currentConnectionId}
                               pkColumns={rs.pkColumns}
                               editLocator={rs.editLocator}
-                              onReload={() => handleReloadResult(rs.key, rs.sql)}
+                              onReload={isExecutionPlanResult ? undefined : () => handleReloadResult(rs.key, rs.sql)}
                               readOnly={rs.readOnly}
                           />
                       );
-                      const isExecutionPlanResult = rs.source === 'executionPlan' || isExecutionPlanSql(rs.sql);
                       if (isExecutionPlanResult) {
                           return (
                               <ExecutionPlanResultView rows={rs.rows} columns={rs.columns} sql={rs.sql} darkMode={darkMode}>

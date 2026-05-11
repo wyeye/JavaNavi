@@ -1,14 +1,19 @@
 package com.javanavi.security;
 
-import com.javanavi.api.ApiRateLimitExceededException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.i18n.I18nMessages;
+import com.javanavi.model.ApiEnvelope;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Component;
 import org.springframework.web.filter.OncePerRequestFilter;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayDeque;
 import java.util.Deque;
 import java.util.concurrent.ConcurrentHashMap;
@@ -17,6 +22,13 @@ import java.util.concurrent.ConcurrentMap;
 @Component
 public class ApiRateLimitFilter extends OncePerRequestFilter {
     private final ConcurrentMap<String, Deque<Long>> requests = new ConcurrentHashMap<>();
+    private final ObjectMapper objectMapper;
+    private final I18nMessages messages;
+
+    public ApiRateLimitFilter(ObjectMapper objectMapper, I18nMessages messages) {
+        this.objectMapper = objectMapper;
+        this.messages = messages;
+    }
 
     @Override
     protected boolean shouldNotFilter(HttpServletRequest request) {
@@ -34,11 +46,14 @@ public class ApiRateLimitFilter extends OncePerRequestFilter {
             filterChain.doFilter(request, response);
             return;
         }
-        enforceWindow(request, 30, 60_000L);
+        if (!allowWindow(request, 30, 60_000L)) {
+            writeRateLimitResponse(response);
+            return;
+        }
         filterChain.doFilter(request, response);
     }
 
-    private void enforceWindow(HttpServletRequest request, int maxRequests, long windowMs) {
+    private boolean allowWindow(HttpServletRequest request, int maxRequests, long windowMs) {
         long now = System.currentTimeMillis();
         long threshold = now - windowMs;
         String key = rateLimitKey(request);
@@ -48,10 +63,21 @@ public class ApiRateLimitFilter extends OncePerRequestFilter {
                 deque.pollFirst();
             }
             if (deque.size() >= maxRequests) {
-                throw new ApiRateLimitExceededException("Too many requests for " + request.getRequestURI());
+                return false;
             }
             deque.addLast(now);
+            return true;
         }
+    }
+
+    private void writeRateLimitResponse(HttpServletResponse response) throws IOException {
+        if (response.isCommitted()) {
+            return;
+        }
+        response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
+        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
+        response.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        objectMapper.writeValue(response.getWriter(), ApiEnvelope.failKey(messages, "request.rateLimited"));
     }
 
     private String rateLimitKey(HttpServletRequest request) {
