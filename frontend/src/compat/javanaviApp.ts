@@ -158,27 +158,6 @@ async function getJson(path: string): Promise<any> {
   return payload;
 }
 
-type CompatFixtureFamily = 'sync' | 'sqlfile' | 'import' | 'driver';
-
-async function replayEventFixture(
-  family: CompatFixtureFamily,
-  options: { correlationId?: string; eventName?: string; payload?: Record<string, any> } = {},
-): Promise<void> {
-  try {
-    const payload = await postJson('/events/fixtures/replay', {
-      family,
-      correlationId: options.correlationId,
-      eventName: options.eventName,
-      payload: options.payload || {},
-    });
-    if (payload?.success === false) {
-      console.warn(`JavaNavi ${family} event fixture replay failed:`, payload?.error?.message || payload?.message);
-    }
-  } catch (error) {
-    console.warn(`JavaNavi ${family} event fixture replay failed:`, error);
-  }
-}
-
 function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
   if (!payload || payload.success === false) {
     throw new Error(localizeBackendMessage(payload?.error?.message || payload?.message, fallbackMessage));
@@ -456,13 +435,11 @@ export async function DeleteSavedConnection(arg1:string): Promise<void> {
 }
 
 export async function DownloadDriverPackage(arg1:string,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  await replayEventFixture('driver', { correlationId: arg1, payload: { driverType: arg1, version: arg2, url: arg3, checksum: arg4 } });
   const payload = await postJson('/drivers/download', { driverType: arg1, version: arg2, downloadURL: arg3, downloadDir: arg4 });
   return apiEnvelopeToQueryResult(payload, 'Driver package registered');
 }
 
 export async function UploadLocalDriverPackage(arg1:string,arg2:Array<File>|FileList,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  await replayEventFixture('driver', { correlationId: arg1, payload: { driverType: arg1, version: arg4, uploadCount: arg2?.length || 0 } });
   const form = new FormData();
   form.append('driverType', arg1);
   form.append('downloadDir', arg3 || '');
@@ -514,7 +491,6 @@ export async function DuplicateConnection(arg1:string): Promise<connection.Saved
 }
 
 export async function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  await replayEventFixture('sqlfile', { correlationId: arg4, payload: { currentSQL: arg3, database: arg2 } });
   const payload = await postJson('/query/multi', {
     connection: toConnectionPayload(arg1),
     database: arg2,
@@ -629,13 +605,11 @@ export async function UploadImportFile(arg1:connection.ConnectionConfig,arg2:str
 }
 
 export async function ImportDataWithProgress(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5 = false): Promise<connection.QueryResult> {
-  await replayEventFixture('import', { correlationId: arg4 || arg3, payload: { table: arg3, database: arg2, filePath: arg4 } });
   const payload = await postJson('/files/import/run', { connection: toConnectionPayload(arg1), database: arg2, table: arg3, filePath: arg4, applyToDatabase: arg5 });
   return apiEnvelopeToQueryResult(payload, 'Import completed');
 }
 
 export async function InstallLocalDriverPackage(arg1:string,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  await replayEventFixture('driver', { correlationId: arg1, payload: { driverType: arg1, version: arg4, packagePath: arg2, runtimeDirectory: arg3 } });
   const payload = await postJson('/drivers/install-local', { driverType: arg1, filePath: arg2, downloadDir: arg3, version: arg4 });
   return apiEnvelopeToQueryResult(payload, 'Local driver package registered');
 }
