@@ -1,13 +1,13 @@
-import React, { useEffect, useState, useContext, useMemo, useRef, useCallback } from 'react';
-import { Table, Tabs, Button, message, Input, Checkbox, Modal, AutoComplete, Tooltip, Select, Empty, Space, Tag, Radio } from 'antd';
+import React, { useEffect, useState, useMemo, useRef, useCallback } from 'react';
+import { Table, Tabs, Button, message, Input, Checkbox, Modal, AutoComplete, Tooltip, Select, Empty, Space, Tag, type TableColumnType } from 'antd';
 import { ReloadOutlined, SaveOutlined, PlusOutlined, DeleteOutlined, MenuOutlined, FileTextOutlined, EyeOutlined, EditOutlined, ExclamationCircleOutlined, CopyOutlined } from '@ant-design/icons';
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay } from '@dnd-kit/core';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragOverlay, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import Editor, { loader } from '@monaco-editor/react';
+import Editor from '@monaco-editor/react';
 import { TabData, ColumnDefinition, IndexDefinition, ForeignKeyDefinition, TriggerDefinition } from '../types';
 import { useStore } from '../store';
-import { DBGetColumns, DBGetIndexes, DBQuery, DBGetForeignKeys, DBGetTriggers, DBShowCreateTable } from '@compat/javanaviApp';
+import { DBGetColumns, DBGetIndexes, DBQuery, DBGetForeignKeys, DBGetTriggers, DBShowCreateTable, type QueryResult } from '@compat/javanaviApp';
 import { hasIndexFormChanged, normalizeIndexFormFromRow, shouldRestoreOriginalIndex, toggleIndexSelection as getNextIndexSelection, type IndexDisplaySnapshot } from './tableDesignerIndexUtils';
 import { buildAlterTablePreviewSql, buildCreateTablePreviewSql, hasAlterTableDraftChanges } from './tableDesignerSchemaSql';
 import TableDesignerSqlPreview from './TableDesignerSqlPreview';
@@ -30,6 +30,31 @@ interface EditableColumn extends ColumnDefinition {
     isNew?: boolean;
     isAutoIncrement?: boolean; // Virtual field for UI
 }
+
+type EditableColumnValue = EditableColumn[keyof EditableColumn];
+type ResizableColumn<RecordType extends object> = TableColumnType<RecordType> & {
+    width?: number | string;
+};
+type ResizableColumnSetter<RecordType extends object> = React.Dispatch<React.SetStateAction<ResizableColumn<RecordType>[]>>;
+type ResizeHeaderCellProps = React.ThHTMLAttributes<HTMLTableCellElement> & {
+    width?: number | string;
+    onResizeStart?: (event: React.MouseEvent) => void;
+};
+type ResizeDragState = {
+    startX: number;
+    startWidth: number;
+    index: number;
+    containerLeft: number;
+    updateWidth: (index: number, width: number) => void;
+};
+type TableMetadataResults = [
+    QueryResult,
+    QueryResult,
+    QueryResult,
+    QueryResult,
+    QueryResult | null,
+];
+
 
 interface IndexDisplayRow {
     key: string;
@@ -122,7 +147,7 @@ const COLLATIONS = {
 };
 
 // --- Resizable Header Component (Native, same interaction as DataGrid) ---
-const ResizableTitle = (props: any) => {
+const ResizableTitle = (props: ResizeHeaderCellProps) => {
   const { onResizeStart, width, ...restProps } = props;
   const nextStyle = { ...(restProps.style || {}) } as React.CSSProperties;
 
@@ -321,9 +346,9 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   }, []); // 不依赖 activeKey，仅挂载一次，通过零高度守卫避免 Tab 切换异常
 
   // --- Resizable Columns State ---
-  const [tableColumns, setTableColumns] = useState<any[]>([]);
-  const [indexColumns, setIndexColumns] = useState<any[]>([]);
-  const resizeDragRef = useRef<{ startX: number; startWidth: number; index: number; containerLeft: number; setter: React.Dispatch<React.SetStateAction<any[]>> } | null>(null);
+  const [tableColumns, setTableColumns] = useState<ResizableColumn<EditableColumn>[]>([]);
+  const [indexColumns, setIndexColumns] = useState<ResizableColumn<IndexDisplayRow>[]>([]);
+  const resizeDragRef = useRef<ResizeDragState | null>(null);
   const resizeRafRef = useRef<number | null>(null);
   const latestResizeXRef = useRef<number | null>(null);
   const ghostRef = useRef<HTMLDivElement>(null);
@@ -407,7 +432,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   // Initial Columns Definition
   useEffect(() => {
       const columnTypeOptions = resolveColumnTypeOptions(getDbType());
-      const initialCols = [
+      const initialCols: ResizableColumn<EditableColumn>[] = [
           { 
               title: t('designer.columns.name'), 
               dataIndex: 'name', 
@@ -497,7 +522,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
               title: t('designer.columns.actions'),
               key: 'action',
               width: 60,
-              render: (_: any, record: EditableColumn) => (
+              render: (_: unknown, record: EditableColumn) => (
                   <Button type="text" danger icon={<DeleteOutlined />} onClick={() => handleDeleteColumn(record._key)} />
               )
           }])
@@ -538,14 +563,30 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
     document.body.style.userSelect = '';
   }, []);
 
-  const createResizeStartHandler = useCallback((columns: any[], setter: React.Dispatch<React.SetStateAction<any[]>>) => (index: number) => (e: React.MouseEvent) => {
+  const createResizeStartHandler = useCallback(<RecordType extends object>(columns: ResizableColumn<RecordType>[], setter: ResizableColumnSetter<RecordType>) => (index: number) => (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
 
     const startX = e.clientX;
     const currentWidth = Number(columns[index]?.width || 200);
     const containerLeft = shellRef.current?.getBoundingClientRect().left ?? 0;
-    resizeDragRef.current = { startX, startWidth: currentWidth, index, containerLeft, setter };
+    resizeDragRef.current = {
+      startX,
+      startWidth: currentWidth,
+      index,
+      containerLeft,
+      updateWidth: (dragIndex, newWidth) => {
+        setter((prevColumns) => {
+          if (!prevColumns[dragIndex]) return prevColumns;
+          const nextColumns = [...prevColumns];
+          nextColumns[dragIndex] = {
+            ...nextColumns[dragIndex],
+            width: newWidth,
+          };
+          return nextColumns;
+        });
+      },
+    };
     latestResizeXRef.current = startX;
 
     if (ghostRef.current && shellRef.current) {
@@ -565,18 +606,10 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
 
     const onUp = (event: MouseEvent) => {
       if (resizeDragRef.current) {
-        const { startX: dragStartX, startWidth, index: dragIndex, setter: dragSetter } = resizeDragRef.current;
+        const { startX: dragStartX, startWidth, index: dragIndex, updateWidth } = resizeDragRef.current;
         const deltaX = event.clientX - dragStartX;
         const newWidth = Math.max(50, startWidth + deltaX);
-        dragSetter((prevColumns) => {
-          if (!prevColumns[dragIndex]) return prevColumns;
-          const nextColumns = [...prevColumns];
-          nextColumns[dragIndex] = {
-            ...nextColumns[dragIndex],
-            width: newWidth,
-          };
-          return nextColumns;
-        });
+        updateWidth(dragIndex, newWidth);
       }
 
       detachResizeListeners();
@@ -620,23 +653,15 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
         ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
     };
 
-    const promises: Promise<any>[] = [
-        DBGetColumns(buildRpcConnectionConfig(config) as any, tab.dbName || '', tab.tableName || ''),
-        DBGetIndexes(buildRpcConnectionConfig(config) as any, tab.dbName || '', tab.tableName || ''),
-        DBGetForeignKeys(buildRpcConnectionConfig(config) as any, tab.dbName || '', tab.tableName || ''),
-        DBGetTriggers(buildRpcConnectionConfig(config) as any, tab.dbName || '', tab.tableName || '')
-    ];
-
-    if (!isNewTable) {
-        promises.push(DBShowCreateTable(buildRpcConnectionConfig(config) as any, tab.dbName || '', tab.tableName || ''));
-    }
-
-    const results = await Promise.all(promises);
-    const colsRes = results[0];
-    const idxRes = results[1];
-    const fkRes = results[2];
-    const trigRes = results[3];
-    const ddlRes = !isNewTable ? results[4] : null;
+    const rpcConfig = buildRpcConnectionConfig(config);
+    const results: TableMetadataResults = await Promise.all([
+        DBGetColumns(rpcConfig, tab.dbName || '', tab.tableName || ''),
+        DBGetIndexes(rpcConfig, tab.dbName || '', tab.tableName || ''),
+        DBGetForeignKeys(rpcConfig, tab.dbName || '', tab.tableName || ''),
+        DBGetTriggers(rpcConfig, tab.dbName || '', tab.tableName || ''),
+        isNewTable ? Promise.resolve(null) : DBShowCreateTable(rpcConfig, tab.dbName || '', tab.tableName || ''),
+    ]);
+    const [colsRes, idxRes, fkRes, trigRes, ddlRes] = results;
 
     if (colsRes.success) {
         const colsWithKey = (colsRes.data as ColumnDefinition[]).map((c, index) => ({
@@ -927,7 +952,7 @@ ${selectedTrigger.statement}`;
 
   // --- Handlers ---
 
-  const handleColumnChange = (key: string, field: keyof EditableColumn, value: any) => {
+  const handleColumnChange = (key: string, field: keyof EditableColumn, value: EditableColumnValue) => {
       setColumns(prev => prev.map(col => {
           if (col._key === key) {
               const newCol = { ...col, [field]: value };
@@ -1975,7 +2000,7 @@ END;`;
       });
   };
 
-  const onDragEnd = ({ active, over }: any) => {
+  const onDragEnd = ({ active, over }: DragEndEvent) => {
     if (active.id !== over?.id) {
       setColumns((previous) => {
         const activeIndex = previous.findIndex((i) => i._key === active.id);
@@ -2055,7 +2080,7 @@ END;`;
   // Merge columns with resize handler
   const resizableColumns = useMemo(() => tableColumns.map((col, index) => ({
     ...col,
-    onHeaderCell: (column: any) => ({
+    onHeaderCell: (column: ResizableColumn<EditableColumn>) => ({
       width: column.width,
       onResizeStart: handleResizeStart(index),
     }),
@@ -2071,22 +2096,22 @@ END;`;
           <Checkbox
               checked={isAllColumnsSelected}
               indeterminate={isColumnsIndeterminate}
-              onChange={(e: any) => setSelectedColumnRowKeys(e.target.checked ? allColumnKeys : [])}
+              onChange={(e) => setSelectedColumnRowKeys(e.target.checked ? allColumnKeys : [])}
               style={{ margin: 0 }}
           />
       ),
       dataIndex: '_select',
       key: '_select',
       width: 48,
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: EditableColumn) => (
           <Checkbox
               checked={selectedColumnRowKeys.includes(record._key)}
-              onChange={(e: any) => {
+              onChange={(e) => {
                   e.stopPropagation();
-                  setSelectedColumnRowKeys((prev: string[]) =>
+                  setSelectedColumnRowKeys(prev =>
                       e.target.checked
                           ? [...prev, record._key]
-                          : prev.filter((k: string) => k !== record._key)
+                          : prev.filter(k => k !== record._key)
                   );
               }}
               style={{ margin: 0 }}
@@ -2188,7 +2213,7 @@ END;`;
       dataIndex: '_select',
       key: '_select',
       width: 48,
-      render: (_: any, record: any) => (
+      render: (_: unknown, record: IndexDisplayRow) => (
           <span
               onClick={(e) => {
                   e.stopPropagation();
@@ -2209,7 +2234,7 @@ END;`;
       selectColumn,
       ...indexColumns.map((col, index) => ({
         ...col,
-        onHeaderCell: (column: any) => ({
+        onHeaderCell: (column: ResizableColumn<IndexDisplayRow>) => ({
           width: column.width,
           onResizeStart: handleIndexResizeStart(index),
         }),
@@ -2236,7 +2261,7 @@ END;`;
             }
         `}</style>
         {readOnly ? (
-        <Table 
+        <Table<EditableColumn>
             dataSource={columns} 
             columns={columnsWithSelect} 
             rowKey="_key" 
@@ -2255,7 +2280,7 @@ END;`;
   ) : (
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={columns.map(c => c._key)} strategy={verticalListSortingStrategy}>
-            <Table 
+            <Table<EditableColumn>
                 dataSource={columns} 
                 columns={columnsWithSelect} 
                 rowKey="_key" 
@@ -2515,7 +2540,7 @@ END;`;
                                 <div style={{ color: '#888', fontSize: 12 }}>
                                     {t('designer.index.summary', { indexCount: groupedIndexes.length, columnCount: groupedIndexFieldCount })}
                                 </div>
-                                <Table
+                                <Table<IndexDisplayRow>
                                     dataSource={groupedIndexes}
                                     columns={resizableIndexColumns}
                                     rowKey="key"
@@ -2558,7 +2583,7 @@ END;`;
                                         )}
                                     </div>
                                 )}
-                                <Table 
+                                <Table<ForeignKeyDisplayRow>
                                     dataSource={groupedForeignKeys} 
                                     columns={[
                                         { title: t('designer.fk.constraintName'), dataIndex: 'constraintName', key: 'constraintName', width: 220 },
@@ -2621,7 +2646,7 @@ END;`;
                                         {selectedTrigger ? t('designer.trigger.selected', { name: selectedTrigger.name }) : t('designer.trigger.selectPrompt')}
                                     </span>
                                 </div>
-                                <Table
+                                <Table<TriggerDefinition>
                                     dataSource={triggers}
                                     columns={[
                                         { title: t('designer.trigger.name'), dataIndex: 'name', key: 'name' },
