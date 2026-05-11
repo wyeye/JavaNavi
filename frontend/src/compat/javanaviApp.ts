@@ -612,11 +612,6 @@ export async function GetSavedConnections(): Promise<Array<connection.SavedConne
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
-export async function ImportConfigFile(): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/config/import', {});
-  return apiEnvelopeToQueryResult(payload, 'Config import file loaded');
-}
-
 export async function ImportConnectionsPayload(arg1:string,arg2:string): Promise<Array<connection.SavedConnectionView>> {
   const payload = await postJson('/app/connections/import-payload', {
     raw: arg1 || '',

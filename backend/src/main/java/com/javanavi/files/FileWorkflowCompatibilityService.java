@@ -116,20 +116,6 @@ public class FileWorkflowCompatibilityService {
         ));
     }
 
-    public String importConfigFile() {
-        Path file = importDirectory.resolve("connections-import-placeholder.json").normalize();
-        ensureManagedPath(file, importDirectory);
-        try {
-            Files.createDirectories(file.getParent());
-            if (!Files.exists(file)) {
-                Files.writeString(file, "[]\n", StandardCharsets.UTF_8);
-            }
-            return Files.readString(file, StandardCharsets.UTF_8);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi managed config import file.", error);
-        }
-    }
-
     public Map<String, Object> importData(Map<String, Object> input) {
         String tableName = stringValue(input, "table", "tableName");
         Path file = sampleImportFile(tableName);
