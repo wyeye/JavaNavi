@@ -8,6 +8,7 @@ import { TabData, ColumnDefinition, IndexDefinition } from '../types';
 import { useStore } from '../store';
 import { DBQueryWithCancel, DBQueryMulti, DBGetTables, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetIndexes, CancelQuery, GenerateQueryID, WriteSQLFile } from '@compat/javanaviApp';
 import DataGrid, { JAVANAVI_ROW_KEY } from './DataGrid';
+import ExecutionPlanResultView from './ExecutionPlanResultView';
 import { applyQueryAutoLimit } from '../utils/queryAutoLimit';
 import { resolveEditRowLocator, type EditRowLocator } from '../utils/rowLocator';
 import { getDataSourceCapabilities } from '../utils/dataSourceCapabilities';
@@ -16,6 +17,7 @@ import { getShortcutDisplay, isEditableElement, isQuerySaveShortcutMatch, isShor
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { resolveSqlDialect, resolveSqlFunctions, resolveSqlKeywords } from '../utils/sqlDialect';
+import { isExecutionPlanSql } from '../utils/executionPlanPresentation';
 
 const SQL_KEYWORDS = [
     'SELECT', 'FROM', 'WHERE', 'LIMIT', 'INSERT', 'UPDATE', 'DELETE', 'JOIN', 'LEFT', 'RIGHT',
@@ -189,7 +191,8 @@ let sharedVisibleDbs: string[] = [];
 let sharedColumnsCacheData: Record<string, any[]> = {};
 
 type RunMode = 'all' | 'current' | 'selected';
-type RunRequest = RunMode | { sql: string; source?: 'executionPlan' };
+type RunSource = 'executionPlan';
+type RunRequest = RunMode | { sql: string; source?: RunSource };
 
 const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isActive = true }) => {
   const [query, setQuery] = useState(tab.query || 'SELECT * FROM ');
@@ -206,6 +209,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       readOnly: boolean;
       truncated?: boolean;
       pkLoading?: boolean;
+      source?: RunSource;
   };
 
   // Result Sets
@@ -1359,6 +1363,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const handleRun = async (request?: RunRequest) => {
     const explicitSQL = typeof request === 'object' && typeof request.sql === 'string' ? request.sql : '';
+    const runSource = typeof request === 'object' ? request.source : undefined;
     const mode = request === 'selected' || request === 'current' || request === 'all' ? request : 'all';
     const runSQL = explicitSQL || resolveRunnableSQL(mode);
     if (!runSQL.trim()) return;
@@ -1497,7 +1502,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         columns: cols,
                         pkColumns: [],
                         readOnly: true,
-                        truncated
+                        truncated,
+                        source: runSource
                     });
                 } else {
                     const affected = Number((res.data as any)?.affectedRows);
@@ -1511,7 +1517,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                             rows: [row],
                             columns: ['affectedRows'],
                             pkColumns: [],
-                            readOnly: true
+                            readOnly: true,
+                            source: runSource
                         });
                     }
                 }
@@ -1632,7 +1639,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         rows: [row],
                         columns: ['affectedRows'],
                         pkColumns: [],
-                        readOnly: true
+                        readOnly: true,
+                        source: runSource
                     });
                 } else {
                     let rows = Array.isArray(rsData.rows) ? rsData.rows : [];
@@ -1682,7 +1690,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         editLocator: initialEditLocator,
                         readOnly: true,
                         pkLoading: canResolveLocator,
-                        truncated
+                        truncated,
+                        source: runSource
                     });
                 }
             }
@@ -2341,22 +2350,33 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                               </div>
                           );
                       }
+                      const grid = (
+                          <DataGrid
+                              data={rs.rows}
+                              columnNames={rs.columns}
+                              loading={loading}
+                              tableName={rs.tableName}
+                              exportScope="queryResult"
+                              resultSql={rs.exportSql || rs.sql}
+                              dbName={currentDb}
+                              connectionId={currentConnectionId}
+                              pkColumns={rs.pkColumns}
+                              editLocator={rs.editLocator}
+                              onReload={() => handleReloadResult(rs.key, rs.sql)}
+                              readOnly={rs.readOnly}
+                          />
+                      );
+                      const isExecutionPlanResult = rs.source === 'executionPlan' || isExecutionPlanSql(rs.sql);
+                      if (isExecutionPlanResult) {
+                          return (
+                              <ExecutionPlanResultView rows={rs.rows} columns={rs.columns} sql={rs.sql} darkMode={darkMode}>
+                                  {grid}
+                              </ExecutionPlanResultView>
+                          );
+                      }
                       return (
                           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                              <DataGrid
-                                  data={rs.rows}
-                                  columnNames={rs.columns}
-                                  loading={loading}
-                                  tableName={rs.tableName}
-                                  exportScope="queryResult"
-                                  resultSql={rs.exportSql || rs.sql}
-                                  dbName={currentDb}
-                                  connectionId={currentConnectionId}
-                                  pkColumns={rs.pkColumns}
-                                  editLocator={rs.editLocator}
-                                  onReload={() => handleReloadResult(rs.key, rs.sql)}
-                                  readOnly={rs.readOnly}
-                              />
+                              {grid}
                           </div>
                       );
                   })()
