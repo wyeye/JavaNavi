@@ -1,6 +1,8 @@
 package com.javanavi.api;
 
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.SchemaSyncRequestDto;
+import com.javanavi.model.SyncCancelRequestDto;
 import com.javanavi.sync.SchemaSyncCompatibilityService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,23 +21,23 @@ public class SchemaSyncCompatibilityController {
     }
 
     @PostMapping("/analyze")
-    public ApiEnvelope<Map<String, Object>> analyze(@RequestBody Map<String, Object> input) {
-        return ApiEnvelope.ok(schemaSyncCompatibilityService.analyze(input));
+    public ApiEnvelope<Map<String, Object>> analyze(@RequestBody SchemaSyncRequestDto request) {
+        return ApiEnvelope.ok(schemaSyncCompatibilityService.analyze(request == null ? Map.of() : request.toCompatibilityMap()));
     }
 
     @PostMapping("/preview")
-    public ApiEnvelope<Map<String, Object>> preview(@RequestBody Map<String, Object> input) {
-        return ApiEnvelope.ok(schemaSyncCompatibilityService.preview(input));
+    public ApiEnvelope<Map<String, Object>> preview(@RequestBody SchemaSyncRequestDto request) {
+        return ApiEnvelope.ok(schemaSyncCompatibilityService.preview(request == null ? Map.of() : request.toCompatibilityMap()));
     }
 
     @PostMapping("/run")
-    public ApiEnvelope<Map<String, Object>> run(@RequestBody Map<String, Object> input) {
-        return ApiEnvelope.ok(schemaSyncCompatibilityService.run(input));
+    public ApiEnvelope<Map<String, Object>> run(@RequestBody SchemaSyncRequestDto request) {
+        return ApiEnvelope.ok(schemaSyncCompatibilityService.run(request == null ? Map.of() : request.toCompatibilityMap()));
     }
 
     @PostMapping("/cancel")
-    public ApiEnvelope<Map<String, Object>> cancel(@RequestBody Map<String, Object> input) {
-        String jobId = input == null ? "" : String.valueOf(input.getOrDefault("jobId", ""));
+    public ApiEnvelope<Map<String, Object>> cancel(@RequestBody SyncCancelRequestDto request) {
+        String jobId = request == null || request.jobId() == null ? "" : request.jobId();
         return ApiEnvelope.ok(schemaSyncCompatibilityService.cancel(jobId));
     }
 }

@@ -2,12 +2,34 @@ import type { I18nKey } from '../i18n';
 
 export type SourceDatasetMode = 'table' | 'query';
 
+type ConnectionConfigPayload = Record<string, any>;
 type SyncContent = 'data' | 'schema' | 'both';
 type TargetTableStrategy = 'existing_only' | 'auto_create_if_missing' | 'smart';
+export type DataSyncTableOptionsPayload = {
+  insert?: boolean;
+  update?: boolean;
+  delete?: boolean;
+  selectedInsertPks?: string[];
+  selectedUpdatePks?: string[];
+  selectedDeletePks?: string[];
+};
+export type DataSyncRequestPayload = {
+  sourceConfig: ConnectionConfigPayload;
+  targetConfig: ConnectionConfigPayload;
+  tables: string[];
+  sourceQuery?: string;
+  content: SyncContent;
+  mode: string;
+  autoAddColumns: boolean;
+  targetTableStrategy: TargetTableStrategy;
+  createIndexes: boolean;
+  jobId?: string;
+  tableOptions?: Record<string, DataSyncTableOptionsPayload>;
+};
 
 type BuildDataSyncRequestParams = {
-  sourceConfig: any;
-  targetConfig: any;
+  sourceConfig: ConnectionConfigPayload;
+  targetConfig: ConnectionConfigPayload;
   selectedTables: string[];
   sourceDatasetMode: SourceDatasetMode;
   sourceQuery: string;
@@ -17,7 +39,7 @@ type BuildDataSyncRequestParams = {
   targetTableStrategy: TargetTableStrategy;
   createIndexes: boolean;
   jobId?: string;
-  tableOptions?: Record<string, any>;
+  tableOptions?: Record<string, DataSyncTableOptionsPayload>;
 };
 
 type ValidateDataSyncSelectionParams = {
@@ -65,7 +87,7 @@ export const buildDataSyncRequest = ({
   createIndexes,
   jobId,
   tableOptions,
-}: BuildDataSyncRequestParams) => {
+}: BuildDataSyncRequestParams): DataSyncRequestPayload => {
   const isQueryMode = sourceDatasetMode === 'query';
 
   return {

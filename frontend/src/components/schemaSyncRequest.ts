@@ -1,8 +1,20 @@
 import type { I18nKey } from '../i18n';
 
+type ConnectionConfigPayload = Record<string, any>;
+export type SchemaSyncRequestPayload = {
+  sourceConfig: ConnectionConfigPayload;
+  targetConfig: ConnectionConfigPayload;
+  sourceDatabase: string;
+  targetDatabase: string;
+  tables: string[];
+  selectedItemIds?: string[];
+  confirmedDeleteItemIds?: string[];
+  jobId?: string;
+};
+
 type SchemaSyncBaseParams = {
-  sourceConfig: any;
-  targetConfig: any;
+  sourceConfig: ConnectionConfigPayload;
+  targetConfig: ConnectionConfigPayload;
   sourceDatabase: string;
   targetDatabase: string;
   selectedTables: string[];
@@ -36,7 +48,7 @@ export const buildSchemaSyncAnalyzeRequest = ({
   targetDatabase,
   selectedTables,
   jobId,
-}: SchemaSyncBaseParams) => ({
+}: SchemaSyncBaseParams): SchemaSyncRequestPayload => ({
   sourceConfig,
   targetConfig,
   sourceDatabase,
@@ -53,7 +65,7 @@ export const buildSchemaSyncPreviewRequest = ({
   selectedTables,
   selectedItemIds,
   jobId,
-}: SchemaSyncPreviewParams) => ({
+}: SchemaSyncPreviewParams): SchemaSyncRequestPayload => ({
   sourceConfig,
   targetConfig,
   sourceDatabase,
@@ -72,7 +84,7 @@ export const buildSchemaSyncRunRequest = ({
   selectedItemIds,
   confirmedDeleteItemIds,
   jobId,
-}: SchemaSyncRunParams) => ({
+}: SchemaSyncRunParams): SchemaSyncRequestPayload => ({
   sourceConfig,
   targetConfig,
   sourceDatabase,
