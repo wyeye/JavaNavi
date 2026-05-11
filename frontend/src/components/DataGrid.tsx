@@ -1,10 +1,9 @@
 // cspell:ignore anticon sqls uuidv uuidv4 hscroll
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
-import { createPortal } from 'react-dom';
 import { Table, message, Input, Button, MenuProps, Form, Modal, Checkbox, Tooltip, DatePicker, TimePicker } from 'antd';
 import dayjs from 'dayjs';
 import type { SortOrder, ColumnType } from 'antd/es/table/interface';
-import { ExportOutlined, CopyOutlined, EditOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
+import { ExportOutlined, CopyOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import { 
     DndContext, 
@@ -129,6 +128,13 @@ import {
     type ColumnMeta,
 } from './dataGrid/dataGridMetadata';
 import { renderDataGridColumnTitle } from './dataGrid/dataGridColumnTitle';
+import {
+    createInitialDataGridCellContextMenuState,
+    DataGridCellContextMenu,
+    renderDataGridCellContextMenuAction,
+    resolveDataGridCellContextMenuPosition,
+    type DataGridCellContextMenuState,
+} from './dataGrid/dataGridCellContextMenu';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 interface Item {
@@ -444,62 +450,10 @@ const DataGrid: React.FC<DataGridProps> = ({
   const [rowEditorForm] = Form.useForm();
 
   // Cell Context Menu State
-  const [cellContextMenu, setCellContextMenu] = useState<{
-    visible: boolean;
-    x: number;
-    y: number;
-    record: Item | null;
-    dataIndex: string;
-    title: string;
-  }>({
-    visible: false,
-    x: 0,
-    y: 0,
-    record: null,
-    dataIndex: '',
-    title: '',
-  });
+  const [cellContextMenu, setCellContextMenu] = useState<DataGridCellContextMenuState<Item>>(() => createInitialDataGridCellContextMenuState<Item>());
   const closeCellContextMenu = useCallback(() => {
     setCellContextMenu(prev => ({ ...prev, visible: false }));
   }, []);
-
-  const cellContextActionStyle: React.CSSProperties = {
-    padding: '8px 12px',
-    cursor: 'pointer',
-    transition: 'background 0.2s',
-  };
-
-  const getCellContextHoverHandlers = useCallback((disabled = false) => ({
-    onMouseEnter: (e: React.MouseEvent<HTMLDivElement>) => {
-      if (!disabled) e.currentTarget.style.background = darkMode ? '#303030' : '#f5f5f5';
-    },
-    onMouseLeave: (e: React.MouseEvent<HTMLDivElement>) => {
-      e.currentTarget.style.background = 'transparent';
-    },
-  }), [darkMode]);
-
-  const renderCellContextAction = useCallback((label: string, action: () => void | Promise<void>, options?: { icon?: React.ReactNode; disabled?: boolean }) => (
-    <div
-      style={{
-        ...cellContextActionStyle,
-        cursor: options?.disabled ? 'not-allowed' : 'pointer',
-        opacity: options?.disabled ? 0.5 : 1,
-      }}
-      {...getCellContextHoverHandlers(options?.disabled)}
-      onClick={() => {
-        if (options?.disabled) return;
-        try {
-          void Promise.resolve(action()).catch(console.error);
-        } catch (error) {
-          console.error(error);
-        }
-        closeCellContextMenu();
-      }}
-    >
-      {options?.icon}
-      {label}
-    </div>
-  ), [closeCellContextMenu, getCellContextHoverHandlers]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
@@ -569,25 +523,11 @@ const DataGrid: React.FC<DataGridProps> = ({
     e.preventDefault();
     e.stopPropagation();
     const titleText = typeof (title as any) === 'string' ? (title as string) : (typeof (title as any) === 'number' ? String(title) : String(dataIndex));
-    // 预估菜单尺寸（菜单项数 × 行高 + 分隔线 + padding）
-    const estimatedMenuHeight = 320;
-    const estimatedMenuWidth = 200;
-    const viewportH = window.innerHeight;
-    const viewportW = window.innerWidth;
-    let menuY = e.clientY;
-    let menuX = e.clientX;
-    // 底部空间不足时向上偏移
-    if (menuY + estimatedMenuHeight > viewportH) {
-      menuY = Math.max(4, viewportH - estimatedMenuHeight);
-    }
-    // 右侧空间不足时向左偏移
-    if (menuX + estimatedMenuWidth > viewportW) {
-      menuX = Math.max(4, viewportW - estimatedMenuWidth);
-    }
+    const position = resolveDataGridCellContextMenuPosition(e);
     setCellContextMenu({
       visible: true,
-      x: menuX,
-      y: menuY,
+      x: position.x,
+      y: position.y,
       record,
       dataIndex,
       title: titleText,
@@ -2916,11 +2856,16 @@ const DataGrid: React.FC<DataGridProps> = ({
     ['HTML', 'html'],
   ] as const).map(([label, format]) => (
     <React.Fragment key={format}>
-      {renderCellContextAction(`导出为 ${label}`, () => {
-        if (record) return handleExportSelected(format, record);
+      {renderDataGridCellContextMenuAction({
+          label: `导出为 ${label}`,
+          action: () => {
+              if (record) return handleExportSelected(format, record);
+          },
+          darkMode,
+          onClose: closeCellContextMenu,
       })}
     </React.Fragment>
-  )), [handleExportSelected, renderCellContextAction]);
+  )), [closeCellContextMenu, darkMode, handleExportSelected]);
 
   // Export
   const handleExport = async (format: string) => {
@@ -4305,62 +4250,29 @@ const DataGrid: React.FC<DataGridProps> = ({
         />
 
         {/* Cell Context Menu - 使用 Portal 渲染到 body，避免 backdropFilter 影响 fixed 定位 */}
-        {viewMode === 'table' && cellContextMenu.visible && createPortal(
-            <div
-                style={{
-                    position: 'fixed',
-                    left: cellContextMenu.x,
-                    top: cellContextMenu.y,
-                    zIndex: 10000,
-                    background: bgContextMenu,
-                    border: darkMode ? '1px solid #303030' : '1px solid #d9d9d9',
-                    borderRadius: 4,
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.15)',
-                    minWidth: 160,
-                    maxHeight: `calc(100vh - ${cellContextMenu.y}px - 8px)`,
-                    overflowY: 'auto',
-                    color: darkMode ? '#fff' : 'rgba(0, 0, 0, 0.88)'
-                }}
-                onClick={(e) => e.stopPropagation()}
-            >
-                {canModifyData && (
-                    <>
-                        {renderCellContextAction('设置为 NULL', handleCellSetNull)}
-                        {renderCellContextAction('编辑本行', handleOpenContextMenuRowEditor, { icon: <EditOutlined style={{ marginRight: 8 }} /> })}
-                        {renderCellContextAction(`填充到选中行 (${selectedRowKeys.length})`, () => {
-                            if (cellContextMenu.record) handleBatchFillToSelected(cellContextMenu.record, cellContextMenu.dataIndex);
-                        }, { icon: <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />, disabled: selectedRowKeys.length === 0 })}
-                        {renderCellContextAction('粘贴已复制列（同名列）', () => {
-                            const fallbackKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
-                            handlePasteCopiedColumnsToSelectedRows(fallbackKey);
-                        }, { icon: <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />, disabled: !copiedCellPatch })}
-                        <div style={{ height: 1, background: darkMode ? '#303030' : '#f0f0f0', margin: '4px 0' }} />
-                    </>
-                )}
-                {supportsCopyInsert && (
-                    <>
-                        {renderCellContextAction('复制为 INSERT', () => { if (cellContextMenu.record) handleCopyInsert(cellContextMenu.record); })}
-                        {renderCellContextAction('复制为 UPDATE', () => { if (cellContextMenu.record) handleCopyUpdate(cellContextMenu.record); })}
-                        {renderCellContextAction('复制为 DELETE', () => { if (cellContextMenu.record) handleCopyDelete(cellContextMenu.record); })}
-                    </>
-                )}
-                {renderCellContextAction('复制为 JSON', () => { if (cellContextMenu.record) handleCopyJson(cellContextMenu.record); })}
-                {renderCellContextAction('复制为 CSV', () => { if (cellContextMenu.record) handleCopyCsv(cellContextMenu.record); })}
-                {renderCellContextAction('复制为 Markdown', () => {
-                    if (cellContextMenu.record) {
-                        const records = getTargets(cellContextMenu.record);
-                        const lines = records.map((r: any) => {
-                            const { [JAVANAVI_ROW_KEY]: _rowKey, ...vals } = r;
-                            return `| ${Object.values(vals).join(' | ')} |`;
-                        });
-                        copyToClipboard(lines.join('\n'));
-                    }
-                })}
-                <div style={{ height: 1, background: darkMode ? '#303030' : '#f0f0f0', margin: '4px 0' }} />
-                {exportCellContextActions(cellContextMenu.record)}
-            </div>,
-            document.body
-        )}
+        <DataGridCellContextMenu
+            viewMode={viewMode}
+            menuState={cellContextMenu}
+            bgContextMenu={bgContextMenu}
+            darkMode={darkMode}
+            canModifyData={canModifyData}
+            selectedRowKeysLength={selectedRowKeys.length}
+            hasCopiedCellPatch={!!copiedCellPatch}
+            supportsCopyInsert={supportsCopyInsert}
+            getTargets={getTargets}
+            copyToClipboard={copyToClipboard}
+            onClose={closeCellContextMenu}
+            onCellSetNull={handleCellSetNull}
+            onOpenContextMenuRowEditor={handleOpenContextMenuRowEditor}
+            onBatchFillToSelected={handleBatchFillToSelected}
+            onPasteCopiedColumnsToSelectedRows={handlePasteCopiedColumnsToSelectedRows}
+            onCopyInsert={handleCopyInsert}
+            onCopyUpdate={handleCopyUpdate}
+            onCopyDelete={handleCopyDelete}
+            onCopyJson={handleCopyJson}
+            onCopyCsv={handleCopyCsv}
+            renderExportActions={exportCellContextActions}
+        />
        </div>
 
        <DataGridFooterControls
