@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { statSync } from 'node:fs';
+import { readFileSync, statSync } from 'node:fs';
 
 const SOURCE_GLOBS = [
   'frontend/src',
@@ -29,6 +29,9 @@ const LARGE_FILE_BASELINES = new Map([
   ['frontend/src/components/TableDesigner.tsx', 3_081],
 ]);
 const LARGE_FILE_GROWTH_ALLOWANCE = Number(process.env.JAVANAVI_SOURCE_HEALTH_BASELINE_ALLOWANCE || 25);
+const FRONTEND_ANY_BASELINE = Number(process.env.JAVANAVI_SOURCE_HEALTH_FRONTEND_ANY_BASELINE || 908);
+const FRONTEND_ANY_SOURCE_EXTENSIONS = /\.(?:ts|tsx)$/;
+const ANY_TOKEN_PATTERN = /\bany\b/g;
 
 const gitArgs = ['ls-files', ...SOURCE_GLOBS, ...EXCLUDES.flatMap((glob) => [':(exclude)' + glob])];
 const files = execFileSync('git', gitArgs, { encoding: 'utf8' })
@@ -49,7 +52,14 @@ const baselineRegressions = lineCounts.filter((item) => {
   const baseline = LARGE_FILE_BASELINES.get(item.file);
   return baseline !== undefined && item.count > baseline + LARGE_FILE_GROWTH_ALLOWANCE;
 });
-if (oversized.length > 0 || baselineRegressions.length > 0) {
+const frontendAnyCount = files
+  .filter((file) => file.startsWith('frontend/src/') && FRONTEND_ANY_SOURCE_EXTENSIONS.test(file))
+  .reduce((total, file) => {
+    const source = readFileSync(file, 'utf8');
+    return total + (source.match(ANY_TOKEN_PATTERN)?.length || 0);
+  }, 0);
+const anyRegressed = frontendAnyCount > FRONTEND_ANY_BASELINE;
+if (oversized.length > 0 || baselineRegressions.length > 0 || anyRegressed) {
   if (oversized.length > 0) {
     console.error(`Source health failed: tracked source file exceeds ${MAX_TRACKED_SOURCE_LINES} lines.`);
     for (const item of oversized) {
@@ -63,11 +73,15 @@ if (oversized.length > 0 || baselineRegressions.length > 0) {
       console.error(`${item.count}\t${item.file}\tbaseline=${baseline}`);
     }
   }
+  if (anyRegressed) {
+    console.error(`Source health failed: frontend/src any usage increased (${frontendAnyCount} > baseline ${FRONTEND_ANY_BASELINE}).`);
+  }
   process.exit(1);
 }
 
 const warnings = lineCounts.filter((item) => item.count >= REVIEW_WARN_LINES).slice(0, 20);
 console.log(`Scanned ${files.length} tracked source files (generated outputs excluded).`);
+console.log(`frontend/src any usage: ${frontendAnyCount}/${FRONTEND_ANY_BASELINE}.`);
 if (warnings.length > 0) {
   console.log(`Large-file watchlist (>=${REVIEW_WARN_LINES} lines, non-failing):`);
   for (const item of warnings) {
