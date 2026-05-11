@@ -153,12 +153,12 @@ public class AiCompatibilityService {
 
     public Map<String, String> builtinPrompts() {
         return orderedStringMap(
-                "general chat", buildGeneralChatPrompt(),
-                "sql generator", buildSqlGeneratePrompt(),
-                "sql explainer", buildSqlExplainPrompt(),
-                "sql optimizer", buildSqlOptimizePrompt(),
-                "data analysis", buildDataAnalyzePrompt(),
-                "schema review", buildSchemaInsightPrompt()
+                "通用聊天助手", buildGeneralChatPrompt(),
+                "SQL 生成器", buildSqlGeneratePrompt(),
+                "SQL 解析器", buildSqlExplainPrompt(),
+                "SQL 优化器", buildSqlOptimizePrompt(),
+                "数据洞察分析", buildDataAnalyzePrompt(),
+                "表结构审查", buildSchemaInsightPrompt()
         );
     }
 
@@ -412,7 +412,7 @@ public class AiCompatibilityService {
             Optional<String> apiKey = secretStore.get(secretKey(active));
             if (apiKey.isEmpty()) {
                 return orderedMap(
-                        "content", "JavaNavi AI provider '" + firstText(text(selected.get("name")), active) + "' has transport enabled but no stored API key.",
+                        "content", "JavaNavi AI provider transport failed: provider '" + firstText(text(selected.get("name")), active) + "' has transport enabled but no stored API key.",
                         "choices", List.of(),
                         "providerId", active,
                         "model", selected.get("model"),
