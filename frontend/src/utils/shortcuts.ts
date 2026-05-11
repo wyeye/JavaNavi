@@ -1,4 +1,5 @@
 import type { KeyboardEvent as ReactKeyboardEvent } from 'react';
+import type { I18nKey } from '../i18n';
 
 export type ShortcutAction =
   | 'runQuery'
@@ -19,8 +20,6 @@ export interface ShortcutBinding {
 export type ShortcutOptions = Record<ShortcutAction, ShortcutBinding>;
 
 export interface ShortcutActionMeta {
-  label: string;
-  description: string;
   allowInEditable?: boolean;
   allowWithoutModifier?: boolean;
   scope?: 'global' | 'aiComposer' | 'queryEditor';
@@ -89,20 +88,37 @@ export const SHORTCUT_ACTION_ORDER: ShortcutAction[] = [
   'toggleMacFullscreen',
 ];
 
+export const SHORTCUT_ACTION_LABEL_KEYS: Record<ShortcutAction, I18nKey> = {
+  runQuery: 'shortcuts.action.runQuery.label',
+  saveQuery: 'shortcuts.action.saveQuery.label',
+  sendAIChatMessage: 'shortcuts.action.sendAIChatMessage.label',
+  focusSidebarSearch: 'shortcuts.action.focusSidebarSearch.label',
+  newQueryTab: 'shortcuts.action.newQueryTab.label',
+  toggleLogPanel: 'shortcuts.action.toggleLogPanel.label',
+  toggleTheme: 'shortcuts.action.toggleTheme.label',
+  openShortcutManager: 'shortcuts.action.openShortcutManager.label',
+  toggleMacFullscreen: 'shortcuts.action.toggleMacFullscreen.label',
+};
+
+export const SHORTCUT_ACTION_DESCRIPTION_KEYS: Record<ShortcutAction, I18nKey> = {
+  runQuery: 'shortcuts.action.runQuery.description',
+  saveQuery: 'shortcuts.action.saveQuery.description',
+  sendAIChatMessage: 'shortcuts.action.sendAIChatMessage.description',
+  focusSidebarSearch: 'shortcuts.action.focusSidebarSearch.description',
+  newQueryTab: 'shortcuts.action.newQueryTab.description',
+  toggleLogPanel: 'shortcuts.action.toggleLogPanel.description',
+  toggleTheme: 'shortcuts.action.toggleTheme.description',
+  openShortcutManager: 'shortcuts.action.openShortcutManager.description',
+  toggleMacFullscreen: 'shortcuts.action.toggleMacFullscreen.description',
+};
+
 export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = {
-  runQuery: {
-    label: '执行 SQL',
-    description: '在当前查询页执行 SQL',
-  },
+  runQuery: {},
   saveQuery: {
-    label: '保存查询',
-    description: '保存当前查询页的 SQL',
     allowInEditable: true,
     scope: 'queryEditor',
   },
   sendAIChatMessage: {
-    label: 'AI 聊天发送',
-    description: '在 AI 输入框中发送当前消息，Shift+Enter 始终换行',
     allowInEditable: true,
     allowWithoutModifier: true,
     scope: 'aiComposer',
@@ -110,30 +126,15 @@ export const SHORTCUT_ACTION_META: Record<ShortcutAction, ShortcutActionMeta> = 
     disallowShift: true,
   },
   focusSidebarSearch: {
-    label: '聚焦侧边栏搜索',
-    description: '定位到左侧连接树搜索框',
     allowInEditable: true,
   },
-  newQueryTab: {
-    label: '新建查询页',
-    description: '创建一个新的 SQL 查询标签页',
-  },
-  toggleLogPanel: {
-    label: '切换日志面板',
-    description: '打开或关闭 SQL 执行日志面板',
-  },
-  toggleTheme: {
-    label: '切换主题',
-    description: '在亮色和暗色主题之间切换',
-  },
+  newQueryTab: {},
+  toggleLogPanel: {},
+  toggleTheme: {},
   openShortcutManager: {
-    label: '打开快捷键管理',
-    description: '打开快捷键设置面板',
     allowInEditable: true,
   },
   toggleMacFullscreen: {
-    label: '切换原生全屏',
-    description: 'macOS 原生窗口控制模式下的全屏切换（⌃⌘F）',
     platformOnly: 'mac',
   },
 };

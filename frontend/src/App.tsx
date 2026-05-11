@@ -26,6 +26,8 @@ import {
 import { getWindowsScaleFixNudgedWidth, hasWindowsViewportScaleDrift } from './utils/windowsScaleFix';
 import { exportSuccessMessage } from './utils/exportResultMessage';
 import {
+  SHORTCUT_ACTION_DESCRIPTION_KEYS,
+  SHORTCUT_ACTION_LABEL_KEYS,
   SHORTCUT_ACTION_META,
   SHORTCUT_ACTION_ORDER,
   ShortcutAction,
@@ -2173,7 +2175,7 @@ function App() {
               return normalizeShortcutCombo(binding.combo) === normalizedCombo;
           });
           if (conflictAction) {
-              void message.warning(t('shortcuts.conflict', { action: SHORTCUT_ACTION_META[conflictAction].label }));
+              void message.warning(t('shortcuts.conflict', { action: t(SHORTCUT_ACTION_LABEL_KEYS[conflictAction]) }));
               return;
           }
 
@@ -3218,8 +3220,8 @@ function App() {
                               }}
                           >
                               <div>
-                                  <div style={{ fontWeight: 500 }}>{meta.label}</div>
-                                  <div style={{ fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>{meta.description}</div>
+                                  <div style={{ fontWeight: 500 }}>{t(SHORTCUT_ACTION_LABEL_KEYS[action])}</div>
+                                  <div style={{ fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>{t(SHORTCUT_ACTION_DESCRIPTION_KEYS[action])}</div>
                               </div>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                                   <Input
