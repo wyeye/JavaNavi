@@ -12,6 +12,7 @@ import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { formatLocalDateTimeLiteral, normalizeTemporalLiteralText } from './dataGrid/dataGridCopyInsert';
 import { buildDataSyncRequest, type SourceDatasetMode, validateDataSyncSelection } from './dataSyncRequest';
 import { buildSchemaSyncAnalyzeRequest, buildSchemaSyncPreviewRequest, buildSchemaSyncRunRequest, validateSchemaSyncSelection } from './schemaSyncRequest';
+import type { connection, schemaSync, sync } from '@compat/models';
 
 const { Title, Text } = Typography;
 const { Step } = Steps;
@@ -26,6 +27,12 @@ const RELATIONAL_SYNC_TYPES = new Set([
 type SyncLogEvent = { jobId: string; level?: string; message?: string; ts?: number };
 type SyncProgressEvent = { jobId: string; percent?: number; current?: number; total?: number; table?: string; stage?: string };
 type SyncLogItem = { level: string; message: string; ts?: number };
+type JsonRecord = Record<string, unknown>;
+type SqlLiteralValue = string | number | boolean | bigint | Date | JsonRecord | null | undefined;
+type QueryRow = Record<string, SqlLiteralValue>;
+type QueryResultWithData<T> = Omit<connection.QueryResult, 'data'> & { data: T };
+type DatabaseRow = { Database?: string; database?: string; username?: string };
+type TableRow = { Table?: string; table?: string; TABLE_NAME?: string } & Record<string, unknown>;
 type TableDiffSummary = {
   table: string;
   pkColumn?: string;
@@ -51,34 +58,67 @@ type TableOps = {
   selectedUpdatePks?: string[];
   selectedDeletePks?: string[];
 };
+type TableOpsValue = TableOps[keyof TableOps];
 
 type WorkflowType = 'sync' | 'migration';
 type SyncDomain = 'data' | 'schema';
-type SchemaDiffItem = {
-  id: string;
-  tableName: string;
-  objectType: string;
-  objectName: string;
-  changeType: string;
-  summary: string;
-  supported: boolean;
-  unsupportedReason?: string;
-  requiresDeleteConfirm?: boolean;
-  warnings?: string[];
-  sql?: string[];
-  sqlStatements?: string[];
-};
-type SchemaDiffTable = {
-  table: string;
-  sourceExists?: boolean;
-  targetTableExists?: boolean;
-  canSync?: boolean;
-  schemaDiffCount?: number;
+type SchemaDiffItem = schemaSync.DiffItem;
+type SchemaDiffTable = schemaSync.TableDiff;
+type SchemaDiffRow = SchemaDiffItem & { table: string; targetTableExists?: boolean };
+type DataPreviewInsertRow = { pk: string | number; row: QueryRow; key?: string | number };
+type DataPreviewUpdateRow = { pk: string | number; changedColumns?: string[]; source: QueryRow; target: QueryRow; key?: string | number };
+type DataPreviewDeleteRow = { pk: string | number; row: QueryRow; key?: string | number };
+type DataPreviewData = {
+  table?: string;
+  pkColumn?: string;
+  columnTypes?: Record<string, string>;
+  schemaSummary?: string;
+  schemaWarnings?: string[];
+  schemaStatements?: string[];
+  totalInserts?: number;
+  totalUpdates?: number;
+  totalDeletes?: number;
+  inserts?: DataPreviewInsertRow[];
+  updates?: DataPreviewUpdateRow[];
+  deletes?: DataPreviewDeleteRow[];
+  insertRows?: DataPreviewInsertRow[];
+  updateRows?: DataPreviewUpdateRow[];
+  deleteRows?: DataPreviewDeleteRow[];
+  limit?: number;
+  hasMore?: boolean;
   message?: string;
-  warnings?: string[];
+};
+type SchemaPreviewData = {
+  success?: boolean;
+  message?: string;
+  table?: string;
+  schemaSummary?: string;
+  schemaStatements?: string[];
   items?: SchemaDiffItem[];
   selectedItemIds?: string[];
   deleteItemIds?: string[];
+  warnings?: string[];
+  hasMore?: boolean;
+};
+type SyncExecutionResult = {
+  success: boolean;
+  message: string;
+  logs: string[];
+  cancelled?: boolean;
+  tablesSynced?: number;
+  rowsInserted?: number;
+  rowsUpdated?: number;
+  rowsDeleted?: number;
+  totalRows?: number;
+  syncedRows?: number;
+  jobId?: string;
+  tables?: string[];
+  dryRun?: boolean;
+  fixtureBacked?: boolean;
+  warnings?: string[];
+  itemsExecuted?: number;
+  itemsSkipped?: number;
+  missingDeleteConfirmItemIds?: string[];
 };
 
 const quoteSqlIdent = (dbType: string, ident: string): string => {
@@ -104,7 +144,7 @@ const quoteSqlTable = (dbType: string, tableName: string): string => {
     .join('.');
 };
 
-const toSqlLiteral = (value: any, dbType: string): string => {
+const toSqlLiteral = (value: SqlLiteralValue, dbType: string): string => {
   if (value === null || value === undefined) return 'NULL';
   if (typeof value === 'number') return Number.isFinite(value) ? String(value) : 'NULL';
   if (typeof value === 'bigint') return value.toString();
@@ -129,7 +169,7 @@ const toSqlLiteral = (value: any, dbType: string): string => {
   return `'${String(value).replace(/'/g, "''")}'`;
 };
 
-const toTypedSqlLiteral = (value: any, dbType: string, columnType?: string): string => {
+const toTypedSqlLiteral = (value: SqlLiteralValue, dbType: string, columnType?: string): string => {
   if (typeof value === 'string') {
     const normalized = normalizeTemporalLiteralText(value, columnType, false);
     return toSqlLiteral(normalized, dbType);
@@ -149,7 +189,7 @@ const resolveRedisDbIndex = (raw?: string): number => {
 };
 
 const buildSqlPreview = (
-  previewData: any,
+  previewData: DataPreviewData | null,
   tableName: string,
   dbType: string,
   ops?: TableOps,
@@ -163,7 +203,7 @@ const buildSqlPreview = (
   const statements: string[] = [];
   const schemaStatements = Array.isArray(previewData.schemaStatements)
     ? previewData.schemaStatements
-        .map((item: any) => String(item || '').trim())
+        .map((item) => String(item || '').trim())
         .filter((item: string) => item.length > 0)
     : [];
 
@@ -180,7 +220,7 @@ const buildSqlPreview = (
   const selectedDelete = new Set((ops?.selectedDeletePks || []).map((v) => String(v)));
 
   if (ops?.insert !== false) {
-    insertRows.forEach((rowWrap: any) => {
+    insertRows.forEach((rowWrap: DataPreviewInsertRow) => {
       const pk = String(rowWrap?.pk ?? '');
       if (selectedInsert.size > 0 && !selectedInsert.has(pk)) return;
       const row = rowWrap?.row || {};
@@ -193,7 +233,7 @@ const buildSqlPreview = (
   }
 
   if (ops?.update !== false) {
-    updateRows.forEach((rowWrap: any) => {
+    updateRows.forEach((rowWrap: DataPreviewUpdateRow) => {
       const pk = String(rowWrap?.pk ?? '');
       if (selectedUpdate.size > 0 && !selectedUpdate.has(pk)) return;
       const source = rowWrap?.source || {};
@@ -212,7 +252,7 @@ const buildSqlPreview = (
   }
 
   if (ops?.delete) {
-    deleteRows.forEach((rowWrap: any) => {
+    deleteRows.forEach((rowWrap: DataPreviewDeleteRow) => {
       const pk = String(rowWrap?.pk ?? '');
       if (selectedDelete.size > 0 && !selectedDelete.has(pk)) return;
       statements.push(
@@ -275,11 +315,11 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTable, setPreviewTable] = useState<string>('');
   const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewData, setPreviewData] = useState<any>(null);
-  const [schemaPreviewData, setSchemaPreviewData] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<DataPreviewData | null>(null);
+  const [schemaPreviewData, setSchemaPreviewData] = useState<SchemaPreviewData | null>(null);
 
   // Step 3: Result
-  const [syncResult, setSyncResult] = useState<any>(null);
+  const [syncResult, setSyncResult] = useState<SyncExecutionResult | null>(null);
   const [syncing, setSyncing] = useState(false);
   const [schemaRunning, setSchemaRunning] = useState(false);
   const [syncLogs, setSyncLogs] = useState<SyncLogItem[]>([]);
@@ -299,6 +339,22 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           database: typeof database === 'string' ? database : (conn.config.database || ''),
       })
   );
+
+  const dataSyncConfig = (config: ReturnType<typeof buildDataSyncRequest>): sync.SyncConfig => config as unknown as sync.SyncConfig;
+  const schemaSyncConfig = (config: ReturnType<typeof buildSchemaSyncRunRequest>): schemaSync.RunConfig => config as unknown as schemaSync.RunConfig;
+  const databaseNames = (rows: unknown): string[] => (
+      Array.isArray(rows) ? rows as DatabaseRow[] : []
+  )
+      .map((row) => row.Database || row.database || row.username)
+      .filter((name): name is string => typeof name === 'string' && name.trim() !== '');
+  const tableNames = (rows: unknown): string[] => (
+      Array.isArray(rows) ? rows as TableRow[] : []
+  )
+      .map((row) => row.Table || row.table || row.TABLE_NAME || Object.values(row || {})[0])
+      .filter((name): name is string => typeof name === 'string' && name.trim() !== '');
+  const syncLogsFromResult = (logs: unknown, level: SyncLogItem['level']): SyncLogItem[] => (
+      Array.isArray(logs) ? logs : []
+  ).map((log) => ({ level, message: String(log || '') }));
 
   useEffect(() => {
       if (!open) return;
@@ -426,12 +482,9 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 	  if (conn) {
 	      setLoading(true);
 	      try {
-	        const res = await DBGetDatabases(normalizeConnConfig(conn) as any);
+	        const res = await DBGetDatabases(normalizeConnConfig(conn));
 	        if (res.success) {
-	            const dbRows = Array.isArray(res.data) ? res.data : [];
-	            setSourceDbs(dbRows
-	                .map((r: any) => r?.Database || r?.database || r?.username)
-	                .filter((name: any) => typeof name === 'string' && name.trim() !== ''));
+	            setSourceDbs(databaseNames(res.data));
 	        }
 	      } catch(e) { message.error(t('dataSync.error.fetchSourceDatabases')); }
 	      setLoading(false);
@@ -445,12 +498,9 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
 	  if (conn) {
 	      setLoading(true);
 	      try {
-	        const res = await DBGetDatabases(normalizeConnConfig(conn) as any);
+	        const res = await DBGetDatabases(normalizeConnConfig(conn));
 	        if (res.success) {
-	            const dbRows = Array.isArray(res.data) ? res.data : [];
-	            setTargetDbs(dbRows
-	                .map((r: any) => r?.Database || r?.database || r?.username)
-	                .filter((name: any) => typeof name === 'string' && name.trim() !== ''));
+	            setTargetDbs(databaseNames(res.data));
 	        }
 	      } catch(e) { message.error(t('dataSync.error.fetchTargetDatabases')); }
 	      setLoading(false);
@@ -470,13 +520,10 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           const conn = connections.find(c => c.id === connId);
           if (conn) {
 	          const config = normalizeConnConfig(conn, dbName);
-	          const res = await DBGetTables(config as any, dbName);
+	          const res = await DBGetTables(config, dbName);
 	          if (res.success) {
 	              // DBGetTables returns [{Table: "name"}, ...]
-	              const tableRows = Array.isArray(res.data) ? res.data : [];
-	              const tables = tableRows
-	                  .map((row: any) => row?.Table || row?.table || row?.TABLE_NAME || Object.values(row || {})[0])
-	                  .filter((name: any) => typeof name === 'string' && name.trim() !== '');
+	              const tables = tableNames(res.data);
 	              setAllTables(tables as string[]);
                   setSelectedTables(prev => {
                       const existing = prev.filter((name) => tables.includes(name));
@@ -544,9 +591,9 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       });
 
       try {
-          const res = await SchemaSyncAnalyze(config as any);
+          const res = await SchemaSyncAnalyze(schemaSyncConfig(config));
           if (res.success) {
-              const tables = ((res.data as any)?.tables || []) as SchemaDiffTable[];
+              const tables = ((res.data as { tables?: SchemaDiffTable[] })?.tables || []) as SchemaDiffTable[];
               const defaultSelected = tables.flatMap((table) => Array.isArray(table.selectedItemIds) ? table.selectedItemIds : []);
               setSchemaDiffTables(tables);
               setSchemaSelectedItemIds(defaultSelected);
@@ -554,8 +601,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           } else {
               message.error(res.message || t('schemaSync.diff.analysisFailed'));
           }
-      } catch (e: any) {
-          message.error(e?.message || t('schemaSync.diff.analysisFailed'));
+      } catch (e: unknown) {
+          message.error(e instanceof Error ? e.message : t('schemaSync.diff.analysisFailed'));
       }
 
       setLoading(false);
@@ -583,14 +630,14 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       });
 
       try {
-          const res = await SchemaSyncPreview(config as any, table);
+          const res = await SchemaSyncPreview(schemaSyncConfig(config), table);
           if (res.success) {
-              setSchemaPreviewData(res.data);
+              setSchemaPreviewData(res.data as SchemaPreviewData);
           } else {
               message.error(res.message || t('schemaSync.preview.loadFailed'));
           }
-      } catch (e: any) {
-          message.error(e?.message || t('schemaSync.preview.loadFailed'));
+      } catch (e: unknown) {
+          message.error(e instanceof Error ? e.message : t('schemaSync.preview.loadFailed'));
       }
 
       setPreviewLoading(false);
@@ -657,24 +704,25 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       });
 
       try {
-          const res = await SchemaSyncRun(config as any);
+          const res = await SchemaSyncRun(schemaSyncConfig(config));
           if (res?.cancelled) {
-              setSyncResult(res);
-              setSyncLogs(Array.isArray(res.logs) ? (res.logs as string[]).map((log) => ({ level: 'warn', message: String(log || '') })) : []);
+              setSyncResult(res as SyncExecutionResult);
+              setSyncLogs(syncLogsFromResult(res.logs, 'warn'));
               setLoading(false);
               setSchemaRunning(false);
               return;
           }
-          setSyncResult(res);
+          setSyncResult(res as SyncExecutionResult);
           if (Array.isArray(res?.logs) && res.logs.length > 0) {
-              setSyncLogs((res.logs as string[]).map((log) => ({ level: 'info', message: String(log || '') })));
+              setSyncLogs(syncLogsFromResult(res.logs, 'info'));
           }
           if (res?.success) {
               message.success(t('schemaSync.run.success'));
           }
-      } catch (e: any) {
-          message.error(e?.message || t('schemaSync.run.failed'));
-          setSyncResult({ success: false, message: e?.message || t('schemaSync.run.failed'), logs: [] });
+      } catch (e: unknown) {
+          const messageText = e instanceof Error ? e.message : t('schemaSync.run.failed');
+          message.error(messageText);
+          setSyncResult({ success: false, message: messageText, logs: [], cancelled: false });
       }
       setLoading(false);
       setSchemaRunning(false);
@@ -717,7 +765,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       try {
           const res = await DataSyncAnalyze(config as any);
           if (res.success) {
-              const tables = ((res.data as any)?.tables || []) as TableDiffSummary[];
+              const tables = ((res.data as { tables?: TableDiffSummary[] })?.tables || []) as TableDiffSummary[];
               setDiffTables(tables);
               const init: Record<string, TableOps> = {};
               tables.forEach(t => {
@@ -736,8 +784,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           } else {
               message.error(res.message || t('dataSync.diff.analysisFailed'));
           }
-      } catch (e: any) {
-          message.error(t('dataSync.diff.analysisFailedWithMessage', { message: e?.message || '' }));
+      } catch (e: unknown) {
+          message.error(t('dataSync.diff.analysisFailedWithMessage', { message: e instanceof Error ? e.message : '' }));
       }
 
       setLoading(false);
@@ -770,12 +818,12 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       try {
           const res = await DataSyncPreview(config as any, table, 200);
           if (res.success) {
-              setPreviewData(res.data);
+              setPreviewData(res.data as DataPreviewData);
           } else {
               message.error(res.message || t('dataSync.preview.loadFailed'));
           }
-      } catch (e: any) {
-          message.error(t('dataSync.preview.loadFailedWithMessage', { message: e?.message || '' }));
+      } catch (e: unknown) {
+          message.error(t('dataSync.preview.loadFailedWithMessage', { message: e instanceof Error ? e.message : '' }));
       }
 
       setPreviewLoading(false);
@@ -847,13 +895,13 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       try {
           const res = await DataSync(config as any);
           if (res?.cancelled) {
-              setSyncResult(res);
-              setSyncLogs(Array.isArray(res.logs) ? (res.logs as string[]).map((log) => ({ level: 'warn', message: String(log || '') })) : []);
+              setSyncResult(res as SyncExecutionResult);
+              setSyncLogs(syncLogsFromResult(res.logs, 'warn'));
               setLoading(false);
               setSyncing(false);
               return;
           }
-          setSyncResult(res);
+          setSyncResult(res as SyncExecutionResult);
           if (Array.isArray(res?.logs) && res.logs.length > 0) {
               setSyncLogs(prev => {
                   if (prev.length > 0) return prev;
@@ -880,8 +928,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
               ? await SchemaSyncCancel(jobIdRef.current)
               : await DataSyncCancel(jobIdRef.current);
           if (res?.cancelled) {
-              setSyncResult(res);
-              setSyncLogs(Array.isArray(res.logs) ? (res.logs as string[]).map((log) => ({ level: 'warn', message: String(log || '') })) : []);
+              setSyncResult(res as SyncExecutionResult);
+              setSyncLogs(syncLogsFromResult(res.logs, 'warn'));
               setLoading(false);
               setSyncing(false);
               setSchemaRunning(false);
@@ -926,8 +974,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   );
   const previewSchemaWarnings = useMemo(
       () => syncDomain === 'schema'
-          ? (Array.isArray(schemaPreviewData?.warnings) ? schemaPreviewData.warnings as string[] : [])
-          : (Array.isArray(previewData?.schemaWarnings) ? previewData.schemaWarnings as string[] : []),
+          ? (Array.isArray(schemaPreviewData?.warnings) ? schemaPreviewData.warnings : [])
+          : (Array.isArray(previewData?.schemaWarnings) ? previewData.schemaWarnings : []),
       [syncDomain, schemaPreviewData, previewData],
   );
   const previewHasDataDiff = useMemo(
@@ -967,6 +1015,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const sourceIsRelational = !sourceConn || RELATIONAL_SYNC_TYPES.has(sourceType);
   const targetIsRelational = !targetConn || RELATIONAL_SYNC_TYPES.has(targetType);
   const selectedConnectionsAreRelational = sourceIsRelational && targetIsRelational;
+  const currentPreviewData: DataPreviewData = previewData ?? {};
+  const currentSchemaPreviewData: SchemaPreviewData = schemaPreviewData ?? {};
 
   const modalPanelStyle = useMemo(() => ({
       background: darkMode
@@ -1641,15 +1691,15 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
         width={900}
     >
         {previewLoading && <Alert type="info" showIcon message="正在加载差异预览…" />}
-        {!previewLoading && (syncDomain === 'schema' ? schemaPreviewData : previewData) && (
+        {!previewLoading && (syncDomain === 'schema' ? currentSchemaPreviewData : currentPreviewData) && (
             <div>
                 <Alert
                     type="info"
                     showIcon
                     message={
                         previewHasDataDiff
-                            ? `插入 ${previewData.totalInserts || 0}，更新 ${previewData.totalUpdates || 0}，删除 ${previewData.totalDeletes || 0}（预览最多展示 200 条/类型）`
-                            : ((syncDomain === 'schema' ? schemaPreviewData?.schemaSummary : previewData?.schemaSummary) || `检测到 ${previewSql.statementCount} 条结构变更语句`)
+                            ? `插入 ${currentPreviewData.totalInserts || 0}，更新 ${currentPreviewData.totalUpdates || 0}，删除 ${currentPreviewData.totalDeletes || 0}（预览最多展示 200 条/类型）`
+                            : ((syncDomain === 'schema' ? currentSchemaPreviewData?.schemaSummary : currentPreviewData?.schemaSummary) || `检测到 ${previewSql.statementCount} 条结构变更语句`)
                     }
                 />
                 {previewSchemaWarnings.length > 0 && (
@@ -1669,56 +1719,63 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                 <Divider />
                 <Tabs
                     items={[
-                        ...(previewHasSchemaStatements ? [{
-                            key: 'schema',
-                            label: `结构(${Array.isArray(syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements) ? (syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements).length : 0})`,
-                            children: (
-                                <div>
-                                    <Text type="secondary">
-                                        {(syncDomain === 'schema' ? schemaPreviewData?.schemaSummary : previewData?.schemaSummary) || '以下为本次结构同步计划执行的语句。'}
-                                    </Text>
-                                    <pre
-                                        style={{
-                                            marginTop: 8,
-                                            marginBottom: 0,
-                                            padding: 10,
-                                            border: '1px solid #f0f0f0',
-                                            borderRadius: 6,
-                                            background: '#fafafa',
-                                            maxHeight: 420,
-                                            overflow: 'auto',
-                                            whiteSpace: 'pre-wrap',
-                                            wordBreak: 'break-word'
-                                        }}
-                                    >
-                                        {Array.isArray(syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements)
-                                            && (syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements).length > 0
-                                            ? (syncDomain === 'schema' ? schemaPreviewData?.schemaStatements : previewData?.schemaStatements).join('\n')
-                                            : '-- 当前表结构无可执行变更'}
-                                    </pre>
-                                </div>
-                            )
-                        }] : []),
+                        ...(previewHasSchemaStatements ? (() => {
+                            const schemaStatements = syncDomain === 'schema'
+                                ? currentSchemaPreviewData.schemaStatements || []
+                                : currentPreviewData.schemaStatements || [];
+                            const schemaSummary = syncDomain === 'schema'
+                                ? currentSchemaPreviewData.schemaSummary
+                                : currentPreviewData.schemaSummary;
+                            return [{
+                                key: 'schema',
+                                label: `结构(${schemaStatements.length})`,
+                                children: (
+                                    <div>
+                                        <Text type="secondary">
+                                            {schemaSummary || '以下为本次结构同步计划执行的语句。'}
+                                        </Text>
+                                        <pre
+                                            style={{
+                                                marginTop: 8,
+                                                marginBottom: 0,
+                                                padding: 10,
+                                                border: '1px solid #f0f0f0',
+                                                borderRadius: 6,
+                                                background: '#fafafa',
+                                                maxHeight: 420,
+                                                overflow: 'auto',
+                                                whiteSpace: 'pre-wrap',
+                                                wordBreak: 'break-word'
+                                            }}
+                                        >
+                                            {schemaStatements.length > 0
+                                                ? schemaStatements.join('\n')
+                                                : '-- 当前表结构无可执行变更'}
+                                        </pre>
+                                    </div>
+                                )
+                            }];
+                        })() : []),
                         ...(previewHasDataDiff ? [{
                             key: 'insert',
-                            label: `插入(${previewData.totalInserts || 0})`,
+                            label: `插入(${currentPreviewData.totalInserts || 0})`,
                             children: (
                                 <div>
                                     <Text type="secondary">未勾选任何行表示“同步全部插入差异”；如不想执行插入请在对比结果中取消勾选“插入”。</Text>
-                                    <Table
+                                    <Table<DataPreviewInsertRow>
                                         size="small"
                                         style={{ marginTop: 8 }}
-                                        rowKey={(r: any) => r.pk}
-                                        dataSource={(previewData.inserts || []).map((r: any) => ({ ...r, key: r.pk }))}
+                                        rowKey={(r) => r.pk}
+                                        dataSource={(currentPreviewData.inserts || []).map((r) => ({ ...r, key: r.pk }))}
                                         pagination={false}
                                         rowSelection={{
-                                            selectedRowKeys: (tableOptions[previewTable]?.selectedInsertPks || []) as any,
+                                            selectedRowKeys: tableOptions[previewTable]?.selectedInsertPks || [],
                                             onChange: (keys) => updateTableOption(previewTable, 'selectedInsertPks', keys as string[]),
                                             getCheckboxProps: () => ({ disabled: !tableOptions[previewTable]?.insert }),
                                         }}
                                         columns={[
-                                            { title: previewData.pkColumn || '主键', dataIndex: 'pk', key: 'pk', width: 200, ellipsis: true },
-                                            { title: '数据', dataIndex: 'row', key: 'row', render: (v: any) => <pre style={{ margin: 0, maxHeight: 140, overflow: 'auto' }}>{JSON.stringify(v, null, 2)}</pre> }
+                                            { title: currentPreviewData.pkColumn || '主键', dataIndex: 'pk', key: 'pk', width: 200, ellipsis: true },
+                                            { title: '数据', dataIndex: 'row', key: 'row', render: (v: QueryRow) => <pre style={{ margin: 0, maxHeight: 140, overflow: 'auto' }}>{JSON.stringify(v, null, 2)}</pre> }
                                         ]}
                                     />
                                 </div>
@@ -1726,29 +1783,29 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                         },
                         {
                             key: 'update',
-                            label: `更新(${previewData.totalUpdates || 0})`,
+                            label: `更新(${currentPreviewData.totalUpdates || 0})`,
                             children: (
                                 <div>
                                     <Text type="secondary">未勾选任何行表示“同步全部更新差异”；如不想执行更新请在对比结果中取消勾选“更新”。</Text>
-                                    <Table
+                                    <Table<DataPreviewUpdateRow>
                                         size="small"
                                         style={{ marginTop: 8 }}
-                                        rowKey={(r: any) => r.pk}
-                                        dataSource={(previewData.updates || []).map((r: any) => ({ ...r, key: r.pk }))}
+                                        rowKey={(r) => r.pk}
+                                        dataSource={(currentPreviewData.updates || []).map((r) => ({ ...r, key: r.pk }))}
                                         pagination={false}
                                         rowSelection={{
-                                            selectedRowKeys: (tableOptions[previewTable]?.selectedUpdatePks || []) as any,
+                                            selectedRowKeys: tableOptions[previewTable]?.selectedUpdatePks || [],
                                             onChange: (keys) => updateTableOption(previewTable, 'selectedUpdatePks', keys as string[]),
                                             getCheckboxProps: () => ({ disabled: !tableOptions[previewTable]?.update }),
                                         }}
                                         columns={[
-                                            { title: previewData.pkColumn || '主键', dataIndex: 'pk', key: 'pk', width: 200, ellipsis: true },
-                                            { title: '变更字段', dataIndex: 'changedColumns', key: 'changedColumns', render: (v: any) => Array.isArray(v) ? v.join(', ') : '' },
+                                            { title: currentPreviewData.pkColumn || '主键', dataIndex: 'pk', key: 'pk', width: 200, ellipsis: true },
+                                            { title: '变更字段', dataIndex: 'changedColumns', key: 'changedColumns', render: (v: string[] | undefined) => Array.isArray(v) ? v.join(', ') : '' },
                                             {
                                                 title: '详情',
                                                 key: 'detail',
                                                 width: 80,
-                                                render: (_: any, r: any) => (
+                                                render: (_: unknown, r: DataPreviewUpdateRow) => (
                                                     <Button size="small" onClick={() => {
                                                         Modal.info({
                                                             title: `更新详情：${previewTable} / ${r.pk}`,
@@ -1776,25 +1833,25 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                         },
                         {
                             key: 'delete',
-                            label: `删除(${previewData.totalDeletes || 0})`,
+                            label: `删除(${currentPreviewData.totalDeletes || 0})`,
                             children: (
                                 <div>
                                     <Alert type="warning" showIcon message="删除默认不勾选。请确认业务允许后再开启删除操作。" />
                                     <Text type="secondary">未勾选任何行表示“同步全部删除差异”；如不想执行删除请在对比结果中取消勾选“删除”。</Text>
-                                    <Table
+                                    <Table<DataPreviewDeleteRow>
                                         size="small"
                                         style={{ marginTop: 8 }}
-                                        rowKey={(r: any) => r.pk}
-                                        dataSource={(previewData.deletes || []).map((r: any) => ({ ...r, key: r.pk }))}
+                                        rowKey={(r) => r.pk}
+                                        dataSource={(currentPreviewData.deletes || []).map((r) => ({ ...r, key: r.pk }))}
                                         pagination={false}
                                         rowSelection={{
-                                            selectedRowKeys: (tableOptions[previewTable]?.selectedDeletePks || []) as any,
+                                            selectedRowKeys: tableOptions[previewTable]?.selectedDeletePks || [],
                                             onChange: (keys) => updateTableOption(previewTable, 'selectedDeletePks', keys as string[]),
                                             getCheckboxProps: () => ({ disabled: !tableOptions[previewTable]?.delete }),
                                         }}
                                         columns={[
-                                            { title: previewData.pkColumn || '主键', dataIndex: 'pk', key: 'pk', width: 200, ellipsis: true },
-                                            { title: '数据', dataIndex: 'row', key: 'row', render: (v: any) => <pre style={{ margin: 0, maxHeight: 140, overflow: 'auto' }}>{JSON.stringify(v, null, 2)}</pre> }
+                                            { title: currentPreviewData.pkColumn || '主键', dataIndex: 'pk', key: 'pk', width: 200, ellipsis: true },
+                                            { title: '数据', dataIndex: 'row', key: 'row', render: (v: QueryRow) => <pre style={{ margin: 0, maxHeight: 140, overflow: 'auto' }}>{JSON.stringify(v, null, 2)}</pre> }
                                         ]}
                                     />
                                 </div>
