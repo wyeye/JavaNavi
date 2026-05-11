@@ -51,7 +51,6 @@ import { buildSelectedCellClipboardText } from './dataGrid/dataGridSelectionCopy
 import { buildCopiedRowsForPaste, buildPastedRowsFromCopiedRows } from './dataGrid/dataGridRowClipboard';
 import { applyNoAutoCapAttributesWithin, noAutoCapInputProps } from '../utils/inputAutoCap';
 import { resolveEditRowLocator, resolveRowLocatorValues, type EditRowLocator } from '../utils/rowLocator';
-import { translate } from '../i18n';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
 import {
     TEMPORAL_FORMATS,
@@ -107,6 +106,7 @@ import type { GridFilterCondition, GridSortInfo } from './dataGrid/dataGridFilte
 import { DataGridFooterControls, type DataGridViewMode } from './dataGrid/dataGridFooterControls';
 import { DataGridPreviewPanel, type DataGridFocusedCellInfo } from './dataGrid/dataGridPreviewPanel';
 import { DataGridJsonView, DataGridTextView } from './dataGrid/dataGridResultViews';
+import { DataGridErrorBoundary } from './dataGrid/DataGridErrorBoundary';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
@@ -138,52 +138,6 @@ const renderCellDisplayValue = (val: any, query: string): React.ReactNode => {
     if (val === null) return <span style={{ color: '#ccc' }}>{content}</span>;
     return content;
 };
-
-
-// --- Error Boundary ---
-interface DataGridErrorBoundaryState {
-    hasError: boolean;
-    error: Error | null;
-}
-
-class DataGridErrorBoundary extends React.Component<
-    { children: React.ReactNode; language: import('../i18n').AppLanguage },
-    DataGridErrorBoundaryState
-> {
-    constructor(props: { children: React.ReactNode; language: import('../i18n').AppLanguage }) {
-        super(props);
-        this.state = { hasError: false, error: null };
-    }
-
-    static getDerivedStateFromError(error: Error): DataGridErrorBoundaryState {
-        return { hasError: true, error };
-    }
-
-    componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
-        console.error('DataGrid render error:', error, errorInfo);
-    }
-
-    render() {
-        if (this.state.hasError) {
-            return (
-                <div style={{ padding: 16, color: '#ff4d4f' }}>
-                    <h4>{translate(this.props.language, 'generic.fallback.renderError.title')}</h4>
-                    <p>{translate(this.props.language, 'generic.fallback.renderError.description')}</p>
-                    <pre style={{ fontSize: 12, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
-                        {this.state.error?.message}
-                    </pre>
-                    <Button
-                        size="small"
-                        onClick={() => this.setState({ hasError: false, error: null })}
-                    >
-                        {translate(this.props.language, 'generic.fallback.retry')}
-                    </Button>
-                </div>
-            );
-        }
-        return this.props.children;
-    }
-}
 
 // Cell key helpers for batch selection/fill.
 // Use a control character separator to avoid collisions with rowKey/columnName contents (e.g. `new-123`).
