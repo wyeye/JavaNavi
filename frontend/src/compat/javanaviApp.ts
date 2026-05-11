@@ -47,7 +47,12 @@ function browserMockConnectionPassword(config: any = {}): string | undefined {
 
 function isInternalConnectionOptionKey(key: string): boolean {
   const normalized = String(key || '').replace(/[-_\s]/g, '').toLowerCase();
+  if (isRememberedMetadataOptionKey(normalized)) return false;
   return normalized.startsWith('customdatasource') || normalized.startsWith('javanavi');
+}
+
+function isRememberedMetadataOptionKey(normalizedKey: string): boolean {
+  return normalizedKey === 'javanavimetadatacatalog' || normalizedKey === 'javanavimetadataschema';
 }
 
 function runtimeConnectionOptions(options: any): Record<string, string> | undefined {

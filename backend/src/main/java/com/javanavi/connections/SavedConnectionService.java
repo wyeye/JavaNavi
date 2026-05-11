@@ -27,6 +27,9 @@ import java.util.UUID;
 public class SavedConnectionService {
     private static final TypeReference<List<StoredConnection>> STORED_CONNECTIONS = new TypeReference<>() {};
     private static final String SECRET_PREFIX = "connection:";
+    public static final String METADATA_CATALOG_OPTION = "javanaviMetadataCatalog";
+    public static final String METADATA_SCHEMA_OPTION = "javanaviMetadataSchema";
+    public static final String METADATA_SCOPE_NULL_VALUE = "__javanavi_null__";
 
     private final ObjectMapper objectMapper;
     private final SecretStore secretStore;
@@ -92,6 +95,72 @@ public class SavedConnectionService {
         connections.add(next);
         writeAll(connections);
         return toView(next);
+    }
+
+    public synchronized Optional<SavedConnectionViewDto> rememberMetadataScope(ConnectionConfigDto config, String catalog, String schema) {
+        if (config == null) {
+            return Optional.empty();
+        }
+        String id = firstText(config.id(), config.name());
+        if (id == null) {
+            return Optional.empty();
+        }
+        String connectionId = sanitizeId(id);
+        List<StoredConnection> connections = new ArrayList<>(readAll());
+        StoredConnection existing = find(connections, connectionId).orElse(null);
+        if (existing == null) {
+            return Optional.empty();
+        }
+
+        Map<String, Object> nextConfig = deepCopyMap(existing.config());
+        Map<String, Object> options = mapValue(nextConfig.get("options"));
+        String nextCatalog = metadataScopeOptionValue(catalog);
+        String nextSchema = metadataScopeOptionValue(schema);
+        if (nextCatalog.equals(String.valueOf(options.get(METADATA_CATALOG_OPTION)))
+                && nextSchema.equals(String.valueOf(options.get(METADATA_SCHEMA_OPTION)))) {
+            return Optional.of(toView(existing));
+        }
+        options.put(METADATA_CATALOG_OPTION, nextCatalog);
+        options.put(METADATA_SCHEMA_OPTION, nextSchema);
+        nextConfig.put("options", options);
+
+        StoredConnection next = new StoredConnection(
+                existing.id(),
+                existing.name(),
+                nextConfig,
+                existing.includeDatabases(),
+                existing.includeRedisDatabases(),
+                existing.iconType(),
+                existing.iconColor(),
+                existing.secretRef(),
+                existing.hasPrimaryPassword(),
+                existing.hasSSHPassword(),
+                existing.hasProxyPassword(),
+                existing.hasHttpTunnelPassword(),
+                existing.hasMySQLReplicaPassword(),
+                existing.hasMongoReplicaPassword(),
+                existing.hasOpaqueURI(),
+                existing.hasOpaqueDSN(),
+                existing.createdAt(),
+                Instant.now()
+        );
+
+        connections.removeIf(item -> item.id().equals(connectionId));
+        connections.add(next);
+        writeAll(connections);
+        return Optional.of(toView(next));
+    }
+
+    public synchronized Optional<MetadataScopeMemory> readMetadataScope(ConnectionConfigDto config) {
+        if (config == null) {
+            return Optional.empty();
+        }
+        String id = firstText(config.id(), config.name());
+        if (id == null) {
+            return Optional.empty();
+        }
+        return find(readAll(), sanitizeId(id))
+                .flatMap(connection -> metadataScopeMemory(mapValue(connection.config().get("options"))));
     }
 
     public synchronized boolean delete(String id) {
@@ -479,6 +548,14 @@ public class SavedConnectionService {
     }
 
     @SuppressWarnings("unchecked")
+    private Map<String, Object> mapValue(Object value) {
+        if (value instanceof Map<?, ?> map) {
+            return objectMapper.convertValue((Map<String, Object>) map, LinkedHashMap.class);
+        }
+        return new LinkedHashMap<>();
+    }
+
+    @SuppressWarnings("unchecked")
     private static void redactStoredSecrets(Map<String, Object> config) {
         config.put("password", "");
         Object ssh = config.get("ssh");
@@ -526,6 +603,34 @@ public class SavedConnectionService {
 
     private static String textOrNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    private static String metadataScopeOptionValue(String value) {
+        String text = textOrNull(value);
+        return text == null ? METADATA_SCOPE_NULL_VALUE : text;
+    }
+
+    private static Optional<MetadataScopeMemory> metadataScopeMemory(Map<String, Object> options) {
+        if (options == null
+                || !options.containsKey(METADATA_CATALOG_OPTION)
+                || !options.containsKey(METADATA_SCHEMA_OPTION)) {
+            return Optional.empty();
+        }
+        return Optional.of(new MetadataScopeMemory(
+                metadataScopeValue(options.get(METADATA_CATALOG_OPTION)),
+                metadataScopeValue(options.get(METADATA_SCHEMA_OPTION))
+        ));
+    }
+
+    private static String metadataScopeValue(Object value) {
+        if (value == null) {
+            return null;
+        }
+        String text = textOrNull(String.valueOf(value));
+        if (text == null || METADATA_SCOPE_NULL_VALUE.equals(text)) {
+            return null;
+        }
+        return text;
     }
 
     private static String mapText(Map<String, Object> value, String key) {
@@ -593,5 +698,8 @@ public class SavedConnectionService {
             Instant createdAt,
             Instant updatedAt
     ) {
+    }
+
+    public record MetadataScopeMemory(String catalog, String schema) {
     }
 }

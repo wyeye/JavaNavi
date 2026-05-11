@@ -15,8 +15,13 @@ type HttpTunnelConfigInput = Record<string, any>;
 
 const isInternalOptionKey = (key: string): boolean => {
   const normalized = key.replace(/[-_\s]/g, '').toLowerCase();
+  if (isRememberedMetadataOptionKey(normalized)) return false;
   return normalized.startsWith('customdatasource') || normalized.startsWith('javanavi');
 };
+
+const isRememberedMetadataOptionKey = (normalizedKey: string): boolean => (
+  normalizedKey === 'javanavimetadatacatalog' || normalizedKey === 'javanavimetadataschema'
+);
 
 const toStringValue = (value: unknown, fallback = ''): string => {
   if (typeof value === 'string') {
