@@ -9,7 +9,6 @@ if (typeof window !== 'undefined' && !window.runtime) {
 if (typeof window !== 'undefined' && !window.go) {
     const appBridge = {
         ...compatibilityApp,
-        CheckUpdate: compatibilityApp.CheckForUpdates,
         OpenConnection: compatibilityApp.DBConnect,
         CloseConnection: compatibilityApp.CloseConnection,
         DeleteConnection: async (id: string) => {

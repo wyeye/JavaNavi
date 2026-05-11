@@ -81,7 +81,6 @@ Progress and stream events require fixtures or runtime smoke coverage before a U
 - `sqlfile:progress`
 - `import:progress`
 - `driver:download-progress`
-- `update:download-progress`
 - `ai:stream:{sessionId}`
 
 Each event payload must include enough fields for UI progress/error state and must be documented in fixtures before implementation is marked complete.
@@ -175,7 +174,7 @@ The maintained compatibility seam is the JavaNavi browser adapter plus the Java 
 
 Current adapter paths to cover:
 
-- app runtime: `GetAppInfo`, `CheckForUpdates`, `CheckForUpdatesSilently`, `GetDataRootDirectoryInfo`, `GetSecurityUpdateStatus`;
+- app runtime: `GetAppInfo`, `GetDataRootDirectoryInfo`;
 - relational demo path: `DBConnect`, `DBQuery`;
 - saved connections and secrets: `SaveConnection`, `GetSavedConnections`, `DuplicateConnection`, `DeleteConnection`, `ExportConnectionsPackage`, `SaveGlobalProxy`, `GetGlobalProxyConfig`;
 - SQL workspace: `SelectSQLDirectory`, `WriteSQLFile`, `ReadSQLFile`, `ListSQLDirectory`.

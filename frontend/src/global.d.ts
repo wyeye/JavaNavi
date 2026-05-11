@@ -6,7 +6,6 @@ declare global {
   type JavaNaviAppCompat = typeof import('./compat/javanaviApp');
 
   type JavaNaviAppBridge = Omit<JavaNaviAppCompat, 'DeleteConnection'> & {
-    CheckUpdate: JavaNaviAppCompat['CheckForUpdates'];
     OpenConnection: JavaNaviAppCompat['DBConnect'];
     CloseConnection: JavaNaviAppCompat['CloseConnection'];
     DeleteConnection: (id: string) => Promise<null>;

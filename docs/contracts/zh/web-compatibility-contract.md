@@ -81,7 +81,6 @@ Progress 与 stream event 在被视为已维护的 UI-facing workflow 前，需�
 - `sqlfile:progress`
 - `import:progress`
 - `driver:download-progress`
-- `update:download-progress`
 - `ai:stream:{sessionId}`
 
 每个 event payload 必须包含足够支撑 UI progress/error state 的字段，并在标记实现完成前得到文档或验证覆盖。
@@ -136,7 +135,7 @@ GET /api/v1/session
 
 当前需要覆盖的 adapter 路径包括：
 
-- app runtime: `GetAppInfo`、`CheckForUpdates`、`CheckForUpdatesSilently`、`GetDataRootDirectoryInfo`、`GetSecurityUpdateStatus`；
+- app runtime: `GetAppInfo`、`GetDataRootDirectoryInfo`；
 - relational demo path: `DBConnect`、`DBQuery`；
 - saved connections and secrets: `SaveConnection`、`GetSavedConnections`、`DuplicateConnection`、`DeleteConnection`、`ExportConnectionsPackage`、`SaveGlobalProxy`、`GetGlobalProxyConfig`；
 - SQL workspace: `SelectSQLDirectory`、`WriteSQLFile`、`ReadSQLFile`、`ListSQLDirectory`。

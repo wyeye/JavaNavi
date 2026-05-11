@@ -1,12 +1,12 @@
 import React, { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Progress, Switch, Input, InputNumber, Select, Segmented, Tooltip } from 'antd';
+import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Switch, Input, InputNumber, Select, Segmented, Tooltip } from 'antd';
 import type { Locale } from 'antd/es/locale';
 import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
-import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, CloudDownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, FolderOpenOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
-import { BrowserOpenURL, Environment, EventsOn, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
+import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, FolderOpenOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { BrowserOpenURL, Environment, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
 import { DEFAULT_APPEARANCE, useStore } from './store';
 import { SavedConnection } from './types';
 import { blurToFilter, isMacLikePlatform, normalizeBlurForPlatform, normalizeOpacityForPlatform, isWindowsPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from './utils/appearance';
@@ -897,69 +897,11 @@ function App() {
   const connections = useStore(state => state.connections);
   const tabs = useStore(state => state.tabs);
   const activeTabId = useStore(state => state.activeTabId);
-  const updateCheckInFlightRef = React.useRef(false);
-  const updateDownloadInFlightRef = React.useRef(false);
-  const updateUserDismissedRef = React.useRef(false);
-  const updateDownloadedVersionRef = React.useRef<string | null>(null);
-  const updateInstallTriggeredVersionRef = React.useRef<string | null>(null);
-  const updateDownloadMetaRef = React.useRef<UpdateDownloadResultData | null>(null);
-  const updateNotifiedVersionRef = React.useRef<string | null>(null);
-  const updateMutedVersionRef = React.useRef<string | null>(null);
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const isAboutOpenRef = React.useRef(false);
   const [aboutLoading, setAboutLoading] = useState(false);
-  const [aboutInfo, setAboutInfo] = useState<{ version: string; author: string; buildTime?: string; repoUrl?: string; issueUrl?: string; releaseUrl?: string; communityUrl?: string; communityName?: string; communityGroupNumber?: string } | null>(null);
+  const [aboutInfo, setAboutInfo] = useState<{ version: string; author: string; buildTime?: string; repoUrl?: string; communityUrl?: string; communityName?: string; communityGroupNumber?: string } | null>(null);
   const aboutDisplayVersion = resolveAboutDisplayVersion(runtimeBuildType, aboutInfo?.version);
-  const [aboutUpdateStatus, setAboutUpdateStatus] = useState<string>('');
-  const [lastUpdateInfo, setLastUpdateInfo] = useState<UpdateInfo | null>(null);
-  const [updateDownloadProgress, setUpdateDownloadProgress] = useState<{
-      open: boolean;
-      version: string;
-      status: 'idle' | 'start' | 'downloading' | 'done' | 'error';
-      percent: number;
-      downloaded: number;
-      total: number;
-      message: string;
-  }>({
-      open: false,
-      version: '',
-      status: 'idle',
-      percent: 0,
-      downloaded: 0,
-      total: 0,
-      message: ''
-  });
-
-  type UpdateInfo = {
-      hasUpdate: boolean;
-      currentVersion: string;
-      latestVersion: string;
-      releaseName?: string;
-      releaseNotesUrl?: string;
-      assetName?: string;
-      assetUrl?: string;
-      assetSize?: number;
-      sha256?: string;
-      downloaded?: boolean;
-      downloadPath?: string;
-  };
-
-  type UpdateDownloadProgressEvent = {
-      status?: 'start' | 'downloading' | 'done' | 'error';
-      percent?: number;
-      downloaded?: number;
-      total?: number;
-      message?: string;
-  };
-
-  type UpdateDownloadResultData = {
-      info?: UpdateInfo;
-      downloadPath?: string;
-      installLogPath?: string;
-      installTarget?: string;
-      platform?: string;
-      autoRelaunch?: boolean;
-  };
 
   const isMacRuntime = runtimePlatform === 'darwin'
       || (runtimePlatform === '' && /mac/i.test(detectNavigatorPlatform()));
@@ -1138,298 +1080,6 @@ function App() {
           document.removeEventListener('visibilitychange', handleVisibilityChange);
       };
   }, [emitWindowDiagnostic, macWindowDiagnosticsEnabled]);
-
-  const formatBytes = (bytes?: number) => {
-      if (!bytes || bytes <= 0) return '0 B';
-      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-      let value = bytes;
-      let idx = 0;
-      while (value >= 1024 && idx < units.length - 1) {
-          value /= 1024;
-          idx++;
-      }
-      return `${value.toFixed(idx === 0 ? 0 : 1)} ${units[idx]}`;
-  };
-
-  const downloadUpdate = React.useCallback(async (info: UpdateInfo, silent: boolean) => {
-      if (updateDownloadInFlightRef.current) return;
-      if (updateDownloadedVersionRef.current === info.latestVersion) {
-          if (!silent) {
-              const cachedDownloadPath = updateDownloadMetaRef.current?.downloadPath;
-              void message.info(cachedDownloadPath ? t('update.status.downloadReadyWithPath', { version: info.latestVersion, path: cachedDownloadPath }) : t('update.status.downloadReady', { version: info.latestVersion }));
-              setUpdateDownloadProgress((prev) => (prev.status === 'idle' ? prev : { ...prev, open: true }));
-          }
-          return;
-      }
-      updateDownloadInFlightRef.current = true;
-      updateUserDismissedRef.current = false;
-      updateDownloadMetaRef.current = null;
-      setUpdateDownloadProgress({
-          open: true,
-          version: info.latestVersion,
-          status: 'start',
-          percent: 0,
-          downloaded: 0,
-          total: info.assetSize || 0,
-          message: ''
-      });
-      let res: any = null;
-      try {
-          res = await (window as any).go.app.App.DownloadUpdate();
-      } catch (e) {
-          console.warn("Wails API: DownloadUpdate unavailable", e);
-      }
-      updateDownloadInFlightRef.current = false;
-      if (res?.success) {
-          const resultData = (res?.data || {}) as UpdateDownloadResultData;
-          updateDownloadMetaRef.current = resultData;
-          updateDownloadedVersionRef.current = info.latestVersion;
-          setUpdateDownloadProgress(prev => {
-              const total = prev.total > 0 ? prev.total : (info.assetSize || 0);
-              return { ...prev, status: 'done', percent: 100, downloaded: total, total, message: '', open: false };
-          });
-          setLastUpdateInfo((prev) => {
-              if (!prev || prev.latestVersion !== info.latestVersion) {
-                  return {
-                      ...info,
-                      downloaded: true,
-                      downloadPath: resultData?.downloadPath || info.downloadPath,
-                  };
-              }
-              return {
-                  ...prev,
-                  downloaded: true,
-                  downloadPath: resultData?.downloadPath || prev.downloadPath || info.downloadPath,
-              };
-          });
-          if (resultData?.downloadPath) {
-              void message.success({ content: t('update.status.downloadCompleteWithPath', { path: resultData.downloadPath }), duration: 5 });
-          } else {
-              void message.success({ content: t('update.status.downloadComplete'), duration: 2 });
-          }
-          setAboutUpdateStatus(t('update.status.newVersionDownloaded', { version: info.latestVersion }));
-          // macOS：如果用户没有主动隐藏进度弹窗，则下载完成后自动打开下载目录
-          if (isMacRuntime && !updateUserDismissedRef.current) {
-              try {
-                  const openRes = await (window as any).go.app.App.OpenDownloadedUpdateDirectory();
-                  if (openRes?.success) {
-                      void message.success(openRes?.message || t('update.status.openInstallDirectorySuccess'));
-                  }
-              } catch (e) {
-                  console.warn('自动打开下载目录失败', e);
-              }
-          }
-      } else {
-          setUpdateDownloadProgress(prev => ({
-              ...prev,
-              status: 'error',
-              message: res?.message || t('message.unknownError')
-          }));
-          void message.error({ content: t('update.status.downloadFailed', { message: res?.message || t('message.unknownError') }), duration: 4 });
-      }
-  }, [isMacRuntime, t]);
-
-  const showUpdateDownloadProgress = React.useCallback(() => {
-      setUpdateDownloadProgress((prev) => {
-          if (prev.status === 'idle') return prev;
-          return { ...prev, open: true };
-      });
-  }, []);
-
-  const hideUpdateDownloadProgress = React.useCallback(() => {
-      setUpdateDownloadProgress((prev) => ({ ...prev, open: false }));
-  }, []);
-
-  const isLatestUpdateDownloaded = Boolean(lastUpdateInfo?.hasUpdate) && (
-      Boolean(lastUpdateInfo?.downloaded)
-      || (Boolean(lastUpdateInfo?.latestVersion) && updateDownloadedVersionRef.current === lastUpdateInfo?.latestVersion)
-  );
-  const isBackgroundProgressForLatestUpdate = Boolean(lastUpdateInfo?.hasUpdate)
-      && Boolean(lastUpdateInfo?.latestVersion)
-      && updateDownloadProgress.version === lastUpdateInfo?.latestVersion
-      && (updateDownloadProgress.status === 'start'
-          || updateDownloadProgress.status === 'downloading'
-          || updateDownloadProgress.status === 'done'
-          || updateDownloadProgress.status === 'error');
-  const canShowProgressEntry = (isLatestUpdateDownloaded || isBackgroundProgressForLatestUpdate)
-      && updateInstallTriggeredVersionRef.current !== (lastUpdateInfo?.latestVersion || null);
-
-  const handleInstallFromProgress = React.useCallback(async () => {
-      // 允许从下载进度弹窗（status=done）或关于弹窗（isLatestUpdateDownloaded=true）触发
-      const canInstall = updateDownloadProgress.status === 'done'
-          || (Boolean(lastUpdateInfo?.hasUpdate) && (Boolean(lastUpdateInfo?.downloaded) || updateDownloadedVersionRef.current === lastUpdateInfo?.latestVersion));
-      if (!canInstall) {
-          return;
-      }
-      if (isMacRuntime) {
-          const res = await (window as any).go.app.App.OpenDownloadedUpdateDirectory();
-          if (!res?.success) {
-              void message.error(t('update.status.openInstallDirFailed', { message: res?.message || t('message.unknownError') }));
-              // 文件可能已被用户删除，清除已下载状态以允许重新下载
-              updateDownloadedVersionRef.current = null;
-              updateDownloadMetaRef.current = null;
-              setUpdateDownloadProgress(prev => ({
-                  ...prev,
-                  status: 'idle',
-                  percent: 0,
-                  downloaded: 0,
-                  open: false,
-              }));
-              setLastUpdateInfo(prev => prev ? { ...prev, downloaded: false, downloadPath: undefined } : prev);
-              setAboutUpdateStatus((prev) => lastUpdateInfo?.latestVersion
-                  ? t('update.status.newVersionNotDownloaded', { version: lastUpdateInfo.latestVersion })
-                  : prev);
-              return;
-          }
-          updateInstallTriggeredVersionRef.current = updateDownloadProgress.version || lastUpdateInfo?.latestVersion || null;
-          hideUpdateDownloadProgress();
-          void message.success(res?.message || t('update.status.openInstallDirectorySuccess'));
-          return;
-      }
-      const res = await (window as any).go.app.App.InstallUpdateAndRestart();
-      if (!res?.success) {
-          void message.error(t('update.status.installFailed', { message: res?.message || t('message.unknownError') }));
-          return;
-      }
-      updateInstallTriggeredVersionRef.current = updateDownloadProgress.version || lastUpdateInfo?.latestVersion || null;
-      hideUpdateDownloadProgress();
-  }, [hideUpdateDownloadProgress, isMacRuntime, lastUpdateInfo?.latestVersion, lastUpdateInfo?.hasUpdate, lastUpdateInfo?.downloaded, t, updateDownloadProgress.status, updateDownloadProgress.version]);
-
-  const checkForUpdates = React.useCallback(async (silent: boolean) => {
-      if (updateCheckInFlightRef.current) return;
-      updateCheckInFlightRef.current = true;
-      if (!silent) {
-          setAboutUpdateStatus(t('update.status.checking'));
-      }
-      const updateAPI = (window as any).go.app.App;
-      const checkFn = silent && typeof updateAPI.CheckForUpdatesSilently === 'function'
-          ? updateAPI.CheckForUpdatesSilently
-          : updateAPI.CheckForUpdates;
-      const res = await checkFn();
-      updateCheckInFlightRef.current = false;
-      if (!res?.success) {
-          if (!silent) {
-              void message.error(t('update.status.checkFailed', { message: res?.message || t('message.unknownError') }));
-              setAboutUpdateStatus(t('update.status.checkFailed', { message: res?.message || t('message.unknownError') }));
-          }
-          return;
-      }
-      const info: UpdateInfo = res.data;
-      if (!info) return;
-      const aboutOpen = isAboutOpenRef.current;
-      if (info.hasUpdate) {
-          // 以后端校验为准：如果后端确认文件不存在（downloaded=false），清除本地 ref
-          if (!info.downloaded && updateDownloadedVersionRef.current === info.latestVersion) {
-              updateDownloadedVersionRef.current = null;
-              updateDownloadMetaRef.current = null;
-          }
-          const localDownloaded = updateDownloadedVersionRef.current === info.latestVersion;
-          const hasDownloaded = Boolean(info.downloaded) || localDownloaded;
-          if (hasDownloaded) {
-              const downloadPath = info.downloadPath || updateDownloadMetaRef.current?.downloadPath || '';
-              updateDownloadedVersionRef.current = info.latestVersion;
-              updateDownloadMetaRef.current = {
-                  ...(updateDownloadMetaRef.current || {}),
-                  info,
-                  downloadPath: downloadPath || undefined,
-              };
-              setUpdateDownloadProgress((prev) => {
-                  if (prev.status === 'start' || prev.status === 'downloading') {
-                      return prev;
-                  }
-                  const total = info.assetSize || prev.total || 0;
-                  return {
-                      ...prev,
-                      open: prev.open && prev.version === info.latestVersion,
-                      version: info.latestVersion,
-                      status: 'done',
-                      percent: 100,
-                      downloaded: total,
-                      total,
-                      message: '',
-                  };
-              });
-              setLastUpdateInfo({
-                  ...info,
-                  downloaded: true,
-                  downloadPath: downloadPath || undefined,
-              });
-          } else {
-              if (updateDownloadedVersionRef.current !== info.latestVersion) {
-                  updateDownloadMetaRef.current = null;
-              }
-              setUpdateDownloadProgress((prev) => {
-                  if (prev.status === 'start' || prev.status === 'downloading') {
-                      return prev;
-                  }
-                  return {
-                      ...prev,
-                      open: false,
-                      version: info.latestVersion,
-                      status: 'idle',
-                      percent: 0,
-                      downloaded: 0,
-                      total: info.assetSize || 0,
-                      message: '',
-                  };
-              });
-              setLastUpdateInfo(info);
-          }
-          const statusText = hasDownloaded
-              ? t('update.status.newVersionDownloaded', { version: info.latestVersion })
-              : t('update.status.newVersionNotDownloaded', { version: info.latestVersion });
-          if (!silent) {
-              void message.info(t('update.status.newVersion', { version: info.latestVersion }));
-              setAboutUpdateStatus(statusText);
-          }
-          if (silent && aboutOpen) {
-              setAboutUpdateStatus(statusText);
-          }
-          if (silent && !aboutOpen && updateMutedVersionRef.current !== info.latestVersion && updateNotifiedVersionRef.current !== info.latestVersion) {
-              updateNotifiedVersionRef.current = info.latestVersion;
-              setIsAboutOpen(true);
-          }
-      } else if (!silent) {
-          setUpdateDownloadProgress((prev) => {
-              if (prev.status === 'start' || prev.status === 'downloading') {
-                  return prev;
-              }
-              return {
-                  open: false,
-                  version: '',
-                  status: 'idle',
-                  percent: 0,
-                  downloaded: 0,
-                  total: 0,
-                  message: '',
-              };
-          });
-          setLastUpdateInfo(info);
-          const text = t('update.status.latest', { version: info.currentVersion || t('common.unknown') });
-          void message.success(text);
-          setAboutUpdateStatus(text);
-      } else if (silent && aboutOpen) {
-          setUpdateDownloadProgress((prev) => {
-              if (prev.status === 'start' || prev.status === 'downloading') {
-                  return prev;
-              }
-              return {
-                  open: false,
-                  version: '',
-                  status: 'idle',
-                  percent: 0,
-                  downloaded: 0,
-                  total: 0,
-                  message: '',
-              };
-          });
-          setLastUpdateInfo(info);
-          const text = t('update.status.latest', { version: info.currentVersion || t('common.unknown') });
-          setAboutUpdateStatus(text);
-      } else {
-          setLastUpdateInfo(info);
-      }
-  }, [t]);
 
   const loadAboutInfo = React.useCallback(async () => {
       setAboutLoading(true);
@@ -1998,69 +1648,9 @@ function App() {
 
   useEffect(() => {
       if (isAboutOpen) {
-          if (lastUpdateInfo?.hasUpdate) {
-              const localDownloaded = updateDownloadedVersionRef.current === lastUpdateInfo.latestVersion;
-              const hasDownloaded = Boolean(lastUpdateInfo.downloaded) || localDownloaded;
-              setAboutUpdateStatus(
-                  hasDownloaded
-                      ? t('update.status.newVersionDownloaded', { version: lastUpdateInfo.latestVersion })
-                      : t('update.status.newVersionNotDownloaded', { version: lastUpdateInfo.latestVersion })
-              );
-          } else if (lastUpdateInfo) {
-              setAboutUpdateStatus(t('update.status.latest', { version: lastUpdateInfo.currentVersion || t('common.unknown') }));
-          } else {
-              setAboutUpdateStatus(t('common.notChecked'));
-          }
           void loadAboutInfo();
       }
-  }, [isAboutOpen, lastUpdateInfo, loadAboutInfo, t]);
-
-  useEffect(() => {
-      const startupTimer = window.setTimeout(() => {
-          void checkForUpdates(true);
-      }, 2000);
-      const interval = window.setInterval(() => {
-          void checkForUpdates(true);
-      }, 30 * 60 * 1000);
-      return () => {
-          window.clearTimeout(startupTimer);
-          window.clearInterval(interval);
-      };
-  }, [checkForUpdates]);
-
-  useEffect(() => {
-      let offDownloadProgress: any = null;
-      try {
-          offDownloadProgress = EventsOn('update:download-progress', (event: UpdateDownloadProgressEvent) => {
-          if (!event) return;
-          const status = event.status || 'downloading';
-          const nextStatus: 'idle' | 'start' | 'downloading' | 'done' | 'error' =
-              status === 'start' || status === 'downloading' || status === 'done' || status === 'error'
-                  ? status
-                  : 'downloading';
-          const downloaded = typeof event.downloaded === 'number' ? event.downloaded : 0;
-          const total = typeof event.total === 'number' ? event.total : 0;
-          const percentRaw = typeof event.percent === 'number'
-              ? event.percent
-              : (total > 0 ? (downloaded / total) * 100 : 0);
-          const percent = Math.max(0, Math.min(100, percentRaw));
-          setUpdateDownloadProgress(prev => ({
-              open: prev.open,
-              version: prev.version,
-              status: nextStatus,
-              percent,
-              downloaded,
-              total,
-              message: String(event.message || '')
-          }));
-      });
-      } catch (e) {
-          console.warn("Wails API: EventsOn unavailable", e);
-      }
-      return () => {
-          if (offDownloadProgress) offDownloadProgress();
-      };
-  }, []);
+  }, [isAboutOpen, loadAboutInfo]);
 
   useEffect(() => {
       const handleOpenShortcutSettingsEvent = () => {
@@ -2849,23 +2439,8 @@ function App() {
             onCancel={() => setIsAboutOpen(false)}
             styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10, display: 'flex', flexWrap: 'wrap', gap: 10, justifyContent: 'flex-end' } }}
             footer={[
-                isBackgroundProgressForLatestUpdate && !isLatestUpdateDownloaded ? (
-                    <Button key="progress" icon={<DownloadOutlined />} onClick={showUpdateDownloadProgress}>{t('about.downloadProgress')}</Button>
-                ) : null,
-                lastUpdateInfo?.hasUpdate && !isLatestUpdateDownloaded && !isBackgroundProgressForLatestUpdate ? (
-                    <Button key="mute" onClick={() => { updateMutedVersionRef.current = lastUpdateInfo.latestVersion; setIsAboutOpen(false); }}>{t('about.muteThisVersion')}</Button>
-                ) : null,
-                <Button key="check" icon={<CloudDownloadOutlined />} onClick={() => checkForUpdates(false)}>{t('about.checkUpdates')}</Button>,
                 <Button key="close" onClick={() => setIsAboutOpen(false)}>{t('common.close')}</Button>,
-                lastUpdateInfo?.hasUpdate && !isLatestUpdateDownloaded && !isBackgroundProgressForLatestUpdate ? (
-                    <Button key="download" type="primary" icon={<DownloadOutlined />} onClick={() => downloadUpdate(lastUpdateInfo, false)}>{t('about.downloadUpdate')}</Button>
-                ) : null,
-                isLatestUpdateDownloaded ? (
-                    <Button key="install-direct" type="primary" icon={<DownloadOutlined />} onClick={handleInstallFromProgress}>
-                        {isMacRuntime ? t('about.openInstallDirectory') : t('about.installUpdate')}
-                    </Button>
-                ) : null,
-            ].filter(Boolean)}
+            ]}
           >
             {aboutLoading ? (
                 <div style={{ padding: '16px 0', textAlign: 'center' }}>
@@ -2882,10 +2457,6 @@ function App() {
                             <div>
                                 <div style={{ marginBottom: 6, fontWeight: 600 }}>{t('about.author')}</div>
                                 <div style={utilityMutedTextStyle}>{aboutInfo?.author || t('common.unknown')}</div>
-                            </div>
-                            <div style={{ gridColumn: '1 / -1' }}>
-                                <div style={{ marginBottom: 6, fontWeight: 600 }}>{t('about.updateStatus')}</div>
-                                <div style={utilityMutedTextStyle}>{aboutUpdateStatus || t('common.notChecked')}</div>
                             </div>
                             {(aboutInfo?.communityUrl || aboutInfo?.communityName || aboutInfo?.communityGroupNumber) ? (
                                 <div style={{ gridColumn: '1 / -1' }}>
@@ -2906,18 +2477,6 @@ function App() {
                                 <GithubOutlined />
                                 {aboutInfo?.repoUrl ? (
                                     <a onClick={(e) => { e.preventDefault(); if (aboutInfo?.repoUrl) BrowserOpenURL(aboutInfo.repoUrl); }} href={aboutInfo.repoUrl}>{aboutInfo.repoUrl}</a>
-                                ) : t('common.unknown')}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <BugOutlined />
-                                {aboutInfo?.issueUrl ? (
-                                    <a onClick={(e) => { e.preventDefault(); if (aboutInfo?.issueUrl) BrowserOpenURL(aboutInfo.issueUrl); }} href={aboutInfo.issueUrl}>{aboutInfo.issueUrl}</a>
-                                ) : t('common.unknown')}
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                <CloudDownloadOutlined />
-                                {aboutInfo?.releaseUrl ? (
-                                    <a onClick={(e) => { e.preventDefault(); if (aboutInfo?.releaseUrl) BrowserOpenURL(aboutInfo.releaseUrl); }} href={aboutInfo.releaseUrl}>{aboutInfo.releaseUrl}</a>
                                 ) : t('common.unknown')}
                             </div>
                         </div>
@@ -3339,45 +2898,7 @@ function App() {
               </div>
           </Modal>
 
-          <Modal
-              title={updateDownloadProgress.version ? t('update.download.titleWithVersion', { version: updateDownloadProgress.version }) : t('update.download.title')}
-              open={updateDownloadProgress.open}
-              closable
-              maskClosable
-              keyboard
-              onCancel={hideUpdateDownloadProgress}
-              footer={updateDownloadProgress.status === 'start' || updateDownloadProgress.status === 'downloading' ? [
-                  <Button
-                      key="background"
-                      onClick={() => {
-                          updateUserDismissedRef.current = true;
-                          hideUpdateDownloadProgress();
-                      }}
-                  >
-                      {t('common.hideToBackground')}
-                  </Button>
-              ] : (updateDownloadProgress.status === 'done' ? [
-                  <Button key="close" onClick={hideUpdateDownloadProgress}>{t('common.close')}</Button>,
-                  <Button key="install" type="primary" onClick={handleInstallFromProgress}>
-                      {isMacRuntime ? t('about.openInstallDirectory') : t('about.installUpdate')}
-                  </Button>
-              ] : (updateDownloadProgress.status === 'error' ? [
-                  <Button key="close" onClick={hideUpdateDownloadProgress}>{t('common.close')}</Button>
-              ] : null))}
-          >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                  <Progress
-                      percent={Math.round(updateDownloadProgress.percent)}
-                      status={updateDownloadProgress.status === 'error' ? 'exception' : (updateDownloadProgress.status === 'done' ? 'success' : 'active')}
-                  />
-                  <div style={{ fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>
-                      {`${formatBytes(updateDownloadProgress.downloaded)} / ${formatBytes(updateDownloadProgress.total)}`}
-                  </div>
-                  {updateDownloadProgress.message ? (
-                      <div style={{ fontSize: 12, color: '#ff4d4f' }}>{updateDownloadProgress.message}</div>
-                  ) : null}
-              </div>
-          </Modal>
+
 
           {showLinuxResizeHandles && (
               <>

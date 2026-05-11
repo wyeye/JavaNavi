@@ -295,16 +295,6 @@ export async function CheckDriverNetworkStatus(): Promise<connection.QueryResult
   return apiEnvelopeToQueryResult(payload, 'Driver network status loaded');
 }
 
-export async function CheckForUpdates(): Promise<connection.QueryResult> {
-  const payload = await getJson('/app/updates/check');
-  return apiEnvelopeToQueryResult(payload, 'Update status loaded');
-}
-
-export async function CheckForUpdatesSilently(): Promise<connection.QueryResult> {
-  const payload = await getJson('/app/updates/check');
-  return apiEnvelopeToQueryResult(payload, 'Update status loaded');
-}
-
 export async function ClearTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {
   const payload = await postJson('/ddl/clear-tables', { connection: toConnectionPayload(arg1), database: arg2, tables: arg3 });
   return apiEnvelopeToQueryResult(payload, 'Tables cleared');
@@ -505,11 +495,6 @@ export async function ValidateCustomDriverDefinition(arg1:string,arg2:string = '
 }
 
 
-export async function DownloadUpdate(): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/updates/download', {});
-  return apiEnvelopeToQueryResult(payload, 'Update download started');
-}
-
 export async function DropDatabase(arg1:connection.ConnectionConfig,arg2:string): Promise<connection.QueryResult> {
   const payload = await postJson('/ddl/drop-database', { connection: toConnectionPayload(arg1), name: arg2 });
   return apiEnvelopeToQueryResult(payload, 'Database dropped');
@@ -676,11 +661,6 @@ export async function InstallLocalDriverPackage(arg1:string,arg2:string,arg3:str
   return apiEnvelopeToQueryResult(payload, 'Local driver package registered');
 }
 
-export async function InstallUpdateAndRestart(): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/updates/install', {});
-  return apiEnvelopeToQueryResult(payload, 'Update install requested');
-}
-
 export async function ResolveSQLWorkspace(arg1:string,arg2:string): Promise<connection.QueryResult> {
   const payload = await postJson('/app/sql-workspace/resolve', { connectionId: arg1, dbName: arg2 });
   return apiEnvelopeToQueryResult(payload, 'SQL workspace resolved');
@@ -726,11 +706,6 @@ export async function MySQLShowCreateTable(arg1: connection.ConnectionConfig, ar
 export async function OpenDataRootDirectory(): Promise<connection.QueryResult> {
   const payload = await postJson('/app/data-root/open', {});
   return apiEnvelopeToQueryResult(payload, 'Data root located');
-}
-
-export async function OpenDownloadedUpdateDirectory(): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/updates/open-downloaded', {});
-  return apiEnvelopeToQueryResult(payload, 'Downloaded update directory located');
 }
 
 export async function OpenDriverDownloadDirectory(arg1:string): Promise<connection.QueryResult> {
@@ -1001,8 +976,4 @@ export async function TestConnection(arg1: connection.ConnectionConfig): Promise
 export async function TruncateTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {
   const payload = await postJson('/ddl/truncate-tables', { connection: toConnectionPayload(arg1), database: arg2, tables: arg3 });
   return apiEnvelopeToQueryResult(payload, 'Tables truncated');
-}
-
-export async function CheckUpdate(): Promise<connection.QueryResult> {
-  return CheckForUpdates();
 }
