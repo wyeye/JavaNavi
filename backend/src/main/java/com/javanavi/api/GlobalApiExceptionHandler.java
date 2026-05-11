@@ -58,6 +58,6 @@ public class GlobalApiExceptionHandler {
     @ExceptionHandler(ApiRateLimitExceededException.class)
     @ResponseStatus(HttpStatus.TOO_MANY_REQUESTS)
     public ApiEnvelope<Void> rateLimited(ApiRateLimitExceededException error) {
-        return ApiEnvelope.failKey(messages, "request.rateLimited");
+        return ApiEnvelope.failKey(messages, error.code(), error.args());
     }
 }

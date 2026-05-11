@@ -211,6 +211,10 @@ public class I18nMessages {
         Map<String, String> fallbackCodes = Map.ofEntries(
                 Map.entry("Connection OK", "common.connectionSucceeded"),
                 Map.entry("Connection failed", "connection.failed"),
+                Map.entry("Too many requests. Please retry later.", "request.rateLimited"),
+                Map.entry("Too many requests for /api/v1/query", "request.rateLimited"),
+                Map.entry("Too many requests for /api/v1/query/multi", "request.rateLimited"),
+                Map.entry("request.rateLimited", "request.rateLimited"),
                 Map.entry("MongoDB connection config is required.", "mongodb.configRequired"),
                 Map.entry("JavaNavi skipped MongoDB network probing for documentation/example host.", "mongodb.skipExampleHost"),
                 Map.entry("JavaNavi currently wires JDBC drivers for bundled relational, file, analytics, time-series, and custom DSN runtime profiles.", "connection.jdbcProfiles"),
@@ -312,6 +316,9 @@ public class I18nMessages {
     }
 
     private String localizePattern(String normalized) {
+        if (normalized.contains("ApiRateLimitExceededException") || normalized.contains("Too many requests")) {
+            return message("request.rateLimited");
+        }
         if (normalized.startsWith("不支持的 Redis 数据类型:")) {
             return message("redis.unsupportedType", "type", normalized.substring("不支持的 Redis 数据类型:".length()).trim());
         }

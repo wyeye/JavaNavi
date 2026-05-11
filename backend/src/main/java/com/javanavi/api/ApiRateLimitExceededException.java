@@ -1,7 +1,9 @@
 package com.javanavi.api;
 
-public class ApiRateLimitExceededException extends RuntimeException {
-    public ApiRateLimitExceededException(String message) {
-        super(message);
+import com.javanavi.i18n.LocalizedException;
+
+public class ApiRateLimitExceededException extends LocalizedException {
+    public ApiRateLimitExceededException() {
+        super("request.rateLimited");
     }
 }
