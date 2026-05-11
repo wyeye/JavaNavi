@@ -3,6 +3,8 @@ package com.javanavi.ai;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.events.CompatEventPublisher;
+import com.javanavi.i18n.AppLanguage;
+import com.javanavi.i18n.I18nContext;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.security.LocalSessionService;
 import com.javanavi.security.SecretStore;
@@ -24,6 +26,7 @@ class AiCompatibilityServiceTest {
 
     @Test
     void builtinPromptsMatchGoNaviPromptSetWithJavaNaviBranding() {
+        I18nContext.set(AppLanguage.ZH);
         Map<String, String> prompts = service().builtinPrompts();
 
         assertThat(prompts.keySet()).containsExactly(
@@ -61,6 +64,45 @@ class AiCompatibilityServiceTest {
                 .contains("极简研报");
         assertThat(prompts.get("表结构审查"))
                 .contains("反三范式")
+                .contains("ALTER TABLE");
+    }
+
+    @Test
+    void builtinPromptTitlesFollowRequestLanguage() {
+        I18nContext.set(AppLanguage.EN);
+        Map<String, String> prompts = service().builtinPrompts();
+
+        assertThat(prompts.keySet()).containsExactly(
+                "General Chat Assistant",
+                "SQL Generator",
+                "SQL Explainer",
+                "SQL Optimizer",
+                "Data Insight Analysis",
+                "Schema Review"
+        );
+        assertThat(prompts.values())
+                .allSatisfy(prompt -> {
+                    assertThat(prompt).contains("JavaNavi AI assistant");
+                    assertThat(prompt).doesNotContainPattern("[\\u4e00-\\u9fff]");
+                    assertThat(prompt).doesNotContain("你是");
+                    assertThat(prompt).doesNotContain("中文");
+                });
+        assertThat(prompts.get("General Chat Assistant"))
+                .contains("database/cache client (JavaNavi)")
+                .contains("production red lines")
+                .contains("WHERE clause");
+        assertThat(prompts.get("SQL Generator"))
+                .contains("Redis commands")
+                .contains("LIMIT 100");
+        assertThat(prompts.get("SQL Explainer"))
+                .contains("FROM -> JOIN -> WHERE -> GROUP BY -> SELECT -> ORDER BY");
+        assertThat(prompts.get("SQL Optimizer"))
+                .contains("CREATE INDEX");
+        assertThat(prompts.get("Data Insight Analysis"))
+                .contains("Trends and anomalies")
+                .contains("compact report style");
+        assertThat(prompts.get("Schema Review"))
+                .contains("anti-third-normal-form")
                 .contains("ALTER TABLE");
     }
 

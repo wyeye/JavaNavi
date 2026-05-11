@@ -4,6 +4,7 @@
 
 import { localSessionHeaders } from './localSession';
 import { EventsEmit } from './runtime';
+import { currentLanguageHeaderValue, getRuntimeLanguage } from '../i18n';
 
 const API_BASE = '/api/v1';
 
@@ -11,7 +12,7 @@ async function getJson(path: string): Promise<any> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'GET',
     credentials: 'same-origin',
-    headers: { ...(await localSessionHeaders()) },
+    headers: { ...(await aiServiceHeaders()) },
   });
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
@@ -24,7 +25,7 @@ async function postJson(path: string, body: unknown): Promise<any> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'same-origin',
-    headers: { 'Content-Type': 'application/json', ...(await localSessionHeaders()) },
+    headers: { 'Content-Type': 'application/json', ...(await aiServiceHeaders()) },
     body: JSON.stringify(body || {}),
   });
   const payload = await response.json().catch(() => null);
@@ -32,6 +33,15 @@ async function postJson(path: string, body: unknown): Promise<any> {
     throw new Error(payload?.error?.message || response.statusText || 'JavaNavi AI request failed.');
   }
   return payload;
+}
+
+async function aiServiceHeaders(): Promise<Record<string, string>> {
+  const language = currentLanguageHeaderValue(getRuntimeLanguage());
+  return {
+    ...(await localSessionHeaders()),
+    'X-JavaNavi-Language': language,
+    'Accept-Language': language,
+  };
 }
 
 function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
