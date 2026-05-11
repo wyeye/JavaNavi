@@ -1,10 +1,10 @@
 // cspell:ignore anticon sqls uuidv uuidv4 hscroll
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import { createPortal } from 'react-dom';
-import { Table, message, Input, Button, Dropdown, MenuProps, Form, Pagination, Select, Modal, Checkbox, Segmented, Tooltip, Popover, DatePicker, TimePicker } from 'antd';
+import { Table, message, Input, Button, MenuProps, Form, Modal, Checkbox, Tooltip, DatePicker, TimePicker } from 'antd';
 import dayjs from 'dayjs';
 import type { SortOrder, ColumnType } from 'antd/es/table/interface';
-import { ExportOutlined, FileTextOutlined, CopyOutlined, EditOutlined, VerticalAlignBottomOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
+import { ExportOutlined, CopyOutlined, EditOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import { 
     DndContext, 
@@ -36,7 +36,7 @@ import {
     resolveDataTableDefaultColumnWidth,
     resolveDataTableVerticalBorderColor,
 } from '../utils/dataGridDisplay';
-import { resolvePaginationPageText, resolvePaginationSummaryText, resolvePaginationTotalForControl } from '../utils/dataGridPagination';
+import { resolvePaginationPageText, resolvePaginationSummaryText } from '../utils/dataGridPagination';
 import { resolveGridSortInfoFromTableSorter } from '../utils/dataGridSort';
 import { calculateTableBodyBottomPadding, calculateVirtualTableScrollX } from './dataGridLayout';
 import {
@@ -104,6 +104,7 @@ import {
 import { DataGridToolbar } from './dataGridToolbar';
 import { DataGridFilterPanel } from './dataGridFilterPanel';
 import type { GridFilterCondition, GridSortInfo } from './dataGridFilterTypes';
+import { DataGridFooterControls, type DataGridViewMode } from './dataGridFooterControls';
 export { JAVANAVI_ROW_KEY } from './dataGridCells';
 
 const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
@@ -239,7 +240,7 @@ interface DataGridProps {
     onScrollSnapshotChange?: (snapshot: { top: number; left: number }) => void;
 }
 
-type GridViewMode = 'table' | 'json' | 'text';
+type GridViewMode = DataGridViewMode;
 
 type ColumnMeta = {
     type: string;
@@ -5336,146 +5337,41 @@ const DataGrid: React.FC<DataGridProps> = ({
         )}
        </div>
 
-       <div
-           data-grid-secondary-actions="true"
-           style={{
-               display: 'flex',
-               alignItems: 'center',
-               justifyContent: 'space-between',
-               gap: 10,
-               flexWrap: 'wrap',
-               padding: '4px 0 0',
+       <DataGridFooterControls
+           darkMode={darkMode}
+           canViewDdl={canViewDdl}
+           ddlLoading={ddlLoading}
+           dataPanelOpen={dataPanelOpen}
+           viewMode={viewMode}
+           columnInfoSettingContent={columnInfoSettingContent}
+           normalizedPageFindText={normalizedPageFindText}
+           pageFindText={pageFindText}
+           pageFindMatchesLength={pageFindMatches.length}
+           activePageFindPosition={activePageFindPosition}
+           pageFindSummary={pageFindSummary}
+           noAutoCapInputProps={noAutoCapInputProps}
+           pagination={pagination}
+           paginationSummaryText={paginationSummaryText}
+           paginationPageText={paginationPageText}
+           paginationPageSizeOptions={paginationPageSizeOptions}
+           supportsApproximateTotalPages={supportsApproximateTotalPages}
+           onToggleDataPanel={() => {
+               const next = !dataPanelOpen;
+               setDataPanelOpen(next);
+               if (!next) {
+                   setFocusedCellInfo(null);
+                   setDataPanelValue('');
+                   setDataPanelIsJson(false);
+                   dataPanelDirtyRef.current = false;
+               }
            }}
-       >
-           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-               <Button
-                   icon={<EditOutlined />}
-                   type={dataPanelOpen ? 'primary' : 'default'}
-                   disabled={viewMode !== 'table'}
-                   onClick={() => {
-                       const next = !dataPanelOpen;
-                       setDataPanelOpen(next);
-                       if (!next) {
-                           setFocusedCellInfo(null);
-                           setDataPanelValue('');
-                           setDataPanelIsJson(false);
-                           dataPanelDirtyRef.current = false;
-                       }
-                   }}
-               >
-                   数据预览
-               </Button>
-               <Popover
-                   trigger="click"
-                   placement="bottomRight"
-                   content={columnInfoSettingContent}
-               >
-                   <Button icon={<FileTextOutlined />}>字段信息</Button>
-               </Popover>
-               {canViewDdl && (
-                   <Button
-                       data-grid-ddl-action="true"
-                       icon={<FileTextOutlined />}
-                       loading={ddlLoading}
-                       onClick={handleOpenTableDdl}
-                   >
-                       查看 DDL
-                   </Button>
-               )}
-               <Tooltip title="仅查找当前页已加载数据，不改变 WHERE 条件">
-                   <div data-grid-page-find="true" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                       <Input
-                           {...noAutoCapInputProps}
-                           allowClear
-                           size="small"
-                           prefix={<SearchOutlined />}
-                           placeholder="当前页查找..."
-                           value={pageFindText}
-                           onChange={(event) => setPageFindText(event.target.value)}
-                           style={{ width: 220 }}
-                       />
-                       <Button
-                           data-grid-page-find-prev="true"
-                           size="small"
-                           icon={<LeftOutlined />}
-                           disabled={pageFindMatches.length === 0}
-                           onClick={() => handleNavigatePageFind('previous')}
-                       >
-                           上一个
-                       </Button>
-                       <Button
-                           data-grid-page-find-next="true"
-                           size="small"
-                           icon={<RightOutlined />}
-                           disabled={pageFindMatches.length === 0}
-                           onClick={() => handleNavigatePageFind('next')}
-                       >
-                           下一个
-                       </Button>
-                       {normalizedPageFindText && (
-                           <span aria-live="polite" style={{ fontSize: 12, color: darkMode ? '#999' : '#666', whiteSpace: 'nowrap' }}>
-                               {pageFindMatches.length > 0 ? `${activePageFindPosition} / ${pageFindMatches.length} · ` : ''}匹配 {pageFindSummary.occurrenceCount} 处 / {pageFindSummary.matchedCellCount} 个单元格
-                           </span>
-                       )}
-                   </div>
-               </Tooltip>
-           </div>
-           <div data-grid-view-switcher="true" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-               <span style={{ fontSize: 12, color: darkMode ? '#999' : '#666' }}>结果视图</span>
-               <Segmented
-                   size="small"
-                   value={viewMode}
-                   options={[
-                       { label: '表格', value: 'table' },
-                       { label: 'JSON', value: 'json' },
-                       { label: '文本', value: 'text' }
-                   ]}
-                   onChange={(val) => handleViewModeChange(String(val) as GridViewMode)}
-               />
-           </div>
-       </div>
-       
-       {pagination && (
-           <div className="data-grid-pagination-wrap" style={{ padding: '12px 0 0', borderTop: 'none', display: 'flex', justifyContent: 'flex-end' }}>
-               <div className="data-grid-pagination-shell">
-                   <div className="data-grid-pagination-summary" aria-live="polite">
-                       <span className="data-grid-pagination-kicker">结果集</span>
-                       <span className="data-grid-pagination-summary-value">{paginationSummaryText}</span>
-                   </div>
-                   <div className="data-grid-pagination-page-chip">{paginationPageText}</div>
-                   <Pagination
-                       current={pagination.current}
-                       pageSize={pagination.pageSize}
-                       total={resolvePaginationTotalForControl({
-                           pagination,
-                           supportsApproximateTotalPages,
-                       })}
-                       showSizeChanger={false}
-                       onChange={onPageChange}
-                       showTitle={false}
-                       size="small"
-                       itemRender={(_page, type, originalElement) => {
-                           if (type === 'prev') {
-                               return <span className="data-grid-pagination-nav-icon" aria-hidden="true"><LeftOutlined /></span>;
-                           }
-                           if (type === 'next') {
-                               return <span className="data-grid-pagination-nav-icon" aria-hidden="true"><RightOutlined /></span>;
-                           }
-                           return originalElement;
-                       }}
-                   />
-                   <Select
-                       size="small"
-                       popupMatchSelectWidth={false}
-                       value={String(pagination.pageSize)}
-                       onChange={handlePageSizeChange}
-                       options={paginationPageSizeOptions.map((value) => ({ value, label: `${value} 条 / 页` }))}
-                       className="data-grid-pagination-size-select"
-                       aria-label="每页条数"
-                   />
-               </div>
-           </div>
-       )}
+           onOpenTableDdl={handleOpenTableDdl}
+           onPageFindTextChange={setPageFindText}
+           onNavigatePageFind={handleNavigatePageFind}
+           onViewModeChange={handleViewModeChange}
+           onPageChange={onPageChange}
+           onPageSizeChange={handlePageSizeChange}
+       />
 
 		        <style>{gridCssText}</style>
        
