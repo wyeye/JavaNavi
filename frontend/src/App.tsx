@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Progress, Switch, Input, InputNumber, Select, Segmented, Tooltip } from 'antd';
 import type { Locale } from 'antd/es/locale';
 import enUSLocale from 'antd/locale/en_US';
@@ -162,6 +162,7 @@ function App() {
   const [focusedAIProviderId, setFocusedAIProviderId] = useState<string | undefined>(undefined);
   const [connectionPackageDialog, setConnectionPackageDialog] = useState<ConnectionPackageDialogState>(() => createClosedConnectionPackageDialogState());
   const [pendingConnectionImportPayload, setPendingConnectionImportPayload] = useState<string | null>(null);
+  const connectionImportFileInputRef = useRef<HTMLInputElement | null>(null);
   const sidebarWidth = useStore(state => state.sidebarWidth);
   const setSidebarWidth = useStore(state => state.setSidebarWidth);
   const aiPanelVisible = useStore(state => state.aiPanelVisible);
@@ -1504,16 +1505,7 @@ function App() {
       return importedViews as SavedConnection[];
   }, [refreshConnectionsAfterImport]);
 
-  const handleImportConnections = async () => {
-      const res = await (window as any).go.app.App.ImportConfigFile();
-      if (!res.success) {
-          if (res.message !== "已取消" && String(res.message || '').toLowerCase() !== 'cancelled') {
-              void message.error(t('connection.package.importFailed') + ': ' + res.message);
-          }
-          return;
-      }
-
-      const raw = typeof res.data === 'string' ? res.data : String(res.data ?? '');
+  const handleConnectionImportRaw = useCallback(async (raw: string) => {
       const importKind = detectConnectionImportKind(raw);
 
       if (importKind === 'invalid') {
@@ -1545,7 +1537,26 @@ function App() {
           }
           void message.error(e?.message || t('connection.package.importFailed'));
       }
-  };
+  }, [importConnectionsPayload, t]);
+
+  const handleImportConnections = useCallback(() => {
+      connectionImportFileInputRef.current?.click();
+  }, []);
+
+  const handleConnectionImportFileSelected = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      if (!file) {
+          return;
+      }
+
+      try {
+          const raw = await file.text();
+          await handleConnectionImportRaw(raw);
+      } catch (e: any) {
+          void message.error(e?.message || t('connection.package.importFailed'));
+      }
+  }, [handleConnectionImportRaw, t]);
 
   const handleExportConnections = async () => {
       if (connections.length === 0) {
@@ -2497,6 +2508,13 @@ function App() {
             )}
           </Content>
           </Layout>
+          <input
+            ref={connectionImportFileInputRef}
+            type="file"
+            accept=".javanavi-conn,.json,.xml,application/json,text/xml,application/xml,text/plain"
+            style={{ display: 'none' }}
+            onChange={handleConnectionImportFileSelected}
+          />
           {isModalOpen && (
             <Suspense fallback={null}>
               <ConnectionModal
