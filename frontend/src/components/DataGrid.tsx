@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { Table, message, Input, Button, Dropdown, MenuProps, Form, Pagination, Select, Modal, Checkbox, Segmented, Tooltip, Popover, DatePicker, TimePicker, AutoComplete } from 'antd';
 import dayjs from 'dayjs';
 import type { SortOrder, ColumnType } from 'antd/es/table/interface';
-import { ReloadOutlined, ImportOutlined, ExportOutlined, DownOutlined, PlusOutlined, DeleteOutlined, SaveOutlined, UndoOutlined, FilterOutlined, CloseOutlined, FileTextOutlined, CopyOutlined, ClearOutlined, EditOutlined, VerticalAlignBottomOutlined, LeftOutlined, RightOutlined, RobotOutlined, SearchOutlined } from '@ant-design/icons';
+import { ExportOutlined, PlusOutlined, CloseOutlined, FileTextOutlined, CopyOutlined, ClearOutlined, EditOutlined, VerticalAlignBottomOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import { 
     DndContext, 
@@ -101,6 +101,7 @@ import {
     JAVANAVI_ROW_KEY,
     SortableHeaderCell,
 } from './dataGridCells';
+import { DataGridToolbar } from './dataGridToolbar';
 export { JAVANAVI_ROW_KEY } from './dataGridCells';
 
 const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
@@ -4756,195 +4757,88 @@ const DataGrid: React.FC<DataGridProps> = ({
     <div className={`${gridId}${cellEditMode ? ' cell-edit-mode' : ''} data-grid-root`} style={{ flex: '1 1 auto', height: '100%', overflow: 'hidden', padding: 0, display: 'flex', flexDirection: 'column', minHeight: 0, minWidth: 0, background: 'transparent' }}>
 		       {/* Toolbar + Filter Panel */}
            <div style={{ margin: `${panelOuterGap}px 0 ${panelOuterGap}px 0`, border: `1px solid ${panelFrameColor}`, borderRadius: `${panelRadius}px`, background: bgFilter, overflow: 'hidden', boxSizing: 'border-box' }}>
-		        <div className="data-grid-toolbar-scroll" data-grid-primary-actions="true" style={{ padding: showFilter ? `${panelPaddingY}px ${panelPaddingX}px ${toolbarBottomPadding}px ${panelPaddingX}px` : `${panelPaddingY}px ${panelPaddingX}px`, border: 'none', borderRadius: 0, background: 'transparent', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarGutter: 'stable', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box' }}>
-	            {onReload && <Button icon={<ReloadOutlined />} disabled={loading} onClick={() => {
-	                setAddedRows([]);
-	                setModifiedRows({});
-	               setDeletedRowKeys(new Set());
-	               setSelectedRowKeys([]);
-	               onReload();
-	           }}>刷新</Button>}
-
-	           {onToggleFilter && (
-	               <>
-	                   <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button icon={<FilterOutlined />} type={showFilter ? 'primary' : 'default'} onClick={() => { 
-	                       onToggleFilter(); 
-	                       if (filterConditions.length === 0 && !showFilter) addFilter(); 
-	                   }}>筛选</Button>
-	               </>
-	           )}
-	           
-	           {canModifyData && (
-	               <>
-	                   <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button icon={<PlusOutlined />} onClick={handleAddRow}>添加行</Button>
-	                   <Button
-	                       data-grid-copy-row-action="true"
-	                       icon={<CopyOutlined />}
-	                       disabled={selectedRowKeys.length === 0}
-	                       onClick={handleCopySelectedRowsForPaste}
-	                   >
-	                       复制行
-	                   </Button>
-	                   <Button
-	                       data-grid-paste-row-action="true"
-	                       icon={<VerticalAlignBottomOutlined />}
-	                       disabled={copiedRowsForPaste.length === 0}
-	                       onClick={handlePasteCopiedRowsAsNew}
-	                   >
-	                       {copiedRowsForPaste.length > 0 ? `粘贴行 (${copiedRowsForPaste.length})` : '粘贴行'}
-	                   </Button>
-	                   <Button icon={<DeleteOutlined />} danger disabled={selectedRowKeys.length === 0} onClick={handleDeleteSelected}>删除选中</Button>
-	                   {selectedRowKeys.length > 0 && <span style={{ fontSize: '12px', color: '#888' }}>已选 {selectedRowKeys.length}</span>}
-	                   <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button
-                            icon={<EditOutlined />}
-                            type={cellEditMode ? 'primary' : 'default'}
-                            onClick={() => {
-                                const next = !cellEditMode;
-                                setCellEditMode(next);
-                                setSelectedCells(new Set());
-                                currentSelectionRef.current = new Set();
-                                selectionStartRef.current = null;
-                                isDraggingRef.current = false;
-                                cellSelectionPointerRef.current = null;
-                                if (cellSelectionRafRef.current !== null) {
-                                    cancelAnimationFrame(cellSelectionRafRef.current);
-                                    cellSelectionRafRef.current = null;
-                                }
-                                if (cellSelectionScrollRafRef.current !== null) {
-                                    cancelAnimationFrame(cellSelectionScrollRafRef.current);
-                                    cellSelectionScrollRafRef.current = null;
-                                }
-                                if (cellSelectionAutoScrollRafRef.current !== null) {
-                                    cancelAnimationFrame(cellSelectionAutoScrollRafRef.current);
-                                    cellSelectionAutoScrollRafRef.current = null;
-                                }
-                                updateCellSelection(new Set());
-                                if (!next) setBatchEditModalOpen(false);
-                                void message.info(next ? '已进入单元格编辑模式，可拖拽选择多个单元格' : '已退出单元格编辑模式').then();
-                            }}
-                        >
-                            单元格编辑器
-                        </Button>
-                       {cellEditMode && selectedCells.size > 0 && (
-                           <>
-                               <Button
-                                   icon={<CopyOutlined />}
-                                   onClick={handleCopySelectedCellsToClipboard}
-                               >
-                                   复制选区 ({selectedCells.size})
-                               </Button>
-                               <Button
-                                   icon={<CopyOutlined />}
-                                   onClick={handleCopySelectedColumnsFromRow}
-                               >
-                                   复制选区列值 ({selectedCells.size})
-                               </Button>
-                                <Button
-                                    type="primary"
-                                    onClick={() => {
-                                        setBatchEditValue('');
-                                        setBatchEditSetNull(false);
-                                       setBatchEditModalOpen(true);
-                                   }}
-                                >
-                                    批量填充 ({selectedCells.size})
-                                </Button>
-                            </>
-                        )}
-                       {cellEditMode && copiedCellPatch && (
-                           <>
-                               <Button
-                                   icon={<VerticalAlignBottomOutlined />}
-                                   disabled={selectedRowKeys.length === 0}
-                                   onClick={() => handlePasteCopiedColumnsToSelectedRows()}
-                               >
-                                   粘贴到选中行 ({selectedRowKeys.length})
-                               </Button>
-                               <span style={{ fontSize: '12px', color: '#888' }}>
-                                   已复制 {Object.keys(copiedCellPatch.values).length} 列
-                               </span>
-                           </>
-                       )}
-	                   <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button icon={<SaveOutlined />} type="primary" disabled={!hasChanges || commitLoading} loading={commitLoading} onClick={handleCommit}>提交事务 ({addedRows.length + Object.keys(modifiedRows).length + deletedRowKeys.size})</Button>
-	                   {hasChanges && (<Button icon={<UndoOutlined />} onClick={() => {
-	                        setAddedRows([]);
-                        setModifiedRows({});
-                        setDeletedRowKeys(new Set());
-                   }}>回滚</Button>)}
-               </>
-           )}
-
-           {(canImport || canExport) && (
-               <>
-                   <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-                   {canImport && <Button icon={<ImportOutlined />} onClick={handleImport}>导入</Button>}
-                   {canExport && <Dropdown menu={{ items: exportMenu }}><Button icon={<ExportOutlined />}>导出 <DownOutlined /></Button></Dropdown>}
-               </>
-           )}
-
-           <>
-               <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-               <Tooltip title="一键借助 AI 智能分析当前查询页数据">
-                   <Button 
-                       icon={<RobotOutlined />} 
-                       style={{
-                           background: darkMode ? 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05))' : 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02))',
-                           borderColor: darkMode ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.4)',
-                           color: '#10b981',
-                           fontWeight: 500,
-                           boxShadow: darkMode ? '0 2px 8px rgba(16,185,129,0.1)' : '0 2px 6px rgba(16,185,129,0.05)',
-                       }}
-                       onMouseEnter={(e) => {
-                           e.currentTarget.style.background = darkMode ? 'linear-gradient(135deg, rgba(16,185,129,0.25), rgba(16,185,129,0.1))' : 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05))';
-                           e.currentTarget.style.borderColor = '#10b981';
-                       }}
-                       onMouseLeave={(e) => {
-                           e.currentTarget.style.background = darkMode ? 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05))' : 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02))';
-                           e.currentTarget.style.borderColor = darkMode ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.4)';
-                       }}
-                       onClick={() => {
-                           const sampleData = mergedDisplayData.slice(0, 10);
-                           const prompt = `请帮我分析以下查询结果数据（取前 ${sampleData.length} 条示例）：\n\`\`\`json\n${JSON.stringify(sampleData, null, 2)}\n\`\`\`\n\n请分析数据特征、发现规律，或者给出一些业务上的洞察。`;
-                           const store = useStore.getState();
-                           const wasClosed = !store.aiPanelVisible;
-                           if (wasClosed) store.setAIPanelVisible(true);
-                           // 如果面板刚打开，需要等待组件挂载完成后再注入 prompt
-                           setTimeout(() => {
-                               window.dispatchEvent(new CustomEvent('javanavi:ai:inject-prompt', { detail: { prompt } }));
-                           }, wasClosed ? 350 : 0);
-                       }}
-                   >
-                       AI 数据洞察
-                   </Button>
-               </Tooltip>
-           </>
-
-           {prefersManualTotalCount && onRequestTotalCount && (
-               <>
-                   <div style={{ width: 1, background: toolbarDividerColor, height: 20, margin: '0 8px' }} />
-                   <Tooltip title={pagination?.totalCountLoading ? '取消本次精确总数统计（不会影响当前浏览）' : '按当前筛选统计精确总数'}>
-                       <Button
-                           icon={pagination?.totalCountLoading ? <CloseOutlined /> : <VerticalAlignBottomOutlined />}
-                           onClick={() => {
-                               if (pagination?.totalCountLoading) {
-                                   if (onCancelTotalCount) onCancelTotalCount();
-                                   return;
-                               }
-                               onRequestTotalCount();
-                           }}
-                       >
-                           {pagination?.totalCountLoading ? '取消统计' : '统计总数'}
-                       </Button>
-                   </Tooltip>
-               </>
-           )}
-
-           <div style={{ marginLeft: 'auto' }} />
-	          </div>
+		        <DataGridToolbar
+            onReload={onReload}
+            onReloadClick={() => {
+                setAddedRows([]);
+                setModifiedRows({});
+                setDeletedRowKeys(new Set());
+                setSelectedRowKeys([]);
+                onReload?.();
+            }}
+            loading={loading}
+            onToggleFilter={onToggleFilter}
+            showFilter={showFilter}
+            filterConditionsLength={filterConditions.length}
+            addFilter={addFilter}
+            canModifyData={canModifyData}
+            handleAddRow={handleAddRow}
+            selectedRowCount={selectedRowKeys.length}
+            handleCopySelectedRowsForPaste={handleCopySelectedRowsForPaste}
+            copiedRowsForPasteCount={copiedRowsForPaste.length}
+            handlePasteCopiedRowsAsNew={handlePasteCopiedRowsAsNew}
+            handleDeleteSelected={handleDeleteSelected}
+            cellEditMode={cellEditMode}
+            toggleCellEditMode={() => {
+                const next = !cellEditMode;
+                setCellEditMode(next);
+                setSelectedCells(new Set());
+                currentSelectionRef.current = new Set();
+                selectionStartRef.current = null;
+                isDraggingRef.current = false;
+                cellSelectionPointerRef.current = null;
+                if (cellSelectionRafRef.current !== null) {
+                    cancelAnimationFrame(cellSelectionRafRef.current);
+                    cellSelectionRafRef.current = null;
+                }
+                if (cellSelectionScrollRafRef.current !== null) {
+                    cancelAnimationFrame(cellSelectionScrollRafRef.current);
+                    cellSelectionScrollRafRef.current = null;
+                }
+                if (cellSelectionAutoScrollRafRef.current !== null) {
+                    cancelAnimationFrame(cellSelectionAutoScrollRafRef.current);
+                    cellSelectionAutoScrollRafRef.current = null;
+                }
+                updateCellSelection(new Set());
+                if (!next) setBatchEditModalOpen(false);
+                void message.info(next ? '已进入单元格编辑模式，可拖拽选择多个单元格' : '已退出单元格编辑模式').then();
+            }}
+            selectedCellsCount={selectedCells.size}
+            handleCopySelectedCellsToClipboard={handleCopySelectedCellsToClipboard}
+            handleCopySelectedColumnsFromRow={handleCopySelectedColumnsFromRow}
+            openBatchFillModal={() => {
+                setBatchEditValue('');
+                setBatchEditSetNull(false);
+                setBatchEditModalOpen(true);
+            }}
+            hasCopiedCellPatch={!!copiedCellPatch}
+            copiedCellPatchColumnCount={copiedCellPatch ? Object.keys(copiedCellPatch.values).length : 0}
+            handlePasteCopiedColumnsToSelectedRows={() => handlePasteCopiedColumnsToSelectedRows()}
+            hasChanges={hasChanges}
+            commitLoading={commitLoading}
+            handleCommit={handleCommit}
+            changeCount={addedRows.length + Object.keys(modifiedRows).length + deletedRowKeys.size}
+            onRollback={() => {
+                setAddedRows([]);
+                setModifiedRows({});
+                setDeletedRowKeys(new Set());
+            }}
+            canImport={canImport}
+            canExport={canExport}
+            handleImport={handleImport}
+            exportMenu={exportMenu}
+            darkMode={darkMode}
+            getAiSampleData={() => mergedDisplayData.slice(0, 10)}
+            getStoreState={() => useStore.getState()}
+            prefersManualTotalCount={prefersManualTotalCount}
+            totalCountLoading={pagination?.totalCountLoading}
+            onRequestTotalCount={onRequestTotalCount}
+            onCancelTotalCount={onCancelTotalCount}
+            panelPaddingY={panelPaddingY}
+            panelPaddingX={panelPaddingX}
+            toolbarBottomPadding={toolbarBottomPadding}
+            toolbarDividerColor={toolbarDividerColor}
+        />
 
        {showFilter && (
            <div ref={filterPanelRef} style={{
