@@ -623,12 +623,6 @@ export async function ImportConnectionsPayload(arg1:string,arg2:string): Promise
   return Array.isArray(payload?.data) ? payload.data : [];
 }
 
-export async function ImportData(arg1:connection.ConnectionConfig,arg2:string,arg3:string): Promise<connection.QueryResult> {
-  await replayEventFixture('import', { correlationId: arg3, payload: { table: arg3, database: arg2 } });
-  const payload = await postJson('/files/import/select', { connection: toConnectionPayload(arg1), database: arg2, table: arg3 });
-  return apiEnvelopeToQueryResult(payload, 'Import file selected');
-}
-
 export async function UploadImportFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:File): Promise<connection.QueryResult> {
   const body = new FormData();
   body.append('database', arg2 || '');

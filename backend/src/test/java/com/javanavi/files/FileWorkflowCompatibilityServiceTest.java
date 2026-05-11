@@ -109,24 +109,6 @@ class FileWorkflowCompatibilityServiceTest {
     }
 
     @Test
-    void importSelectionReturnsManagedSampleThatCanPreview() {
-        FileWorkflowCompatibilityService service = service();
-
-        Map<String, Object> selected = service.importData(Map.of("table", "demo_import"));
-        Path sample = Path.of(String.valueOf(selected.get("filePath")));
-        Map<String, Object> preview = service.previewImportFile(sample.toString());
-
-        assertThat(Files.exists(sample)).isTrue();
-        assertThat(selected)
-                .containsEntry("browserUploadRequired", true)
-                .containsEntry("table", "demo_import");
-        assertThat(preview)
-                .containsEntry("totalRows", 1)
-                .containsEntry("webManaged", true);
-        assertThat(preview.get("columns")).asList().contains("id", "name", "note");
-    }
-
-    @Test
     void previewImportFileParsesQuotedCsvWithBomAndMultilineFields() throws Exception {
         FileWorkflowCompatibilityService service = service();
         Path file = tempDir.resolve("imports/quoted.csv");

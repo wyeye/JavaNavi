@@ -116,13 +116,6 @@ public class FileWorkflowCompatibilityService {
         ));
     }
 
-    public Map<String, Object> importData(Map<String, Object> input) {
-        String tableName = stringValue(input, "table", "tableName");
-        Path file = sampleImportFile(tableName);
-        publishImportProgress(file.getFileName().toString(), 0, 1, 0, 0);
-        return importSelectionResult(file, tableName, true, "JavaNavi Web prepared a managed import file placeholder for browser upload/preview.");
-    }
-
     public Map<String, Object> uploadImportFile(String tableName, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Upload a non-empty CSV or JSON import file.");
@@ -678,21 +671,6 @@ public class FileWorkflowCompatibilityService {
         }
     }
 
-    private Path sampleImportFile(String tableName) {
-        String name = normalizeFileToken(tableName, "import") + "-sample.csv";
-        Path file = importDirectory.resolve(name).normalize();
-        ensureManagedPath(file, importDirectory);
-        try {
-            Files.createDirectories(file.getParent());
-            if (!Files.exists(file)) {
-                Files.writeString(file, "id,name,note\n1,JavaNavi Import Preview,Upload a CSV or JSON file to import your own data\n", StandardCharsets.UTF_8);
-            }
-            return file;
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to prepare JavaNavi import placeholder.", error);
-        }
-    }
-
     private String normalizeImportFileName(String originalName) {
         String name = normalizeFileToken(originalName, "import.csv");
         String lower = name.toLowerCase(Locale.ROOT);
@@ -726,7 +704,7 @@ public class FileWorkflowCompatibilityService {
     private Path resolveImportPath(String rawPath) {
         String raw = text(rawPath);
         if (raw.isBlank()) {
-            return sampleImportFile("import");
+            throw new IllegalArgumentException("Import file path is required.");
         }
         Path input = Path.of(raw);
         Path candidate = input.isAbsolute()

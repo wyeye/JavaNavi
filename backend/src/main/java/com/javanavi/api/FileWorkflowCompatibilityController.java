@@ -39,11 +39,6 @@ public class FileWorkflowCompatibilityController {
         return ApiEnvelope.ok(fileWorkflowCompatibilityService.selectSshKeyFile(stringValue(input, "currentPath", "path")));
     }
 
-    @PostMapping("/import/select")
-    public ApiEnvelope<Map<String, Object>> importData(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.importData(input));
-    }
-
     @PostMapping(value = "/import/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ApiEnvelope<Map<String, Object>> uploadImportFile(
             @RequestParam(value = "table", required = false) String table,
