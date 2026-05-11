@@ -77,7 +77,6 @@ import {
     buildEffectiveFilterConditions,
     normalizeQuickWhereCondition,
     resolveWhereConditionSelectedValue,
-    resolveWhereConditionSuggestions,
     validateQuickWhereCondition,
 } from '../utils/dataGridWhereFilter';
 import {
@@ -113,6 +112,15 @@ import {
     buildDataGridThemeStyles,
     DATA_GRID_BODY_FONT_WEIGHT,
 } from './dataGrid/dataGridThemeStyles';
+import {
+    buildQuickWhereSuggestionOptions,
+    filterLogicOptions,
+    filterOpOptions,
+    isBetweenOp,
+    isListOp,
+    isNoValueOp,
+    normalizeGridFilterConditions,
+} from './dataGrid/dataGridFilterHelpers';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 interface Item {
@@ -1005,32 +1013,9 @@ const DataGrid: React.FC<DataGridProps> = ({
   const [modifiedRows, setModifiedRows] = useState<Record<string, any>>({});
   const [deletedRowKeys, setDeletedRowKeys] = useState<Set<string>>(new Set());
 
-  const normalizeFilterLogic = useCallback((logic: unknown): 'AND' | 'OR' => {
-      return String(logic || '').trim().toUpperCase() === 'OR' ? 'OR' : 'AND';
-  }, []);
-
   // P6 性能优化：使用 ref 缓存首列名，避免 displayColumnNames 变化导致级联更新
   const firstColumnNameRef = useRef(displayColumnNames[0] || '');
   firstColumnNameRef.current = displayColumnNames[0] || '';
-
-  const normalizeGridFilterConditions = useCallback((conditions?: FilterCondition[]): GridFilterCondition[] => {
-      if (!Array.isArray(conditions)) return [];
-      return conditions.map((cond, index) => {
-          const fallbackId = index + 1;
-          const nextId = Number.isFinite(Number(cond?.id)) ? Number(cond?.id) : fallbackId;
-          const op = String(cond?.op || '=');
-          const rawColumn = String(cond?.column || '');
-          return {
-              id: nextId,
-              enabled: cond?.enabled !== false,
-              logic: normalizeFilterLogic(cond?.logic),
-              column: rawColumn || (op === 'CUSTOM' ? '' : String(firstColumnNameRef.current || '')),
-              op,
-              value: String(cond?.value ?? ''),
-              value2: String(cond?.value2 ?? ''),
-          };
-      });
-  }, [normalizeFilterLogic]);
 
   // Filter State
   const [filterConditions, setFilterConditions] = useState<GridFilterCondition[]>([]);
@@ -1039,33 +1024,27 @@ const DataGrid: React.FC<DataGridProps> = ({
   const filterPanelRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-      const nextConditions = normalizeGridFilterConditions(appliedFilterConditions);
+      const nextConditions = normalizeGridFilterConditions({
+          conditions: appliedFilterConditions,
+          firstColumnName: firstColumnNameRef.current,
+      });
       setFilterConditions(nextConditions);
       const maxId = nextConditions.reduce((max, cond) => (cond.id > max ? cond.id : max), 0);
       setNextFilterId(Math.max(1, maxId + 1));
-  }, [appliedFilterConditions, normalizeGridFilterConditions]);
+  }, [appliedFilterConditions]);
 
   useEffect(() => {
       setQuickWhereDraft(normalizeQuickWhereCondition(quickWhereCondition));
   }, [quickWhereCondition]);
 
   const quickWhereSuggestionOptions = useMemo(() => {
-      const columnSuggestionSource = allTableColumnNames.length > 0 ? allTableColumnNames : displayColumnNames;
-      return resolveWhereConditionSuggestions({
-          input: quickWhereDraft,
-          columnNames: columnSuggestionSource,
+      return buildQuickWhereSuggestionOptions({
+          quickWhereDraft,
+          allTableColumnNames,
+          displayColumnNames,
           dbType,
-      }).map((item) => ({
-          value: item.value,
-          insertText: item.insertText,
-          suggestionKind: item.kind,
-          label: (
-              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
-                  <span>{item.label}</span>
-                  <span style={{ color: darkMode ? 'rgba(255,255,255,0.46)' : 'rgba(0,0,0,0.42)', fontSize: 12 }}>{item.detail}</span>
-              </div>
-          ),
-      }));
+          darkMode,
+      });
   }, [allTableColumnNames, displayColumnNames, quickWhereDraft, dbType, darkMode]);
 
   useEffect(() => {
@@ -3195,40 +3174,6 @@ const DataGrid: React.FC<DataGridProps> = ({
   };
 
   // Filters
-  const filterOpOptions = useMemo(() => ([
-      { value: '=', label: '=' },
-      { value: '!=', label: '!=' },
-      { value: '<', label: '<' },
-      { value: '<=', label: '<=' },
-      { value: '>', label: '>' },
-      { value: '>=', label: '>=' },
-      { value: 'CONTAINS', label: '包含' },
-      { value: 'NOT_CONTAINS', label: '不包含' },
-      { value: 'STARTS_WITH', label: '开始以' },
-      { value: 'NOT_STARTS_WITH', label: '不是开始于' },
-      { value: 'ENDS_WITH', label: '结束以' },
-      { value: 'NOT_ENDS_WITH', label: '不是结束于' },
-      { value: 'IS_NULL', label: '是 null' },
-      { value: 'IS_NOT_NULL', label: '不是 null' },
-      { value: 'IS_EMPTY', label: '是空的' },
-      { value: 'IS_NOT_EMPTY', label: '不是空的' },
-      { value: 'BETWEEN', label: '介于' },
-      { value: 'NOT_BETWEEN', label: '不介于' },
-      { value: 'IN', label: '在列表' },
-      { value: 'NOT_IN', label: '不在列表' },
-      { value: 'CUSTOM', label: '[自定义]' },
-  ]), []);
-  const filterLogicOptions = useMemo(() => ([
-      { value: 'AND', label: '且 (AND)' },
-      { value: 'OR', label: '或 (OR)' },
-  ]), []);
-
-  const isNoValueOp = useCallback((op: string) => (
-      op === 'IS_NULL' || op === 'IS_NOT_NULL' || op === 'IS_EMPTY' || op === 'IS_NOT_EMPTY'
-  ), []);
-  const isBetweenOp = useCallback((op: string) => op === 'BETWEEN' || op === 'NOT_BETWEEN', []);
-  const isListOp = useCallback((op: string) => op === 'IN' || op === 'NOT_IN', []);
-
   const addFilter = () => {
       setFilterConditions([
           ...filterConditions,
