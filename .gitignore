@@ -38,3 +38,4 @@ frontend/*.tsbuildinfo
 /docs/superpowers/
 
 .worktrees/
+/AGENTS.md
