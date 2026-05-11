@@ -49,6 +49,7 @@ import { buildCopiedRowsForPaste, buildPastedRowsFromCopiedRows } from './dataGr
 import { applyNoAutoCapAttributesWithin, noAutoCapInputProps } from '../utils/inputAutoCap';
 import { resolveEditRowLocator, type EditRowLocator } from '../utils/rowLocator';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
+import { buildDataGridModificationRiskSummary } from '../utils/dataModificationRisk';
 import {
     TEMPORAL_FORMATS,
     formatFromDayjs,
@@ -2482,13 +2483,37 @@ const DataGrid: React.FC<DataGridProps> = ({
       void message.success(`已粘贴 ${nextRows.length} 行为新增行，请检查后提交事务`);
   }, [copiedRowsForPaste, columnNames]);
 
+  const pendingChangeSummary = useMemo(() => buildDataGridModificationRiskSummary({
+      tableName,
+      dbName,
+      inserts: addedRows,
+      updates: Object.values(modifiedRows),
+      deletes: Array.from(deletedRowKeys),
+  }), [addedRows, modifiedRows, deletedRowKeys, tableName, dbName]);
+
   const handleDeleteSelected = () => {
-      setDeletedRowKeys(prev => {
-          const newDeleted = new Set(prev);
-          selectedRowKeys.forEach(key => newDeleted.add(rowKeyStr(key)));
-          return newDeleted;
+      const selectedCount = selectedRowKeys.length;
+      if (selectedCount === 0) return;
+      Modal.confirm({
+          title: '确认标记删除行',
+          content: (
+              <div style={{ lineHeight: 1.6 }}>
+                  <div>将把当前选中的 {selectedCount} 行标记为删除。</div>
+                  <div>删除会在点击“提交事务”后真正写入数据库。</div>
+              </div>
+          ),
+          okText: '标记删除',
+          cancelText: '取消',
+          okButtonProps: { danger: true },
+          onOk: () => {
+              setDeletedRowKeys(prev => {
+                  const newDeleted = new Set(prev);
+                  selectedRowKeys.forEach(key => newDeleted.add(rowKeyStr(key)));
+                  return newDeleted;
+              });
+              setSelectedRowKeys([]);
+          },
       });
-      setSelectedRowKeys([]);
   };
 
   const handleCommit = async () => {
@@ -2516,6 +2541,33 @@ const DataGrid: React.FC<DataGridProps> = ({
           void message.info("没有可提交的变更");
           return;
       }
+
+      const summary = buildDataGridModificationRiskSummary({
+          tableName,
+          dbName,
+          inserts,
+          updates,
+          deletes,
+      });
+      const confirmed = await new Promise<boolean>((resolve) => {
+          Modal.confirm({
+              title: '确认提交数据修改',
+              content: (
+                  <div style={{ lineHeight: 1.7 }}>
+                      {summary.lines.map((line) => <div key={line}>{line}</div>)}
+                      {summary.requiresExplicitConfirm && (
+                          <div style={{ marginTop: 8, color: '#cf1322' }}>高风险操作会直接修改目标数据，请确认后继续。</div>
+                      )}
+                  </div>
+              ),
+              okText: '确认提交',
+              cancelText: '取消',
+              okButtonProps: { danger: summary.level === 'high' },
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false),
+          });
+      });
+      if (!confirmed) return;
 
       const config = { 
           ...conn.config, 
@@ -3888,6 +3940,8 @@ const DataGrid: React.FC<DataGridProps> = ({
             commitLoading={commitLoading}
             handleCommit={handleCommit}
             changeCount={addedRows.length + Object.keys(modifiedRows).length + deletedRowKeys.size}
+            changeSummaryText={pendingChangeSummary.shortText}
+            riskLevel={pendingChangeSummary.level}
             onRollback={() => {
                 setAddedRows([]);
                 setModifiedRows({});

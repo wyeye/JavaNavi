@@ -9,6 +9,7 @@ import { EventsOn } from '@compat/runtime';
 import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from '../utils/appearance';
 import { resolveDataSourceType } from '../utils/dataSourceCapabilities';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
+import { buildDataSyncExecutionRiskSummary, buildSchemaSyncExecutionRiskSummary, type DataModificationRiskSummary } from '../utils/dataModificationRisk';
 import { formatLocalDateTimeLiteral, normalizeTemporalLiteralText } from './dataGrid/dataGridCopyInsert';
 import { buildDataSyncRequest, type SourceDatasetMode, validateDataSyncSelection } from './dataSyncRequest';
 import { buildSchemaSyncAnalyzeRequest, buildSchemaSyncPreviewRequest, buildSchemaSyncRunRequest, validateSchemaSyncSelection } from './schemaSyncRequest';
@@ -100,6 +101,8 @@ type SchemaPreviewData = {
   warnings?: string[];
   hasMore?: boolean;
 };
+type SyncExecutionRiskSummary = DataModificationRiskSummary;
+
 type SyncExecutionResult = {
   success: boolean;
   message: string;
@@ -560,6 +563,29 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       }
   };
 
+  const renderRiskSummary = (riskSummary: SyncExecutionRiskSummary) => (
+      <div style={{ lineHeight: 1.7 }}>
+          {riskSummary.lines.map((line) => <div key={line}>{line}</div>)}
+          {riskSummary.requiresExplicitConfirm && (
+              <div style={{ marginTop: 8, color: '#cf1322' }}>高风险操作会直接修改目标库，请确认后继续。</div>
+          )}
+      </div>
+  );
+
+  const confirmExecutionRisk = async (title: string, riskSummary: SyncExecutionRiskSummary): Promise<boolean> => (
+      new Promise<boolean>((resolve) => {
+          Modal.confirm({
+              title,
+              content: renderRiskSummary(riskSummary),
+              okText: '确认执行',
+              cancelText: t('common.cancel'),
+              okButtonProps: { danger: riskSummary.level === 'high' },
+              onOk: () => resolve(true),
+              onCancel: () => resolve(false),
+          });
+      })
+  );
+
   const analyzeSchemaDiff = async () => {
       const selectionError = validateSchemaSyncSelection({ selectedTables });
       if (selectionError) return message.error(t(selectionError));
@@ -658,18 +684,14 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           .filter((item) => schemaSelectedItemIds.includes(item.id) && item.requiresDeleteConfirm)
           .map((item) => item.id);
       const missingDeleteConfirm = selectedDeleteIds.filter((item) => !schemaConfirmedDeleteItemIds.includes(item));
+      const riskSummary = buildSchemaSyncExecutionRiskSummary({
+          targetDatabase: targetDb,
+          schemaDiffTables,
+          selectedItemIds: schemaSelectedItemIds,
+      });
+      const ok = await confirmExecutionRisk('确认执行结构同步', riskSummary);
+      if (!ok) return;
       if (missingDeleteConfirm.length > 0) {
-          const ok = await new Promise<boolean>((resolve) => {
-              Modal.confirm({
-                  title: t('schemaSync.run.deleteConfirmTitle'),
-                  content: t('schemaSync.run.deleteConfirmContent'),
-                  okText: t('common.confirm'),
-                  cancelText: t('common.cancel'),
-                  onOk: () => resolve(true),
-                  onCancel: () => resolve(false),
-              });
-          });
-          if (!ok) return;
           setSchemaConfirmedDeleteItemIds(prev => Array.from(new Set([...prev, ...missingDeleteConfirm])));
       }
 
@@ -843,19 +865,15 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           message.error(t('dataSync.selection.compareBeforeSync'));
           return;
       }
-      if (syncContent !== 'schema' && syncMode === 'full_overwrite') {
-          const ok = await new Promise<boolean>((resolve) => {
-              Modal.confirm({
-                  title: t('dataSync.confirm.fullOverwriteTitle'),
-                  content: t('dataSync.confirm.fullOverwriteContent'),
-                  okText: t('dataSync.confirm.continue'),
-                  cancelText: t('common.cancel'),
-                  onOk: () => resolve(true),
-                  onCancel: () => resolve(false),
-              });
-          });
-          if (!ok) return;
-      }
+      const riskSummary = buildDataSyncExecutionRiskSummary({
+          syncMode,
+          syncContent,
+          targetDatabase: targetDb,
+          diffTables,
+          tableOptions,
+      });
+      const ok = await confirmExecutionRisk('确认执行数据同步', riskSummary);
+      if (!ok) return;
 
       setLoading(true);
       setSyncing(true);
@@ -984,6 +1002,22 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
           : Number(previewData?.totalInserts || 0) + Number(previewData?.totalUpdates || 0) + Number(previewData?.totalDeletes || 0) > 0,
       [syncDomain, previewData],
   );
+
+  const dataExecutionRiskSummary = useMemo(() => buildDataSyncExecutionRiskSummary({
+      syncMode,
+      syncContent,
+      targetDatabase: targetDb,
+      diffTables,
+      tableOptions,
+  }), [syncMode, syncContent, targetDb, diffTables, tableOptions]);
+
+  const schemaExecutionRiskSummary = useMemo(() => buildSchemaSyncExecutionRiskSummary({
+      targetDatabase: targetDb,
+      schemaDiffTables,
+      selectedItemIds: schemaSelectedItemIds,
+  }), [targetDb, schemaDiffTables, schemaSelectedItemIds]);
+
+  const currentExecutionRiskSummary = syncDomain === 'schema' ? schemaExecutionRiskSummary : dataExecutionRiskSummary;
 
   const analysisWarnings = useMemo(() => {
       const items: string[] = [];
@@ -1412,6 +1446,17 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                               style={{ marginBottom: 12 }}
                           />
                       )}
+                      <Alert
+                          type={currentExecutionRiskSummary.level === 'high' ? 'warning' : 'info'}
+                          showIcon
+                          message={`本次将执行：${currentExecutionRiskSummary.shortText}`}
+                          description={
+                              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                  {currentExecutionRiskSummary.lines.map((line) => <li key={line}>{line}</li>)}
+                              </ul>
+                          }
+                          style={{ marginBottom: 12 }}
+                      />
                       <Table
                           size="small"
                           pagination={false}
@@ -1540,6 +1585,17 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                               style={{ marginBottom: 12 }}
                           />
                       )}
+                      <Alert
+                          type={currentExecutionRiskSummary.level === 'high' ? 'warning' : 'info'}
+                          showIcon
+                          message={`本次将执行：${currentExecutionRiskSummary.shortText}`}
+                          description={
+                              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                  {currentExecutionRiskSummary.lines.map((line) => <li key={line}>{line}</li>)}
+                              </ul>
+                          }
+                          style={{ marginBottom: 12 }}
+                      />
                       <Table
                           size="small"
                           pagination={false}
