@@ -80,6 +80,30 @@ class AiCompatibilityServiceTest {
                 "Data Insight Analysis",
                 "Schema Review"
         );
+        assertThat(prompts.values())
+                .allSatisfy(prompt -> {
+                    assertThat(prompt).contains("JavaNavi AI assistant");
+                    assertThat(prompt).doesNotContainPattern("[\\u4e00-\\u9fff]");
+                    assertThat(prompt).doesNotContain("你是");
+                    assertThat(prompt).doesNotContain("中文");
+                });
+        assertThat(prompts.get("General Chat Assistant"))
+                .contains("database/cache client (JavaNavi)")
+                .contains("production red lines")
+                .contains("WHERE clause");
+        assertThat(prompts.get("SQL Generator"))
+                .contains("Redis commands")
+                .contains("LIMIT 100");
+        assertThat(prompts.get("SQL Explainer"))
+                .contains("FROM -> JOIN -> WHERE -> GROUP BY -> SELECT -> ORDER BY");
+        assertThat(prompts.get("SQL Optimizer"))
+                .contains("CREATE INDEX");
+        assertThat(prompts.get("Data Insight Analysis"))
+                .contains("Trends and anomalies")
+                .contains("compact report style");
+        assertThat(prompts.get("Schema Review"))
+                .contains("anti-third-normal-form")
+                .contains("ALTER TABLE");
     }
 
     @Test

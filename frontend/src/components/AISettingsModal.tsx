@@ -23,7 +23,7 @@ import {
 import { resolveProviderSecretDraft } from '../utils/providerSecretDraft';
 import { buildAddProviderEditorSession, buildClosedProviderEditorSession, buildEditProviderEditorSession, type ProviderEditorSession } from '../utils/aiProviderEditorState';
 import { useStore } from '../store';
-import { localizeCjkFallback, translate, type I18nKey, type I18nParams } from '../i18n';
+import { translate, type I18nKey, type I18nParams } from '../i18n';
 
 import type { OverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 
@@ -154,7 +154,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
             if (ctxRes) setContextLevel(ctxRes);
             if (promptsRes) setBuiltinPrompts(promptsRes);
         } catch (e) { console.warn('Failed to load AI config', e); }
-    }, []);
+    }, [language]);
 
     useEffect(() => { if (open) void loadConfig(); }, [open, loadConfig]);
 
@@ -755,7 +755,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                         whiteSpace: 'pre-wrap', fontFamily: 'monospace', lineHeight: 1.5,
                         userSelect: 'text', border: darkMode ? '1px solid rgba(255,255,255,0.03)' : '1px solid rgba(0,0,0,0.02)'
                     }}>
-                        {localizeCjkFallback(language, promptText, t('ai.settings.prompts.chineseOnly'))}
+                        {promptText}
                     </div>
                 </div>
             ))}
