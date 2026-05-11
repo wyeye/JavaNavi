@@ -83,26 +83,6 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(Map.of("logged", true));
     }
 
-    @GetMapping("/updates/check")
-    public ApiEnvelope<Map<String, Object>> checkUpdates() {
-        return ApiEnvelope.ok(appCompatibilityService.updateStatus());
-    }
-
-    @PostMapping("/updates/download")
-    public ApiEnvelope<Map<String, Object>> downloadUpdate() {
-        return ApiEnvelope.failKey(messages, "app.updateUnavailable");
-    }
-
-    @PostMapping("/updates/open-downloaded")
-    public ApiEnvelope<Map<String, Object>> openDownloadedUpdateDirectory() {
-        return ApiEnvelope.failKey(messages, "app.browserNativeUnavailable");
-    }
-
-    @PostMapping("/updates/install")
-    public ApiEnvelope<Map<String, Object>> installUpdateAndRestart() {
-        return ApiEnvelope.failKey(messages, "app.updateUnavailable");
-    }
-
     @PostMapping("/sql-directory/select")
     public ApiEnvelope<Map<String, Object>> selectSqlDirectory(@RequestBody Map<String, Object> input) {
         String currentPath = stringValue(input, "path", "currentPath", "directory");

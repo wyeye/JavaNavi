@@ -178,16 +178,6 @@ public class AppCompatibilityService {
         return connectionPackageCompatibilityService.importPayload(raw, password);
     }
 
-    public Map<String, Object> updateStatus() {
-        return orderedMap(
-                "currentVersion", "0.1.5",
-                "latestVersion", "0.1.5",
-                "hasUpdate", false,
-                "downloaded", false,
-                "message", "JavaNavi Web package does not perform in-app binary updates."
-        );
-    }
-
     public Map<String, Object> resolveDatabaseSqlWorkspace(String connectionId, String dbName) {
         try {
             Path directory = databaseSqlWorkspaceDirectory(connectionId, dbName);

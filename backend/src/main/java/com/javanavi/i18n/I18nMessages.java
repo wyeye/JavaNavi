@@ -21,7 +21,6 @@ public class I18nMessages {
         put("app.state", "Application state error: {message}", "应用状态异常：{message}");
         put("app.browserNativeUnavailable", "JavaNavi Web cannot open an OS directory picker from the backend package.", "JavaNavi Web 后端包无法打开系统目录选择器。");
         put("app.restartRequiredUnsupported", "Changing the JavaNavi Web data directory at runtime is not supported; set JAVANAVI_DATA_DIR before startup.", "JavaNavi Web 暂不支持运行时切换数据目录；请在启动前设置 JAVANAVI_DATA_DIR。");
-        put("app.updateUnavailable", "JavaNavi Web package does not download, install, or replace binary updates from the browser runtime.", "JavaNavi Web 包不支持从浏览器运行时下载、安装或替换二进制更新。");
         put("compat.unsupported", "Unsupported JavaNavi compatibility method: {method}", "不支持的 JavaNavi 兼容方法：{method}");
         put("query.notRunning", "Query does not exist or has already completed.", "查询不存在或已经完成。");
         put("connection.unsupportedDriver", "Connection failed: {message}", "连接失败：{message}");
