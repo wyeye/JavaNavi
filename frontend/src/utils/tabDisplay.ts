@@ -102,6 +102,5 @@ export const buildTabDisplayTitle = (tab: TabData, connection?: SavedConnection,
     return localizeTabTitle(tab.title, language);
   }
 
-  const prefix = detectConnectionEnvLabel(connectionName) || connectionName;
-  return `[${prefix}] ${localizeTabTitle(tab.title, language)}`;
+  return `[${connectionName}] ${localizeTabTitle(tab.title, language)}`;
 };

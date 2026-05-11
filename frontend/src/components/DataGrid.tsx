@@ -540,6 +540,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       record,
       dataIndex,
       title: titleText,
+      columnComment: '',
     });
   }, []);
 
@@ -707,6 +708,28 @@ const DataGrid: React.FC<DataGridProps> = ({
           darkMode,
       });
   }, [columnMetaHintColor, columnMetaTooltipColor, columnMetaMap, columnMetaMapByLowerName, darkMode, showColumnComment, showColumnType]);
+
+
+  const resolveColumnComment = useCallback((name: string): string => {
+      const normalizedName = String(name || '');
+      const meta = columnMetaMap[normalizedName] || columnMetaMapByLowerName[normalizedName.toLowerCase()];
+      return String(meta?.comment || '').trim();
+  }, [columnMetaMap, columnMetaMapByLowerName]);
+
+  const showColumnHeaderContextMenu = useCallback((event: React.MouseEvent, dataIndex: string) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const position = resolveDataGridCellContextMenuPosition(event);
+      setCellContextMenu({
+          visible: true,
+          x: position.x,
+          y: position.y,
+          record: null,
+          dataIndex,
+          title: dataIndex,
+          columnComment: resolveColumnComment(dataIndex),
+      });
+  }, [resolveColumnComment]);
 
   const closeCellEditor = useCallback(() => {
       setCellEditorOpen(false);
@@ -2257,6 +2280,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               className: 'javanavi-sortable-header-cell',
               onResizeStart: handleResizeStart(key), // Only need start
               onResizeAutoFit: handleResizeAutoFit(key),
+              onContextMenu: (event: React.MouseEvent<HTMLElement>) => showColumnHeaderContextMenu(event, key),
               onClickCapture: (event: React.MouseEvent<HTMLElement>) => {
                   if (!onSort) return;
                   const headerCell = event.currentTarget as HTMLElement;
@@ -2279,7 +2303,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               },
           }),
       }));
-  }, [displayColumnNames, columnWidths, sortInfo, handleResizeStart, handleResizeAutoFit, canModifyData, onSort, renderColumnTitle, dataTableColumnWidthMode, normalizedPageFindText]);
+  }, [displayColumnNames, columnWidths, sortInfo, handleResizeStart, handleResizeAutoFit, canModifyData, onSort, renderColumnTitle, dataTableColumnWidthMode, normalizedPageFindText, showColumnHeaderContextMenu]);
 
   const mergedColumns = useMemo(() => columns.map((col): ColumnType<any> => {
       const dataIndex = String(col.dataIndex);

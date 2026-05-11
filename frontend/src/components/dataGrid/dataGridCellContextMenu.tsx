@@ -10,6 +10,7 @@ export type DataGridCellContextMenuState<TRecord = any> = {
     record: TRecord | null;
     dataIndex: string;
     title: string;
+    columnComment: string;
 };
 
 export const createInitialDataGridCellContextMenuState = <TRecord,>(): DataGridCellContextMenuState<TRecord> => ({
@@ -19,6 +20,7 @@ export const createInitialDataGridCellContextMenuState = <TRecord,>(): DataGridC
     record: null,
     dataIndex: '',
     title: '',
+    columnComment: '',
 });
 
 export const resolveDataGridCellContextMenuPosition = (event: React.MouseEvent): { x: number; y: number } => {
@@ -100,6 +102,7 @@ export const DataGridCellContextMenu = <TRecord extends Record<string, any>,>({
         action: () => void | Promise<void>,
         options?: DataGridCellContextMenuActionOptions,
     ) => renderDataGridCellContextMenuAction({ label, action, darkMode, onClose, options });
+    const isHeaderMenu = !menuState.record;
 
     return createPortal(
         <div
@@ -119,6 +122,13 @@ export const DataGridCellContextMenu = <TRecord extends Record<string, any>,>({
             }}
             onClick={(event) => event.stopPropagation()}
         >
+            {isHeaderMenu ? (
+                <>
+                    {renderAction('复制字段名', () => copyToClipboard(menuState.dataIndex))}
+                    {renderAction('复制注释', () => copyToClipboard(menuState.columnComment), { disabled: !menuState.columnComment })}
+                </>
+            ) : (
+                <>
             {canModifyData && (
                 <>
                     {renderAction('设置为 NULL', onCellSetNull)}
@@ -154,6 +164,8 @@ export const DataGridCellContextMenu = <TRecord extends Record<string, any>,>({
             })}
             {divider}
             {renderExportActions(menuState.record)}
+                </>
+            )}
         </div>,
         document.body,
     );
