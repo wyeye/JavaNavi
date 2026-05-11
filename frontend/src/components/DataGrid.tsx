@@ -105,6 +105,7 @@ import { DataGridToolbar } from './dataGridToolbar';
 import { DataGridFilterPanel } from './dataGridFilterPanel';
 import type { GridFilterCondition, GridSortInfo } from './dataGridFilterTypes';
 import { DataGridFooterControls, type DataGridViewMode } from './dataGridFooterControls';
+import { DataGridPreviewPanel, type DataGridFocusedCellInfo } from './dataGridPreviewPanel';
 export { JAVANAVI_ROW_KEY } from './dataGridCells';
 
 const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
@@ -673,7 +674,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   // --- Data Preview Panel State ---
   const [dataPanelOpen, setDataPanelOpen] = useState(false);
   const dataPanelOpenRef = useRef(false);
-  const [focusedCellInfo, setFocusedCellInfo] = useState<{ record: Item; dataIndex: string; title: string } | null>(null);
+  const [focusedCellInfo, setFocusedCellInfo] = useState<DataGridFocusedCellInfo<Item> | null>(null);
   const [dataPanelValue, setDataPanelValue] = useState('');
   const [dataPanelIsJson, setDataPanelIsJson] = useState(false);
   const dataPanelDirtyRef = useRef(false);
@@ -5207,76 +5208,22 @@ const DataGrid: React.FC<DataGridProps> = ({
             </div>
         )}
 
-        {/* Data Preview Panel */}
-        {dataPanelOpen && viewMode === 'table' && (
-            <div style={{
-                height: 200,
-                borderTop: darkMode ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.12)',
-                display: 'flex',
-                flexDirection: 'column',
-                background: darkMode ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.6)',
-                flexShrink: 0,
-            }}>
-                <div style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '4px 10px',
-                    fontSize: 12,
-                    borderBottom: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)',
-                    flexShrink: 0,
-                }}>
-                    <span style={{ color: darkMode ? '#aaa' : '#666', fontWeight: 500 }}>
-                        {focusedCellInfo ? focusedCellInfo.dataIndex : '点击单元格查看数据'}
-                    </span>
-                    {focusedCellInfo && (() => {
-                        const meta = columnMetaMap[focusedCellInfo.dataIndex] || columnMetaMapByLowerName[focusedCellInfo.dataIndex.toLowerCase()];
-                        return meta?.type ? <span style={{ color: '#888', fontSize: 11 }}>({meta.type})</span> : null;
-                    })()}
-                    <div style={{ flex: 1 }} />
-                    {dataPanelIsJson && (
-                        <Button size="small" onClick={handleDataPanelFormatJson}>格式化 JSON</Button>
-                    )}
-                    {canModifyData && focusedCellInfo && (
-                        <Button size="small" type="primary" onClick={handleDataPanelSave}>保存</Button>
-                    )}
-                </div>
-                <div style={{ flex: 1, minHeight: 0 }}>
-                    {focusedCellInfo ? (
-                        <Editor
-                            height="100%"
-                            language={dataPanelIsJson ? 'json' : 'plaintext'}
-                            theme={darkMode ? 'transparent-dark' : 'transparent-light'}
-                            value={dataPanelValue}
-                            onChange={(val) => {
-                                const newVal = val || '';
-                                setDataPanelValue(newVal);
-                                // 只有值真正与原始值不同时才标记 dirty
-                                dataPanelDirtyRef.current = newVal !== dataPanelOriginalRef.current;
-                            }}
-                            options={{
-                                minimap: { enabled: false },
-                                scrollBeyondLastLine: false,
-                                wordWrap: 'on',
-                                fontSize: 13,
-                                tabSize: 2,
-                                automaticLayout: true,
-                                readOnly: !canModifyData,
-                                lineNumbers: 'off',
-                                glyphMargin: false,
-                                folding: false,
-                                lineDecorationsWidth: 4,
-                                padding: { top: 6, bottom: 6 },
-                            }}
-                        />
-                    ) : (
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999', fontSize: 13 }}>
-                            点击表格中的单元格以预览完整数据
-                        </div>
-                    )}
-                </div>
-            </div>
-        )}
+        <DataGridPreviewPanel
+            visible={dataPanelOpen && viewMode === 'table'}
+            darkMode={darkMode}
+            focusedCellInfo={focusedCellInfo}
+            columnMetaMap={columnMetaMap}
+            columnMetaMapByLowerName={columnMetaMapByLowerName}
+            dataPanelIsJson={dataPanelIsJson}
+            dataPanelValue={dataPanelValue}
+            canModifyData={canModifyData}
+            onFormatJson={handleDataPanelFormatJson}
+            onSave={handleDataPanelSave}
+            onValueChange={(newVal) => {
+                setDataPanelValue(newVal);
+                dataPanelDirtyRef.current = newVal !== dataPanelOriginalRef.current;
+            }}
+        />
 
         {/* Cell Context Menu - 使用 Portal 渲染到 body，避免 backdropFilter 影响 fixed 定位 */}
         {viewMode === 'table' && cellContextMenu.visible && createPortal(
