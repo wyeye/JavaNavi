@@ -19,7 +19,6 @@ public class I18nMessages {
         put("request.unexpected", "Request failed: {message}", "请求处理失败：{message}");
         put("backend.untranslatedError", "Operation failed.", "操作失败，请查看后端日志。");
         put("app.state", "Application state error: {message}", "应用状态异常：{message}");
-        put("compat.unsupported", "Unsupported JavaNavi compatibility method: {method}", "不支持的 JavaNavi 兼容方法：{method}");
         put("query.notRunning", "Query does not exist or has already completed.", "查询不存在或已经完成。");
         put("connection.unsupportedDriver", "Connection failed: {message}", "连接失败：{message}");
         put("connection.jdbcProfiles", "JavaNavi currently wires JDBC drivers for bundled relational, file, analytics, time-series, and custom DSN runtime profiles.", "JavaNavi 当前支持内置关系型、文件型、分析型、时序型以及自定义 DSN runtime 的 JDBC 驱动配置。");
@@ -150,8 +149,6 @@ public class I18nMessages {
         put("drivers.recordedMetadata", "JavaNavi Web recorded driver metadata in the managed workspace; runtime activation remains explicit in the status row.", "JavaNavi Web 已在受管工作区记录驱动元数据；runtime 激活状态请以状态行显示为准。");
         put("drivers.recordedLocalImport", "JavaNavi Web recorded a managed local driver-package import.", "JavaNavi Web 已记录一次受管本地驱动包导入。");
         put("drivers.runtimeDirectoryManaged", "JavaNavi Web driver runtime directory is managed inside the backend data directory.", "JavaNavi Web 驱动 runtime 目录由后端数据目录统一管理。");
-        put("drivers.importDirectoryManaged", "JavaNavi Web uses this managed import directory instead of a native folder picker.", "JavaNavi Web 使用该受管导入目录替代原生文件夹选择器。");
-        put("drivers.uploadPlaceholder", "JavaNavi Web returns a managed upload placeholder instead of opening a native file picker.", "JavaNavi Web 返回受管上传占位文件，而不打开原生文件选择器。");
         put("drivers.uploadPathEscaped", "Uploaded JDBC driver files must stay inside the JavaNavi managed data directory.", "上传的 JDBC 驱动文件必须保留在 JavaNavi 受管数据目录内。");
         put("drivers.uploadFileEscaped", "Uploaded JDBC driver file path escaped the managed upload directory.", "上传的 JDBC 驱动文件路径越过了受管上传目录。");
         put("drivers.storeUploadedJar", "Unable to store uploaded JDBC driver jar: {file}", "无法保存上传的 JDBC 驱动 Jar：{file}");
@@ -163,7 +160,6 @@ public class I18nMessages {
         put("drivers.prepareWorkspaceFailed", "Unable to prepare JavaNavi driver workspace.", "无法准备 JavaNavi 驱动工作区。");
         put("drivers.removeMetadataFailed", "Unable to remove JavaNavi driver package metadata.", "无法移除 JavaNavi 驱动包元数据。");
         put("drivers.removeTempUploadFailed", "Unable to remove temporary JDBC driver upload.", "无法移除临时 JDBC 驱动上传目录。");
-        put("drivers.placeholderWriteFailed", "Unable to prepare JavaNavi driver package placeholder.", "无法准备 JavaNavi 驱动包占位文件。");
         put("connections.unsupportedPackage", "Unsupported connection restore package format.", "不支持的连接恢复包格式");
         put("connections.importTooLarge", "Connection import file is too large.", "连接导入文件过大");
         put("connections.badPasswordOrCorrupt", "File password is incorrect or the file is corrupted.", "文件密码错误或文件已损坏");
@@ -280,8 +276,6 @@ public class I18nMessages {
                 Map.entry("JavaNavi currently wires JDBC drivers for mysql-compatible, postgresql-compatible, sqlite, duckdb, and custom JDBC DSN profiles.", "connection.compatProfiles"),
                 Map.entry("Only demo/h2 driverType is wired in the phase-1 API shell.", "connection.demoOnly"),
                 Map.entry("JavaNavi Web driver runtime directory is managed inside the backend data directory.", "drivers.runtimeDirectoryManaged"),
-                Map.entry("JavaNavi Web uses this managed import directory instead of a native folder picker.", "drivers.importDirectoryManaged"),
-                Map.entry("JavaNavi Web returns a managed upload placeholder instead of opening a native file picker.", "drivers.uploadPlaceholder"),
                 Map.entry("JavaNavi Web recorded driver metadata in the managed workspace; runtime activation remains explicit in the status row.", "drivers.recordedMetadata"),
                 Map.entry("JavaNavi Web recorded a managed local driver-package import.", "drivers.recordedLocalImport"),
                 Map.entry("连接成功", "common.connectionSucceeded"),
