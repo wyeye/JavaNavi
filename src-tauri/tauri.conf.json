@@ -15,6 +15,11 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "publisher": "wyeye",
+    "homepage": "https://github.com/wyeye/JavaNavi",
+    "category": "DeveloperTool",
+    "shortDescription": "JavaNavi Java/React database client",
+    "longDescription": "JavaNavi is a Java + React local web and desktop database client. Community: QQ Group 1001949448.",
     "resources": {
       "resources/javanavi-backend.jar": "resources/javanavi-backend.jar",
       "resources/java-runtime": "resources/java-runtime"

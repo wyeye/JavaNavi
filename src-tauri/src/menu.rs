@@ -1,14 +1,24 @@
 use std::path::Path;
 use std::process::Command;
 
-use tauri::menu::{MenuBuilder, SubmenuBuilder};
+use tauri::menu::{AboutMetadataBuilder, MenuBuilder, SubmenuBuilder};
 use tauri::{App, AppHandle, Manager};
 
 use crate::DesktopState;
 
 pub fn install(app: &mut App) -> tauri::Result<()> {
+    let about_metadata = AboutMetadataBuilder::new()
+        .name(Some("JavaNavi"))
+        .version(Some(env!("CARGO_PKG_VERSION")))
+        .authors(Some(vec!["wyeye".to_string()]))
+        .comments(Some(
+            "JavaNavi Tauri desktop shell for the Java/Spring Boot runtime. Community: QQ Group: 1001949448",
+        ))
+        .website(Some("https://github.com/wyeye/JavaNavi"))
+        .website_label(Some("https://github.com/wyeye/JavaNavi"))
+        .build();
     let app_menu = SubmenuBuilder::new(app, "JavaNavi")
-        .text("about", "About JavaNavi")
+        .about_with_text("About JavaNavi", Some(about_metadata))
         .separator()
         .text("quit", "Quit JavaNavi")
         .build()?;
@@ -42,7 +52,7 @@ pub fn handle(app: &AppHandle, menu_id: &str) {
 fn show_about(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.set_title(
-            "JavaNavi — Tauri shell + Java/Spring Boot sidecar on a dynamic loopback port",
+            "JavaNavi — by wyeye — https://github.com/wyeye/JavaNavi — QQ Group: 1001949448",
         );
     }
 }
