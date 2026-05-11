@@ -275,11 +275,6 @@ export async function ApplyChanges(arg1:connection.ConnectionConfig,arg2:string,
   return apiEnvelopeToQueryResult(payload, 'Transaction committed successfully');
 }
 
-export async function ApplyDataRootDirectory(arg1:string,arg2:boolean): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/data-root/apply', { path: arg1, restart: arg2 });
-  return apiEnvelopeToQueryResult(payload, 'Data root update requested');
-}
-
 export async function CancelQuery(arg1: string): Promise<connection.QueryResult> {
   const payload = await postJson('/query/cancel', { queryId: arg1 });
   return apiEnvelopeToQueryResult(payload, 'Query cancelled');
@@ -703,11 +698,6 @@ export async function MySQLShowCreateTable(arg1: connection.ConnectionConfig, ar
   return DBShowCreateTable(arg1, arg2, arg3);
 }
 
-export async function OpenDataRootDirectory(): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/data-root/open', {});
-  return apiEnvelopeToQueryResult(payload, 'Data root located');
-}
-
 export async function OpenDriverDownloadDirectory(arg1:string): Promise<connection.QueryResult> {
   const payload = await postJson('/drivers/download-directory/open', { path: arg1 });
   return apiEnvelopeToQueryResult(payload, 'Driver download directory resolved');
@@ -923,11 +913,6 @@ export async function SaveGlobalProxy(arg1:connection.SaveGlobalProxyInput): Pro
 
 export async function SaveLanguage(arg1:string): Promise<connection.QueryResult> {
   return apiEnvelopeToQueryResult(await postJson('/app/language', { language: arg1 }), 'Language saved');
-}
-
-export async function SelectDataRootDirectory(arg1:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/data-root/select', { currentPath: arg1 });
-  return apiEnvelopeToQueryResult(payload, 'Data root selection requested');
 }
 
 export async function SelectDatabaseFile(arg1:string,arg2:string): Promise<connection.QueryResult> {

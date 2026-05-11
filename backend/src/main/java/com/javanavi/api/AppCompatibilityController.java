@@ -39,21 +39,6 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(appCompatibilityService.dataRootInfo());
     }
 
-    @PostMapping("/data-root/select")
-    public ApiEnvelope<Map<String, Object>> selectDataRoot() {
-        return ApiEnvelope.failKey(messages, "app.browserNativeUnavailable");
-    }
-
-    @PostMapping("/data-root/apply")
-    public ApiEnvelope<Map<String, Object>> applyDataRoot() {
-        return ApiEnvelope.failKey(messages, "app.restartRequiredUnsupported");
-    }
-
-    @PostMapping("/data-root/open")
-    public ApiEnvelope<Map<String, Object>> openDataRoot() {
-        return ApiEnvelope.ok(appCompatibilityService.dataRootInfo());
-    }
-
     @GetMapping("/global-proxy")
     public ApiEnvelope<Map<String, Object>> getGlobalProxy() {
         return ApiEnvelope.ok(appCompatibilityService.getGlobalProxy());

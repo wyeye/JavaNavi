@@ -5,7 +5,7 @@ import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
-import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, FolderOpenOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
 import { DEFAULT_APPEARANCE, useStore } from './store';
 import { SavedConnection } from './types';
@@ -47,7 +47,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { ApplyDataRootDirectory, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, OpenDataRootDirectory, SaveLanguage, SelectDataRootDirectory, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, SaveLanguage, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -1313,9 +1313,7 @@ function App() {
   const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
   const [isDataRootModalOpen, setIsDataRootModalOpen] = useState(false);
   const [dataRootInfo, setDataRootInfo] = useState<any>(null);
-  const [selectedDataRootPath, setSelectedDataRootPath] = useState('');
   const [dataRootLoading, setDataRootLoading] = useState(false);
-  const [dataRootApplying, setDataRootApplying] = useState(false);
   const [isAISettingsOpen, setIsAISettingsOpen] = useState(false);
   const aiEntryPlacement = resolveAIEntryPlacement();
   const aiEdgeHandleAttachment = resolveAIEdgeHandleAttachment(aiPanelVisible);
@@ -1370,7 +1368,6 @@ function App() {
           }
           const data = (res?.data || {}) as any;
           setDataRootInfo(data);
-          setSelectedDataRootPath(String(data.path || ''));
       } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error || t('message.unknownError'));
           void message.error(t('message.loadDataRootFailedWithMessage', { message: errMsg }));
@@ -1386,58 +1383,6 @@ function App() {
       void loadDataRootInfo();
   }, [isDataRootModalOpen, loadDataRootInfo]);
 
-  const handleSelectDataRoot = useCallback(async () => {
-      try {
-          const res = await SelectDataRootDirectory(selectedDataRootPath || dataRootInfo?.path || '');
-          if (!res?.success) {
-              if (String(res?.message || '') !== '已取消') {
-                  throw new Error(res?.message || t('message.selectDataRootFailed'));
-              }
-              return;
-          }
-          const data = (res?.data || {}) as any;
-          setSelectedDataRootPath(String(data.path || ''));
-      } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error || t('message.unknownError'));
-          void message.error(t('message.selectDataRootFailedWithMessage', { message: errMsg }));
-      }
-  }, [dataRootInfo?.path, selectedDataRootPath]);
-
-  const handleApplyDataRoot = useCallback(async (migrate: boolean, useDefaultPath = false) => {
-      const nextPath = useDefaultPath ? String(dataRootInfo?.defaultPath || '') : String(selectedDataRootPath || '').trim();
-      if (!nextPath) {
-          void message.warning(t('message.selectValidDataRoot'));
-          return;
-      }
-      setDataRootApplying(true);
-      try {
-          const res = await ApplyDataRootDirectory(nextPath, migrate);
-          if (!res?.success) {
-              throw new Error(res?.message || t('message.applyDataRootFailed'));
-          }
-          const data = (res?.data || {}) as any;
-          setDataRootInfo(data);
-          setSelectedDataRootPath(String(data.path || nextPath));
-          void message.success(res?.message || t('message.dataRootUpdated'));
-      } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error || t('message.unknownError'));
-          void message.error(t('message.applyDataRootFailedWithMessage', { message: errMsg }));
-      } finally {
-          setDataRootApplying(false);
-      }
-  }, [dataRootInfo?.defaultPath, selectedDataRootPath]);
-
-  const handleOpenDataRoot = useCallback(async () => {
-      try {
-          const res = await OpenDataRootDirectory();
-          if (!res?.success) {
-              throw new Error(res?.message || t('message.openDataRootFailed'));
-          }
-      } catch (error) {
-          const errMsg = error instanceof Error ? error.message : String(error || t('message.unknownError'));
-          void message.error(t('message.openDataRootFailedWithMessage', { message: errMsg }));
-      }
-  }, []);
 
 
   // Log Panel: 最小高度按“工具栏 + 1 条日志行（微增）”限制
@@ -2314,41 +2259,6 @@ function App() {
                         <div style={utilityMutedTextStyle}>{dataRootInfo?.driverPath || '-'}</div>
                       </div>
                     </div>
-                  </div>
-                </div>
-                <div style={utilityPanelStyle}>
-                  <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('settings.dataRoot.target')}</div>
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <Input
-                      readOnly
-                      value={selectedDataRootPath}
-                      placeholder={t('settings.dataRoot.placeholder')}
-                    />
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                      <Button icon={<FolderOpenOutlined />} onClick={() => void handleSelectDataRoot()}>
-                        {t('settings.dataRoot.select')}
-                      </Button>
-                      <Button onClick={() => void handleOpenDataRoot()}>
-                        {t('settings.dataRoot.openCurrent')}
-                      </Button>
-                      <Button loading={dataRootApplying} onClick={() => void handleApplyDataRoot(false, true)}>
-                        {t('settings.dataRoot.restoreDefault')}
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                <div style={utilityPanelStyle}>
-                  <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('settings.dataRoot.applyMode')}</div>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
-                    <Button loading={dataRootApplying} onClick={() => void handleApplyDataRoot(false)}>
-                      {t('settings.dataRoot.switchOnly')}
-                    </Button>
-                    <Button type="primary" loading={dataRootApplying} onClick={() => void handleApplyDataRoot(true)}>
-                      {t('settings.dataRoot.migrateAndSwitch')}
-                    </Button>
-                  </div>
-                  <div style={{ ...utilityMutedTextStyle, marginTop: 10 }}>
-                    {t('settings.dataRoot.hint')}
                   </div>
                 </div>
               </div>
