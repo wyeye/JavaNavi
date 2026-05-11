@@ -64,8 +64,11 @@ public class AppCompatibilityService {
                 "backend", "java-spring-boot",
                 "packageType", "java-web",
                 "dataDirectory", dataDirectory.toString(),
-                "communityUrl", "https://github.com/Syngnat/JavaNavi",
-                "repoUrl", "https://github.com/Syngnat/JavaNavi"
+                "author", "wyeye",
+                "communityName", "QQ群",
+                "communityGroupNumber", "1001949448",
+                "communityUrl", "",
+                "repoUrl", "https://github.com/wyeye/JavaNavi"
         );
     }
 

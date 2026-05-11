@@ -2,7 +2,7 @@
 name = "javanavi-desktop"
 version = "0.1.5"
 description = "JavaNavi Tauri desktop shell for the Spring Boot web package"
-authors = ["JavaNavi Maintainers"]
+authors = ["wyeye"]
 edition = "2021"
 rust-version = "1.77"
 

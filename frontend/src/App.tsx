@@ -905,7 +905,7 @@ function App() {
   const [isAboutOpen, setIsAboutOpen] = useState(false);
   const isAboutOpenRef = React.useRef(false);
   const [aboutLoading, setAboutLoading] = useState(false);
-  const [aboutInfo, setAboutInfo] = useState<{ version: string; author: string; buildTime?: string; repoUrl?: string; issueUrl?: string; releaseUrl?: string; communityUrl?: string } | null>(null);
+  const [aboutInfo, setAboutInfo] = useState<{ version: string; author: string; buildTime?: string; repoUrl?: string; issueUrl?: string; releaseUrl?: string; communityUrl?: string; communityName?: string; communityGroupNumber?: string } | null>(null);
   const aboutDisplayVersion = resolveAboutDisplayVersion(runtimeBuildType, aboutInfo?.version);
   const [aboutUpdateStatus, setAboutUpdateStatus] = useState<string>('');
   const [lastUpdateInfo, setLastUpdateInfo] = useState<UpdateInfo | null>(null);
@@ -2867,10 +2867,14 @@ function App() {
                                 <div style={{ marginBottom: 6, fontWeight: 600 }}>{t('about.updateStatus')}</div>
                                 <div style={utilityMutedTextStyle}>{aboutUpdateStatus || t('common.notChecked')}</div>
                             </div>
-                            {aboutInfo?.communityUrl ? (
+                            {(aboutInfo?.communityUrl || aboutInfo?.communityName || aboutInfo?.communityGroupNumber) ? (
                                 <div style={{ gridColumn: '1 / -1' }}>
                                     <div style={{ marginBottom: 6, fontWeight: 600 }}>{t('about.community')}</div>
-                                    <a onClick={(e) => { e.preventDefault(); if (aboutInfo?.communityUrl) BrowserOpenURL(aboutInfo.communityUrl); }} href={aboutInfo.communityUrl}>{t('about.communityName')}</a>
+                                    {aboutInfo?.communityUrl ? (
+                                        <a onClick={(e) => { e.preventDefault(); if (aboutInfo?.communityUrl) BrowserOpenURL(aboutInfo.communityUrl); }} href={aboutInfo.communityUrl}>{aboutInfo?.communityName || t('about.communityName')}</a>
+                                    ) : (
+                                        <div style={utilityMutedTextStyle}>{aboutInfo?.communityName || t('about.communityName')}{aboutInfo?.communityGroupNumber ? `：${aboutInfo.communityGroupNumber}` : ''}</div>
+                                    )}
                                 </div>
                             ) : null}
                         </div>

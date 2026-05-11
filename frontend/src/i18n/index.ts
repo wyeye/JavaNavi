@@ -148,7 +148,7 @@ export const enUS = {
   'about.downloadUpdate': 'Download update',
   'about.openInstallDirectory': 'Open install directory',
   'about.installUpdate': 'Install update',
-  'about.communityName': 'AI Full Book',
+  'about.communityName': 'QQ Group',
 
   'theme.modal.themeTitle': 'Theme Settings',
   'theme.modal.appearanceTitle': 'Appearance Settings',
@@ -1291,7 +1291,7 @@ const zhOverrides = {
   'about.downloadUpdate': '下载更新',
   'about.openInstallDirectory': '打开安装目录',
   'about.installUpdate': '安装更新',
-  'about.communityName': 'AI 全书',
+  'about.communityName': 'QQ群',
   'theme.modal.themeTitle': '主题设置',
   'theme.modal.appearanceTitle': '外观设置',
   'theme.modal.themeDescription': '切换明暗模式，同时保持视觉体系一致。',
