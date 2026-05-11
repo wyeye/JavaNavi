@@ -106,6 +106,7 @@ import { DataGridFilterPanel } from './dataGrid/dataGridFilterPanel';
 import type { GridFilterCondition, GridSortInfo } from './dataGrid/dataGridFilterTypes';
 import { DataGridFooterControls, type DataGridViewMode } from './dataGrid/dataGridFooterControls';
 import { DataGridPreviewPanel, type DataGridFocusedCellInfo } from './dataGrid/dataGridPreviewPanel';
+import { DataGridJsonView, DataGridTextView } from './dataGrid/dataGridResultViews';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 const renderHighlightedCellText = (text: string, query: string): React.ReactNode => {
@@ -5141,71 +5142,25 @@ const DataGrid: React.FC<DataGridProps> = ({
                 </div>
             </div>
         ) : viewMode === 'json' ? (
-            <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: '8px 10px', borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ fontSize: 12, color: darkMode ? '#999' : '#666' }}>
-                        {mergedDisplayData.length === 0 ? '当前结果集无数据' : `当前结果集 ${mergedDisplayData.length} 条记录`}
-                    </span>
-                    {canModifyData && (
-                        <Button size="small" type="primary" onClick={openJsonEditor} disabled={mergedDisplayData.length === 0}>
-                            编辑 JSON
-                        </Button>
-                    )}
-                </div>
-                <div style={{ flex: 1, minHeight: 0, padding: '8px 10px 10px 10px' }}>
-                    <Editor
-                        height="100%"
-                        defaultLanguage="json"
-                        language="json"
-                        theme={darkMode ? "transparent-dark" : "transparent-light"}
-                        value={jsonViewText}
-                        options={{
-                            readOnly: true,
-                            minimap: { enabled: false },
-                            scrollBeyondLastLine: false,
-                            wordWrap: "off",
-                            fontSize: 12,
-                            tabSize: 2,
-                            automaticLayout: true,
-                        }}
-                    />
-                </div>
-            </div>
-	        ) : (
-	            <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
-                <div style={{ padding: '8px 12px', borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <Button size="small" onClick={() => setTextRecordIndex(i => Math.max(0, i - 1))} disabled={textViewRows.length === 0 || textRecordIndex <= 0}>
-                        上一条
-                    </Button>
-                    <Button size="small" onClick={() => setTextRecordIndex(i => Math.min(textViewRows.length - 1, i + 1))} disabled={textViewRows.length === 0 || textRecordIndex >= textViewRows.length - 1}>
-                        下一条
-                    </Button>
-                    <span style={{ fontSize: 12, color: darkMode ? '#999' : '#666' }}>
-                        {textViewRows.length === 0 ? '当前结果集无数据' : `记录 ${textRecordIndex + 1} / ${textViewRows.length}`}
-                    </span>
-                    {canModifyData && (
-                        <Button size="small" type="primary" onClick={openCurrentViewRowEditor} disabled={textViewRows.length === 0}>
-                            编辑当前记录
-                        </Button>
-                    )}
-                </div>
-	                <div className="custom-scrollbar" style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: '8px 12px' }}>
-                    {currentTextRow ? displayColumnNames.map((col) => (
-                        <div key={col} style={{ display: 'grid', gridTemplateColumns: '240px 1fr', gap: 10, padding: '6px 0', borderBottom: darkMode ? '1px solid rgba(255,255,255,0.06)' : '1px solid rgba(0,0,0,0.06)', alignItems: 'start' }}>
-                            <div style={{ fontWeight: 600, color: darkMode ? 'rgba(255,255,255,0.9)' : 'rgba(0,0,0,0.88)', wordBreak: 'break-all' }}>
-                                {col} :
-                            </div>
-                            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: darkMode ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.88)' }}>
-                                {formatTextViewValue((currentTextRow as any)[col])}
-                            </div>
-                        </div>
-                    )) : (
-                        <div style={{ fontSize: 12, color: darkMode ? '#999' : '#666', paddingTop: 4 }}>
-                            当前结果集无数据
-                        </div>
-                    )}
-                </div>
-            </div>
+            <DataGridJsonView
+                darkMode={darkMode}
+                rowCount={mergedDisplayData.length}
+                canModifyData={canModifyData}
+                jsonViewText={jsonViewText}
+                onEditJson={openJsonEditor}
+            />
+        ) : (
+            <DataGridTextView
+                darkMode={darkMode}
+                canModifyData={canModifyData}
+                displayColumnNames={displayColumnNames}
+                textViewRows={textViewRows}
+                textRecordIndex={textRecordIndex}
+                currentTextRow={currentTextRow}
+                formatTextViewValue={formatTextViewValue}
+                onTextRecordIndexChange={setTextRecordIndex}
+                onEditCurrentRecord={openCurrentViewRowEditor}
+            />
         )}
 
         <DataGridPreviewPanel
