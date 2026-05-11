@@ -21,10 +21,9 @@ import {
     horizontalListSortingStrategy, 
     arrayMove 
 } from '@dnd-kit/sortable';
-import { UploadImportFile, ExportTable, ExportData, ExportQuery, ApplyChanges, DBGetColumns, DBGetIndexes, DBShowCreateTable } from '@compat/javanaviApp';
+import { UploadImportFile, ExportTable, ExportData, ExportQuery, ApplyChanges, DBShowCreateTable } from '@compat/javanaviApp';
 import ImportPreviewModal from './ImportPreviewModal';
 import { useStore } from '../store';
-import type { ColumnDefinition, IndexDefinition } from '../types';
 import { v4 as generateUuid } from 'uuid';
 import 'react-resizable/css/styles.css';
 import { buildOrderBySQL, buildPaginatedSelectSQL, buildWhereSQL, escapeLiteral, hasExplicitSort, quoteIdentPart, quoteQualifiedIdent, withSortBufferTuningSQL, type FilterCondition } from '../utils/sql';
@@ -44,7 +43,6 @@ import {
     buildCopyInsertSQL,
     buildCopyUpdateSQL,
     normalizeTemporalLiteralText,
-    resolveUniqueKeyGroupsFromIndexes,
 } from './dataGrid/dataGridCopyInsert';
 import { calculateAutoFitColumnWidth } from './dataGrid/dataGridAutoWidth';
 import { buildSelectedCellClipboardText } from './dataGrid/dataGridSelectionCopy';
@@ -121,6 +119,15 @@ import {
     isNoValueOp,
     normalizeGridFilterConditions,
 } from './dataGrid/dataGridFilterHelpers';
+import {
+    buildColumnMetaMapByLowerName,
+    buildColumnTypeMapByLowerName,
+    buildDataGridMetadataCacheKey,
+    fetchColumnMetaMap,
+    fetchUniqueKeyGroups,
+    resolveAllTableColumnNames,
+    type ColumnMeta,
+} from './dataGrid/dataGridMetadata';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 interface Item {
@@ -168,11 +175,6 @@ interface DataGridProps {
 }
 
 type GridViewMode = DataGridViewMode;
-
-type ColumnMeta = {
-    type: string;
-    comment: string;
-};
 
 const CELL_ELLIPSIS_STYLE: React.CSSProperties = {
   overflow: 'hidden',
@@ -635,7 +637,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           setUniqueKeyGroups([]);
           return;
       }
-      const cacheKey = `${connectionId}|${normalizedDbName}|${normalizedTableName}`;
+      const cacheKey = buildDataGridMetadataCacheKey({ connectionId, dbName: normalizedDbName, tableName: normalizedTableName });
       setColumnMetaMap(columnMetaCacheRef.current[cacheKey] || {});
       setUniqueKeyGroups(uniqueKeyGroupsCacheRef.current[cacheKey] || []);
   }, [connectionId, dbName, tableName]);
@@ -645,40 +647,23 @@ const DataGrid: React.FC<DataGridProps> = ({
       const normalizedDbName = String(dbName || '').trim();
       if (!connectionId || !normalizedTableName) return;
 
-      const cacheKey = `${connectionId}|${normalizedDbName}|${normalizedTableName}`;
+      const cacheKey = buildDataGridMetadataCacheKey({ connectionId, dbName: normalizedDbName, tableName: normalizedTableName });
       if (columnMetaCacheRef.current[cacheKey]) return;
 
-      const conn = connections.find(c => c.id === connectionId);
-      if (!conn) {
+      const connection = connections.find(c => c.id === connectionId);
+      if (!connection) {
           setColumnMetaMap({});
           return;
       }
 
-      const config = {
-          ...conn.config,
-          port: Number(conn.config.port),
-          password: conn.config.password || "",
-          database: conn.config.database || "",
-          useSSH: conn.config.useSSH || false,
-          ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
-      };
-
       const seq = ++columnMetaSeqRef.current;
-      DBGetColumns(buildRpcConnectionConfig(config) as any, normalizedDbName, normalizedTableName)
-          .then((res) => {
+      fetchColumnMetaMap({ connection, dbName: normalizedDbName, tableName: normalizedTableName })
+          .then((nextMap) => {
               if (seq !== columnMetaSeqRef.current) return;
-              if (!res.success || !Array.isArray(res.data)) {
+              if (!nextMap) {
                   setColumnMetaMap({});
                   return;
               }
-              const nextMap: Record<string, ColumnMeta> = {};
-              (res.data as ColumnDefinition[]).forEach((column: any) => {
-                  const name = String(column?.name ?? column?.Name ?? '').trim();
-                  if (!name) return;
-                  const type = String(column?.type ?? column?.Type ?? '').trim();
-                  const comment = String(column?.comment ?? column?.Comment ?? '').trim();
-                  nextMap[name] = { type, comment };
-              });
               columnMetaCacheRef.current[cacheKey] = nextMap;
               setColumnMetaMap(nextMap);
           })
@@ -693,33 +678,23 @@ const DataGrid: React.FC<DataGridProps> = ({
       const normalizedDbName = String(dbName || '').trim();
       if (!connectionId || !normalizedTableName) return;
 
-      const cacheKey = `${connectionId}|${normalizedDbName}|${normalizedTableName}`;
+      const cacheKey = buildDataGridMetadataCacheKey({ connectionId, dbName: normalizedDbName, tableName: normalizedTableName });
       if (uniqueKeyGroupsCacheRef.current[cacheKey]) return;
 
-      const conn = connections.find(c => c.id === connectionId);
-      if (!conn) {
+      const connection = connections.find(c => c.id === connectionId);
+      if (!connection) {
           setUniqueKeyGroups([]);
           return;
       }
 
-      const config = {
-          ...conn.config,
-          port: Number(conn.config.port),
-          password: conn.config.password || "",
-          database: conn.config.database || "",
-          useSSH: conn.config.useSSH || false,
-          ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
-      };
-
       const seq = ++uniqueKeyGroupsSeqRef.current;
-      DBGetIndexes(buildRpcConnectionConfig(config) as any, normalizedDbName, normalizedTableName)
-          .then((res) => {
+      fetchUniqueKeyGroups({ connection, dbName: normalizedDbName, tableName: normalizedTableName })
+          .then((nextGroups) => {
               if (seq !== uniqueKeyGroupsSeqRef.current) return;
-              if (!res.success || !Array.isArray(res.data)) {
+              if (!nextGroups) {
                   setUniqueKeyGroups([]);
                   return;
               }
-              const nextGroups = resolveUniqueKeyGroupsFromIndexes(res.data as IndexDefinition[]);
               uniqueKeyGroupsCacheRef.current[cacheKey] = nextGroups;
               setUniqueKeyGroups(nextGroups);
           })
@@ -730,34 +705,15 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [connections, connectionId, dbName, tableName]);
 
   const columnMetaMapByLowerName = useMemo(() => {
-      const next: Record<string, ColumnMeta> = {};
-      Object.entries(columnMetaMap).forEach(([name, meta]) => {
-          const lowerName = String(name || '').toLowerCase();
-          if (!lowerName || next[lowerName]) return;
-          next[lowerName] = meta;
-      });
-      return next;
+      return buildColumnMetaMapByLowerName(columnMetaMap);
   }, [columnMetaMap]);
 
   const columnTypeMapByLowerName = useMemo(() => {
-      const next: Record<string, string> = {};
-      Object.entries(columnMetaMapByLowerName).forEach(([name, meta]) => {
-          const type = String(meta?.type || '').trim();
-          if (!name || !type) return;
-          next[name] = type;
-      });
-      return next;
+      return buildColumnTypeMapByLowerName(columnMetaMapByLowerName);
   }, [columnMetaMapByLowerName]);
 
   const allTableColumnNames = useMemo(() => {
-      const metaColumns = Object.keys(columnMetaMap);
-      if (metaColumns.length > 0) {
-          return metaColumns;
-      }
-      if (exportScope === 'table') {
-          return columnNames.filter((columnName) => columnName !== JAVANAVI_ROW_KEY);
-      }
-      return [];
+      return resolveAllTableColumnNames({ columnMetaMap, exportScope, columnNames });
   }, [columnMetaMap, exportScope, columnNames]);
 
   const normalizeCommitCellValue = useCallback(
