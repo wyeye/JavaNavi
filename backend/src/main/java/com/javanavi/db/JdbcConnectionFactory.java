@@ -20,15 +20,17 @@ import java.util.Properties;
 public class JdbcConnectionFactory {
     private final JdbcDriverRuntimeService driverRuntimeService;
     private final I18nMessages messages;
+    private final ConnectionNetworkTunnelService networkTunnelService;
 
     public JdbcConnectionFactory() {
-        this(null, new I18nMessages());
+        this(null, new I18nMessages(), new ConnectionNetworkTunnelService());
     }
 
     @Autowired
-    public JdbcConnectionFactory(JdbcDriverRuntimeService driverRuntimeService, I18nMessages messages) {
+    public JdbcConnectionFactory(JdbcDriverRuntimeService driverRuntimeService, I18nMessages messages, ConnectionNetworkTunnelService networkTunnelService) {
         this.driverRuntimeService = driverRuntimeService;
         this.messages = messages;
+        this.networkTunnelService = networkTunnelService == null ? new ConnectionNetworkTunnelService() : networkTunnelService;
     }
 
     private JdbcDriverRuntimeService requireDriverRuntimeService() {
@@ -85,10 +87,35 @@ public class JdbcConnectionFactory {
         if (!isSupportedExternalDriver(config)) {
             throw new IllegalArgumentException(messages.message("connection.jdbcProfiles"));
         }
-        return JdbcIsolationCompatibility.wrap(
-                requireDriverRuntimeService().openConnection(normalizeDriver(config), jdbcUrl(config), connectionProperties(config)),
-                normalizeDriver(config)
-        );
+        try {
+            return networkTunnelService.withJdbcNetwork(config, effective -> {
+                try {
+                    return JdbcIsolationCompatibility.wrap(
+                            openRawConnection(effective),
+                            normalizeDriver(effective)
+                    );
+                } catch (SQLException error) {
+                    throw new JdbcConnectionRuntimeException(error);
+                }
+            });
+        } catch (JdbcConnectionRuntimeException error) {
+            throw error.getCause();
+        }
+    }
+
+    public Connection openRawConnection(ConnectionConfigDto config) throws SQLException {
+        ConnectionConfigDto effective = config;
+        String url = jdbcUrl(effective);
+        Properties properties = connectionProperties(effective);
+        return requireDriverRuntimeService().openConnection(normalizeDriver(config), url, properties);
+    }
+
+    public Connection openRawConnection(ConnectionConfigDto config, Properties properties) throws SQLException {
+        return requireDriverRuntimeService().openConnection(normalizeDriver(config), jdbcUrl(config), properties);
+    }
+
+    public ConnectionNetworkTunnelService networkTunnelService() {
+        return networkTunnelService;
     }
 
     public DataSource dataSource(ConnectionConfigDto config, Properties properties) {
@@ -223,6 +250,17 @@ public class JdbcConnectionFactory {
             return duckDbJdbcUrlFromPath(dsn);
         }
         throw new LocalizedException("connection.customDsnJdbcUrlRequired", "driver", driver);
+    }
+
+    static final class JdbcConnectionRuntimeException extends RuntimeException {
+        JdbcConnectionRuntimeException(SQLException cause) {
+            super(cause);
+        }
+
+        @Override
+        public synchronized SQLException getCause() {
+            return (SQLException) super.getCause();
+        }
     }
 
     private static String sqliteJdbcUrl(ConnectionConfigDto config) {

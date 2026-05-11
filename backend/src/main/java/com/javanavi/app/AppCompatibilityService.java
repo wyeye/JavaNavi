@@ -195,6 +195,51 @@ public class AppCompatibilityService {
         }
     }
 
+    public Map<String, Object> selectLocalFile(Map<String, Object> input) {
+        String kind = textOrDefault(input == null ? null : String.valueOf(input.get("kind")), "file");
+        return orderedMap(
+                "selected", false,
+                "path", "",
+                "kind", kind,
+                "desktopRequired", true,
+                "message", "Use the JavaNavi desktop native file selector for local files."
+        );
+    }
+
+    public Object readLocalFile(String rawPath) {
+        Path file = Path.of(textOrDefault(rawPath, "")).toAbsolutePath().normalize();
+        if (!Files.isRegularFile(file)) {
+            throw new IllegalArgumentException("Selected local file does not exist.");
+        }
+        if (!file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".sql")) {
+            throw new IllegalArgumentException("Only SQL files can be opened through this action.");
+        }
+        try {
+            long size = Files.size(file);
+            if (size > 50L * 1024L * 1024L) {
+                return orderedMap(
+                        "isLargeFile", true,
+                        "filePath", file.toString(),
+                        "path", file.toString(),
+                        "fileSize", size,
+                        "fileSizeMB", String.format(Locale.ROOT, "%.1f", size / 1024.0 / 1024.0),
+                        "webManaged", false,
+                        "desktopLocal", true
+                );
+            }
+            return orderedMap(
+                    "content", Files.readString(file, StandardCharsets.UTF_8),
+                    "filePath", file.toString(),
+                    "path", file.toString(),
+                    "name", file.getFileName().toString(),
+                    "webManaged", false,
+                    "desktopLocal", true
+            );
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to read JavaNavi local SQL file.", error);
+        }
+    }
+
     public Map<String, Object> selectSqlDirectory(String currentPath) {
         try {
             Path directory = resolveSqlWorkspacePath(currentPath, true);

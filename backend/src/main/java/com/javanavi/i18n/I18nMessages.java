@@ -64,7 +64,7 @@ public class I18nMessages {
         put("redis.membersRequired", "members cannot be empty.", "members 不能为空。");
         put("redis.streamFieldsRequired", "Stream fields cannot be empty.", "Stream 字段不能为空。");
         put("redis.unsupportedType", "Unsupported Redis data type: {type}", "不支持的 Redis 数据类型：{type}");
-        put("redis.runtimeExclusion", "JavaNavi Web Redis compatibility excludes SSH/proxy/tunnel runtime; use direct Redis TCP for this slice.", "JavaNavi Web Redis 兼容层不包含 SSH/代理/隧道运行时；此阶段请使用直连 Redis TCP。");
+        put("redis.runtimeExclusion", "Redis SSH/Proxy/HTTP Tunnel runtime is not supported yet; use direct Redis TCP.", "Redis 暂不支持 SSH/Proxy/HTTP Tunnel 运行时；请使用直连 Redis TCP。");
         put("redis.connectionFailed", "Redis connection failed: {message}", "Redis 连接失败：{message}");
         put("redis.commandFailed", "Redis command execution failed: {message}", "Redis 命令执行失败：{message}");
         put("redis.required", "{name} cannot be empty.", "{name} 不能为空。");

@@ -40,6 +40,18 @@ async function localSessionHeaders(): Promise<Record<string, string>> {
   };
 }
 
+export function isJavaNaviDesktopRuntime(): boolean {
+  if (typeof navigator === 'undefined') return false;
+  return /JavaNaviDesktop\//.test(navigator.userAgent || '');
+}
+
+function tauriInvoke<T = unknown>(command: string, args: Record<string, unknown>): Promise<T> | null {
+  if (typeof window === 'undefined') return null;
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (typeof invoke !== 'function') return null;
+  return invoke<T>(command, args);
+}
+
 function driverTypeOf(config: any): string {
   return config?.driverType || config?.type || config?.driver || 'demo';
 }
@@ -103,8 +115,11 @@ function toConnectionPayload(config: any = {}): Record<string, any> {
     useSSL: config?.useSSL,
     sslMode: resolveEffectiveSSLMode(config?.sslMode, config?.useSSL === true),
     useSSH: config?.useSSH,
+    ssh: config?.ssh,
     useProxy: config?.useProxy,
+    proxy: config?.proxy,
     useHttpTunnel: config?.useHttpTunnel,
+    httpTunnel: config?.httpTunnel,
   };
 }
 
@@ -519,11 +534,18 @@ export async function DuplicateConnection(arg1:string): Promise<connection.Saved
 }
 
 export async function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  await replayEventFixture('sqlfile', { correlationId: arg4, payload: { currentSQL: arg3, database: arg2 } });
+  let sqlText = arg3;
+  if (typeof arg3 === 'string' && !arg3.trim().includes('\n') && /\.sql$/i.test(arg3.trim())) {
+    const readResult = await ReadLocalFile(arg3.trim());
+    if (!readResult.success) return readResult;
+    const payload = readResult.data && typeof readResult.data === 'object' ? readResult.data as Record<string, any> : {};
+    sqlText = String(payload.content ?? readResult.data ?? '');
+  }
+  await replayEventFixture('sqlfile', { correlationId: arg4, payload: { currentSQL: sqlText, database: arg2 } });
   const payload = await postJson('/query/multi', {
     connection: toConnectionPayload(arg1),
     database: arg2,
-    sql: arg3,
+    sql: sqlText,
     queryId: arg4,
   }, { requestSource: 'sql-file' });
   const result = apiEnvelopeToQueryResult(payload, 'SQL file executed');
@@ -704,8 +726,37 @@ export async function OpenDriverDownloadDirectory(arg1:string): Promise<connecti
 }
 
 export async function OpenSQLFile(): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/sql/open', {});
-  return apiEnvelopeToQueryResult(payload, 'SQL file opened');
+  const selected = await SelectLocalFile('sql');
+  if (!selected.success) return selected;
+  const selectedPath = selected.data && typeof selected.data === 'object'
+    ? String((selected.data as Record<string, any>).path || (selected.data as Record<string, any>).filePath || '').trim()
+    : String(selected.data || '').trim();
+  if (!selectedPath) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: 'SQL file selection was cancelled.' }, data: null }, 'SQL file opened');
+  }
+  return ReadLocalFile(selectedPath);
+}
+
+export async function SelectLocalFile(kind: string, currentPath = ''): Promise<connection.QueryResult> {
+  if (!isJavaNaviDesktopRuntime()) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Browser mode requires upload-based file selection.' }, data: null }, 'Local file selection unavailable');
+  }
+  const nativeSelection = tauriInvoke<Record<string, any>>('select_local_file', { request: { kind, currentPath } });
+  if (nativeSelection) {
+    try {
+      const result = await nativeSelection;
+      return apiEnvelopeToQueryResult({ success: true, data: result }, 'Local file selected');
+    } catch (error: any) {
+      return apiEnvelopeToQueryResult({ success: false, error: { message: error?.message || String(error) }, data: null }, 'Local file selection unavailable');
+    }
+  }
+  const payload = await postJson('/app/local-file/select', { kind, currentPath });
+  return apiEnvelopeToQueryResult(payload, 'Local file selected');
+}
+
+export async function ReadLocalFile(path: string): Promise<connection.QueryResult> {
+  const payload = await postJson('/app/local-file/read', { path });
+  return apiEnvelopeToQueryResult(payload, 'Local file read');
 }
 
 export async function PreviewImportFile(arg1:string): Promise<connection.QueryResult> {
@@ -936,6 +987,9 @@ export async function SelectSQLDirectory(arg1:string): Promise<connection.QueryR
 }
 
 export async function SelectSSHKeyFile(arg1:string): Promise<connection.QueryResult> {
+  if (isJavaNaviDesktopRuntime()) {
+    return SelectLocalFile('ssh-key', arg1);
+  }
   const payload = await postJson('/files/ssh-key/select', { currentPath: arg1 });
   return apiEnvelopeToQueryResult(payload, 'SSH key file placeholder selected');
 }

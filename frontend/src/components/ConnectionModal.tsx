@@ -228,6 +228,7 @@ const ConnectionModal: React.FC<{
   );
   const testInFlightRef = useRef(false);
   const testTimerRef = useRef<number | null>(null);
+  const sshKeyUploadInputRef = useRef<HTMLInputElement | null>(null);
   const addConnection = useStore((state) => state.addConnection);
   const updateConnection = useStore((state) => state.updateConnection);
   const theme = useStore((state) => state.theme);
@@ -1039,15 +1040,23 @@ const ConnectionModal: React.FC<{
           typeof data === "string" ? data : String(data.path || "").trim();
         if (selectedPath) {
           form.setFieldValue("sshKeyPath", selectedPath);
+          return;
         }
-      } else if (res?.message !== "已取消") {
-        message.error(`选择私钥文件失败: ${res?.message || "未知错误"}`);
       }
+      sshKeyUploadInputRef.current?.click();
     } catch (e: any) {
       message.error(`选择私钥文件失败: ${e?.message || String(e)}`);
     } finally {
       setSelectingSSHKey(false);
     }
+  };
+
+  const handleSSHKeyUploadSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    form.setFieldValue("sshKeyPath", file.name);
+    message.info("Web 模式已记录私钥文件名；桌面壳可选择本机绝对路径");
   };
 
   const handleSelectDatabaseFile = async () => {
@@ -5271,6 +5280,13 @@ const ConnectionModal: React.FC<{
       >
         {step === 1 ? renderStep1() : renderStep2()}
       </Modal>
+      <input
+        ref={sshKeyUploadInputRef}
+        type="file"
+        accept=".pem,.key,.ppk,id_rsa,id_ed25519"
+        style={{ display: "none" }}
+        onChange={handleSSHKeyUploadSelected}
+      />
       <Modal
         title={renderConnectionModalTitle(
           <FileTextOutlined />,
