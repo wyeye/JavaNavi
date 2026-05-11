@@ -547,6 +547,7 @@ interface AppState {
   enableColumnOrderMemory: boolean;
   tableHiddenColumns: Record<string, string[]>;
   enableHiddenColumnMemory: boolean;
+  tableColumnWidths: Record<string, Record<string, number>>;
   windowBounds: { width: number; height: number; x: number; y: number } | null;
   windowState: "normal" | "fullscreen" | "maximized";
   sidebarWidth: number;
@@ -650,6 +651,17 @@ interface AppState {
   ) => void;
   setEnableHiddenColumnMemory: (enabled: boolean) => void;
   clearTableHiddenColumns: (
+    connectionId: string,
+    dbName: string,
+    tableName: string,
+  ) => void;
+  setTableColumnWidths: (
+    connectionId: string,
+    dbName: string,
+    tableName: string,
+    widths: Record<string, number>,
+  ) => void;
+  clearTableColumnWidths: (
     connectionId: string,
     dbName: string,
     tableName: string,
@@ -831,6 +843,35 @@ const sanitizeTableHiddenColumns = (
   Object.entries(raw).forEach(([key, hiddenArray]) => {
     if (Array.isArray(hiddenArray)) {
       result[key] = hiddenArray.map((col) => String(col));
+    }
+  });
+  return result;
+};
+
+const sanitizeTableColumnWidths = (
+  value: unknown,
+): Record<string, Record<string, number>> => {
+  const raw =
+    value && typeof value === "object"
+      ? (value as Record<string, unknown>)
+      : {};
+  const result: Record<string, Record<string, number>> = {};
+  Object.entries(raw).forEach(([key, widths]) => {
+    if (!widths || typeof widths !== "object" || Array.isArray(widths)) {
+      return;
+    }
+    const safeWidths: Record<string, number> = {};
+    Object.entries(widths as Record<string, unknown>).forEach(
+      ([columnName, rawWidth]) => {
+        const width =
+          typeof rawWidth === "number" ? rawWidth : Number(rawWidth);
+        if (Number.isFinite(width) && width >= 50 && width <= 5000) {
+          safeWidths[String(columnName)] = Math.round(width);
+        }
+      },
+    );
+    if (Object.keys(safeWidths).length > 0) {
+      result[key] = safeWidths;
     }
   });
   return result;
@@ -1119,6 +1160,7 @@ export const useStore = create<AppState>()(
       enableColumnOrderMemory: true,
       tableHiddenColumns: {},
       enableHiddenColumnMemory: true,
+      tableColumnWidths: {},
       windowBounds: null,
       windowState: "normal" as const,
       sidebarWidth: 330,
@@ -1516,6 +1558,27 @@ export const useStore = create<AppState>()(
       setEnableHiddenColumnMemory: (enabled) =>
         set({ enableHiddenColumnMemory: !!enabled }),
 
+      setTableColumnWidths: (connectionId, dbName, tableName, widths) =>
+        set((state) => {
+          const key = `${connectionId}-${dbName}-${tableName}`;
+          const safeWidths =
+            sanitizeTableColumnWidths({ [key]: widths })[key] || {};
+          return {
+            tableColumnWidths: {
+              ...state.tableColumnWidths,
+              [key]: safeWidths,
+            },
+          };
+        }),
+
+      clearTableColumnWidths: (connectionId, dbName, tableName) =>
+        set((state) => {
+          const key = `${connectionId}-${dbName}-${tableName}`;
+          const newWidths = { ...state.tableColumnWidths };
+          delete newWidths[key];
+          return { tableColumnWidths: newWidths };
+        }),
+
       setWindowBounds: (bounds) =>
         set({
           windowBounds: {
@@ -1760,6 +1823,9 @@ export const useStore = create<AppState>()(
         nextState.tableHiddenColumns = safeHidden;
         nextState.enableHiddenColumnMemory =
           state.enableHiddenColumnMemory !== false;
+        nextState.tableColumnWidths = sanitizeTableColumnWidths(
+          state.tableColumnWidths,
+        );
         nextState.windowBounds = sanitizeWindowBounds(state.windowBounds);
         nextState.windowState = sanitizeWindowState(state.windowState);
         nextState.sidebarWidth = sanitizeSidebarWidth(state.sidebarWidth);
@@ -1800,6 +1866,9 @@ export const useStore = create<AppState>()(
             state.tableHiddenColumns,
           ),
           enableHiddenColumnMemory: state.enableHiddenColumnMemory !== false,
+          tableColumnWidths: sanitizeTableColumnWidths(
+            state.tableColumnWidths,
+          ),
           windowBounds: sanitizeWindowBounds(state.windowBounds),
           windowState: sanitizeWindowState(state.windowState),
           sidebarWidth: sanitizeSidebarWidth(state.sidebarWidth),
@@ -1837,6 +1906,7 @@ export const useStore = create<AppState>()(
           enableColumnOrderMemory: state.enableColumnOrderMemory,
           tableHiddenColumns: state.tableHiddenColumns,
           enableHiddenColumnMemory: state.enableHiddenColumnMemory,
+          tableColumnWidths: state.tableColumnWidths,
           windowBounds: state.windowBounds,
           windowState: state.windowState,
           sidebarWidth: state.sidebarWidth,
