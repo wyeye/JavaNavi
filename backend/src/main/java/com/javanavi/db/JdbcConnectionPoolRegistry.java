@@ -258,6 +258,12 @@ public class JdbcConnectionPoolRegistry {
             putIfAbsentIgnoreCase(driverProperties, "oracle.net.CONNECT_TIMEOUT", String.valueOf(connectionTimeoutMs));
             putIfAbsentIgnoreCase(driverProperties, "oracle.jdbc.ReadTimeout", String.valueOf(Math.max(connectionTimeoutMs, 1_000L)));
         }
+        if ("dameng".equals(driver)) {
+            putIfAbsentIgnoreCase(driverProperties, "connectTimeout", String.valueOf(connectionTimeoutMs));
+            putIfAbsentIgnoreCase(driverProperties, "CONNECT_TIMEOUT", String.valueOf(connectionTimeoutMs));
+            putIfAbsentIgnoreCase(driverProperties, "socketTimeout", String.valueOf(Math.max(connectionTimeoutMs, 1_000L)));
+            putIfAbsentIgnoreCase(driverProperties, "SOCKET_TIMEOUT", String.valueOf(Math.max(connectionTimeoutMs, 1_000L)));
+        }
         if ("sqlite".equals(driver)) {
             putIfAbsentIgnoreCase(driverProperties, "busy_timeout", String.valueOf(Math.max(connectionTimeoutMs, 1_000L)));
         }

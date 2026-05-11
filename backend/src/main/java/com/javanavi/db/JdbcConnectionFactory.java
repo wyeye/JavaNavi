@@ -131,7 +131,7 @@ public class JdbcConnectionFactory {
             case "oracle" -> "jdbc:oracle:thin:@//" + host + ":" + port + "/" + requireText(database, "database");
             case "sqlserver" -> "jdbc:sqlserver://" + host + ":" + port + ";databaseName=" + database
                     + ";encrypt=false;trustServerCertificate=true";
-            case "dameng" -> "jdbc:dm://" + host + ":" + port + (database.isBlank() ? "" : "/" + database);
+            case "dameng" -> "jdbc:dm://" + host + ":" + port;
             case "tdengine" -> "jdbc:TAOS-RS://" + host + ":" + port + "/" + database;
             case "clickhouse" -> "jdbc:clickhouse://" + host + ":" + port + "/" + database;
             default -> throw new IllegalArgumentException(messages.message("drivers.unsupportedType", "type", driver));
@@ -153,6 +153,7 @@ public class JdbcConnectionFactory {
                 }
             });
         }
+        applyDriverSpecificConnectionProperties(config, properties);
         return properties;
     }
 
@@ -311,11 +312,52 @@ public class JdbcConnectionFactory {
         return url;
     }
 
+    private void applyDriverSpecificConnectionProperties(ConnectionConfigDto config, Properties properties) {
+        String driver = normalizeDriver(config);
+        if ("dameng".equals(driver)) {
+            String schema = damengSchema(config);
+            if (schema != null && !schema.isBlank()) {
+                putIfAbsentIgnoreCase(properties, "schema", schema);
+            }
+        }
+    }
+
+    private static String damengSchema(ConnectionConfigDto config) {
+        if (config == null) {
+            return null;
+        }
+        String schema = firstText(config.database(), config.username());
+        if (schema == null) {
+            return null;
+        }
+        return normalizeDamengSchema(schema);
+    }
+
+    static String normalizeDamengSchema(String schema) {
+        String value = schema == null ? "" : schema.trim();
+        if (value.isBlank()) {
+            return "";
+        }
+        if (value.startsWith("\"") && value.endsWith("\"") && value.length() >= 2) {
+            return value.substring(1, value.length() - 1);
+        }
+        return value.toUpperCase(Locale.ROOT);
+    }
+
     private static String requireText(String value, String field) {
         if (value == null || value.isBlank()) {
             throw new LocalizedException("connection.externalFieldRequired", "field", field);
         }
         return value.trim();
+    }
+
+    private static void putIfAbsentIgnoreCase(Properties properties, String key, String value) {
+        for (Object existingKey : properties.keySet()) {
+            if (existingKey != null && existingKey.toString().equalsIgnoreCase(key)) {
+                return;
+            }
+        }
+        properties.setProperty(key, value);
     }
 
     private static int defaultPort(String driverType, String normalizedDriver) {

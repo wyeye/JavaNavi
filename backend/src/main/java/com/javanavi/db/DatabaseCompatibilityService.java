@@ -793,7 +793,7 @@ public class DatabaseCompatibilityService {
                     }
                 }
             }
-        } else if ("h2".equals(driver) || "demo".equals(driver)) {
+        } else if ("dameng".equals(driver) || "h2".equals(driver) || "demo".equals(driver)) {
             try (ResultSet rs = connection.getMetaData().getSchemas()) {
                 while (rs.next()) {
                     String schema = getString(rs, "TABLE_SCHEM");
@@ -1883,8 +1883,8 @@ public class DatabaseCompatibilityService {
             }
             return;
         }
-        if ("postgresql".equals(driver)) {
-            connection.setSchema(database);
+        if ("postgresql".equals(driver) || "dameng".equals(driver)) {
+            connection.setSchema("dameng".equals(driver) ? JdbcConnectionFactory.normalizeDamengSchema(database) : database);
         }
     }
 
