@@ -1312,12 +1312,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         database: conn.config.database || "",
         useSSH: conn.config.useSSH || false,
         ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" },
-        timeout: Math.max(Number(conn.config.timeout) || 30, 120),
     };
 
     try {
         const rawSQL = getSelectedSQL() || currentQuery;
-        const rpcConfig = buildRpcConnectionConfig(config) as any;
+        const rpcConfig = buildRpcConnectionConfig(config, { queryTimeout: 120 }) as any;
         const dbType = String(rpcConfig.type || 'mysql');
         const normalizedDbType = dbType.trim().toLowerCase();
         const normalizedRawSQL = String(rawSQL || '').replace(/；/g, ';');

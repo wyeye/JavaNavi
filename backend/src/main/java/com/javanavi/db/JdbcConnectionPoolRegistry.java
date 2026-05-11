@@ -175,6 +175,7 @@ public class JdbcConnectionPoolRegistry {
         value.append(String.valueOf(config == null ? null : config.useSSL())).append('\n');
         if (config != null && config.options() != null) {
             config.options().entrySet().stream()
+                    .filter(entry -> includeInFingerprint(entry.getKey()))
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> value.append(entry.getKey()).append('=').append(entry.getValue()).append('\n'));
         }
@@ -407,6 +408,12 @@ public class JdbcConnectionPoolRegistry {
 
     private static String normalizeOptionKey(String value) {
         return value == null ? "" : value.toLowerCase(Locale.ROOT).replace("-", "").replace("_", "").trim();
+    }
+
+    private static boolean includeInFingerprint(String optionKey) {
+        String normalized = normalizeOptionKey(optionKey);
+        return !normalized.equals("querytimeout")
+                && !normalized.equals("timeout");
     }
 
     private static String connectionTestQuery(ConnectionConfigDto config) {
