@@ -5,6 +5,8 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.events.CompatEventPublisher;
+import com.javanavi.i18n.AppLanguage;
+import com.javanavi.i18n.I18nContext;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.CompatEventDto;
 import com.javanavi.security.SecretRedactor;
@@ -152,14 +154,19 @@ public class AiCompatibilityService {
     }
 
     public Map<String, String> builtinPrompts() {
+        AppLanguage language = I18nContext.language();
         return orderedStringMap(
-                "通用聊天助手", buildGeneralChatPrompt(),
-                "SQL 生成器", buildSqlGeneratePrompt(),
-                "SQL 解析器", buildSqlExplainPrompt(),
-                "SQL 优化器", buildSqlOptimizePrompt(),
-                "数据洞察分析", buildDataAnalyzePrompt(),
-                "表结构审查", buildSchemaInsightPrompt()
+                promptTitle(language, "General Chat Assistant", "通用聊天助手"), buildGeneralChatPrompt(),
+                promptTitle(language, "SQL Generator", "SQL 生成器"), buildSqlGeneratePrompt(),
+                promptTitle(language, "SQL Explainer", "SQL 解析器"), buildSqlExplainPrompt(),
+                promptTitle(language, "SQL Optimizer", "SQL 优化器"), buildSqlOptimizePrompt(),
+                promptTitle(language, "Data Insight Analysis", "数据洞察分析"), buildDataAnalyzePrompt(),
+                promptTitle(language, "Schema Review", "表结构审查"), buildSchemaInsightPrompt()
         );
+    }
+
+    private static String promptTitle(AppLanguage language, String english, String chinese) {
+        return language == AppLanguage.ZH ? chinese : english;
     }
 
     private static String buildSqlGeneratePrompt() {
