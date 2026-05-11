@@ -188,6 +188,9 @@ let sharedAllColumnsData: {dbName: string, tableName: string, name: string, type
 let sharedVisibleDbs: string[] = [];
 let sharedColumnsCacheData: Record<string, any[]> = {};
 
+type RunMode = 'selected' | 'all';
+type RunRequest = RunMode | { sql: string; source?: 'executionPlan' };
+
 const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isActive = true }) => {
   const [query, setQuery] = useState(tab.query || 'SELECT * FROM ');
   
@@ -209,6 +212,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const [resultSets, setResultSets] = useState<ResultSet[]>([]);
   const [activeResultKey, setActiveResultKey] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [runMode, setRunMode] = useState<RunMode>('selected');
   const [executionError, setExecutionError] = useState<string>('');
   const [, setCurrentQueryId] = useState<string>('');
   const runSeqRef = useRef(0);
@@ -1200,6 +1204,50 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       return selected;
   };
 
+  const resolveRunnableSQL = (modeOverride?: RunMode): string => {
+      const fullSQL = getCurrentQuery();
+      const mode = modeOverride || runMode;
+      if (mode === 'all') return fullSQL;
+      const selected = getSelectedSQL();
+      return selected || fullSQL;
+  };
+
+  const buildExplainSQL = (sourceSql: string, dbType: string, driver = ''): { sql: string; error?: string } => {
+      const statements = splitSQLStatements(sourceSql);
+      if (statements.length === 0) {
+          return { sql: '', error: '没有可生成执行计划的 SQL。' };
+      }
+      if (statements.length > 1) {
+          return { sql: '', error: '执行计划一次只支持一条 SQL，请先选中一条语句。' };
+      }
+
+      const statement = statements[0].trim().replace(/[;；]\s*$/u, '');
+      if (!statement) {
+          return { sql: '', error: '没有可生成执行计划的 SQL。' };
+      }
+
+      const dialect = String(resolveSqlDialect(dbType, driver)).toLowerCase();
+      if (dialect === 'mongodb' || dialect === 'redis') {
+          return { sql: '', error: '当前数据源不支持 SQL 执行计划。' };
+      }
+
+      const withoutLeadingComments = statement.replace(/^\s*(?:(?:\/\*[\s\S]*?\*\/)\s*|(?:--[^\n]*(?:\n|$))\s*|(?:#[^\n]*(?:\n|$))\s*)+/u, '');
+      if (/^explain\b/i.test(withoutLeadingComments)) {
+          return { sql: statement };
+      }
+
+      if (dialect === 'sqlite') {
+          return { sql: `EXPLAIN QUERY PLAN ${statement}` };
+      }
+      if (dialect === 'oracle' || dialect === 'dameng' || dialect === 'dm') {
+          return { sql: `EXPLAIN PLAN FOR ${statement};\nSELECT * FROM TABLE(DBMS_XPLAN.DISPLAY())` };
+      }
+      if (dialect === 'sqlserver') {
+          return { sql: `SET SHOWPLAN_TEXT ON;\n${statement};\nSET SHOWPLAN_TEXT OFF` };
+      }
+      return { sql: `EXPLAIN ${statement}` };
+  };
+
   // 精准重查询单个结果集（提交事务 / 刷新按钮使用），不会重跑整个编辑器 SQL
   const handleReloadResult = async (resultKey: string, sql: string) => {
       if (!sql?.trim() || !currentDb) return;
@@ -1271,9 +1319,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       }
   };
 
-  const handleRun = async () => {
-    const currentQuery = getCurrentQuery();
-    if (!currentQuery.trim()) return;
+  const handleRun = async (request?: RunRequest) => {
+    const explicitSQL = typeof request === 'object' && typeof request.sql === 'string' ? request.sql : '';
+    const modeOverride = request === 'selected' || request === 'all' ? request : undefined;
+    const runSQL = explicitSQL || resolveRunnableSQL(modeOverride);
+    if (!runSQL.trim()) return;
     if (!currentDb) {
         message.error("请先选择数据库");
         return;
@@ -1315,7 +1365,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
     };
 
     try {
-        const rawSQL = getSelectedSQL() || currentQuery;
+        const rawSQL = runSQL;
         const rpcConfig = buildRpcConnectionConfig(config, { queryTimeout: 120 }) as any;
         const dbType = String(rpcConfig.type || 'mysql');
         const normalizedDbType = dbType.trim().toLowerCase();
@@ -1663,7 +1713,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         addSqlLog({
             id: `log-${Date.now()}-error`,
             timestamp: Date.now(),
-            sql: getSelectedSQL() || query,
+            sql: runSQL || query,
             status: 'error',
             duration: Date.now() - runStartTime,
             message: e.message,
@@ -1676,6 +1726,34 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         // Clear query ID after execution completes
         clearQueryId();
     }
+  };
+
+  const handleExplainPlan = async () => {
+    const sourceSQL = resolveRunnableSQL();
+    if (!sourceSQL.trim()) return;
+    if (!currentDb) {
+        message.error("请先选择数据库");
+        return;
+    }
+    const conn = connections.find(c => c.id === currentConnectionId);
+    if (!conn) {
+        message.error("Connection not found");
+        return;
+    }
+    const rpcConfig = buildRpcConnectionConfig({
+        ...conn.config,
+        port: Number(conn.config.port),
+        password: conn.config.password || "",
+        database: conn.config.database || "",
+        useSSH: conn.config.useSSH || false,
+        ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" },
+    }) as any;
+    const plan = buildExplainSQL(sourceSQL, String(rpcConfig.type || conn.config.type || 'mysql'), String((rpcConfig as any).driver || conn.config.driver || ''));
+    if (plan.error) {
+        message.warning(plan.error);
+        return;
+    }
+    await handleRun({ sql: plan.sql, source: 'executionPlan' });
   };
 
   const handleCancel = async () => {
@@ -2086,6 +2164,16 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             />
         </Tooltip>
         <Button.Group>
+          <Select
+              style={{ width: 110 }}
+              value={runMode}
+              onChange={setRunMode}
+              disabled={loading}
+              options={[
+                  { label: '选择运行', value: 'selected' },
+                  { label: '全部运行', value: 'all' },
+              ]}
+          />
           <Tooltip
               title={
                   shortcutOptions.runQuery?.enabled && shortcutOptions.runQuery?.combo
@@ -2093,7 +2181,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       : '运行'
               }
           >
-              <Button type="primary" icon={<PlayCircleOutlined />} onClick={handleRun} loading={loading}>
+              <Button type="primary" icon={<PlayCircleOutlined />} onClick={() => handleRun()} loading={loading}>
                 运行
               </Button>
           </Tooltip>
@@ -2103,6 +2191,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             </Button>
           )}
         </Button.Group>
+        <Button onClick={handleExplainPlan} disabled={loading}>
+          执行计划
+        </Button>
         <Tooltip
             title={
                 shortcutOptions.saveQuery?.enabled && shortcutOptions.saveQuery?.combo
