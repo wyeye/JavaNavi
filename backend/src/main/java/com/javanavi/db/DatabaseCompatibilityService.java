@@ -1869,15 +1869,6 @@ public class DatabaseCompatibilityService {
         }
         String driver = jdbcConnectionFactory.normalizeDriver(config);
         if ("mysql".equals(driver)) {
-            try {
-                connection.setCatalog(database);
-                String current = connection.getCatalog();
-                if (database.equalsIgnoreCase(current)) {
-                    return;
-                }
-            } catch (SQLException ignored) {
-                // Fall through to USE statement.
-            }
             try (Statement statement = connection.createStatement()) {
                 statement.execute("USE " + mysqlIdentifier(database));
             }
