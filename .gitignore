@@ -39,3 +39,4 @@ frontend/*.tsbuildinfo
 
 .worktrees/
 /AGENTS.md
+/.dev-runtime/
