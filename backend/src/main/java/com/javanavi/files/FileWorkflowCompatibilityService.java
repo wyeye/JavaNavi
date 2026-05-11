@@ -59,7 +59,6 @@ public class FileWorkflowCompatibilityService {
     private final Path exportDirectory;
     private final Path importDirectory;
     private final Path sqlWorkspaceDirectory;
-    private final Path databaseFileDirectory;
     private final Path sshKeyDirectory;
 
     public FileWorkflowCompatibilityService(
@@ -81,7 +80,6 @@ public class FileWorkflowCompatibilityService {
         this.exportDirectory = dataDirectory.resolve("exports").normalize();
         this.importDirectory = dataDirectory.resolve("imports").normalize();
         this.sqlWorkspaceDirectory = dataDirectory.resolve("sql-workspace").normalize();
-        this.databaseFileDirectory = dataDirectory.resolve("database-files").normalize();
         this.sshKeyDirectory = dataDirectory.resolve("ssh-keys").normalize();
     }
 
@@ -107,21 +105,6 @@ public class FileWorkflowCompatibilityService {
         } catch (IOException error) {
             throw new IllegalStateException("Unable to open JavaNavi SQL workspace file.", error);
         }
-    }
-
-    public Map<String, Object> selectDatabaseFile(String currentPath, String driverType) {
-        String normalizedType = normalizeFileToken(driverType, "database");
-        String extension = switch (normalizedType) {
-            case "duckdb" -> ".duckdb";
-            case "sqlite" -> ".sqlite";
-            default -> ".db";
-        };
-        Path file = databaseFileDirectory.resolve(normalizedType + "-database-upload-placeholder" + extension).normalize();
-        return preparePlaceholder(file, databaseFileDirectory, "JavaNavi managed database-file upload placeholder\n", orderedMap(
-                "driverType", normalizedType,
-                "browserUploadRequired", true,
-                "currentPath", SecretRedactor.redact(text(currentPath))
-        ));
     }
 
     public Map<String, Object> selectSshKeyFile(String currentPath) {

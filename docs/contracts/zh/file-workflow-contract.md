@@ -40,4 +40,4 @@ GoNavi 和类似原生桌面工作流通常可以直接打开文件或目录对�
 - `POST /api/v1/files/export/data`、`/export/query`、`/export/table`、`/export/tables-sql`、`/export/tables-data-sql`、`/export/database-sql` 会把 artifact 写入 `${JAVANAVI_DATA_DIR}/exports` 并返回 path/download metadata。
 - `POST /api/v1/files/import/select`、`/import/preview`、`/import/run`、`/config/import` 使用 `${JAVANAVI_DATA_DIR}/imports` 下的 managed placeholder；import run 当前解析并发送 progress evidence，不直接修改目标数据库。
 - `POST /api/v1/files/sql/open` 打开 managed SQL workspace 文件，而不是 OS picker。
-- `POST /api/v1/files/database-file/select` 与 `/ssh-key/select` 只返回 upload placeholder。SSH runtime 行为不属于当前 Web 替代范围；该兼容 endpoint 不读取或存储 private key material。
+- `POST /api/v1/files/ssh-key/select` 只返回 upload placeholder。SSH runtime 行为不属于当前 Web 替代范围；该兼容 endpoint 不读取或存储 private key material。

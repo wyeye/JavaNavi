@@ -40,4 +40,4 @@ The Phase 5 compatibility layer exposes managed-workspace replacements for the r
 - `POST /api/v1/files/export/data`, `/export/query`, `/export/table`, `/export/tables-sql`, `/export/tables-data-sql`, `/export/database-sql` write artifacts under `${JAVANAVI_DATA_DIR}/exports` and return path/download metadata.
 - `POST /api/v1/files/import/select`, `/import/preview`, `/import/run`, and `/config/import` use managed placeholders under `${JAVANAVI_DATA_DIR}/imports`; import run currently parses and emits progress evidence without mutating target databases.
 - `POST /api/v1/files/sql/open` opens a managed SQL workspace file instead of an OS picker.
-- `POST /api/v1/files/database-file/select` and `/ssh-key/select` return upload placeholders only. SSH runtime behavior remains excluded by user scope; no private key material is read or stored by this compatibility endpoint.
+- `POST /api/v1/files/ssh-key/select` returns an upload placeholder only. SSH runtime behavior remains excluded by user scope; no private key material is read or stored by this compatibility endpoint.

@@ -96,7 +96,6 @@ import {
   MongoDiscoverMembers,
   TestConnection,
   RedisConnect,
-  SelectDatabaseFile,
   SelectSSHKeyFile,
 } from "@compat/javanaviApp";
 import { ConnectionConfig, MongoMemberInfo, SavedConnection } from "../types";
@@ -233,6 +232,10 @@ const ConnectionModal: React.FC<{
   const updateConnection = useStore((state) => state.updateConnection);
   const theme = useStore((state) => state.theme);
   const appearance = useStore((state) => state.appearance);
+  const nativeApp =
+    typeof window !== "undefined" ? (window as any).go?.app?.App : null;
+  const canBrowseDatabaseFile =
+    typeof nativeApp?.SelectDatabaseFile === "function";
   const darkMode = theme === "dark";
   const resolvedAppearance = resolveAppearanceValues(appearance);
   const effectiveOpacity = normalizeOpacityForPlatform(
@@ -1051,14 +1054,20 @@ const ConnectionModal: React.FC<{
     if (selectingDbFile) {
       return;
     }
+    if (typeof nativeApp?.SelectDatabaseFile !== "function") {
+      message.warning("Web 模式请手动填写后端可访问的本机绝对路径");
+      return;
+    }
     try {
       setSelectingDbFile(true);
       const currentPath = String(form.getFieldValue("host") || "").trim();
-      const res = await SelectDatabaseFile(currentPath, dbType);
-      if (res?.success) {
-        const data = res.data || {};
+      const res = await nativeApp["SelectDatabaseFile"](currentPath, dbType);
+      if (res?.success !== false) {
+        const data = res?.data ?? res ?? {};
         const selectedPath =
-          typeof data === "string" ? data : String(data.path || "").trim();
+          typeof data === "string"
+            ? data
+            : String(data.path || data.filePath || "").trim();
         if (selectedPath) {
           form.setFieldValue("host", normalizeFileDbPath(selectedPath));
         }
@@ -3054,7 +3063,10 @@ const ConnectionModal: React.FC<{
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr) 120px",
+                        gridTemplateColumns:
+                          isFileDb && !canBrowseDatabaseFile
+                            ? "minmax(0, 1fr)"
+                            : "minmax(0, 1fr) 120px",
                         gap: 16,
                         alignItems: "start",
                       }}
@@ -3065,6 +3077,11 @@ const ConnectionModal: React.FC<{
                           isFileDb ? "文件路径 (绝对路径)" : "主机地址 (Host)"
                         }
                         rules={[createUriAwareRequiredRule("请输入地址/路径")]}
+                        extra={
+                          isFileDb && !canBrowseDatabaseFile
+                            ? "请选择后端可访问的本机绝对路径"
+                            : undefined
+                        }
                         style={{ marginBottom: 0 }}
                       >
                         <Input
@@ -3078,7 +3095,7 @@ const ConnectionModal: React.FC<{
                           }
                         />
                       </Form.Item>
-                      {isFileDb ? (
+                      {isFileDb && canBrowseDatabaseFile ? (
                         <Form.Item label=" " style={{ marginBottom: 0 }}>
                           <Button
                             style={{ width: "100%" }}
@@ -3088,7 +3105,7 @@ const ConnectionModal: React.FC<{
                             浏览...
                           </Button>
                         </Form.Item>
-                      ) : (
+                      ) : !isFileDb ? (
                         <Form.Item
                           name="port"
                           label="端口 (Port)"
@@ -3102,7 +3119,7 @@ const ConnectionModal: React.FC<{
                         >
                           <InputNumber style={{ width: "100%" }} />
                         </Form.Item>
-                      )}
+                      ) : null}
                     </div>
                   ),
                 })}

@@ -34,14 +34,6 @@ public class FileWorkflowCompatibilityController {
         return ApiEnvelope.ok(fileWorkflowCompatibilityService.openSqlFile());
     }
 
-    @PostMapping("/database-file/select")
-    public ApiEnvelope<Map<String, Object>> selectDatabaseFile(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.selectDatabaseFile(
-                stringValue(input, "currentPath", "path"),
-                stringValue(input, "driverType")
-        ));
-    }
-
     @PostMapping("/ssh-key/select")
     public ApiEnvelope<Map<String, Object>> selectSshKeyFile(@RequestBody(required = false) Map<String, Object> input) {
         return ApiEnvelope.ok(fileWorkflowCompatibilityService.selectSshKeyFile(stringValue(input, "currentPath", "path")));
