@@ -2,6 +2,9 @@ import { resolveEffectiveSSLMode } from './sslMode';
 import { connection } from '@compat/models';
 
 export type RpcConnectionConfig = connection.ConnectionConfig & { id?: string };
+export type RpcConnectionConfigOverrides = ConnectionConfigInput & {
+  queryTimeout?: number;
+};
 type ConnectionConfigInput = {
   id?: string;
   ssh?: Record<string, any>;
@@ -95,7 +98,7 @@ const normalizeHttpTunnelConfig = (value: unknown): connection.HTTPTunnelConfig 
 
 export function buildRpcConnectionConfig(
   config: ConnectionConfigInput,
-  overrides: ConnectionConfigInput = {},
+  overrides: RpcConnectionConfigOverrides = {},
 ): RpcConnectionConfig {
   const mergedSSH = {
     ...(config.ssh ?? {}),
@@ -120,6 +123,8 @@ export function buildRpcConnectionConfig(
   const timeout = toOptionalInteger(merged.timeout, toOptionalInteger(config.timeout));
   const redisDB = toOptionalInteger(merged.redisDB, toOptionalInteger(config.redisDB));
 
+  const options = normalizeDriverOptions(merged.options);
+  const queryTimeout = toOptionalInteger(overrides.queryTimeout);
   const rpcConfig = new connection.ConnectionConfig({
     ...merged,
     type: toStringValue(merged.type),
@@ -138,7 +143,12 @@ export function buildRpcConnectionConfig(
     httpTunnel: normalizeHttpTunnelConfig(merged.httpTunnel),
     driver: toOptionalStringValue(merged.driver),
     dsn: toOptionalStringValue(merged.dsn),
-    options: normalizeDriverOptions(merged.options),
+    options: queryTimeout === undefined
+      ? options
+      : {
+          ...(options ?? {}),
+          queryTimeout: String(queryTimeout),
+        },
     timeout,
     redisDB,
     uri: toOptionalStringValue(merged.uri),

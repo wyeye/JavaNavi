@@ -334,7 +334,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     const countSeq = ++manualCountSeqRef.current;
     const countStart = Date.now();
     setPagination(prev => ({ ...prev, totalCountLoading: true, totalCountCancelled: false }));
-    const countConfig = buildRpcConnectionConfig(config, { timeout: 120 });
+    const countConfig = buildRpcConnectionConfig(config, { queryTimeout: 120 });
 
     try {
       const resCount = await DBQuery(countConfig as any, dbName, countSql);
@@ -729,7 +729,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     const countStart = Date.now();
                     // 大表 COUNT(*) 可能非常慢，且在部分运行时环境下会影响后续操作响应；
                     // DuckDB 大文件场景下该统计会显著拖慢翻页，已禁用后台 COUNT。
-                    const countConfig = buildRpcConnectionConfig(config, { timeout: 5 });
+                    const countConfig = buildRpcConnectionConfig(config, { queryTimeout: 5 });
 
                     DBQuery(countConfig, dbName, countSql)
                         .then((resCount: any) => {
@@ -783,7 +783,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     const { schemaName, pureTableName } = resolveDuckDBSchemaAndTable(dbName, tableName);
                     const escapedSchema = escapeSQLLiteral(schemaName);
                     const escapedTable = escapeSQLLiteral(pureTableName);
-                    const approxConfig = buildRpcConnectionConfig(config, { timeout: 3 });
+                    const approxConfig = buildRpcConnectionConfig(config, { queryTimeout: 3 });
                     const approxSqlCandidates = [
                         `SELECT estimated_size AS approx_total FROM duckdb_tables() WHERE schema_name='${escapedSchema}' AND table_name='${escapedTable}' LIMIT 1`,
                         `SELECT estimated_size AS approx_total FROM duckdb_tables() WHERE table_name='${escapedTable}' ORDER BY CASE WHEN schema_name='${escapedSchema}' THEN 0 ELSE 1 END LIMIT 1`,
@@ -824,7 +824,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                 if (approximateCountStrategy === 'oracle-num-rows' && oracleApproxKeyRef.current !== countKey) {
                     oracleApproxKeyRef.current = countKey;
                     const approxSeq = ++oracleApproxSeqRef.current;
-                    const approxConfig = buildRpcConnectionConfig(config, { timeout: 3 });
+                    const approxConfig = buildRpcConnectionConfig(config, { queryTimeout: 3 });
                     const approxSql = buildOracleApproximateTotalSql({ dbName, tableName });
 
                     DBQuery(approxConfig as any, dbName, approxSql)
