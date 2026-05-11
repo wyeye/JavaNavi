@@ -41,6 +41,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -179,6 +180,13 @@ public class DatabaseCompatibilityService {
             return requireMongoCompatibilityService().listTables(resolveSavedConnectionSecret(config), requestedDatabase);
         }
         return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listTablesOnConnection(connection, config, requestedDatabase, true)));
+    }
+
+    public List<TableSummaryDto> listSchemaObjects(ConnectionConfigDto config, String requestedDatabase) {
+        if (isMongo(config)) {
+            return requireMongoCompatibilityService().listTables(resolveSavedConnectionSecret(config), requestedDatabase);
+        }
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> listTablesOnConnection(connection, config, requestedDatabase, false)));
     }
 
     public List<ColumnDefinitionDto> listColumns(ConnectionConfigDto config, String requestedDatabase, String tableName) {
@@ -989,18 +997,23 @@ public class DatabaseCompatibilityService {
         if ("duckdb".equals(driver)) {
             return duckDbTables(connection, tablesOnly);
         }
-        MetadataScope scope = metadataScope(config, requestedDatabase);
-        List<TableSummaryDto> tables = new ArrayList<>();
+        MetadataScope primaryScope = metadataScope(config, requestedDatabase);
+        MetadataScope scope = jdbcConnectionFactory.isCustomDsn(config)
+                ? rememberedMetadataScope(config).orElse(primaryScope)
+                : primaryScope;
         String[] tableTypes = tablesOnly ? new String[]{"TABLE"} : new String[]{"TABLE", "VIEW"};
-        try (ResultSet rs = connection.getMetaData().getTables(scope.catalog(), scope.schema(), "%", tableTypes)) {
-            while (rs.next()) {
-                String schema = firstText(getString(rs, "TABLE_SCHEM"), getString(rs, "TABLE_CAT"));
-                String table = getString(rs, "TABLE_NAME");
-                String type = getString(rs, "TABLE_TYPE");
-                if (table == null || table.isBlank() || isSystemSchema(schema)) {
+        List<TableSummaryDto> tables = readTables(connection, scope, tableTypes);
+        if (tables.isEmpty() && jdbcConnectionFactory.isCustomDsn(config)) {
+            for (MetadataScope alternateScope : customMetadataScopes(connection, config, requestedDatabase, primaryScope)) {
+                if (alternateScope.equals(scope)) {
                     continue;
                 }
-                tables.add(new TableSummaryDto(schema, table, type, nullToEmpty(getString(rs, "REMARKS"))));
+                tables = readTables(connection, alternateScope, tableTypes);
+                if (!tables.isEmpty()) {
+                    scope = alternateScope;
+                    rememberCustomMetadataScope(config, scope);
+                    break;
+                }
             }
         }
         tables = enrichTableComments(connection, config, requestedDatabase, scope, tables);
@@ -1012,6 +1025,84 @@ public class DatabaseCompatibilityService {
             return left.tableName().compareToIgnoreCase(right.tableName());
         });
         return tables;
+    }
+
+    private List<TableSummaryDto> readTables(Connection connection, MetadataScope scope, String[] tableTypes) throws SQLException {
+        List<TableSummaryDto> tables = new ArrayList<>();
+        try (ResultSet rs = connection.getMetaData().getTables(scope.catalog(), scope.schema(), "%", tableTypes)) {
+            while (rs.next()) {
+                String schema = firstText(getString(rs, "TABLE_SCHEM"), getString(rs, "TABLE_CAT"));
+                String table = getString(rs, "TABLE_NAME");
+                String type = getString(rs, "TABLE_TYPE");
+                if (table == null || table.isBlank() || isSystemSchema(schema)) {
+                    continue;
+                }
+                tables.add(new TableSummaryDto(schema, table, type, nullToEmpty(getString(rs, "REMARKS"))));
+            }
+        }
+        return tables;
+    }
+
+    private List<MetadataScope> customMetadataScopes(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            MetadataScope primary
+    ) throws SQLException {
+        List<MetadataScope> scopes = new ArrayList<>();
+        addMetadataScope(scopes, primary.catalog(), primary.schema());
+        rememberedMetadataScope(config).ifPresent(scope -> addMetadataScope(scopes, scope.catalog(), scope.schema()));
+        String requested = firstText(requestedDatabase, config == null ? null : config.database());
+        String currentCatalog = firstText(connection.getCatalog());
+        String currentSchema = firstText(connection.getSchema());
+        addMetadataScope(scopes, requested, null);
+        addMetadataScope(scopes, null, requested);
+        addMetadataScope(scopes, requested, requested);
+        addMetadataScope(scopes, currentCatalog, null);
+        addMetadataScope(scopes, null, currentSchema);
+        addMetadataScope(scopes, currentCatalog, currentSchema);
+        addMetadataScope(scopes, null, null);
+        return scopes;
+    }
+
+    private static void addMetadataScope(List<MetadataScope> scopes, String catalog, String schema) {
+        MetadataScope scope = new MetadataScope(textOrNull(catalog), textOrNull(schema));
+        if (!scopes.contains(scope)) {
+            scopes.add(scope);
+        }
+    }
+
+    private Optional<MetadataScope> rememberedMetadataScope(ConnectionConfigDto config) {
+        if (config == null) {
+            return Optional.empty();
+        }
+        if (config.options() != null
+                && config.options().containsKey(SavedConnectionService.METADATA_CATALOG_OPTION)
+                && config.options().containsKey(SavedConnectionService.METADATA_SCHEMA_OPTION)) {
+            return Optional.of(new MetadataScope(
+                    metadataScopeOption(config.options().get(SavedConnectionService.METADATA_CATALOG_OPTION)),
+                    metadataScopeOption(config.options().get(SavedConnectionService.METADATA_SCHEMA_OPTION))
+            ));
+        }
+        if (savedConnectionService != null) {
+            return savedConnectionService.readMetadataScope(config)
+                    .map(scope -> new MetadataScope(scope.catalog(), scope.schema()));
+        }
+        return Optional.empty();
+    }
+
+    private void rememberCustomMetadataScope(ConnectionConfigDto config, MetadataScope scope) {
+        if (savedConnectionService == null || config == null || scope == null || !jdbcConnectionFactory.isCustomDsn(config)) {
+            return;
+        }
+        savedConnectionService.rememberMetadataScope(config, scope.catalog(), scope.schema());
+    }
+
+    private static String metadataScopeOption(String value) {
+        if (value == null || value.isBlank() || SavedConnectionService.METADATA_SCOPE_NULL_VALUE.equals(value)) {
+            return null;
+        }
+        return value.trim();
     }
 
     private List<TableSummaryDto> duckDbTables(Connection connection, boolean tablesOnly) throws SQLException {
@@ -1773,6 +1864,9 @@ public class DatabaseCompatibilityService {
         }
         if ("sqlite".equals(driver) || "duckdb".equals(driver)) {
             return new MetadataScope(null, null);
+        }
+        if (jdbcConnectionFactory.isCustomDsn(config)) {
+            return new MetadataScope(firstText(requestedDatabase, config == null ? null : config.database()), null);
         }
         return new MetadataScope(null, textOrNull(requestedDatabase));
     }

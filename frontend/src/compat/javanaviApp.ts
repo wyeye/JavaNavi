@@ -47,7 +47,12 @@ function browserMockConnectionPassword(config: any = {}): string | undefined {
 
 function isInternalConnectionOptionKey(key: string): boolean {
   const normalized = String(key || '').replace(/[-_\s]/g, '').toLowerCase();
+  if (isRememberedMetadataOptionKey(normalized)) return false;
   return normalized.startsWith('customdatasource') || normalized.startsWith('javanavi');
+}
+
+function isRememberedMetadataOptionKey(normalizedKey: string): boolean {
+  return normalizedKey === 'javanavimetadatacatalog' || normalizedKey === 'javanavimetadataschema';
 }
 
 function runtimeConnectionOptions(options: any): Record<string, string> | undefined {
@@ -359,6 +364,11 @@ export async function DBGetIndexes(arg1:connection.ConnectionConfig,arg2:string,
 
 export async function DBGetTables(arg1: connection.ConnectionConfig, arg2: string): Promise<connection.QueryResult> {
   const payload = await postJson('/schema/tables', { connection: toConnectionPayload(arg1), database: arg2 });
+  return apiEnvelopeToTableResult(payload, arg1);
+}
+
+export async function DBGetSchemaObjects(arg1: connection.ConnectionConfig, arg2: string): Promise<connection.QueryResult> {
+  const payload = await postJson('/schema/objects', { connection: toConnectionPayload(arg1), database: arg2 });
   return apiEnvelopeToTableResult(payload, arg1);
 }
 

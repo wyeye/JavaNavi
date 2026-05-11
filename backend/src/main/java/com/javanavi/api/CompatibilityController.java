@@ -117,6 +117,11 @@ public class CompatibilityController {
         return ApiEnvelope.ok(databaseCompatibilityService.listTables(request.connection(), request.database()));
     }
 
+    @PostMapping("/schema/objects")
+    public ApiEnvelope<List<TableSummaryDto>> listSchemaObjectsForConnection(@Valid @RequestBody SchemaTablesRequestDto request) {
+        return ApiEnvelope.ok(databaseCompatibilityService.listSchemaObjects(request.connection(), request.database()));
+    }
+
     @PostMapping("/schema/databases")
     public ApiEnvelope<List<Map<String, String>>> listDatabasesForConnection(@Valid @RequestBody SchemaTablesRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.listDatabases(request.connection()).stream()
