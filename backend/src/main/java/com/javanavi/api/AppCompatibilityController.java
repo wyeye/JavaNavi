@@ -3,7 +3,6 @@ package com.javanavi.api;
 import com.javanavi.app.AppCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
-import com.javanavi.model.AppCompatInvokeRequestDto;
 import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import org.springframework.http.MediaType;
@@ -138,12 +137,6 @@ public class AppCompatibilityController {
         String raw = stringValue(input, "raw", "payload", "content");
         String password = stringValue(input, "password", "filePassword");
         return ApiEnvelope.ok(appCompatibilityService.importConnectionsPayload(raw, password));
-    }
-
-    @PostMapping("/unsupported")
-    public ApiEnvelope<Map<String, Object>> unsupported(@RequestBody AppCompatInvokeRequestDto request) {
-        String method = request == null ? null : request.method();
-        return ApiEnvelope.failKey(messages, "compat.unsupported", "method", method == null ? "" : method);
     }
 
     private static String stringValue(Map<String, Object> input, String... keys) {

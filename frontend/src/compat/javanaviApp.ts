@@ -186,11 +186,6 @@ function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
   return (payload.data ?? payload) as T;
 }
 
-async function backendUnsupported(name: string, args: unknown[] = []): Promise<QueryResult> {
-  const payload = await postJson('/app/unsupported', { method: name, args });
-  return apiEnvelopeToQueryResult(payload, `${name} is unavailable in the JavaNavi Java Web execution context.`);
-}
-
 function javaNaviTableName(row: any, driver: string): string {
   const table = row?.Table || row?.table || row?.tableName || row?.TABLE_NAME || Object.values(row || {})[0];
   const schema = row?.schemaName || row?.tableSchema || row?.TABLE_SCHEM || row?.schema;

@@ -330,14 +330,6 @@ public class AppCompatibilityService {
         }
     }
 
-    public Map<String, Object> unsupported(String method) {
-        return orderedMap(
-                "method", textOrDefault(method, "unknown"),
-                "supported", false,
-                "message", textOrDefault(method, "This capability") + " is unavailable in the JavaNavi Java Web execution context."
-        );
-    }
-
     private Map<String, Object> readMap(Path file) {
         try {
             if (!Files.exists(file)) {
