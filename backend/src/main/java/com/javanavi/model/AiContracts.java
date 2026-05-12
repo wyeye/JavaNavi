@@ -136,10 +136,10 @@ public final class AiContracts {
     public record ActiveProviderResponse(String activeProvider) {
     }
 
-    public record ModelsResponse(List<String> models, Map<String, Object> byProvider) {
+    public record ModelsResponse(boolean success, List<String> models, Map<String, Object> byProvider) {
         public static ModelsResponse from(Object value) {
             Map<String, Object> map = mapValue(value);
-            return new ModelsResponse(stringList(map.get("models")), mapValue(map.get("byProvider")));
+            return new ModelsResponse(booleanValue(map.get("success"), true), stringList(map.get("models")), mapValue(map.get("byProvider")));
         }
     }
 
@@ -199,6 +199,7 @@ public final class AiContracts {
     }
 
     public record ChatResponse(
+            boolean success,
             String content,
             List<Object> choices,
             String providerId,
@@ -212,6 +213,7 @@ public final class AiContracts {
         public static ChatResponse from(Object value) {
             Map<String, Object> map = mapValue(value);
             return new ChatResponse(
+                    booleanValue(map.get("success"), true),
                     text(map.get("content")),
                     objectList(map.get("choices")),
                     text(map.get("providerId")),
@@ -303,10 +305,17 @@ public final class AiContracts {
     }
 
     private static boolean booleanValue(Object value) {
+        return booleanValue(value, false);
+    }
+
+    private static boolean booleanValue(Object value, boolean fallback) {
         if (value instanceof Boolean bool) {
             return bool;
         }
         String normalized = text(value).toLowerCase(java.util.Locale.ROOT);
+        if (normalized.isBlank()) {
+            return fallback;
+        }
         return "true".equals(normalized) || "1".equals(normalized) || "yes".equals(normalized) || "on".equals(normalized);
     }
 

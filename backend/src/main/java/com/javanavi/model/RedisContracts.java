@@ -1,6 +1,6 @@
 package com.javanavi.model;
 
-import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonFormat;
 
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -63,7 +63,11 @@ public final class RedisContracts {
         }
     }
 
-    public record HashFieldDeleteRequest(ConnectionConfigDto connection, String key, List<String> fields) implements Request {
+    public record HashFieldDeleteRequest(
+            ConnectionConfigDto connection,
+            String key,
+            @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) List<String> fields
+    ) implements Request {
         public RequestPayload toPayload() {
             RequestPayload map = withConnection(connection);
             put(map, "key", key);
@@ -72,7 +76,10 @@ public final class RedisContracts {
         }
     }
 
-    public record KeysRequest(ConnectionConfigDto connection, List<String> keys) implements Request {
+    public record KeysRequest(
+            ConnectionConfigDto connection,
+            @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) List<String> keys
+    ) implements Request {
         public RequestPayload toPayload() {
             RequestPayload map = withConnection(connection);
             put(map, "keys", keys);
@@ -114,7 +121,12 @@ public final class RedisContracts {
         }
     }
 
-    public record ListPushRequest(ConnectionConfigDto connection, String key, List<String> values, String position) implements Request {
+    public record ListPushRequest(
+            ConnectionConfigDto connection,
+            String key,
+            @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) List<String> values,
+            String position
+    ) implements Request {
         public RequestPayload toPayload() {
             RequestPayload map = withConnection(connection);
             put(map, "key", key);
@@ -134,7 +146,11 @@ public final class RedisContracts {
         }
     }
 
-    public record MembersRequest(ConnectionConfigDto connection, String key, List<String> members) implements Request {
+    public record MembersRequest(
+            ConnectionConfigDto connection,
+            String key,
+            @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) List<String> members
+    ) implements Request {
         public RequestPayload toPayload() {
             RequestPayload map = withConnection(connection);
             put(map, "key", key);
@@ -169,7 +185,11 @@ public final class RedisContracts {
         }
     }
 
-    public record StreamDeleteRequest(ConnectionConfigDto connection, String key, List<String> ids) implements Request {
+    public record StreamDeleteRequest(
+            ConnectionConfigDto connection,
+            String key,
+            @JsonFormat(with = JsonFormat.Feature.ACCEPT_SINGLE_VALUE_AS_ARRAY) List<String> ids
+    ) implements Request {
         public RequestPayload toPayload() {
             RequestPayload map = withConnection(connection);
             put(map, "key", key);

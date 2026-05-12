@@ -234,6 +234,7 @@ public final class FileWorkflowContracts {
             boolean revealSelected,
             String revealMethod,
             String revealTargetPath,
+            String revealDirectory,
             String revealMessage
     ) {
         public static ExportResultResponse from(Map<String, Object> map) {
@@ -254,6 +255,7 @@ public final class FileWorkflowContracts {
                     booleanValue(source.get("revealSelected")),
                     text(source.get("revealMethod")),
                     text(source.get("revealTargetPath")),
+                    text(source.get("revealDirectory")),
                     text(source.get("revealMessage"))
             );
         }
