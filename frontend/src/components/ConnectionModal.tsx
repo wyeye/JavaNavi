@@ -86,6 +86,7 @@ import {
   type CustomDataSource,
 } from "../utils/customDataSources";
 import { filterDriverOptionsForDatabase, normalizeDriverSelectionType, resolveDefaultDriverTypeForDatabase } from "../utils/driverSelection";
+import { buildRpcConnectionConfig } from "../utils/connectionRpcConfig";
 import {
   applyNoAutoCapAttributes,
   noAutoCapInputProps,
@@ -1720,10 +1721,11 @@ const ConnectionModal: React.FC<{
       const rpcTimeoutMs = (timeoutSeconds + 5) * 1000;
 
       const isRedisType = values.type === "redis";
+      const rpcConfig = buildRpcConnectionConfig(config);
       const res = await withClientTimeout(
         isRedisType
-          ? RedisConnect(new connection.ConnectionConfig(config as unknown as Record<string, unknown>))
-          : TestConnection(new connection.ConnectionConfig(config as unknown as Record<string, unknown>)),
+          ? RedisConnect(rpcConfig)
+          : TestConnection(rpcConfig),
         rpcTimeoutMs,
         `连接测试超时（>${timeoutSeconds} 秒），请检查网络/代理/SSH配置后重试`,
       );
@@ -1760,7 +1762,7 @@ const ConnectionModal: React.FC<{
         } else {
           // Other databases: fetch database list
           const dbRes = await withClientTimeout(
-            DBGetDatabases(new connection.ConnectionConfig(config as unknown as Record<string, unknown>)),
+            DBGetDatabases(rpcConfig),
             rpcTimeoutMs,
             `连接成功但拉取数据库列表超时（>${timeoutSeconds} 秒）`,
           );
@@ -1838,7 +1840,7 @@ const ConnectionModal: React.FC<{
       if (initialValues?.id) {
         config.id = initialValues.id;
       }
-      const result = await MongoDiscoverMembers(new connection.ConnectionConfig(config as unknown as Record<string, unknown>));
+      const result = await MongoDiscoverMembers(buildRpcConnectionConfig(config));
       if (!result.success) {
         message.error(
           normalizeConnectionSecretErrorMessage(result.message, "成员发现失败"),
