@@ -1,4 +1,5 @@
 import React, { useState, useRef, useCallback, useMemo } from 'react';
+import type { ColumnsType } from 'antd/es/table';
 import { Modal, Input, Button, Table, Progress, Space, Tag, message, Tooltip, Select, Empty } from 'antd';
 import { SearchOutlined, StopOutlined, EyeOutlined, DatabaseOutlined } from '@ant-design/icons';
 import { DBQuery, DBGetTables, DBGetAllColumns } from '@compat/javanaviApp';
@@ -6,6 +7,7 @@ import { quoteIdentPart, escapeLiteral } from '../utils/sql';
 import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
+import type { RpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { isMacLikePlatform } from '../utils/appearance';
 
 interface FindInDatabaseModalProps {
@@ -15,13 +17,39 @@ interface FindInDatabaseModalProps {
     dbName: string;
 }
 
+type QueryRow = Record<string, unknown>;
+
+type ColumnInfo = {
+    tableName: string;
+    name: string;
+    type: string;
+};
+
 interface SearchResultItem {
     tableName: string;
     matchedColumns: string[];
     matchCount: number;
-    rows: Record<string, any>[];
+    rows: QueryRow[];
     columns: string[];
 }
+
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
+
+const getFirstRowStringValue = (row: QueryRow): string => {
+    const firstValue = Object.values(row)[0];
+    return firstValue === undefined || firstValue === null ? '' : String(firstValue);
+};
+
+const toColumnInfo = (value: unknown): ColumnInfo => {
+    const row = value && typeof value === 'object' && !Array.isArray(value) ? value as QueryRow : {};
+    return {
+        tableName: String(row.tableName || ''),
+        name: String(row.name || ''),
+        type: String(row.type || ''),
+    };
+};
 
 /** 判断数据库列类型是否为文本类型（只搜索文本字段） */
 const isTextColumnType = (colType: string): boolean => {
@@ -78,16 +106,16 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
         return buildOverlayWorkbenchTheme(isDark, { disableBackdropFilter: disableLocalBackdropFilter });
     }, [disableLocalBackdropFilter, theme]);
 
-    const buildConfig = useCallback(() => {
+    const buildConfig = useCallback((): RpcConnectionConfig | null => {
         if (!conn) return null;
-        return {
+        return buildRpcConnectionConfig({
             ...conn.config,
             port: Number(conn.config.port),
             password: conn.config.password || "",
             database: conn.config.database || "",
             useSSH: conn.config.useSSH || false,
             ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
-        };
+        });
     }, [conn]);
 
     const handleSearch = useCallback(async () => {
@@ -109,14 +137,14 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
 
         try {
             // 1. 获取所有表
-            const tablesRes = await DBGetTables(buildRpcConnectionConfig(config) as any, dbName);
+            const tablesRes = await DBGetTables(config, dbName);
             if (!tablesRes.success) {
                 message.error('获取表列表失败: ' + tablesRes.message);
                 setSearching(false);
                 return;
             }
-            const tableRows: any[] = Array.isArray(tablesRes.data) ? tablesRes.data : [];
-            const tableNames = tableRows.map((row: any) => Object.values(row)[0] as string).filter(Boolean);
+            const tableRows: QueryRow[] = Array.isArray(tablesRes.data) ? tablesRes.data as QueryRow[] : [];
+            const tableNames = tableRows.map(getFirstRowStringValue).filter(Boolean);
 
             if (tableNames.length === 0) {
                 message.info('当前数据库没有表');
@@ -126,13 +154,15 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
 
             setProgress({ current: 0, total: tableNames.length, tableName: '' });
 
-            // 2. 获取所有列信息（返回 any[]，含 tableName/name/type 字段）
-            const allColsRes = await DBGetAllColumns(buildRpcConnectionConfig(config) as any, dbName);
-            const allColumns: any[] = (allColsRes?.success && Array.isArray(allColsRes.data)) ? allColsRes.data : [];
+            // 2. 获取所有列信息（含 tableName/name/type 字段）
+            const allColsRes = await DBGetAllColumns(config, dbName);
+            const allColumns: ColumnInfo[] = (allColsRes?.success && Array.isArray(allColsRes.data))
+                ? allColsRes.data.map(toColumnInfo)
+                : [];
 
             // 按表名分组
             const columnsByTable: Record<string, Array<{ name: string; type: string }>> = {};
-            allColumns.forEach((col: any) => {
+            allColumns.forEach((col) => {
                 const tbl = col.tableName || '';
                 if (!columnsByTable[tbl]) columnsByTable[tbl] = [];
                 columnsByTable[tbl].push({ name: col.name, type: col.type || '' });
@@ -169,12 +199,13 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
                 const sql = buildLimitedSelectSQL(dbType, baseSql, MAX_MATCH_ROWS_PER_TABLE);
 
                 try {
-                    const res = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, sql);
+                    const res = await DBQuery(config, dbName, sql);
                     if (res.success && Array.isArray(res.data) && res.data.length > 0) {
                         // 检查哪些列实际匹配了
                         const matchedCols = new Set<string>();
                         const lowerKeyword = searchKeyword.toLowerCase();
-                        res.data.forEach((row: any) => {
+                        const rows = res.data as QueryRow[];
+                        rows.forEach((row) => {
                             textCols.forEach(c => {
                                 const val = row[c.name];
                                 if (val != null) {
@@ -187,12 +218,12 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
                         });
 
                         if (matchedCols.size > 0) {
-                            const columns = Object.keys(res.data[0]);
+                            const columns = Object.keys(rows[0]);
                             searchResults.push({
                                 tableName,
                                 matchedColumns: Array.from(matchedCols),
                                 matchCount: res.data.length,
-                                rows: res.data,
+                                rows,
                                 columns,
                             });
                             setResults([...searchResults]);
@@ -209,8 +240,8 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
                     message.info('未找到匹配的数据');
                 }
             }
-        } catch (e: any) {
-            message.error('搜索出错: ' + (e?.message || String(e)));
+        } catch (e: unknown) {
+            message.error('搜索出错: ' + getErrorMessage(e));
         } finally {
             setSearching(false);
         }
@@ -229,7 +260,7 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
     }, [onClose]);
 
     // 汇总表的列定义
-    const summaryColumns = useMemo(() => [
+    const summaryColumns = useMemo<ColumnsType<SearchResultItem>>(() => [
         {
             title: '表名',
             dataIndex: 'tableName',
@@ -271,7 +302,7 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
             key: 'action',
             width: 80,
             align: 'center' as const,
-            render: (_: any, record: SearchResultItem) => (
+            render: (_: unknown, record) => (
                 <Tooltip title={expandedTable === record.tableName ? '收起详情' : '查看详情'}>
                     <Button
                         type="text"
@@ -300,7 +331,7 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
             key: col,
             width: 180,
             ellipsis: true,
-            render: (value: any) => {
+            render: (value: unknown) => {
                 const strVal = value != null ? String(value) : '';
                 const isMatch = expandedResult.matchedColumns.includes(col) &&
                     strVal.toLowerCase().includes(lowerKeyword);
@@ -442,7 +473,7 @@ const FindInDatabaseModal: React.FC<FindInDatabaseModalProps> = ({ open, onClose
                             <Tag color="blue">{expandedResult.rows.length} 行</Tag>
                         </div>
                         <Table
-                            dataSource={expandedResult.rows.map((row, i) => ({ ...row, __rowIdx: i }))}
+                            dataSource={expandedResult.rows.map((row, i) => ({ ...row, __rowIdx: i })) as Array<QueryRow & { __rowIdx: number }>}
                             columns={detailColumns}
                             rowKey="__rowIdx"
                             size="small"
