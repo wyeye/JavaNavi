@@ -1,5 +1,6 @@
 import React from 'react';
 import type { MenuProps } from 'antd';
+import type { DataGridJsonValue } from './dataGridValue';
 import { Button, Dropdown, Tooltip } from 'antd';
 import {
     CloseOutlined,
@@ -54,7 +55,7 @@ export type DataGridToolbarProps = {
     handleImport: () => void;
     exportMenu: MenuProps['items'];
     darkMode: boolean;
-    getAiSampleData: () => any[];
+    getAiSampleData: () => DataGridJsonValue[];
     getStoreState: () => { aiPanelVisible: boolean; setAIPanelVisible: (visible: boolean) => void };
     prefersManualTotalCount: boolean;
     totalCountLoading?: boolean;
