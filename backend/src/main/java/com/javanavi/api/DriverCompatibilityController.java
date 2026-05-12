@@ -108,12 +108,12 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/default-driver")
-    public ApiEnvelope<Map<String, Object>> configureDefaultDriver(@RequestBody(required = false) DriverContracts.DefaultDriverRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.configureDefaultDriver(
+    public ApiEnvelope<DriverContracts.DriverStatusItemResponse> configureDefaultDriver(@RequestBody(required = false) DriverContracts.DefaultDriverRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverStatusItemResponse.from(driverCompatibilityService.configureDefaultDriver(
                 input == null ? "" : input.databaseType(),
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.downloadDir()
-        ));
+        )));
     }
 
     @PostMapping("/download")
