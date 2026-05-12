@@ -105,6 +105,7 @@ type SidebarExecutionResultData = { executedSQLs?: unknown; count?: unknown };
 type SidebarLargeFilePayload = { isLargeFile?: unknown; filePath?: unknown; fileSizeMB?: unknown };
 type SidebarSqlFileProgressEvent = { jobId?: unknown; status?: unknown; executed?: unknown; failed?: unknown; total?: unknown; percent?: unknown; currentSQL?: unknown };
 type SidebarQueryRecord = Record<string, unknown>;
+type SidebarRoutineType = 'FUNCTION' | 'PROCEDURE';
 type SidebarLoadTreeNode = { key?: React.Key; dataRef?: object };
 type SidebarDataRef = Record<string, unknown>;
 type SidebarNodeData = SavedConnection & {
@@ -2658,8 +2659,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   // --- 函数/存储过程操作 ---
-  const openRoutineDefinition = (node: any) => {
-      const { routineName, routineType, dbName, id } = node.dataRef;
+  const openRoutineDefinition = (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const routineName = String(conn.routineName || '').trim();
+      const routineType: SidebarRoutineType = conn.routineType === 'PROCEDURE' ? 'PROCEDURE' : 'FUNCTION';
+      const dbName = conn.dbName;
+      const id = conn.id;
+      if (!routineName) return;
       const typeLabel = routineType === 'PROCEDURE' ? t('sidebar.tree.procedure') : t('sidebar.tree.function');
       addTab({
           id: `routine-def-${id}-${dbName}-${routineName}`,
@@ -2672,9 +2678,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const openEditRoutine = async (node: any) => {
-      const conn = node.dataRef;
-      const { routineName, routineType, dbName, id } = conn;
+  const openEditRoutine = async (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const routineName = String(conn.routineName || '').trim();
+      const routineType: SidebarRoutineType = conn.routineType === 'PROCEDURE' ? 'PROCEDURE' : 'FUNCTION';
+      const dbName = conn.dbName;
+      const id = conn.id;
+      if (!routineName) return;
       const dialect = getMetadataDialect(conn as SavedConnection);
       const typeLabel = routineType === 'PROCEDURE' ? t('sidebar.tree.procedure') : t('sidebar.tree.function');
       let template = t('sidebar.template.editRoutineHeader', { type: typeLabel, name: routineName });
@@ -2714,13 +2724,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               }
           }
           if (query) {
-              const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, query);
-              if (result.success && Array.isArray(result.data) && result.data.length > 0) {
+              const result = await DBQuery(config, dbName, query);
+              const rows = Array.isArray(result.data) ? result.data as SidebarQueryRecord[] : [];
+              if (result.success && rows.length > 0) {
                   if (dialect === 'oracle' || dialect === 'dm') {
-                      const lines = result.data.map((row: any) => row.text || row.TEXT || Object.values(row)[0] || '').join('');
+                      const lines = rows.map((row) => row.text || row.TEXT || Object.values(row)[0] || '').join('');
                       if (lines) template = `${t('sidebar.template.editRoutineHeader', { type: typeLabel, name: routineName })}\nCREATE OR REPLACE ${lines}`;
                   } else if (dialect === 'duckdb') {
-                      const row = result.data[0] as Record<string, any>;
+                      const row = rows[0];
                       const ddl = buildDuckDBMacroDDL(
                           String(getCaseInsensitiveRawValue(row, ['schema_name']) || schema || '').trim(),
                           String(getCaseInsensitiveRawValue(row, ['function_name']) || name || '').trim(),
@@ -2729,7 +2740,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                       );
                       if (ddl) template = `${t('sidebar.template.editRoutineHeader', { type: typeLabel, name: routineName })}\n${ddl}`;
                   } else {
-                      const row = result.data[0] as Record<string, any>;
+                      const row = rows[0];
                       const def = row.routine_definition || row.ROUTINE_DEFINITION || Object.values(row).find(v => typeof v === 'string' && String(v).length > 10) || '';
                       if (def) template = `${t('sidebar.template.editRoutineHeader', { type: typeLabel, name: routineName })}\n${def}`;
                   }
@@ -2747,8 +2758,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const openCreateRoutine = (node: any, type: 'FUNCTION' | 'PROCEDURE') => {
-      const conn = node.dataRef;
+  const openCreateRoutine = (node: SidebarMenuNode, type: SidebarRoutineType) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const { dbName, id } = conn;
       const dialect = getMetadataDialect(conn as SavedConnection);
       const isProc = type === 'PROCEDURE';
@@ -2796,10 +2807,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const handleDropRoutine = (node: any) => {
-      const conn = node.dataRef;
+  const handleDropRoutine = (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const routineName = String(conn.routineName || '').trim();
-      const routineType = String(conn.routineType || 'FUNCTION').trim();
+      const routineType: SidebarRoutineType = conn.routineType === 'PROCEDURE' ? 'PROCEDURE' : 'FUNCTION';
       if (!routineName) return;
       const typeLabel = routineType === 'PROCEDURE' ? t('sidebar.tree.procedure') : t('sidebar.tree.function');
       Modal.confirm({
@@ -2808,7 +2819,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           okButtonProps: { danger: true },
           onOk: async () => {
               const config = buildRuntimeConfig(conn, conn.dbName);
-              const res = await DropFunction(buildRpcConnectionConfig(config) as any, conn.dbName, routineName, routineType);
+              const res = await DropFunction(config, conn.dbName, routineName, routineType);
               if (res.success) {
                   message.success(t('sidebar.msg.routineDeleteSuccess', { typeLabel }));
                   await loadTables(getDatabaseNodeRef(conn, conn.dbName));
