@@ -1,7 +1,19 @@
 import React from 'react';
 import { AutoComplete, Button, Checkbox, Input, Select } from 'antd';
+import type { AutoCompleteProps, InputProps, SelectProps } from 'antd';
 import { ClearOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import type { GridFilterCondition, GridSortInfo } from './dataGridFilterTypes';
+
+type QuickWhereSuggestionOption = {
+    value: string;
+    insertText?: string;
+    suggestionKind?: string;
+    label?: React.ReactNode;
+};
+
+type FilterSelectOption = NonNullable<SelectProps<string>['options']>[number];
+
+type NoAutoCapInputProps = Pick<InputProps, 'autoCorrect' | 'spellCheck'>;
 
 export type DataGridFilterPanelProps = {
     showFilter?: boolean;
@@ -14,19 +26,19 @@ export type DataGridFilterPanelProps = {
     darkMode: boolean;
     selectionAccentHex: string;
     quickWhereDraft: string;
-    quickWhereSuggestionOptions: Array<Record<string, any>>;
+    quickWhereSuggestionOptions: QuickWhereSuggestionOption[];
     setQuickWhereDraft: (value: string) => void;
     resolveWhereConditionSelectedValue: (input: { selectedValue: string; currentInput: string; insertText?: string }) => string;
-    noAutoCapInputProps: Record<string, any>;
+    noAutoCapInputProps: NoAutoCapInputProps;
     dbType: string;
     applyQuickWhereCondition: (condition?: string) => boolean;
     clearQuickWhereCondition: () => void;
     quickWhereCondition?: string;
     filterConditions: GridFilterCondition[];
     updateFilter: (id: number, field: keyof GridFilterCondition, val: string | boolean) => void;
-    filterLogicOptions: Array<Record<string, string>>;
+    filterLogicOptions: FilterSelectOption[];
     displayColumnNames: string[];
-    filterOpOptions: Array<Record<string, string>>;
+    filterOpOptions: FilterSelectOption[];
     isListOp: (op: string) => boolean;
     isBetweenOp: (op: string) => boolean;
     isNoValueOp: (op: string) => boolean;
@@ -41,6 +53,15 @@ export type DataGridFilterPanelProps = {
 
 export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) => {
     if (!props.showFilter) return null;
+
+    const quickWhereSelectHandler: NonNullable<AutoCompleteProps<string, QuickWhereSuggestionOption>['onSelect']> = (value, option) => {
+        props.setQuickWhereDraft(props.resolveWhereConditionSelectedValue({
+            selectedValue: value,
+            currentInput: props.quickWhereDraft,
+            insertText: option.insertText,
+        }));
+    };
+
 
     return (
            <div ref={props.filterPanelRef} style={{
@@ -88,13 +109,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                        value={props.quickWhereDraft}
                        options={props.quickWhereSuggestionOptions}
                        onChange={props.setQuickWhereDraft}
-                       onSelect={(value, option) => {
-                           props.setQuickWhereDraft(props.resolveWhereConditionSelectedValue({
-                               selectedValue: value,
-                               currentInput: props.quickWhereDraft,
-                               insertText: (option as any)?.insertText,
-                           }));
-                       }}
+                       onSelect={quickWhereSelectHandler}
                        style={{ flex: '1 1 320px', minWidth: 220 }}
                        popupMatchSelectWidth={420}
                    >
@@ -132,7 +147,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                             style={{ width: 96, minWidth: 96, maxWidth: 96, flex: '0 0 96px' }}
                             value={condIndex === 0 ? '__FIRST__' : (cond.logic === 'OR' ? 'OR' : 'AND')}
                             onChange={v => props.updateFilter(cond.id, 'logic', v)}
-                            options={condIndex === 0 ? [{ value: '__FIRST__', label: '首条' }] : (props.filterLogicOptions as any)}
+                            options={condIndex === 0 ? [{ value: '__FIRST__', label: '首条' }] : props.filterLogicOptions}
                             disabled={condIndex === 0}
                         />
                         <Select
@@ -154,7 +169,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                            style={{ width: 140 }}
                            value={cond.op}
                            onChange={v => props.updateFilter(cond.id, 'op', v)}
-                           options={props.filterOpOptions as any}
+                           options={props.filterOpOptions}
                        />
 
                        {cond.op === 'CUSTOM' ? (
