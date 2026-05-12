@@ -1,5 +1,6 @@
 package com.javanavi.api;
 
+import com.fasterxml.jackson.annotation.JsonValue;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.ApiError;
@@ -11,6 +12,7 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
+import java.lang.reflect.Method;
 import java.lang.reflect.RecordComponent;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -75,6 +77,10 @@ public class ApiEnvelopeI18nAdvice implements ResponseBodyAdvice<Object> {
             return list.stream().map(this::localizeData).toList();
         }
         if (value != null && value.getClass().isRecord()) {
+            Method jsonValue = jsonValueMethod(value.getClass());
+            if (jsonValue != null) {
+                return invokeJsonValue(value, jsonValue);
+            }
             Map<String, Object> copy = new LinkedHashMap<>();
             for (RecordComponent component : value.getClass().getRecordComponents()) {
                 String key = component.getName();
@@ -88,6 +94,24 @@ public class ApiEnvelopeI18nAdvice implements ResponseBodyAdvice<Object> {
             return copy;
         }
         return value;
+    }
+
+    private static Method jsonValueMethod(Class<?> valueType) {
+        for (Method method : valueType.getDeclaredMethods()) {
+            if (method.getParameterCount() == 0 && method.getAnnotation(JsonValue.class) != null) {
+                method.setAccessible(true);
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static Object invokeJsonValue(Object value, Method method) {
+        try {
+            return method.invoke(value);
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException("Unable to read API response JSON value.", error);
+        }
     }
 
     private static Object recordComponentValue(Object value, RecordComponent component) {
