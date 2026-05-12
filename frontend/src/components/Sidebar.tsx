@@ -103,6 +103,7 @@ type SidebarRedisDatabaseRow = Record<string, unknown> & { index?: unknown; keys
 type SidebarWorkspacePayload = { path?: unknown; name?: unknown };
 type SidebarExecutionResultData = { executedSQLs?: unknown; count?: unknown };
 type SidebarLargeFilePayload = { isLargeFile?: unknown; filePath?: unknown; fileSizeMB?: unknown };
+type SidebarSqlFileProgressEvent = { jobId?: unknown; status?: unknown; executed?: unknown; failed?: unknown; total?: unknown; percent?: unknown; currentSQL?: unknown };
 type SidebarQueryRecord = Record<string, unknown>;
 type SidebarLoadTreeNode = { key?: React.Key; dataRef?: object };
 type SidebarDataRef = Record<string, unknown>;
@@ -1942,31 +1943,32 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       setCheckedDbKeys(newChecked);
   };
 
-  const handleRunSQLFile = async (node: any) => {
+  const handleRunSQLFile = async (node: TreeNode) => {
       const res = await OpenSQLFile();
       if (res.success) {
           const data = res.data;
+          const nodeData = getSidebarDataRef<SidebarRuntimeNodeData>(node);
           // 大文件：后端返回文件路径，走流式执行
-          if (data && typeof data === 'object' && data.isLargeFile) {
-              const connId = node.type === 'connection' ? node.key : node.dataRef?.id;
-              const dbName = node.dataRef?.dbName || '';
+          if (data && typeof data === 'object' && (data as SidebarLargeFilePayload).isLargeFile) {
+              const payload = data as SidebarLargeFilePayload;
+              const connId = node.type === 'connection' ? getSidebarNodeKeyText(node) : nodeData.id;
+              const dbName = nodeData.dbName || '';
               const conn = connections.find(c => c.id === connId);
               if (!conn) {
                   message.error(t('sidebar.msg.connConfigNotFound'));
                   return;
               }
-              startSQLFileExecution(conn.config, dbName, data.filePath, data.fileSizeMB);
+              startSQLFileExecution(conn.config, dbName, String(payload.filePath || ''), String(payload.fileSizeMB || ''));
               return;
           }
           // 小文件：加载到编辑器
-          const sqlContent = data;
-          const { dbName, id } = node.dataRef;
+          const sqlContent = String(data || '');
           addTab({
               id: `query-${Date.now()}`,
               title: t('sidebar.menu.runExternalSql'),
               type: 'query',
-              connectionId: node.type === 'connection' ? node.key : node.dataRef.id,
-              dbName: dbName,
+              connectionId: node.type === 'connection' ? getSidebarNodeKeyText(node) : nodeData.id,
+              dbName: nodeData.dbName,
               query: sqlContent
           });
       } else if (!isCancelledMessage(res.message)) {
@@ -1984,13 +1986,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (res.success) {
           const data = res.data;
           // 大文件：后端流式执行
-          if (data && typeof data === 'object' && data.isLargeFile) {
+          if (data && typeof data === 'object' && (data as SidebarLargeFilePayload).isLargeFile) {
+              const payload = data as SidebarLargeFilePayload;
               const conn = connections.find(c => c.id === ctx.connectionId);
               if (!conn) {
                   message.error(t('sidebar.msg.connConfigNotFound'));
                   return;
               }
-              startSQLFileExecution(conn.config, ctx.dbName || '', data.filePath, data.fileSizeMB);
+              startSQLFileExecution(conn.config, ctx.dbName || '', String(payload.filePath || ''), String(payload.fileSizeMB || ''));
               return;
           }
           // 小文件
@@ -2000,7 +2003,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               type: 'query',
               connectionId: ctx.connectionId,
               dbName: ctx.dbName || undefined,
-              query: data
+              query: String(data || '')
           });
       } else if (!isCancelledMessage(res.message)) {
           message.error(t('sidebar.msg.readFileFailed', { message: res.message }));
@@ -2024,7 +2027,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       executed: 0, failed: 0, total: 0, percent: 0, currentSQL: '', resultMessage: ''
   });
 
-  const startSQLFileExecution = (config: any, dbName: string, filePath: string, fileSizeMB: string) => {
+  const startSQLFileExecution = (config: SavedConnection['config'], dbName: string, filePath: string, fileSizeMB: string) => {
       const jobId = `sqlfile-${Date.now()}`;
       setSqlFileExecState({
           open: true, jobId, fileSizeMB, status: 'running',
@@ -2032,11 +2035,11 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
 
       // 监听进度事件
-      const offProgress = EventsOn('sqlfile:progress', (event: any) => {
+      const offProgress = EventsOn<[SidebarSqlFileProgressEvent]>('sqlfile:progress', (event) => {
           if (!event || event.jobId !== jobId) return;
           setSqlFileExecState(prev => ({
               ...prev,
-              status: event.status || prev.status,
+              status: typeof event.status === 'string' ? event.status as typeof prev.status : prev.status,
               executed: typeof event.executed === 'number' ? event.executed : prev.executed,
               failed: typeof event.failed === 'number' ? event.failed : prev.failed,
               total: typeof event.total === 'number' ? event.total : prev.total,
@@ -2046,7 +2049,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
 
       // 异步执行
-      ExecuteSQLFile(config, dbName, filePath, jobId).then(res => {
+      ExecuteSQLFile(buildRpcConnectionConfig(config), dbName, filePath, jobId).then(res => {
           offProgress();
           setSqlFileExecState(prev => ({
               ...prev,
@@ -2074,11 +2077,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
-  const openExternalSQLFile = async (fileNode: any) => {
-      const connectionId = String(fileNode?.dataRef?.connectionId || '').trim();
-      const dbName = String(fileNode?.dataRef?.dbName || '').trim();
-      const filePath = String(fileNode?.dataRef?.path || '').trim();
-      const fileName = String(fileNode?.dataRef?.name || fileNode?.title || t('sidebar.sqlFile')).trim() || t('sidebar.sqlFile');
+  const openExternalSQLFile = async (fileNode: TreeNode) => {
+      const dataRef = getSidebarDataRef(fileNode);
+      const connectionId = String(dataRef.connectionId || '').trim();
+      const dbName = String(dataRef.dbName || '').trim();
+      const filePath = String(dataRef.path || '').trim();
+      const fileName = String(dataRef.name || fileNode?.title || t('sidebar.sqlFile')).trim() || t('sidebar.sqlFile');
       if (!connectionId || !dbName || !filePath) {
           message.error(t('sidebar.msg.sqlContextIncomplete'));
           return;
@@ -2093,13 +2097,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
 
       const data = res.data;
-      if (data && typeof data === 'object' && data.isLargeFile) {
+      if (data && typeof data === 'object' && (data as SidebarLargeFilePayload).isLargeFile) {
+          const payload = data as SidebarLargeFilePayload;
           const conn = connections.find((item) => item.id === connectionId);
           if (!conn) {
               message.error(t('sidebar.msg.connConfigNotFound'));
               return;
           }
-          startSQLFileExecution(conn.config, dbName, data.filePath, data.fileSizeMB);
+          startSQLFileExecution(conn.config, dbName, String(payload.filePath || ''), String(payload.fileSizeMB || ''));
           return;
       }
 
@@ -2114,18 +2119,19 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const resolveExternalSQLTargetDirectory = (node: any): string => {
+  const resolveExternalSQLTargetDirectory = (node: TreeNode): string => {
+      const dataRef = getSidebarDataRef(node);
       if (node?.type === 'external-sql-root' || node?.type === 'external-sql-folder') {
-          return String(node?.dataRef?.path || '').trim();
+          return String(dataRef.path || '').trim();
       }
       if (node?.type === 'external-sql-file') {
-          const currentPath = String(node?.dataRef?.path || '').trim();
+          const currentPath = String(dataRef.path || '').trim();
           return currentPath.replace(/[\\/][^\\/]+$/, '');
       }
       return '';
   };
 
-  const handleUploadExternalSQLFile = async (node: any) => {
+  const handleUploadExternalSQLFile = async (node: TreeNode) => {
       const context = getNodeDatabaseContext(node);
       const directoryPath = resolveExternalSQLTargetDirectory(node);
       if (!context?.connectionId || !context?.dbName || !context?.dbNodeKey || !directoryPath) {
@@ -2158,6 +2164,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       message.success(t('sidebar.msg.uploadSqlSuccess'));
       void openExternalSQLFile({
           title: uploadedName,
+          key: `external-sql-file:${uploadedPath}`,
+          type: 'external-sql-file',
           dataRef: {
               connectionId: uploadContext.connectionId,
               dbName: uploadContext.dbName,
@@ -2168,7 +2176,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const handleCreateExternalSQLDirectory = async (node: any) => {
+  const handleCreateExternalSQLDirectory = async (node: TreeNode) => {
       const context = getNodeDatabaseContext(node);
       const targetPath = resolveExternalSQLTargetDirectory(node);
       if (!context?.dbNodeKey || !targetPath) {
@@ -2193,14 +2201,15 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const handleRenameExternalSQLPath = async (node: any) => {
+  const handleRenameExternalSQLPath = async (node: TreeNode) => {
       const context = getNodeDatabaseContext(node);
-      const currentPath = String(node?.dataRef?.path || '').trim();
+      const dataRef = getSidebarDataRef(node);
+      const currentPath = String(dataRef.path || '').trim();
       if (!context?.dbNodeKey || !currentPath) {
           message.error(t('sidebar.msg.renameTargetInvalid'));
           return;
       }
-      let nextName = String(node?.dataRef?.name || node?.title || '').trim();
+      let nextName = String(dataRef.name || node?.title || '').trim();
       Modal.confirm({
           title: t('sidebar.menu.rename'),
           content: <Input {...noAutoCapInputProps} defaultValue={nextName} onChange={(event) => { nextName = event.target.value; }} />,
@@ -2216,8 +2225,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const handleRefreshExternalSQLDirectory = async (node: any) => {
-      const dbNodeKey = String(node?.dataRef?.dbNodeKey || '').trim();
+  const handleRefreshExternalSQLDirectory = async (node: TreeNode) => {
+      const dbNodeKey = String(getSidebarDataRef(node).dbNodeKey || '').trim();
       if (!dbNodeKey) {
           message.warning(t('sidebar.msg.noDbContext'));
           return;
