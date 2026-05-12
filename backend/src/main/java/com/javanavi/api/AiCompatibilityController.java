@@ -22,19 +22,19 @@ public class AiCompatibilityController {
     }
 
     @GetMapping("/providers")
-    public ApiEnvelope<List<Map<String, Object>>> providers() {
-        return ApiEnvelope.ok(aiCompatibilityService.getProviders());
+    public ApiEnvelope<List<AiContracts.ProviderResponse>> providers() {
+        return ApiEnvelope.ok(aiCompatibilityService.getProviders().stream().map(AiContracts.ProviderResponse::from).toList());
     }
 
     @PostMapping("/providers/save")
-    public ApiEnvelope<Map<String, Object>> saveProvider(@RequestBody AiContracts.ProviderConfigRequest input) {
-        return ApiEnvelope.ok(aiCompatibilityService.saveProvider(input == null ? Map.of() : input.toMap()));
+    public ApiEnvelope<AiContracts.ProviderResponse> saveProvider(@RequestBody AiContracts.ProviderConfigRequest input) {
+        return ApiEnvelope.ok(AiContracts.ProviderResponse.from(aiCompatibilityService.saveProvider(input == null ? Map.of() : input.toMap())));
     }
 
     @PostMapping("/providers/delete")
-    public ApiEnvelope<Map<String, Object>> deleteProvider(@RequestBody AiContracts.IdRequest input) {
+    public ApiEnvelope<AiContracts.ProviderDeleteResponse> deleteProvider(@RequestBody AiContracts.IdRequest input) {
         aiCompatibilityService.deleteProvider(idValue(input));
-        return ApiEnvelope.ok(Map.of("deleted", true));
+        return ApiEnvelope.ok(new AiContracts.ProviderDeleteResponse(true));
     }
 
     @GetMapping("/providers/active")
@@ -43,15 +43,15 @@ public class AiCompatibilityController {
     }
 
     @PostMapping("/providers/active")
-    public ApiEnvelope<Map<String, Object>> setActiveProvider(@RequestBody AiContracts.IdRequest input) {
+    public ApiEnvelope<AiContracts.ActiveProviderResponse> setActiveProvider(@RequestBody AiContracts.IdRequest input) {
         String id = idValue(input);
         aiCompatibilityService.setActiveProvider(id);
-        return ApiEnvelope.ok(Map.of("activeProvider", aiCompatibilityService.getActiveProvider()));
+        return ApiEnvelope.ok(new AiContracts.ActiveProviderResponse(aiCompatibilityService.getActiveProvider()));
     }
 
     @PostMapping("/providers/test")
-    public ApiEnvelope<Map<String, Object>> testProvider(@RequestBody AiContracts.ProviderConfigRequest input) {
-        return ApiEnvelope.ok(aiCompatibilityService.testProvider(input == null ? Map.of() : input.toMap()));
+    public ApiEnvelope<AiContracts.ProviderTestResponse> testProvider(@RequestBody AiContracts.ProviderConfigRequest input) {
+        return ApiEnvelope.ok(AiContracts.ProviderTestResponse.from(aiCompatibilityService.testProvider(input == null ? Map.of() : input.toMap())));
     }
 
     @GetMapping("/prompts/builtin")
@@ -60,8 +60,8 @@ public class AiCompatibilityController {
     }
 
     @GetMapping("/models")
-    public ApiEnvelope<Map<String, Object>> models() {
-        return ApiEnvelope.ok(aiCompatibilityService.listModels());
+    public ApiEnvelope<AiContracts.ModelsResponse> models() {
+        return ApiEnvelope.ok(AiContracts.ModelsResponse.from(aiCompatibilityService.listModels()));
     }
 
     @GetMapping("/settings/safety")
@@ -70,9 +70,9 @@ public class AiCompatibilityController {
     }
 
     @PostMapping("/settings/safety")
-    public ApiEnvelope<Map<String, Object>> setSafetyLevel(@RequestBody AiContracts.LevelRequest input) {
+    public ApiEnvelope<AiContracts.LevelResponse> setSafetyLevel(@RequestBody AiContracts.LevelRequest input) {
         aiCompatibilityService.setSafetyLevel(input == null ? "" : input.value());
-        return ApiEnvelope.ok(Map.of("safetyLevel", aiCompatibilityService.getSafetyLevel()));
+        return ApiEnvelope.ok(AiContracts.LevelResponse.safety(aiCompatibilityService.getSafetyLevel()));
     }
 
     @GetMapping("/settings/context")
@@ -81,46 +81,46 @@ public class AiCompatibilityController {
     }
 
     @PostMapping("/settings/context")
-    public ApiEnvelope<Map<String, Object>> setContextLevel(@RequestBody AiContracts.LevelRequest input) {
+    public ApiEnvelope<AiContracts.LevelResponse> setContextLevel(@RequestBody AiContracts.LevelRequest input) {
         aiCompatibilityService.setContextLevel(input == null ? "" : input.value());
-        return ApiEnvelope.ok(Map.of("contextLevel", aiCompatibilityService.getContextLevel()));
+        return ApiEnvelope.ok(AiContracts.LevelResponse.context(aiCompatibilityService.getContextLevel()));
     }
 
     @PostMapping("/safety/check-sql")
-    public ApiEnvelope<Map<String, Object>> checkSql(@RequestBody AiContracts.SqlCheckRequest input) {
-        return ApiEnvelope.ok(aiCompatibilityService.checkSql(input == null ? "" : input.value()));
+    public ApiEnvelope<AiContracts.SqlCheckResponse> checkSql(@RequestBody AiContracts.SqlCheckRequest input) {
+        return ApiEnvelope.ok(AiContracts.SqlCheckResponse.from(aiCompatibilityService.checkSql(input == null ? "" : input.value())));
     }
 
     @PostMapping("/chat/send")
-    public ApiEnvelope<Map<String, Object>> chatSend(@RequestBody AiContracts.ChatRequest input) {
-        return ApiEnvelope.ok(aiCompatibilityService.chatSend(input == null ? Map.of() : input.toMap()));
+    public ApiEnvelope<AiContracts.ChatResponse> chatSend(@RequestBody AiContracts.ChatRequest input) {
+        return ApiEnvelope.ok(AiContracts.ChatResponse.from(aiCompatibilityService.chatSend(input == null ? Map.of() : input.toMap())));
     }
 
     @PostMapping("/chat/stream")
-    public ApiEnvelope<Map<String, Object>> chatStream(@RequestBody AiContracts.ChatRequest input) {
+    public ApiEnvelope<AiContracts.ChatStreamResponse> chatStream(@RequestBody AiContracts.ChatRequest input) {
         String sessionId = input == null ? "" : input.sessionId();
-        return ApiEnvelope.ok(aiCompatibilityService.chatStream(sessionId, input == null ? Map.of() : input.toMap()));
+        return ApiEnvelope.ok(AiContracts.ChatStreamResponse.from(aiCompatibilityService.chatStream(sessionId, input == null ? Map.of() : input.toMap())));
     }
 
     @PostMapping("/chat/cancel")
-    public ApiEnvelope<Map<String, Object>> chatCancel(@RequestBody AiContracts.IdRequest input) {
+    public ApiEnvelope<AiContracts.ChatCancelResponse> chatCancel(@RequestBody AiContracts.IdRequest input) {
         String sessionId = idValue(input);
         aiCompatibilityService.chatCancel(sessionId);
-        return ApiEnvelope.ok(Map.of("cancelled", true, "sessionId", sessionId));
+        return ApiEnvelope.ok(new AiContracts.ChatCancelResponse(true, sessionId));
     }
 
     @GetMapping("/sessions")
-    public ApiEnvelope<List<Map<String, Object>>> sessions() {
-        return ApiEnvelope.ok(aiCompatibilityService.getSessions());
+    public ApiEnvelope<List<AiContracts.SessionSummaryResponse>> sessions() {
+        return ApiEnvelope.ok(aiCompatibilityService.getSessions().stream().map(AiContracts.SessionSummaryResponse::from).toList());
     }
 
     @PostMapping("/sessions/load")
-    public ApiEnvelope<Map<String, Object>> loadSession(@RequestBody AiContracts.IdRequest input) {
-        return ApiEnvelope.ok(aiCompatibilityService.loadSession(idValue(input)));
+    public ApiEnvelope<AiContracts.SessionLoadResponse> loadSession(@RequestBody AiContracts.IdRequest input) {
+        return ApiEnvelope.ok(AiContracts.SessionLoadResponse.from(aiCompatibilityService.loadSession(idValue(input))));
     }
 
     @PostMapping("/sessions/save")
-    public ApiEnvelope<Map<String, Object>> saveSession(@RequestBody AiContracts.SessionSaveRequest input) {
+    public ApiEnvelope<AiContracts.SessionSaveResponse> saveSession(@RequestBody AiContracts.SessionSaveRequest input) {
         String sessionId = input == null ? "" : input.idValue();
         aiCompatibilityService.saveSession(
                 sessionId,
@@ -128,14 +128,14 @@ public class AiCompatibilityController {
                 input == null ? 0 : input.updatedAtValue(),
                 input == null ? "" : input.messagesJSON()
         );
-        return ApiEnvelope.ok(Map.of("saved", true, "sessionId", sessionId));
+        return ApiEnvelope.ok(new AiContracts.SessionSaveResponse(true, sessionId));
     }
 
     @PostMapping("/sessions/delete")
-    public ApiEnvelope<Map<String, Object>> deleteSession(@RequestBody AiContracts.IdRequest input) {
+    public ApiEnvelope<AiContracts.SessionDeleteResponse> deleteSession(@RequestBody AiContracts.IdRequest input) {
         String sessionId = idValue(input);
         aiCompatibilityService.deleteSession(sessionId);
-        return ApiEnvelope.ok(Map.of("deleted", true, "sessionId", sessionId));
+        return ApiEnvelope.ok(new AiContracts.SessionDeleteResponse(true, sessionId));
     }
 
     private static String idValue(AiContracts.IdRequest input) {
