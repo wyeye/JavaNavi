@@ -720,7 +720,12 @@ export async function OpenDriverDownloadDirectory(arg1:string): Promise<connecti
 
 export async function OpenSQLFile(): Promise<connection.QueryResult> {
   const payload = await postJson('/files/sql/open', {});
-  return apiEnvelopeToQueryResult(payload, 'SQL file opened');
+  const result = apiEnvelopeToQueryResult(payload, 'SQL file opened');
+  const data = recordValue(result.data);
+  if (result.success && !data.isLargeFile && Object.prototype.hasOwnProperty.call(data, 'content')) {
+    result.data = typeof data.content === 'string' ? data.content : String(data.content ?? '');
+  }
+  return result;
 }
 
 export async function PreviewImportFile(arg1:string): Promise<connection.QueryResult> {

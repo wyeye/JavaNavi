@@ -185,6 +185,7 @@ type DriverOptionPayload = {
   available?: unknown;
   connectable?: unknown;
   default?: unknown;
+  defaultDriver?: unknown;
   reusedRuntime?: unknown;
   runtimeOwnerType?: unknown;
   runtimeOwnerName?: unknown;
@@ -914,7 +915,7 @@ const ConnectionModal: React.FC<{
                 databaseName: String(option.databaseName || "").trim() || undefined,
                 available: !!option.available,
                 connectable: !!option.connectable,
-                default: !!option.default,
+                default: !!option.default || !!option.defaultDriver,
                 reusedRuntime: !!option.reusedRuntime,
                 runtimeOwnerType:
                   String(option.runtimeOwnerType || "").trim() || undefined,

@@ -84,6 +84,7 @@ type DriverOptionPayload = JsonRecord & {
   available?: unknown;
   connectable?: unknown;
   default?: unknown;
+  defaultDriver?: unknown;
   runtimeOwnerType?: unknown;
   runtimeOwnerName?: unknown;
   reusedRuntime?: unknown;
@@ -689,7 +690,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                       databaseName: String(option.databaseName || '').trim() || undefined,
                       available: !!option.available,
                       connectable: !!option.connectable,
-                      default: !!option.default,
+                      default: !!option.default || !!option.defaultDriver,
                       runtimeOwnerType: String(option.runtimeOwnerType || '').trim() || undefined,
                       runtimeOwnerName: String(option.runtimeOwnerName || '').trim() || undefined,
                       reusedRuntime: !!option.reusedRuntime,
