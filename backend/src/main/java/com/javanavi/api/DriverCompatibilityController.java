@@ -117,27 +117,27 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/download")
-    public ApiEnvelope<Map<String, Object>> download(@RequestBody(required = false) DriverContracts.DownloadRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.downloadPackage(
+    public ApiEnvelope<DriverContracts.DriverPackageOperationResponse> download(@RequestBody(required = false) DriverContracts.DownloadRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverPackageOperationResponse.from(driverCompatibilityService.downloadPackage(
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.version(),
                 input == null ? "" : input.downloadURL(),
                 input == null ? "" : input.downloadDir()
-        ));
+        )));
     }
 
     @PostMapping("/install-local")
-    public ApiEnvelope<Map<String, Object>> installLocal(@RequestBody(required = false) DriverContracts.InstallLocalRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.installLocalPackage(
+    public ApiEnvelope<DriverContracts.DriverPackageOperationResponse> installLocal(@RequestBody(required = false) DriverContracts.InstallLocalRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverPackageOperationResponse.from(driverCompatibilityService.installLocalPackage(
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.filePath(),
                 input == null ? "" : input.downloadDir(),
                 input == null ? "" : input.version()
-        ));
+        )));
     }
 
     @PostMapping(value = "/upload-local", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiEnvelope<Map<String, Object>> uploadLocal(
+    public ApiEnvelope<DriverContracts.DriverPackageOperationResponse> uploadLocal(
             @RequestParam("driverType") String driverType,
             @RequestParam(value = "downloadDir", required = false) String downloadDir,
             @RequestParam(value = "version", required = false) String version,
@@ -149,20 +149,20 @@ public class DriverCompatibilityController {
             uploadFiles = new java.util.ArrayList<>(uploadFiles);
             uploadFiles.add(file);
         }
-        return ApiEnvelope.ok(driverCompatibilityService.installUploadedPackage(
+        return ApiEnvelope.ok(DriverContracts.DriverPackageOperationResponse.from(driverCompatibilityService.installUploadedPackage(
                 driverType,
                 uploadFiles,
                 downloadDir,
                 version
-        ));
+        )));
     }
 
     @PostMapping("/remove")
-    public ApiEnvelope<Map<String, Object>> remove(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.removePackage(
+    public ApiEnvelope<DriverContracts.DriverPackageOperationResponse> remove(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverPackageOperationResponse.from(driverCompatibilityService.removePackage(
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.downloadDir()
-        ));
+        )));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

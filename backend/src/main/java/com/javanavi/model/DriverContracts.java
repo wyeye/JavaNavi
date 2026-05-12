@@ -463,6 +463,45 @@ public final class DriverContracts {
         }
     }
 
+    public record DriverPackageOperationResponse(
+            String driverType,
+            String driverName,
+            String version,
+            String engine,
+            boolean packageInstalled,
+            boolean runtimeAvailable,
+            boolean connectable,
+            String installDir,
+            String installMode,
+            String installSource,
+            List<DriverArtifactResponse> artifacts,
+            String driverClassName,
+            boolean dryRun,
+            boolean removed,
+            String message
+    ) {
+        public static DriverPackageOperationResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new DriverPackageOperationResponse(
+                    text(source.get("driverType")),
+                    text(source.get("driverName")),
+                    text(source.get("version")),
+                    text(source.get("engine")),
+                    booleanValue(source.get("packageInstalled")),
+                    booleanValue(source.get("runtimeAvailable")),
+                    booleanValue(source.get("connectable")),
+                    text(source.get("installDir")),
+                    text(source.get("installMode")),
+                    text(source.get("installSource")),
+                    listValue(source.get("artifacts")).stream().map(DriverArtifactResponse::from).toList(),
+                    text(source.get("driverClassName")),
+                    booleanValue(source.get("dryRun")),
+                    booleanValue(source.get("removed")),
+                    text(source.get("message"))
+            );
+        }
+    }
+
     public record NetworkCheckResponse(
             String name,
             String url,
