@@ -1070,7 +1070,7 @@ function _debouncedPersistSession(sessionId: string) {
     const messagesJSON = JSON.stringify(messages || []);
     const Service = AIService;
     Service?.AISaveSession?.(sessionId, title, updatedAt, messagesJSON).catch(
-      (e: any) => {
+      (e: unknown) => {
         console.error("[AI Session Persist] 持久化失败:", sessionId, e);
       },
     );

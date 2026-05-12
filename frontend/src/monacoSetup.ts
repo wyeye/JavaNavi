@@ -22,7 +22,7 @@ import 'monaco-editor/esm/vs/basic-languages/xml/xml.contribution'
 import 'monaco-editor/esm/vs/basic-languages/yaml/yaml.contribution'
 import 'monaco-editor/esm/vs/language/json/monaco.contribution'
 
-(self as any).MonacoEnvironment = {
+globalThis.MonacoEnvironment = {
   getWorker(_: unknown, label: string) {
     if (label === 'json') {
       return new jsonWorker()
