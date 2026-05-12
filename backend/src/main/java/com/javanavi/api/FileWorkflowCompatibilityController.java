@@ -56,7 +56,7 @@ public class FileWorkflowCompatibilityController {
 
     @PostMapping("/import/run")
     public ApiEnvelope<Map<String, Object>> importDataWithProgress(@RequestBody(required = false) FileWorkflowContracts.ImportRunRequest input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.importDataWithProgress(input == null ? Map.of() : input.toMap()));
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.importDataWithProgress(input == null ? new FileWorkflowContracts.RequestPayload() : input.toPayload()));
     }
 
     @PostMapping("/export/data")
@@ -71,28 +71,28 @@ public class FileWorkflowCompatibilityController {
 
     @PostMapping("/export/query")
     public ApiEnvelope<Map<String, Object>> exportQuery(@RequestBody(required = false) FileWorkflowContracts.ExportQueryRequest input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportQuery(input == null ? Map.of() : input.toMap()));
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportQuery(input == null ? new FileWorkflowContracts.RequestPayload() : input.toPayload()));
     }
 
     @PostMapping("/export/table")
     public ApiEnvelope<Map<String, Object>> exportTable(@RequestBody(required = false) FileWorkflowContracts.ExportTableRequest input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTable(input == null ? Map.of() : input.toMap()));
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTable(input == null ? new FileWorkflowContracts.RequestPayload() : input.toPayload()));
     }
 
     @PostMapping("/export/tables-sql")
     public ApiEnvelope<Map<String, Object>> exportTablesSql(@RequestBody(required = false) FileWorkflowContracts.ExportTablesSqlRequest input) {
         boolean includeData = input != null && Boolean.TRUE.equals(input.includeData());
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input == null ? Map.of() : input.toMap(), true, includeData));
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input == null ? new FileWorkflowContracts.RequestPayload() : input.toPayload(), true, includeData));
     }
 
     @PostMapping("/export/tables-data-sql")
     public ApiEnvelope<Map<String, Object>> exportTablesDataSql(@RequestBody(required = false) FileWorkflowContracts.ExportTablesSqlRequest input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input == null ? Map.of() : input.toMap(), false, true));
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input == null ? new FileWorkflowContracts.RequestPayload() : input.toPayload(), false, true));
     }
 
     @PostMapping("/export/database-sql")
     public ApiEnvelope<Map<String, Object>> exportDatabaseSql(@RequestBody(required = false) FileWorkflowContracts.ExportTablesSqlRequest input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportDatabaseSql(input == null ? Map.of() : input.toMap()));
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportDatabaseSql(input == null ? new FileWorkflowContracts.RequestPayload() : input.toPayload()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)

@@ -250,10 +250,13 @@ public class FileWorkflowCompatibilityService {
         ));
     }
 
-    public Map<String, Object> exportData(List<Map<String, Object>> rows, List<String> columns, String defaultName, String format) {
-        List<String> resolvedColumns = columns == null || columns.isEmpty() ? columnsForRows(rows) : columns;
-        Path file = writeRowsExport(rows == null ? List.of() : rows, resolvedColumns, defaultName, format, normalizeFileToken(defaultName, "export"));
-        return exportResult(file, rows == null ? 0 : rows.size(), resolvedColumns, format, false);
+    public Map<String, Object> exportData(List<? extends Map<String, Object>> rows, List<String> columns, String defaultName, String format) {
+        List<Map<String, Object>> exportRows = rows == null
+                ? List.of()
+                : rows.stream().<Map<String, Object>>map(LinkedHashMap::new).toList();
+        List<String> resolvedColumns = columns == null || columns.isEmpty() ? columnsForRows(exportRows) : columns;
+        Path file = writeRowsExport(exportRows, resolvedColumns, defaultName, format, normalizeFileToken(defaultName, "export"));
+        return exportResult(file, exportRows.size(), resolvedColumns, format, false);
     }
 
     public Map<String, Object> exportQuery(Map<String, Object> input) {

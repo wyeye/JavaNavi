@@ -10,6 +10,18 @@ public final class FileWorkflowContracts {
     private FileWorkflowContracts() {
     }
 
+    public interface PayloadRequest {
+        RequestPayload toPayload();
+    }
+
+    public static final class RequestPayload extends LinkedHashMap<String, Object> {
+        public RequestPayload() {
+        }
+    }
+
+    public static final class DataRow extends LinkedHashMap<String, Object> {
+    }
+
     public record SshKeySelectRequest(@JsonAlias({"path"}) String currentPath) {
         public String value() {
             return text(currentPath);
@@ -30,9 +42,9 @@ public final class FileWorkflowContracts {
             Boolean applyToDatabase,
             Boolean apply,
             Boolean execute
-    ) {
-        public Map<String, Object> toMap() {
-            return mapOf(
+    ) implements PayloadRequest {
+        public RequestPayload toPayload() {
+            return payloadOf(
                     "filePath", filePath,
                     "table", table,
                     "database", database,
@@ -45,7 +57,7 @@ public final class FileWorkflowContracts {
     }
 
     public record ExportDataRequest(
-            List<Map<String, Object>> rows,
+            List<DataRow> rows,
             List<String> columns,
             @JsonAlias({"name"}) String defaultName,
             String format
@@ -58,9 +70,9 @@ public final class FileWorkflowContracts {
             @JsonAlias({"sql"}) String query,
             @JsonAlias({"name"}) String defaultName,
             String format
-    ) {
-        public Map<String, Object> toMap() {
-            return mapOf(
+    ) implements PayloadRequest {
+        public RequestPayload toPayload() {
+            return payloadOf(
                     "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "database", database,
                     "query", query,
@@ -76,9 +88,9 @@ public final class FileWorkflowContracts {
             @JsonAlias({"tableName"}) String table,
             @JsonAlias({"name"}) String defaultName,
             String format
-    ) {
-        public Map<String, Object> toMap() {
-            return mapOf(
+    ) implements PayloadRequest {
+        public RequestPayload toPayload() {
+            return payloadOf(
                     "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "database", database,
                     "table", table,
@@ -93,9 +105,9 @@ public final class FileWorkflowContracts {
             @JsonAlias({"dbName"}) String database,
             List<String> tables,
             Boolean includeData
-    ) {
-        public Map<String, Object> toMap() {
-            return mapOf(
+    ) implements PayloadRequest {
+        public RequestPayload toPayload() {
+            return payloadOf(
                     "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "database", database,
                     "tables", tables,
@@ -104,8 +116,8 @@ public final class FileWorkflowContracts {
         }
     }
 
-    private static Map<String, Object> mapOf(Object... entries) {
-        Map<String, Object> map = new LinkedHashMap<>();
+    private static RequestPayload payloadOf(Object... entries) {
+        RequestPayload map = new RequestPayload();
         for (int i = 0; i + 1 < entries.length; i += 2) {
             Object value = entries[i + 1];
             if (value != null) {

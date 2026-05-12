@@ -25,48 +25,32 @@ public class RedisCompatibilityController {
         this.messages = messages;
     }
 
-    @PostMapping("/connect") public ApiEnvelope<Object> connect(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.connect(toMap(input))); }
-    @PostMapping("/test") public ApiEnvelope<Object> test(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.connect(toMap(input))); }
-    @PostMapping("/keys/scan") public ApiEnvelope<Object> scanKeys(@RequestBody(required = false) RedisContracts.ScanKeysRequest input) { return invoke(() -> service.scanKeys(toMap(input))); }
-    @PostMapping("/value") public ApiEnvelope<Object> value(@RequestBody(required = false) RedisContracts.KeyRequest input) { return invoke(() -> service.getValue(toMap(input))); }
-    @PostMapping("/string/set") public ApiEnvelope<Object> setString(@RequestBody(required = false) RedisContracts.SetStringRequest input) { return invoke(() -> service.setString(toMap(input))); }
-    @PostMapping("/hash/field/set") public ApiEnvelope<Object> setHashField(@RequestBody(required = false) RedisContracts.HashFieldSetRequest input) { return invoke(() -> service.setHashField(toMap(input))); }
-    @PostMapping("/hash/field/delete") public ApiEnvelope<Object> deleteHashField(@RequestBody(required = false) RedisContracts.HashFieldDeleteRequest input) { return invoke(() -> service.deleteHashField(toMap(input))); }
-    @PostMapping("/keys/delete") public ApiEnvelope<Object> deleteKeys(@RequestBody(required = false) RedisContracts.KeysRequest input) { return invoke(() -> service.deleteKeys(toMap(input))); }
-    @PostMapping("/ttl/set") public ApiEnvelope<Object> setTTL(@RequestBody(required = false) RedisContracts.TtlRequest input) { return invoke(() -> service.setTTL(toMap(input))); }
-    @PostMapping("/command/execute") public ApiEnvelope<Object> executeCommand(@RequestBody(required = false) RedisContracts.CommandRequest input) { return invoke(() -> service.executeCommand(toMap(input))); }
-    @PostMapping("/server-info") public ApiEnvelope<Object> serverInfo(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.getServerInfo(toMap(input))); }
-    @PostMapping("/databases") public ApiEnvelope<Object> databases(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.getDatabases(toMap(input))); }
-    @PostMapping("/select-db") public ApiEnvelope<Object> selectDB(@RequestBody(required = false) RedisContracts.SelectDbRequest input) { return invoke(() -> service.selectDB(toMap(input))); }
-    @PostMapping("/key/rename") public ApiEnvelope<Object> renameKey(@RequestBody(required = false) RedisContracts.RenameKeyRequest input) { return invoke(() -> service.renameKey(toMap(input))); }
-    @PostMapping("/key-exists") public ApiEnvelope<Object> keyExists(@RequestBody(required = false) RedisContracts.KeyRequest input) { return invoke(() -> service.keyExists(toMap(input))); }
-    @PostMapping("/list/push") public ApiEnvelope<Object> listPush(@RequestBody(required = false) RedisContracts.ListPushRequest input) { return invoke(() -> service.listPush(toMap(input))); }
-    @PostMapping("/list/set") public ApiEnvelope<Object> listSet(@RequestBody(required = false) RedisContracts.ListSetRequest input) { return invoke(() -> service.listSet(toMap(input))); }
-    @PostMapping("/set/add") public ApiEnvelope<Object> setAdd(@RequestBody(required = false) RedisContracts.MembersRequest input) { return invoke(() -> service.setAdd(toMap(input))); }
-    @PostMapping("/set/remove") public ApiEnvelope<Object> setRemove(@RequestBody(required = false) RedisContracts.MembersRequest input) { return invoke(() -> service.setRemove(toMap(input))); }
-    @PostMapping("/zset/add") public ApiEnvelope<Object> zsetAdd(@RequestBody(required = false) RedisContracts.ZSetMembersRequest input) { return invoke(() -> service.zsetAdd(toMap(input))); }
-    @PostMapping("/zset/remove") public ApiEnvelope<Object> zsetRemove(@RequestBody(required = false) RedisContracts.MembersRequest input) { return invoke(() -> service.zsetRemove(toMap(input))); }
-    @PostMapping("/stream/add") public ApiEnvelope<Object> streamAdd(@RequestBody(required = false) RedisContracts.StreamAddRequest input) { return invoke(() -> service.streamAdd(toMap(input))); }
-    @PostMapping("/stream/delete") public ApiEnvelope<Object> streamDelete(@RequestBody(required = false) RedisContracts.StreamDeleteRequest input) { return invoke(() -> service.streamDelete(toMap(input))); }
-    @PostMapping("/flush-db") public ApiEnvelope<Object> flushDB(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.flushDB(toMap(input))); }
+    @PostMapping("/connect") public ApiEnvelope<Object> connect(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.connect(toPayload(input))); }
+    @PostMapping("/test") public ApiEnvelope<Object> test(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.connect(toPayload(input))); }
+    @PostMapping("/keys/scan") public ApiEnvelope<Object> scanKeys(@RequestBody(required = false) RedisContracts.ScanKeysRequest input) { return invoke(() -> service.scanKeys(toPayload(input))); }
+    @PostMapping("/value") public ApiEnvelope<Object> value(@RequestBody(required = false) RedisContracts.KeyRequest input) { return invoke(() -> service.getValue(toPayload(input))); }
+    @PostMapping("/string/set") public ApiEnvelope<Object> setString(@RequestBody(required = false) RedisContracts.SetStringRequest input) { return invoke(() -> service.setString(toPayload(input))); }
+    @PostMapping("/hash/field/set") public ApiEnvelope<Object> setHashField(@RequestBody(required = false) RedisContracts.HashFieldSetRequest input) { return invoke(() -> service.setHashField(toPayload(input))); }
+    @PostMapping("/hash/field/delete") public ApiEnvelope<Object> deleteHashField(@RequestBody(required = false) RedisContracts.HashFieldDeleteRequest input) { return invoke(() -> service.deleteHashField(toPayload(input))); }
+    @PostMapping("/keys/delete") public ApiEnvelope<Object> deleteKeys(@RequestBody(required = false) RedisContracts.KeysRequest input) { return invoke(() -> service.deleteKeys(toPayload(input))); }
+    @PostMapping("/ttl/set") public ApiEnvelope<Object> setTTL(@RequestBody(required = false) RedisContracts.TtlRequest input) { return invoke(() -> service.setTTL(toPayload(input))); }
+    @PostMapping("/command/execute") public ApiEnvelope<Object> executeCommand(@RequestBody(required = false) RedisContracts.CommandRequest input) { return invoke(() -> service.executeCommand(toPayload(input))); }
+    @PostMapping("/server-info") public ApiEnvelope<Object> serverInfo(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.getServerInfo(toPayload(input))); }
+    @PostMapping("/databases") public ApiEnvelope<Object> databases(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.getDatabases(toPayload(input))); }
+    @PostMapping("/select-db") public ApiEnvelope<Object> selectDB(@RequestBody(required = false) RedisContracts.SelectDbRequest input) { return invoke(() -> service.selectDB(toPayload(input))); }
+    @PostMapping("/key/rename") public ApiEnvelope<Object> renameKey(@RequestBody(required = false) RedisContracts.RenameKeyRequest input) { return invoke(() -> service.renameKey(toPayload(input))); }
+    @PostMapping("/key-exists") public ApiEnvelope<Object> keyExists(@RequestBody(required = false) RedisContracts.KeyRequest input) { return invoke(() -> service.keyExists(toPayload(input))); }
+    @PostMapping("/list/push") public ApiEnvelope<Object> listPush(@RequestBody(required = false) RedisContracts.ListPushRequest input) { return invoke(() -> service.listPush(toPayload(input))); }
+    @PostMapping("/list/set") public ApiEnvelope<Object> listSet(@RequestBody(required = false) RedisContracts.ListSetRequest input) { return invoke(() -> service.listSet(toPayload(input))); }
+    @PostMapping("/set/add") public ApiEnvelope<Object> setAdd(@RequestBody(required = false) RedisContracts.MembersRequest input) { return invoke(() -> service.setAdd(toPayload(input))); }
+    @PostMapping("/set/remove") public ApiEnvelope<Object> setRemove(@RequestBody(required = false) RedisContracts.MembersRequest input) { return invoke(() -> service.setRemove(toPayload(input))); }
+    @PostMapping("/zset/add") public ApiEnvelope<Object> zsetAdd(@RequestBody(required = false) RedisContracts.ZSetMembersRequest input) { return invoke(() -> service.zsetAdd(toPayload(input))); }
+    @PostMapping("/zset/remove") public ApiEnvelope<Object> zsetRemove(@RequestBody(required = false) RedisContracts.MembersRequest input) { return invoke(() -> service.zsetRemove(toPayload(input))); }
+    @PostMapping("/stream/add") public ApiEnvelope<Object> streamAdd(@RequestBody(required = false) RedisContracts.StreamAddRequest input) { return invoke(() -> service.streamAdd(toPayload(input))); }
+    @PostMapping("/stream/delete") public ApiEnvelope<Object> streamDelete(@RequestBody(required = false) RedisContracts.StreamDeleteRequest input) { return invoke(() -> service.streamDelete(toPayload(input))); }
+    @PostMapping("/flush-db") public ApiEnvelope<Object> flushDB(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> service.flushDB(toPayload(input))); }
 
-    private static Map<String, Object> toMap(RedisContracts.BaseRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.ScanKeysRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.KeyRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.SetStringRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.HashFieldSetRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.HashFieldDeleteRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.KeysRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.TtlRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.CommandRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.SelectDbRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.RenameKeyRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.ListPushRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.ListSetRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.MembersRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.ZSetMembersRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.StreamAddRequest input) { return input == null ? Map.of() : input.toMap(); }
-    private static Map<String, Object> toMap(RedisContracts.StreamDeleteRequest input) { return input == null ? Map.of() : input.toMap(); }
+    private static RedisContracts.RequestPayload toPayload(RedisContracts.Request input) { return input == null ? new RedisContracts.RequestPayload() : input.toPayload(); }
 
     private ApiEnvelope<Object> invoke(Supplier<Object> action) {
         try {

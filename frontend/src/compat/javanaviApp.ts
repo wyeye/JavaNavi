@@ -271,10 +271,10 @@ function apiEnvelopeToQueryResult(payload: unknown, fallbackMessage = 'OK'): Que
   const language = currentAppLanguage();
   const localizedFallback = translateBackendFallback(language, fallbackMessage);
   const envelope = recordValue(payload);
-  if (!payload) return { success: false, message: translateBackendFallback(language, 'Empty response'), data: null } as QueryResult;
+  if (!payload) return { success: false, message: translateBackendFallback(language, 'Empty response'), data: null } as unknown as QueryResult;
   if (fieldValue(envelope, 'success') === false) {
     const error = recordValue(fieldValue(envelope, 'error'));
-    return { success: false, message: localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), 'Request failed'), data: fieldValue(envelope, 'data') ?? null } as QueryResult;
+    return { success: false, message: localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), 'Request failed'), data: fieldValue(envelope, 'data') ?? null } as unknown as QueryResult;
   }
   const data = fieldValue(envelope, 'data') ?? payload;
   const dataRecord = recordValue(data);

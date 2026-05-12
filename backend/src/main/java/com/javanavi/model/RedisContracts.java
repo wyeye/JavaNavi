@@ -10,15 +10,24 @@ public final class RedisContracts {
     private RedisContracts() {
     }
 
-    public record BaseRequest(ConnectionConfigDto connection) {
-        public Map<String, Object> toMap() {
+    public interface Request {
+        RequestPayload toPayload();
+    }
+
+    public static final class RequestPayload extends LinkedHashMap<String, Object> {
+        public RequestPayload() {
+        }
+    }
+
+    public record BaseRequest(ConnectionConfigDto connection) implements Request {
+        public RequestPayload toPayload() {
             return withConnection(connection);
         }
     }
 
-    public record ScanKeysRequest(ConnectionConfigDto connection, String pattern, String cursor, Integer count) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record ScanKeysRequest(ConnectionConfigDto connection, String pattern, String cursor, Integer count) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "pattern", pattern);
             put(map, "cursor", cursor);
             put(map, "count", count);
@@ -26,17 +35,17 @@ public final class RedisContracts {
         }
     }
 
-    public record KeyRequest(ConnectionConfigDto connection, String key) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record KeyRequest(ConnectionConfigDto connection, String key) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             return map;
         }
     }
 
-    public record SetStringRequest(ConnectionConfigDto connection, String key, String value, Long ttl) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record SetStringRequest(ConnectionConfigDto connection, String key, String value, Long ttl) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "value", value);
             put(map, "ttl", ttl);
@@ -44,9 +53,9 @@ public final class RedisContracts {
         }
     }
 
-    public record HashFieldSetRequest(ConnectionConfigDto connection, String key, String field, String value) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record HashFieldSetRequest(ConnectionConfigDto connection, String key, String field, String value) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "field", field);
             put(map, "value", value);
@@ -54,60 +63,60 @@ public final class RedisContracts {
         }
     }
 
-    public record HashFieldDeleteRequest(ConnectionConfigDto connection, String key, List<String> fields) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record HashFieldDeleteRequest(ConnectionConfigDto connection, String key, List<String> fields) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "fields", fields);
             return map;
         }
     }
 
-    public record KeysRequest(ConnectionConfigDto connection, List<String> keys) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record KeysRequest(ConnectionConfigDto connection, List<String> keys) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "keys", keys);
             return map;
         }
     }
 
-    public record TtlRequest(ConnectionConfigDto connection, String key, Long ttl) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record TtlRequest(ConnectionConfigDto connection, String key, Long ttl) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "ttl", ttl);
             return map;
         }
     }
 
-    public record CommandRequest(ConnectionConfigDto connection, String command) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record CommandRequest(ConnectionConfigDto connection, String command) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "command", command);
             return map;
         }
     }
 
-    public record SelectDbRequest(ConnectionConfigDto connection, Integer dbIndex) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record SelectDbRequest(ConnectionConfigDto connection, Integer dbIndex) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "dbIndex", dbIndex);
             return map;
         }
     }
 
-    public record RenameKeyRequest(ConnectionConfigDto connection, String oldKey, String newKey) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record RenameKeyRequest(ConnectionConfigDto connection, String oldKey, String newKey) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "oldKey", oldKey);
             put(map, "newKey", newKey);
             return map;
         }
     }
 
-    public record ListPushRequest(ConnectionConfigDto connection, String key, List<String> values, String position) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record ListPushRequest(ConnectionConfigDto connection, String key, List<String> values, String position) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "values", values);
             put(map, "position", position);
@@ -115,9 +124,9 @@ public final class RedisContracts {
         }
     }
 
-    public record ListSetRequest(ConnectionConfigDto connection, String key, Long index, String value) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record ListSetRequest(ConnectionConfigDto connection, String key, Long index, String value) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "index", index);
             put(map, "value", value);
@@ -125,9 +134,9 @@ public final class RedisContracts {
         }
     }
 
-    public record MembersRequest(ConnectionConfigDto connection, String key, List<String> members) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record MembersRequest(ConnectionConfigDto connection, String key, List<String> members) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "members", members);
             return map;
@@ -137,9 +146,9 @@ public final class RedisContracts {
     public record ZSetMember(String member, String value, Double score) {
     }
 
-    public record ZSetMembersRequest(ConnectionConfigDto connection, String key, List<ZSetMember> members) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record ZSetMembersRequest(ConnectionConfigDto connection, String key, List<ZSetMember> members) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "members", members == null ? null : members.stream().map(member -> mapOf(
                     "member", member.member(),
@@ -150,9 +159,9 @@ public final class RedisContracts {
         }
     }
 
-    public record StreamAddRequest(ConnectionConfigDto connection, String key, Map<String, String> fields, String id) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record StreamAddRequest(ConnectionConfigDto connection, String key, Map<String, String> fields, String id) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "fields", fields);
             put(map, "id", id);
@@ -160,30 +169,30 @@ public final class RedisContracts {
         }
     }
 
-    public record StreamDeleteRequest(ConnectionConfigDto connection, String key, List<String> ids) {
-        public Map<String, Object> toMap() {
-            Map<String, Object> map = withConnection(connection);
+    public record StreamDeleteRequest(ConnectionConfigDto connection, String key, List<String> ids) implements Request {
+        public RequestPayload toPayload() {
+            RequestPayload map = withConnection(connection);
             put(map, "key", key);
             put(map, "ids", ids);
             return map;
         }
     }
 
-    private static Map<String, Object> withConnection(ConnectionConfigDto connection) {
-        Map<String, Object> map = new LinkedHashMap<>();
+    private static RequestPayload withConnection(ConnectionConfigDto connection) {
+        RequestPayload map = new RequestPayload();
         put(map, "connection", CompatibilityRequestMaps.connectionConfig(connection));
         return map;
     }
 
-    private static Map<String, Object> mapOf(Object... entries) {
-        Map<String, Object> map = new LinkedHashMap<>();
+    private static RequestPayload mapOf(Object... entries) {
+        RequestPayload map = new RequestPayload();
         for (int i = 0; i + 1 < entries.length; i += 2) {
             put(map, String.valueOf(entries[i]), entries[i + 1]);
         }
         return map;
     }
 
-    private static void put(Map<String, Object> map, String key, Object value) {
+    private static void put(RequestPayload map, String key, Object value) {
         if (value != null) {
             map.put(key, value);
         }

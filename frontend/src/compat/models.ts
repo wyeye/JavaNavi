@@ -1,22 +1,32 @@
 // JavaNavi compatibility DTOs mirrored from the generated Wails model contract.
 // Source snapshot: generated models.ts @ a07eea7815d845545452afce86afdfa6f77d16ff
+
+
+type CompatModelSource = Record<string, unknown> | string;
+type CompatToolCallFunction = { name?: string; arguments?: string };
+type CompatToolParameters = Record<string, unknown>;
+type CompatDataRow = Record<string, unknown>;
+
+function parseModelSource(source: CompatModelSource = {}): Record<string, never> {
+    return typeof source === 'string' ? JSON.parse(source) as Record<string, never> : source as Record<string, never>;
+}
 export namespace ai {
 	
 	export class ToolCall {
 	    id: string;
 	    type: string;
 	    // Go type: struct { Name string "json:\"name\""; Arguments string "json:\"arguments\"" }
-	    function: any;
+	    function: CompatToolCallFunction;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ToolCall(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.type = source["type"];
-	        this.function = this.convertValues(source["function"], Object);
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.id = sourceRecord["id"];
+	        this.type = sourceRecord["type"];
+	        this.function = this.convertValues(sourceRecord["function"], Object);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -44,17 +54,17 @@ export namespace ai {
 	    tool_call_id?: string;
 	    tool_calls?: ToolCall[];
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new Message(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.role = source["role"];
-	        this.content = source["content"];
-	        this.images = source["images"];
-	        this.tool_call_id = source["tool_call_id"];
-	        this.tool_calls = this.convertValues(source["tool_calls"], ToolCall);
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.role = sourceRecord["role"];
+	        this.content = sourceRecord["content"];
+	        this.images = sourceRecord["images"];
+	        this.tool_call_id = sourceRecord["tool_call_id"];
+	        this.tool_calls = this.convertValues(sourceRecord["tool_calls"], ToolCall);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -93,28 +103,28 @@ export namespace ai {
 	    maxTokens: number;
 	    temperature: number;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ProviderConfig(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.type = source["type"];
-	        this.name = source["name"];
-	        this.apiKey = source["apiKey"];
-	        this.secretRef = source["secretRef"];
-	        this.hasSecret = source["hasSecret"];
-	        this.baseUrl = source["baseUrl"];
-	        this.model = source["model"];
-	        this.models = source["models"];
-	        this.apiFormat = source["apiFormat"];
-	        this.headers = source["headers"];
-	        this.transportEnabled = source["transportEnabled"];
-	        this.transportCapability = source["transportCapability"];
-	        this.modelDiscoverySupported = source["modelDiscoverySupported"];
-	        this.maxTokens = source["maxTokens"];
-	        this.temperature = source["temperature"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.id = sourceRecord["id"];
+	        this.type = sourceRecord["type"];
+	        this.name = sourceRecord["name"];
+	        this.apiKey = sourceRecord["apiKey"];
+	        this.secretRef = sourceRecord["secretRef"];
+	        this.hasSecret = sourceRecord["hasSecret"];
+	        this.baseUrl = sourceRecord["baseUrl"];
+	        this.model = sourceRecord["model"];
+	        this.models = sourceRecord["models"];
+	        this.apiFormat = sourceRecord["apiFormat"];
+	        this.headers = sourceRecord["headers"];
+	        this.transportEnabled = sourceRecord["transportEnabled"];
+	        this.transportCapability = sourceRecord["transportCapability"];
+	        this.modelDiscoverySupported = sourceRecord["modelDiscoverySupported"];
+	        this.maxTokens = sourceRecord["maxTokens"];
+	        this.temperature = sourceRecord["temperature"];
 	    }
 	}
 	export class SafetyResult {
@@ -123,46 +133,46 @@ export namespace ai {
 	    requiresConfirm: boolean;
 	    warningMessage?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new SafetyResult(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.allowed = source["allowed"];
-	        this.operationType = source["operationType"];
-	        this.requiresConfirm = source["requiresConfirm"];
-	        this.warningMessage = source["warningMessage"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.allowed = sourceRecord["allowed"];
+	        this.operationType = sourceRecord["operationType"];
+	        this.requiresConfirm = sourceRecord["requiresConfirm"];
+	        this.warningMessage = sourceRecord["warningMessage"];
 	    }
 	}
 	export class ToolFunction {
 	    name: string;
 	    description: string;
-	    parameters: any;
+	    parameters: CompatToolParameters;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ToolFunction(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.name = source["name"];
-	        this.description = source["description"];
-	        this.parameters = source["parameters"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.name = sourceRecord["name"];
+	        this.description = sourceRecord["description"];
+	        this.parameters = sourceRecord["parameters"];
 	    }
 	}
 	export class Tool {
 	    type: string;
 	    function: ToolFunction;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new Tool(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.type = source["type"];
-	        this.function = this.convertValues(source["function"], ToolFunction);
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.type = sourceRecord["type"];
+	        this.function = this.convertValues(sourceRecord["function"], ToolFunction);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -193,14 +203,14 @@ export namespace app {
 	    includeSecrets: boolean;
 	    filePassword?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ConnectionExportOptions(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.includeSecrets = source["includeSecrets"];
-	        this.filePassword = source["filePassword"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.includeSecrets = sourceRecord["includeSecrets"];
+	        this.filePassword = sourceRecord["filePassword"];
 	    }
 	}
 
@@ -209,35 +219,35 @@ export namespace app {
 export namespace connection {
 	
 	export class UpdateRow {
-	    keys: Record<string, any>;
-	    values: Record<string, any>;
+	    keys: CompatDataRow;
+	    values: CompatDataRow;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new UpdateRow(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.keys = source["keys"];
-	        this.values = source["values"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.keys = sourceRecord["keys"];
+	        this.values = sourceRecord["values"];
 	    }
 	}
 	export class ChangeSet {
-	    inserts: any[];
+	    inserts: CompatDataRow[];
 	    updates: UpdateRow[];
-	    deletes: any[];
+	    deletes: CompatDataRow[];
 	    locatorStrategy?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ChangeSet(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.inserts = source["inserts"];
-	        this.updates = this.convertValues(source["updates"], UpdateRow);
-	        this.deletes = source["deletes"];
-	        this.locatorStrategy = source["locatorStrategy"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.inserts = sourceRecord["inserts"];
+	        this.updates = this.convertValues(sourceRecord["updates"], UpdateRow);
+	        this.deletes = sourceRecord["deletes"];
+	        this.locatorStrategy = sourceRecord["locatorStrategy"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -264,16 +274,16 @@ export namespace connection {
 	    user?: string;
 	    password?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new HTTPTunnelConfig(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.host = source["host"];
-	        this.port = source["port"];
-	        this.user = source["user"];
-	        this.password = source["password"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.host = sourceRecord["host"];
+	        this.port = sourceRecord["port"];
+	        this.user = sourceRecord["user"];
+	        this.password = sourceRecord["password"];
 	    }
 	}
 	export class ProxyConfig {
@@ -283,17 +293,17 @@ export namespace connection {
 	    user?: string;
 	    password?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ProxyConfig(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.type = source["type"];
-	        this.host = source["host"];
-	        this.port = source["port"];
-	        this.user = source["user"];
-	        this.password = source["password"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.type = sourceRecord["type"];
+	        this.host = sourceRecord["host"];
+	        this.port = sourceRecord["port"];
+	        this.user = sourceRecord["user"];
+	        this.password = sourceRecord["password"];
 	    }
 	}
 	export class SSHConfig {
@@ -303,17 +313,17 @@ export namespace connection {
 	    password: string;
 	    keyPath: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new SSHConfig(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.host = source["host"];
-	        this.port = source["port"];
-	        this.user = source["user"];
-	        this.password = source["password"];
-	        this.keyPath = source["keyPath"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.host = sourceRecord["host"];
+	        this.port = sourceRecord["port"];
+	        this.user = sourceRecord["user"];
+	        this.password = sourceRecord["password"];
+	        this.keyPath = sourceRecord["keyPath"];
 	    }
 	}
 	export class ConnectionConfig {
@@ -353,47 +363,47 @@ export namespace connection {
 	    mongoReplicaUser?: string;
 	    mongoReplicaPassword?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ConnectionConfig(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.type = source["type"];
-	        this.host = source["host"];
-	        this.port = source["port"];
-	        this.user = source["user"];
-	        this.password = source["password"];
-	        this.savePassword = source["savePassword"];
-	        this.database = source["database"];
-	        this.useSSL = source["useSSL"];
-	        this.sslMode = source["sslMode"];
-	        this.sslCertPath = source["sslCertPath"];
-	        this.sslKeyPath = source["sslKeyPath"];
-	        this.useSSH = source["useSSH"];
-	        this.ssh = this.convertValues(source["ssh"], SSHConfig);
-	        this.useProxy = source["useProxy"];
-	        this.proxy = this.convertValues(source["proxy"], ProxyConfig);
-	        this.useHttpTunnel = source["useHttpTunnel"];
-	        this.httpTunnel = this.convertValues(source["httpTunnel"], HTTPTunnelConfig);
-	        this.driver = source["driver"];
-	        this.dsn = source["dsn"];
-	        this.options = source["options"];
-	        this.timeout = source["timeout"];
-	        this.redisDB = source["redisDB"];
-	        this.uri = source["uri"];
-	        this.hosts = source["hosts"];
-	        this.topology = source["topology"];
-	        this.mysqlReplicaUser = source["mysqlReplicaUser"];
-	        this.mysqlReplicaPassword = source["mysqlReplicaPassword"];
-	        this.replicaSet = source["replicaSet"];
-	        this.authSource = source["authSource"];
-	        this.readPreference = source["readPreference"];
-	        this.mongoSrv = source["mongoSrv"];
-	        this.mongoAuthMechanism = source["mongoAuthMechanism"];
-	        this.mongoReplicaUser = source["mongoReplicaUser"];
-	        this.mongoReplicaPassword = source["mongoReplicaPassword"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.id = sourceRecord["id"];
+	        this.type = sourceRecord["type"];
+	        this.host = sourceRecord["host"];
+	        this.port = sourceRecord["port"];
+	        this.user = sourceRecord["user"];
+	        this.password = sourceRecord["password"];
+	        this.savePassword = sourceRecord["savePassword"];
+	        this.database = sourceRecord["database"];
+	        this.useSSL = sourceRecord["useSSL"];
+	        this.sslMode = sourceRecord["sslMode"];
+	        this.sslCertPath = sourceRecord["sslCertPath"];
+	        this.sslKeyPath = sourceRecord["sslKeyPath"];
+	        this.useSSH = sourceRecord["useSSH"];
+	        this.ssh = this.convertValues(sourceRecord["ssh"], SSHConfig);
+	        this.useProxy = sourceRecord["useProxy"];
+	        this.proxy = this.convertValues(sourceRecord["proxy"], ProxyConfig);
+	        this.useHttpTunnel = sourceRecord["useHttpTunnel"];
+	        this.httpTunnel = this.convertValues(sourceRecord["httpTunnel"], HTTPTunnelConfig);
+	        this.driver = sourceRecord["driver"];
+	        this.dsn = sourceRecord["dsn"];
+	        this.options = sourceRecord["options"];
+	        this.timeout = sourceRecord["timeout"];
+	        this.redisDB = sourceRecord["redisDB"];
+	        this.uri = sourceRecord["uri"];
+	        this.hosts = sourceRecord["hosts"];
+	        this.topology = sourceRecord["topology"];
+	        this.mysqlReplicaUser = sourceRecord["mysqlReplicaUser"];
+	        this.mysqlReplicaPassword = sourceRecord["mysqlReplicaPassword"];
+	        this.replicaSet = sourceRecord["replicaSet"];
+	        this.authSource = sourceRecord["authSource"];
+	        this.readPreference = sourceRecord["readPreference"];
+	        this.mongoSrv = sourceRecord["mongoSrv"];
+	        this.mongoAuthMechanism = sourceRecord["mongoAuthMechanism"];
+	        this.mongoReplicaUser = sourceRecord["mongoReplicaUser"];
+	        this.mongoReplicaPassword = sourceRecord["mongoReplicaPassword"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -424,20 +434,20 @@ export namespace connection {
 	    hasPassword?: boolean;
 	    secretRef?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new GlobalProxyView(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.enabled = source["enabled"];
-	        this.type = source["type"];
-	        this.host = source["host"];
-	        this.port = source["port"];
-	        this.user = source["user"];
-	        this.password = source["password"];
-	        this.hasPassword = source["hasPassword"];
-	        this.secretRef = source["secretRef"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.enabled = sourceRecord["enabled"];
+	        this.type = sourceRecord["type"];
+	        this.host = sourceRecord["host"];
+	        this.port = sourceRecord["port"];
+	        this.user = sourceRecord["user"];
+	        this.password = sourceRecord["password"];
+	        this.hasPassword = sourceRecord["hasPassword"];
+	        this.secretRef = sourceRecord["secretRef"];
 	    }
 	}
 	
@@ -460,23 +470,23 @@ export namespace connection {
 	    revealed?: boolean;
 	    revealSelected?: boolean;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new QueryResult(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.success = source["success"];
-	        this.message = source["message"];
-	        this.data = source["data"];
-	        this.fields = source["fields"];
-	        this.queryId = source["queryId"];
-	        this.revealMessage = source["revealMessage"];
-	        this.revealTargetPath = source["revealTargetPath"];
-	        this.revealDirectory = source["revealDirectory"];
-	        this.revealMethod = source["revealMethod"];
-	        this.revealed = source["revealed"];
-	        this.revealSelected = source["revealSelected"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.success = sourceRecord["success"];
+	        this.message = sourceRecord["message"];
+	        this.data = sourceRecord["data"];
+	        this.fields = sourceRecord["fields"];
+	        this.queryId = sourceRecord["queryId"];
+	        this.revealMessage = sourceRecord["revealMessage"];
+	        this.revealTargetPath = sourceRecord["revealTargetPath"];
+	        this.revealDirectory = sourceRecord["revealDirectory"];
+	        this.revealMethod = sourceRecord["revealMethod"];
+	        this.revealed = sourceRecord["revealed"];
+	        this.revealSelected = sourceRecord["revealSelected"];
 	    }
 	}
 	
@@ -488,18 +498,18 @@ export namespace connection {
 	    user?: string;
 	    password?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new SaveGlobalProxyInput(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.enabled = source["enabled"];
-	        this.type = source["type"];
-	        this.host = source["host"];
-	        this.port = source["port"];
-	        this.user = source["user"];
-	        this.password = source["password"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.enabled = sourceRecord["enabled"];
+	        this.type = sourceRecord["type"];
+	        this.host = sourceRecord["host"];
+	        this.port = sourceRecord["port"];
+	        this.user = sourceRecord["user"];
+	        this.password = sourceRecord["password"];
 	    }
 	}
 	export class SavedConnectionInput {
@@ -519,27 +529,27 @@ export namespace connection {
 	    clearOpaqueURI?: boolean;
 	    clearOpaqueDSN?: boolean;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new SavedConnectionInput(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.config = this.convertValues(source["config"], ConnectionConfig);
-	        this.includeDatabases = source["includeDatabases"];
-	        this.includeRedisDatabases = source["includeRedisDatabases"];
-	        this.iconType = source["iconType"];
-	        this.iconColor = source["iconColor"];
-	        this.clearPrimaryPassword = source["clearPrimaryPassword"];
-	        this.clearSSHPassword = source["clearSSHPassword"];
-	        this.clearProxyPassword = source["clearProxyPassword"];
-	        this.clearHttpTunnelPassword = source["clearHttpTunnelPassword"];
-	        this.clearMySQLReplicaPassword = source["clearMySQLReplicaPassword"];
-	        this.clearMongoReplicaPassword = source["clearMongoReplicaPassword"];
-	        this.clearOpaqueURI = source["clearOpaqueURI"];
-	        this.clearOpaqueDSN = source["clearOpaqueDSN"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.id = sourceRecord["id"];
+	        this.name = sourceRecord["name"];
+	        this.config = this.convertValues(sourceRecord["config"], ConnectionConfig);
+	        this.includeDatabases = sourceRecord["includeDatabases"];
+	        this.includeRedisDatabases = sourceRecord["includeRedisDatabases"];
+	        this.iconType = sourceRecord["iconType"];
+	        this.iconColor = sourceRecord["iconColor"];
+	        this.clearPrimaryPassword = sourceRecord["clearPrimaryPassword"];
+	        this.clearSSHPassword = sourceRecord["clearSSHPassword"];
+	        this.clearProxyPassword = sourceRecord["clearProxyPassword"];
+	        this.clearHttpTunnelPassword = sourceRecord["clearHttpTunnelPassword"];
+	        this.clearMySQLReplicaPassword = sourceRecord["clearMySQLReplicaPassword"];
+	        this.clearMongoReplicaPassword = sourceRecord["clearMongoReplicaPassword"];
+	        this.clearOpaqueURI = sourceRecord["clearOpaqueURI"];
+	        this.clearOpaqueDSN = sourceRecord["clearOpaqueDSN"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -578,28 +588,28 @@ export namespace connection {
 	    hasOpaqueURI?: boolean;
 	    hasOpaqueDSN?: boolean;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new SavedConnectionView(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.name = source["name"];
-	        this.config = this.convertValues(source["config"], ConnectionConfig);
-	        this.includeDatabases = source["includeDatabases"];
-	        this.includeRedisDatabases = source["includeRedisDatabases"];
-	        this.iconType = source["iconType"];
-	        this.iconColor = source["iconColor"];
-	        this.secretRef = source["secretRef"];
-	        this.hasPrimaryPassword = source["hasPrimaryPassword"];
-	        this.hasSSHPassword = source["hasSSHPassword"];
-	        this.hasProxyPassword = source["hasProxyPassword"];
-	        this.hasHttpTunnelPassword = source["hasHttpTunnelPassword"];
-	        this.hasMySQLReplicaPassword = source["hasMySQLReplicaPassword"];
-	        this.hasMongoReplicaPassword = source["hasMongoReplicaPassword"];
-	        this.hasOpaqueURI = source["hasOpaqueURI"];
-	        this.hasOpaqueDSN = source["hasOpaqueDSN"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.id = sourceRecord["id"];
+	        this.name = sourceRecord["name"];
+	        this.config = this.convertValues(sourceRecord["config"], ConnectionConfig);
+	        this.includeDatabases = sourceRecord["includeDatabases"];
+	        this.includeRedisDatabases = sourceRecord["includeRedisDatabases"];
+	        this.iconType = sourceRecord["iconType"];
+	        this.iconColor = sourceRecord["iconColor"];
+	        this.secretRef = sourceRecord["secretRef"];
+	        this.hasPrimaryPassword = sourceRecord["hasPrimaryPassword"];
+	        this.hasSSHPassword = sourceRecord["hasSSHPassword"];
+	        this.hasProxyPassword = sourceRecord["hasProxyPassword"];
+	        this.hasHttpTunnelPassword = sourceRecord["hasHttpTunnelPassword"];
+	        this.hasMySQLReplicaPassword = sourceRecord["hasMySQLReplicaPassword"];
+	        this.hasMongoReplicaPassword = sourceRecord["hasMongoReplicaPassword"];
+	        this.hasOpaqueURI = sourceRecord["hasOpaqueURI"];
+	        this.hasOpaqueDSN = sourceRecord["hasOpaqueDSN"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -630,14 +640,14 @@ export namespace redis {
 	    member: string;
 	    score: number;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new ZSetMember(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.member = source["member"];
-	        this.score = source["score"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.member = sourceRecord["member"];
+	        this.score = sourceRecord["score"];
 	    }
 	}
 
@@ -653,18 +663,18 @@ export namespace sync {
 	    selectedUpdatePks?: string[];
 	    selectedDeletePks?: string[];
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new TableOptions(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.insert = source["insert"];
-	        this.update = source["update"];
-	        this.delete = source["delete"];
-	        this.selectedInsertPks = source["selectedInsertPks"];
-	        this.selectedUpdatePks = source["selectedUpdatePks"];
-	        this.selectedDeletePks = source["selectedDeletePks"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.insert = sourceRecord["insert"];
+	        this.update = sourceRecord["update"];
+	        this.delete = sourceRecord["delete"];
+	        this.selectedInsertPks = sourceRecord["selectedInsertPks"];
+	        this.selectedUpdatePks = sourceRecord["selectedUpdatePks"];
+	        this.selectedDeletePks = sourceRecord["selectedDeletePks"];
 	    }
 	}
 	export class SyncConfig {
@@ -681,24 +691,24 @@ export namespace sync {
 	    mongoCollectionName?: string;
 	    tableOptions?: Record<string, TableOptions>;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new SyncConfig(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.sourceConfig = this.convertValues(source["sourceConfig"], connection.ConnectionConfig);
-	        this.targetConfig = this.convertValues(source["targetConfig"], connection.ConnectionConfig);
-	        this.tables = source["tables"];
-	        this.sourceQuery = source["sourceQuery"];
-	        this.content = source["content"];
-	        this.mode = source["mode"];
-	        this.jobId = source["jobId"];
-	        this.autoAddColumns = source["autoAddColumns"];
-	        this.targetTableStrategy = source["targetTableStrategy"];
-	        this.createIndexes = source["createIndexes"];
-	        this.mongoCollectionName = source["mongoCollectionName"];
-	        this.tableOptions = this.convertValues(source["tableOptions"], TableOptions, true);
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.sourceConfig = this.convertValues(sourceRecord["sourceConfig"], connection.ConnectionConfig);
+	        this.targetConfig = this.convertValues(sourceRecord["targetConfig"], connection.ConnectionConfig);
+	        this.tables = sourceRecord["tables"];
+	        this.sourceQuery = sourceRecord["sourceQuery"];
+	        this.content = sourceRecord["content"];
+	        this.mode = sourceRecord["mode"];
+	        this.jobId = sourceRecord["jobId"];
+	        this.autoAddColumns = sourceRecord["autoAddColumns"];
+	        this.targetTableStrategy = sourceRecord["targetTableStrategy"];
+	        this.createIndexes = sourceRecord["createIndexes"];
+	        this.mongoCollectionName = sourceRecord["mongoCollectionName"];
+	        this.tableOptions = this.convertValues(sourceRecord["tableOptions"], TableOptions, true);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -729,20 +739,20 @@ export namespace sync {
 	    rowsUpdated: number;
 	    rowsDeleted: number;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new SyncResult(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.success = source["success"];
-	        this.cancelled = source["cancelled"];
-	        this.message = source["message"];
-	        this.logs = source["logs"];
-	        this.tablesSynced = source["tablesSynced"];
-	        this.rowsInserted = source["rowsInserted"];
-	        this.rowsUpdated = source["rowsUpdated"];
-	        this.rowsDeleted = source["rowsDeleted"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.success = sourceRecord["success"];
+	        this.cancelled = sourceRecord["cancelled"];
+	        this.message = sourceRecord["message"];
+	        this.logs = sourceRecord["logs"];
+	        this.tablesSynced = sourceRecord["tablesSynced"];
+	        this.rowsInserted = sourceRecord["rowsInserted"];
+	        this.rowsUpdated = sourceRecord["rowsUpdated"];
+	        this.rowsDeleted = sourceRecord["rowsDeleted"];
 	    }
 	}
 
@@ -764,24 +774,24 @@ export namespace schemaSync {
 	    sqlStatements?: string[];
 	    warnings?: string[];
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new DiffItem(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.id = source["id"];
-	        this.tableName = source["tableName"];
-	        this.objectType = source["objectType"];
-	        this.objectName = source["objectName"];
-	        this.changeType = source["changeType"];
-	        this.summary = source["summary"];
-	        this.supported = source["supported"];
-	        this.unsupportedReason = source["unsupportedReason"];
-	        this.requiresDeleteConfirm = source["requiresDeleteConfirm"];
-	        this.sql = source["sql"];
-	        this.sqlStatements = source["sqlStatements"];
-	        this.warnings = source["warnings"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.id = sourceRecord["id"];
+	        this.tableName = sourceRecord["tableName"];
+	        this.objectType = sourceRecord["objectType"];
+	        this.objectName = sourceRecord["objectName"];
+	        this.changeType = sourceRecord["changeType"];
+	        this.summary = sourceRecord["summary"];
+	        this.supported = sourceRecord["supported"];
+	        this.unsupportedReason = sourceRecord["unsupportedReason"];
+	        this.requiresDeleteConfirm = sourceRecord["requiresDeleteConfirm"];
+	        this.sql = sourceRecord["sql"];
+	        this.sqlStatements = sourceRecord["sqlStatements"];
+	        this.warnings = sourceRecord["warnings"];
 	    }
 	}
 	export class TableDiff {
@@ -796,22 +806,22 @@ export namespace schemaSync {
 	    selectedItemIds?: string[];
 	    deleteItemIds?: string[];
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new TableDiff(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.table = source["table"];
-	        this.sourceExists = source["sourceExists"];
-	        this.targetTableExists = source["targetTableExists"];
-	        this.canSync = source["canSync"];
-	        this.schemaDiffCount = source["schemaDiffCount"];
-	        this.message = source["message"];
-	        this.warnings = source["warnings"];
-	        this.items = this.convertValues(source["items"], DiffItem);
-	        this.selectedItemIds = source["selectedItemIds"];
-	        this.deleteItemIds = source["deleteItemIds"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.table = sourceRecord["table"];
+	        this.sourceExists = sourceRecord["sourceExists"];
+	        this.targetTableExists = sourceRecord["targetTableExists"];
+	        this.canSync = sourceRecord["canSync"];
+	        this.schemaDiffCount = sourceRecord["schemaDiffCount"];
+	        this.message = sourceRecord["message"];
+	        this.warnings = sourceRecord["warnings"];
+	        this.items = this.convertValues(sourceRecord["items"], DiffItem);
+	        this.selectedItemIds = sourceRecord["selectedItemIds"];
+	        this.deleteItemIds = sourceRecord["deleteItemIds"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -842,20 +852,20 @@ export namespace schemaSync {
 	    confirmedDeleteItemIds?: string[];
 	    jobId?: string;
 	
-	    static createFrom(source: any = {}) {
+	    static createFrom(source: CompatModelSource = {}) {
 	        return new RunConfig(source);
 	    }
 	
-	    constructor(source: any = {}) {
-	        if ('string' === typeof source) source = JSON.parse(source);
-	        this.sourceConfig = this.convertValues(source["sourceConfig"], connection.ConnectionConfig);
-	        this.targetConfig = this.convertValues(source["targetConfig"], connection.ConnectionConfig);
-	        this.sourceDatabase = source["sourceDatabase"];
-	        this.targetDatabase = source["targetDatabase"];
-	        this.tables = source["tables"];
-	        this.selectedItemIds = source["selectedItemIds"];
-	        this.confirmedDeleteItemIds = source["confirmedDeleteItemIds"];
-	        this.jobId = source["jobId"];
+	    constructor(source: CompatModelSource = {}) {
+	        const sourceRecord = parseModelSource(source);
+	        this.sourceConfig = this.convertValues(sourceRecord["sourceConfig"], connection.ConnectionConfig);
+	        this.targetConfig = this.convertValues(sourceRecord["targetConfig"], connection.ConnectionConfig);
+	        this.sourceDatabase = sourceRecord["sourceDatabase"];
+	        this.targetDatabase = sourceRecord["targetDatabase"];
+	        this.tables = sourceRecord["tables"];
+	        this.selectedItemIds = sourceRecord["selectedItemIds"];
+	        this.confirmedDeleteItemIds = sourceRecord["confirmedDeleteItemIds"];
+	        this.jobId = sourceRecord["jobId"];
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
