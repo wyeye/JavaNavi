@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 export interface SSHConfig {
   host: string;
   port: number;
@@ -167,7 +169,7 @@ export interface DatabaseNode {
   key: string;
   isLeaf?: boolean;
   children?: DatabaseNode[];
-  icon?: any;
+  icon?: ReactNode;
 }
 
 export interface SavedQuery {
@@ -201,7 +203,7 @@ export interface RedisScanResult {
 export interface RedisValue {
   type: "string" | "hash" | "list" | "set" | "zset" | "stream";
   ttl: number;
-  value: any;
+  value: string | string[] | Record<string, string> | ZSetMember[] | StreamEntry[];
   length: number;
 }
 
