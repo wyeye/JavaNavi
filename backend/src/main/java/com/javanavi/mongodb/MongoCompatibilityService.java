@@ -12,6 +12,7 @@ import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.ConnectionTestResultDto;
 import com.javanavi.model.ForeignKeyDefinitionDto;
 import com.javanavi.model.IndexDefinitionDto;
+import com.javanavi.model.MongoContracts;
 import com.javanavi.model.QueryResultDto;
 import com.javanavi.model.ResultSetDataDto;
 import com.javanavi.model.TableSummaryDto;
@@ -616,11 +617,10 @@ public class MongoCompatibilityService {
         return new ApplyChangesResultDto(inserted, updated, deleted, inserted + updated + deleted);
     }
 
-    public Map<String, Object> discoverMembers(Map<String, Object> input) {
-        Map<String, Object> connection = input == null || !(input.get("connection") instanceof Map<?, ?> raw)
-                ? Map.of()
-                : toStringMap(raw);
-        ConnectionConfigDto config = mongoConfigFrom(connection, input);
+    public MongoContracts.DiscoverMembersResponse discoverMembers(MongoContracts.DiscoverMembersRequest input) {
+        Map<String, Object> payload = input == null ? Map.of() : input.toCompatibilityMap();
+        Map<String, Object> connection = payload.get("connection") instanceof Map<?, ?> raw ? toStringMap(raw) : Map.of();
+        ConnectionConfigDto config = mongoConfigFrom(connection, payload);
         MongoConnectionProfile profile = MongoConnectionProfile.from(config);
         HostPort seed = profile.seeds().isEmpty() ? new HostPort("localhost", DEFAULT_PORT) : profile.seeds().get(0);
         String replicaSet = firstText(profile.replicaSet(), option(connection, "mongoReplicaSet"));
@@ -632,17 +632,17 @@ public class MongoCompatibilityService {
         try {
             HelloResult hello = probeHello(config);
             String resolvedReplicaSet = firstText(hello.replicaSet(), replicaSet);
-            List<Map<String, Object>> members = membersFromHello(seed.host(), seed.port(), hello);
-            return orderedMap(
-                    "replicaSet", resolvedReplicaSet,
-                    "members", members,
-                    "dryRun", false,
-                    "driverAvailable", false,
-                    "wireProbe", true,
-                    "authProfile", authProfile(profile),
-                    "tlsProfile", tlsProfile(profile),
-                    "checkedAt", Instant.now().toString(),
-                    "message", "JavaNavi Web MongoDB member discovery completed with a direct Mongo wire-protocol hello probe."
+            List<MongoContracts.MemberInfo> members = membersFromHello(seed.host(), seed.port(), hello);
+            return new MongoContracts.DiscoverMembersResponse(
+                    resolvedReplicaSet,
+                    members,
+                    false,
+                    false,
+                    true,
+                    authProfile(profile),
+                    tlsProfile(profile),
+                    Instant.now().toString(),
+                    "JavaNavi Web MongoDB member discovery completed with a direct Mongo wire-protocol hello probe."
             );
         } catch (IOException | IllegalArgumentException error) {
             return preview(profile, seed, replicaSet, "JavaNavi MongoDB direct wire probe failed: " + SecretRedactor.redact(error.getMessage()));
@@ -1285,7 +1285,7 @@ public class MongoCompatibilityService {
         return "";
     }
 
-    private static List<Map<String, Object>> membersFromHello(String host, int port, HelloResult hello) {
+    private static List<MongoContracts.MemberInfo> membersFromHello(String host, int port, HelloResult hello) {
         LinkedHashSet<String> hosts = new LinkedHashSet<>();
         hosts.addAll(hello.hosts());
         hosts.addAll(hello.passives());
@@ -1297,7 +1297,7 @@ public class MongoCompatibilityService {
         Set<String> passiveSet = Set.copyOf(hello.passives());
         Set<String> arbiterSet = Set.copyOf(hello.arbiters());
         String primary = hello.primary();
-        List<Map<String, Object>> members = new ArrayList<>();
+        List<MongoContracts.MemberInfo> members = new ArrayList<>();
         for (String memberHost : hosts) {
             String role = "SECONDARY";
             int stateCode = 2;
@@ -1311,60 +1311,60 @@ public class MongoCompatibilityService {
                 role = "PASSIVE";
                 stateCode = 6;
             }
-            members.add(orderedMap(
-                    "host", memberHost,
-                    "role", role,
-                    "state", role,
-                    "stateCode", stateCode,
-                    "healthy", true,
-                    "isSelf", memberHost.equals(self),
-                    "source", "javanavi-java-web-wire-hello"
+            members.add(new MongoContracts.MemberInfo(
+                    memberHost,
+                    role,
+                    role,
+                    stateCode,
+                    true,
+                    memberHost.equals(self),
+                    "javanavi-java-web-wire-hello"
             ));
         }
-        members.sort((left, right) -> text(left.get("host")).compareToIgnoreCase(text(right.get("host"))));
+        members.sort(Comparator.comparing(MongoContracts.MemberInfo::host, String.CASE_INSENSITIVE_ORDER));
         return members;
     }
 
-    private static Map<String, Object> preview(MongoConnectionProfile profile, HostPort seed, String replicaSet, String message) {
-        return orderedMap(
-                "replicaSet", replicaSet,
-                "members", List.of(orderedMap(
-                        "host", seed.host() + ":" + seed.port(),
-                        "role", "UNKNOWN",
-                        "state", "UNKNOWN",
-                        "stateCode", 0,
-                        "healthy", false,
-                        "isSelf", false,
-                        "source", "javanavi-java-web-config-preview"
+    private static MongoContracts.DiscoverMembersResponse preview(MongoConnectionProfile profile, HostPort seed, String replicaSet, String message) {
+        return new MongoContracts.DiscoverMembersResponse(
+                replicaSet,
+                List.of(new MongoContracts.MemberInfo(
+                        seed.host() + ":" + seed.port(),
+                        "UNKNOWN",
+                        "UNKNOWN",
+                        0,
+                        false,
+                        false,
+                        "javanavi-java-web-config-preview"
                 )),
-                "dryRun", true,
-                "driverAvailable", false,
-                "wireProbe", false,
-                "authProfile", authProfile(profile),
-                "tlsProfile", tlsProfile(profile),
-                "checkedAt", Instant.now().toString(),
-                "message", message
+                true,
+                false,
+                false,
+                authProfile(profile),
+                tlsProfile(profile),
+                Instant.now().toString(),
+                message
         );
     }
 
-    private static Map<String, Object> authProfile(MongoConnectionProfile profile) {
-        return orderedMap(
-                "usernamePresent", !profile.username().isBlank(),
-                "passwordPresent", !profile.password().isBlank(),
-                "authSource", profile.authSource(),
-                "mechanism", profile.authMechanism().isBlank() ? "SCRAM-SHA-256/SCRAM-SHA-1" : profile.authMechanism(),
-                "replicaUserPresent", !profile.replicaUsername().isBlank(),
-                "authDisabled", "NONE".equalsIgnoreCase(profile.authMechanism())
+    private static MongoContracts.AuthProfile authProfile(MongoConnectionProfile profile) {
+        return new MongoContracts.AuthProfile(
+                !profile.username().isBlank(),
+                !profile.password().isBlank(),
+                profile.authSource(),
+                profile.authMechanism().isBlank() ? "SCRAM-SHA-256/SCRAM-SHA-1" : profile.authMechanism(),
+                !profile.replicaUsername().isBlank(),
+                "NONE".equalsIgnoreCase(profile.authMechanism())
         );
     }
 
-    private static Map<String, Object> tlsProfile(MongoConnectionProfile profile) {
-        return orderedMap(
-                "enabled", profile.tlsEnabled(),
-                "mode", profile.sslMode(),
-                "insecureSkipVerify", profile.tlsInsecure(),
-                "preferredFallbackToPlain", profile.preferredTlsFallback(),
-                "srvDefaultTls", profile.mongoSrv()
+    private static MongoContracts.TlsProfile tlsProfile(MongoConnectionProfile profile) {
+        return new MongoContracts.TlsProfile(
+                profile.tlsEnabled(),
+                profile.sslMode(),
+                profile.tlsInsecure(),
+                profile.preferredTlsFallback(),
+                profile.mongoSrv()
         );
     }
 

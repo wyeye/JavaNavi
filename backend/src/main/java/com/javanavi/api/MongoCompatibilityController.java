@@ -1,13 +1,12 @@
 package com.javanavi.api;
 
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.MongoContracts;
 import com.javanavi.mongodb.MongoCompatibilityService;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/mongodb")
@@ -19,7 +18,7 @@ public class MongoCompatibilityController {
     }
 
     @PostMapping("/discover-members")
-    public ApiEnvelope<Map<String, Object>> discoverMembers(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(mongoCompatibilityService.discoverMembers(input));
+    public ApiEnvelope<MongoContracts.DiscoverMembersResponse> discoverMembers(@RequestBody(required = false) MongoContracts.DiscoverMembersRequest input) {
+        return ApiEnvelope.ok(mongoCompatibilityService.discoverMembers(input == null ? new MongoContracts.DiscoverMembersRequest(null) : input));
     }
 }

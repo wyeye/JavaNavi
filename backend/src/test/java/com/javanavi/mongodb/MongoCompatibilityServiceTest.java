@@ -1,6 +1,7 @@
 package com.javanavi.mongodb;
 
 import com.javanavi.model.ConnectionConfigDto;
+import com.javanavi.model.MongoContracts;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Method;
@@ -131,6 +132,47 @@ class MongoCompatibilityServiceTest {
         assertThat(attempts).hasSize(2);
         assertThat(attempts.stream().map(this::label)).contains("mongo.local:27017 tls=preferred auth=primary/SCRAM-SHA-256");
         assertThat(attempts.stream().map(this::label)).contains("mongo.local:27017 tls=plain-fallback auth=primary/SCRAM-SHA-256");
+    }
+
+    @Test
+    void discoverMembersReturnsTypedPreviewForExampleHost() {
+        MongoCompatibilityService service = new MongoCompatibilityService(new com.javanavi.i18n.I18nMessages());
+
+        MongoContracts.DiscoverMembersResponse response = service.discoverMembers(new MongoContracts.DiscoverMembersRequest(new ConnectionConfigDto(
+                "mongo-preview",
+                "Mongo Preview",
+                "mongodb",
+                null,
+                "mongo.example",
+                27017,
+                "admin",
+                "",
+                "",
+                Map.of(),
+                2,
+                true,
+                "required",
+                null,
+                null,
+                List.of(),
+                "replica",
+                "rs0",
+                "admin",
+                null,
+                false,
+                "",
+                null,
+                null,
+                null,
+                null,
+                null
+        )));
+
+        assertThat(response.dryRun()).isTrue();
+        assertThat(response.replicaSet()).isEqualTo("rs0");
+        assertThat(response.members()).hasSize(1);
+        assertThat(response.members().get(0).host()).isEqualTo("mongo.example:27017");
+        assertThat(response.tlsProfile().enabled()).isTrue();
     }
 
     private static List<?> attemptsFor(ConnectionConfigDto config) throws Exception {
