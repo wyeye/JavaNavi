@@ -28,9 +28,9 @@ export const buildDataGridMetadataCacheKey = ({
     tableName?: string;
 }): string => `${connectionId || ''}|${String(dbName || '').trim()}|${String(tableName || '').trim()}`;
 
-export const normalizeColumnMetaMap = (columns: ColumnDefinition[]): Record<string, ColumnMeta> => {
+export const normalizeColumnMetaMap = (columns: ColumnDefinitionLike[]): Record<string, ColumnMeta> => {
     const nextMap: Record<string, ColumnMeta> = {};
-    columns.forEach((column: ColumnDefinition | ColumnDefinitionLike) => {
+    columns.forEach((column) => {
         const name = String(column?.name ?? column?.Name ?? '').trim();
         if (!name) return;
         const type = String(column?.type ?? column?.Type ?? '').trim();
