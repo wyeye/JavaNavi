@@ -89,7 +89,10 @@ class SavedConnectionServiceTest {
                 false,
                 "SCRAM-SHA-256",
                 "replica",
-                ""
+                "",
+                null,
+                null,
+                null
         ));
 
         assertThat(resolved.password()).isEqualTo("primary-secret");

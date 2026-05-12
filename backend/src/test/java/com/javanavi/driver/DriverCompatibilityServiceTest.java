@@ -210,6 +210,9 @@ class DriverCompatibilityServiceTest {
                 null,
                 null,
                 null,
+                null,
+                null,
+                null,
                 null
         );
 

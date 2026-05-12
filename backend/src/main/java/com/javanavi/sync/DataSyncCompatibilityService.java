@@ -1712,7 +1712,10 @@ public class DataSyncCompatibilityService {
                 booleanValue(map.get("mongoSrv")),
                 text(map.get("mongoAuthMechanism")),
                 text(map.get("mongoReplicaUser")),
-                text(map.get("mongoReplicaPassword"))
+                text(map.get("mongoReplicaPassword")),
+                booleanValue(map.get("useSSH")),
+                booleanValue(map.get("useProxy")),
+                booleanValue(map.get("useHttpTunnel"))
         );
     }
 

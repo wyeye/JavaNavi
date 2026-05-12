@@ -274,7 +274,10 @@ public class SavedConnectionService {
                 config.mongoSrv(),
                 config.mongoAuthMechanism(),
                 config.mongoReplicaUser(),
-                mongoReplicaPassword.orElse(config.mongoReplicaPassword())
+                mongoReplicaPassword.orElse(config.mongoReplicaPassword()),
+                config.useSSH(),
+                config.useProxy(),
+                config.useHttpTunnel()
         );
     }
 

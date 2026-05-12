@@ -29,7 +29,10 @@ public record ConnectionConfigDto(
         @JsonAlias({"mongoSRV"}) Boolean mongoSrv,
         String mongoAuthMechanism,
         String mongoReplicaUser,
-        String mongoReplicaPassword
+        String mongoReplicaPassword,
+        Boolean useSSH,
+        Boolean useProxy,
+        Boolean useHttpTunnel
 ) {
     public ConnectionConfigDto(
             String id,
@@ -60,6 +63,9 @@ public record ConnectionConfigDto(
                 null,
                 null,
                 List.of(),
+                null,
+                null,
+                null,
                 null,
                 null,
                 null,
@@ -114,7 +120,10 @@ public record ConnectionConfigDto(
                 mongoSrv,
                 mongoAuthMechanism,
                 mongoReplicaUser,
-                mongoReplicaPassword
+                mongoReplicaPassword,
+                useSSH,
+                useProxy,
+                useHttpTunnel
         );
     }
 }

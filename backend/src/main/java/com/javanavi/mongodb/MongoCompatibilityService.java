@@ -1411,7 +1411,10 @@ public class MongoCompatibilityService {
                 nullableBoolean(firstNonNull(connection.get("mongoSrv"), connection.get("mongoSRV"))),
                 text(connection.get("mongoAuthMechanism")),
                 text(connection.get("mongoReplicaUser")),
-                text(connection.get("mongoReplicaPassword"))
+                text(connection.get("mongoReplicaPassword")),
+                nullableBoolean(connection.get("useSSH")),
+                nullableBoolean(connection.get("useProxy")),
+                nullableBoolean(connection.get("useHttpTunnel"))
         );
     }
 

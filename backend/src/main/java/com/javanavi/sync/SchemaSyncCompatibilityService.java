@@ -862,7 +862,10 @@ public class SchemaSyncCompatibilityService {
                     booleanValue(source.get("mongoSrv")),
                     text(source.get("mongoAuthMechanism")),
                     text(source.get("mongoReplicaUser")),
-                    text(source.get("mongoReplicaPassword"))
+                    text(source.get("mongoReplicaPassword")),
+                    booleanValue(source.get("useSSH")),
+                    booleanValue(source.get("useProxy")),
+                    booleanValue(source.get("useHttpTunnel"))
             );
         }
 

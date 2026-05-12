@@ -171,40 +171,8 @@ public final class RedisContracts {
 
     private static Map<String, Object> withConnection(ConnectionConfigDto connection) {
         Map<String, Object> map = new LinkedHashMap<>();
-        put(map, "connection", connectionMap(connection));
+        put(map, "connection", CompatibilityRequestMaps.connectionConfig(connection));
         return map;
-    }
-
-    private static Map<String, Object> connectionMap(ConnectionConfigDto connection) {
-        if (connection == null) {
-            return null;
-        }
-        return mapOf(
-                "id", connection.id(),
-                "name", connection.name(),
-                "driverType", connection.driverType(),
-                "driver", connection.driver(),
-                "host", connection.host(),
-                "port", connection.port(),
-                "database", connection.database(),
-                "username", connection.username(),
-                "password", connection.password(),
-                "options", connection.options(),
-                "timeout", connection.timeout(),
-                "useSSL", connection.useSSL(),
-                "sslMode", connection.sslMode(),
-                "uri", connection.uri(),
-                "dsn", connection.dsn(),
-                "hosts", connection.hosts(),
-                "topology", connection.topology(),
-                "replicaSet", connection.replicaSet(),
-                "authSource", connection.authSource(),
-                "readPreference", connection.readPreference(),
-                "mongoSrv", connection.mongoSrv(),
-                "mongoAuthMechanism", connection.mongoAuthMechanism(),
-                "mongoReplicaUser", connection.mongoReplicaUser(),
-                "mongoReplicaPassword", connection.mongoReplicaPassword()
-        );
     }
 
     private static Map<String, Object> mapOf(Object... entries) {

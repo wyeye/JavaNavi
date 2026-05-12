@@ -37,6 +37,9 @@ final class CompatibilityRequestMaps {
         putIfNotNull(map, "mongoAuthMechanism", config.mongoAuthMechanism());
         putIfNotNull(map, "mongoReplicaUser", config.mongoReplicaUser());
         putIfNotNull(map, "mongoReplicaPassword", config.mongoReplicaPassword());
+        putIfNotNull(map, "useSSH", config.useSSH());
+        putIfNotNull(map, "useProxy", config.useProxy());
+        putIfNotNull(map, "useHttpTunnel", config.useHttpTunnel());
         return map;
     }
 

@@ -36,7 +36,7 @@ public final class FileWorkflowContracts {
                     "filePath", filePath,
                     "table", table,
                     "database", database,
-                    "connection", connectionMap(connection),
+                    "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "applyToDatabase", applyToDatabase,
                     "apply", apply,
                     "execute", execute
@@ -61,7 +61,7 @@ public final class FileWorkflowContracts {
     ) {
         public Map<String, Object> toMap() {
             return mapOf(
-                    "connection", connectionMap(connection),
+                    "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "database", database,
                     "query", query,
                     "defaultName", defaultName,
@@ -79,7 +79,7 @@ public final class FileWorkflowContracts {
     ) {
         public Map<String, Object> toMap() {
             return mapOf(
-                    "connection", connectionMap(connection),
+                    "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "database", database,
                     "table", table,
                     "defaultName", defaultName,
@@ -96,44 +96,12 @@ public final class FileWorkflowContracts {
     ) {
         public Map<String, Object> toMap() {
             return mapOf(
-                    "connection", connectionMap(connection),
+                    "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "database", database,
                     "tables", tables,
                     "includeData", includeData
             );
         }
-    }
-
-    private static Map<String, Object> connectionMap(ConnectionConfigDto connection) {
-        if (connection == null) {
-            return null;
-        }
-        return mapOf(
-                "id", connection.id(),
-                "name", connection.name(),
-                "driverType", connection.driverType(),
-                "driver", connection.driver(),
-                "host", connection.host(),
-                "port", connection.port(),
-                "database", connection.database(),
-                "username", connection.username(),
-                "password", connection.password(),
-                "options", connection.options(),
-                "timeout", connection.timeout(),
-                "useSSL", connection.useSSL(),
-                "sslMode", connection.sslMode(),
-                "uri", connection.uri(),
-                "dsn", connection.dsn(),
-                "hosts", connection.hosts(),
-                "topology", connection.topology(),
-                "replicaSet", connection.replicaSet(),
-                "authSource", connection.authSource(),
-                "readPreference", connection.readPreference(),
-                "mongoSrv", connection.mongoSrv(),
-                "mongoAuthMechanism", connection.mongoAuthMechanism(),
-                "mongoReplicaUser", connection.mongoReplicaUser(),
-                "mongoReplicaPassword", connection.mongoReplicaPassword()
-        );
     }
 
     private static Map<String, Object> mapOf(Object... entries) {

@@ -1,6 +1,6 @@
 import { resolveEffectiveSSLMode } from '../utils/sslMode';
 import { connection, sync, app, redis, schemaSync } from './models';
-import type { DataRow, RedisCursor, RedisHashFieldsInput, RedisListPushOptions } from './contracts';
+import type { ApiPayload, DataRow, RedisCursor, RedisHashFieldsInput, RedisListPushOptions, UnknownRecord } from './contracts';
 import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
 
@@ -11,6 +11,61 @@ const API_BASE = '/api/v1';
 type PostJsonOptions = {
   requestSource?: string;
 };
+
+type ConnectionPayload = UnknownRecord & {
+  id: string;
+  name: string;
+  driverType: string;
+};
+
+function recordValue(value: unknown): UnknownRecord {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {};
+}
+
+function fieldValue(source: unknown, key: string): unknown {
+  return recordValue(source)[key];
+}
+
+function payloadErrorMessage(payload: unknown): unknown {
+  const error = recordValue(fieldValue(payload, 'error'));
+  return fieldValue(error, 'message') || fieldValue(payload, 'message');
+}
+
+function assertSuccessPayload(payload: unknown, fallbackMessage: string): void {
+  if (fieldValue(payload, 'success') === false) {
+    throw new Error(localizeBackendMessage(payloadErrorMessage(payload), fallbackMessage));
+  }
+}
+
+function payloadData<T>(payload: unknown): T | undefined {
+  const data = fieldValue(payload, 'data');
+  return data === undefined || data === null ? undefined : data as T;
+}
+
+function payloadArrayData<T>(payload: unknown): T[] {
+  const data = fieldValue(payload, 'data');
+  return Array.isArray(data) ? data as T[] : [];
+}
+
+function stringField(source: unknown, key: string): string | undefined {
+  const value = fieldValue(source, key);
+  return typeof value === 'string' ? value : undefined;
+}
+
+function numberField(source: unknown, key: string): number | undefined {
+  const value = fieldValue(source, key);
+  return typeof value === 'number' ? value : undefined;
+}
+
+function booleanField(source: unknown, key: string): boolean | undefined {
+  const value = fieldValue(source, key);
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function stringArrayField(source: unknown, key: string): string[] | undefined {
+  const value = fieldValue(source, key);
+  return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : undefined;
+}
 
 function requestSourceHeaders(source?: string): Record<string, string> {
   if (!source) return {};
@@ -24,9 +79,9 @@ function currentAppLanguage(): AppLanguage {
   try {
     const payload = localStorage.getItem('lite-db-storage');
     if (!payload) return DEFAULT_LANGUAGE;
-    const parsed = JSON.parse(payload);
-    const state = parsed?.state && typeof parsed.state === 'object' ? parsed.state : parsed;
-    return sanitizeLanguage(state?.language);
+    const parsed = JSON.parse(payload) as unknown;
+    const state = recordValue(fieldValue(parsed, 'state') ?? parsed);
+    return sanitizeLanguage(fieldValue(state, 'language'));
   } catch {
     return DEFAULT_LANGUAGE;
   }
@@ -41,12 +96,12 @@ async function localSessionHeaders(): Promise<Record<string, string>> {
   };
 }
 
-function driverTypeOf(config: any): string {
-  return config?.driverType || config?.type || config?.driver || 'demo';
+function driverTypeOf(config: unknown): string {
+  return firstNonEmptyText(stringField(config, 'driverType'), stringField(config, 'type'), stringField(config, 'driver'), 'demo');
 }
 
-function browserMockConnectionPassword(config: any = {}): string | undefined {
-  const id = config?.id || config?.connectionId;
+function browserMockConnectionPassword(config: unknown = {}): string | undefined {
+  const id = fieldValue(config, 'id') || fieldValue(config, 'connectionId');
   if (!id || typeof window === 'undefined') return undefined;
   const resolver = window.__javanaviBrowserSecrets?.getConnectionPassword;
   if (typeof resolver !== 'function') return undefined;
@@ -64,7 +119,7 @@ function isRememberedMetadataOptionKey(normalizedKey: string): boolean {
   return normalizedKey === 'javanavimetadatacatalog' || normalizedKey === 'javanavimetadataschema';
 }
 
-function runtimeConnectionOptions(options: any): Record<string, string> | undefined {
+function runtimeConnectionOptions(options: unknown): Record<string, string> | undefined {
   if (!options || typeof options !== 'object' || Array.isArray(options)) {
     return undefined;
   }
@@ -76,40 +131,41 @@ function runtimeConnectionOptions(options: any): Record<string, string> | undefi
   return Object.keys(filtered).length > 0 ? filtered : undefined;
 }
 
-function toConnectionPayload(config: any = {}): Record<string, any> {
+function toConnectionPayload(config: unknown = {}): ConnectionPayload {
+  const useSSL = booleanField(config, 'useSSL');
   return {
-    id: config?.id || config?.connectionId || 'demo-h2',
-    name: config?.name || config?.database || config?.host || 'Demo',
+    id: firstNonEmptyText(fieldValue(config, 'id'), fieldValue(config, 'connectionId'), 'demo-h2'),
+    name: firstNonEmptyText(fieldValue(config, 'name'), fieldValue(config, 'database'), fieldValue(config, 'host'), 'Demo'),
     driverType: driverTypeOf(config),
-    driver: config?.driver,
-    host: config?.host,
-    port: config?.port,
-    database: config?.database,
-    username: config?.username || config?.user,
-    password: config?.password || browserMockConnectionPassword(config),
-    options: runtimeConnectionOptions(config?.options),
-    timeout: config?.timeout,
-    redisDB: config?.redisDB,
-    uri: config?.uri,
-    dsn: config?.dsn,
-    hosts: config?.hosts,
-    topology: config?.topology,
-    replicaSet: config?.replicaSet || config?.mongoReplicaSet,
-    authSource: config?.authSource,
-    readPreference: config?.readPreference,
-    mongoSrv: config?.mongoSrv || config?.mongoSRV,
-    mongoAuthMechanism: config?.mongoAuthMechanism,
-    mongoReplicaUser: config?.mongoReplicaUser,
-    mongoReplicaPassword: config?.mongoReplicaPassword,
-    useSSL: config?.useSSL,
-    sslMode: resolveEffectiveSSLMode(config?.sslMode, config?.useSSL === true),
-    useSSH: config?.useSSH,
-    useProxy: config?.useProxy,
-    useHttpTunnel: config?.useHttpTunnel,
+    driver: stringField(config, 'driver'),
+    host: stringField(config, 'host'),
+    port: numberField(config, 'port'),
+    database: stringField(config, 'database'),
+    username: firstNonEmptyText(fieldValue(config, 'username'), fieldValue(config, 'user')) || undefined,
+    password: stringField(config, 'password') || browserMockConnectionPassword(config),
+    options: runtimeConnectionOptions(fieldValue(config, 'options')),
+    timeout: numberField(config, 'timeout'),
+    redisDB: numberField(config, 'redisDB'),
+    uri: stringField(config, 'uri'),
+    dsn: stringField(config, 'dsn'),
+    hosts: stringArrayField(config, 'hosts'),
+    topology: stringField(config, 'topology'),
+    replicaSet: firstNonEmptyText(fieldValue(config, 'replicaSet'), fieldValue(config, 'mongoReplicaSet')) || undefined,
+    authSource: stringField(config, 'authSource'),
+    readPreference: stringField(config, 'readPreference'),
+    mongoSrv: booleanField(config, 'mongoSrv') ?? booleanField(config, 'mongoSRV'),
+    mongoAuthMechanism: stringField(config, 'mongoAuthMechanism'),
+    mongoReplicaUser: stringField(config, 'mongoReplicaUser'),
+    mongoReplicaPassword: stringField(config, 'mongoReplicaPassword'),
+    useSSL,
+    sslMode: resolveEffectiveSSLMode(stringField(config, 'sslMode'), useSSL === true),
+    useSSH: booleanField(config, 'useSSH'),
+    useProxy: booleanField(config, 'useProxy'),
+    useHttpTunnel: booleanField(config, 'useHttpTunnel'),
   };
 }
 
-function tableMetadataPayload(config: any, database: string, table: string): Record<string, any> {
+function tableMetadataPayload(config: unknown, database: string, table: string): UnknownRecord {
   return { connection: toConnectionPayload(config), database, table };
 }
 
@@ -118,57 +174,60 @@ function localizeBackendMessage(message: unknown, fallbackMessage = 'Request fai
   return translateBackendFallback(currentAppLanguage(), raw);
 }
 
-async function postJson(path: string, body: unknown, options: PostJsonOptions = {}): Promise<any> {
+async function postJson<T = unknown>(path: string, body: unknown, options: PostJsonOptions = {}): Promise<ApiPayload<T | null>> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(await localSessionHeaders()), ...requestSourceHeaders(options.requestSource) },
     body: JSON.stringify(body),
   });
-  const payload = await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    return { success: false, message: localizeBackendMessage(payload?.error?.message || response.statusText), data: null };
+    return { success: false, message: localizeBackendMessage(payloadErrorMessage(payload) || response.statusText), data: null };
   }
-  return payload;
+  return payload as ApiPayload<T | null>;
 }
 
-async function postMultipart(path: string, body: FormData): Promise<any> {
+async function postMultipart<T = unknown>(path: string, body: FormData): Promise<ApiPayload<T | null>> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { ...(await localSessionHeaders()) },
     body,
   });
-  const payload = await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    return { success: false, message: localizeBackendMessage(payload?.error?.message || response.statusText), data: null };
+    return { success: false, message: localizeBackendMessage(payloadErrorMessage(payload) || response.statusText), data: null };
   }
-  return payload;
+  return payload as ApiPayload<T | null>;
 }
 
-async function getJson(path: string): Promise<any> {
+async function getJson<T = unknown>(path: string): Promise<ApiPayload<T | null>> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'GET',
     credentials: 'same-origin',
     headers: { ...(await localSessionHeaders()) },
   });
-  const payload = await response.json().catch(() => null);
+  const payload: unknown = await response.json().catch(() => null);
   if (!response.ok) {
-    return { success: false, message: localizeBackendMessage(payload?.error?.message || response.statusText), data: null };
+    return { success: false, message: localizeBackendMessage(payloadErrorMessage(payload) || response.statusText), data: null };
   }
-  return payload;
+  return payload as ApiPayload<T | null>;
 }
 
-function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
-  if (!payload || payload.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message || payload?.message, fallbackMessage));
+function dataOrThrow<T = unknown>(payload: ApiPayload<T | null> | null, fallbackMessage: string): T {
+  const envelope = recordValue(payload);
+  if (!payload || fieldValue(envelope, 'success') === false) {
+    const error = recordValue(fieldValue(envelope, 'error'));
+    throw new Error(localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), fallbackMessage));
   }
-  return (payload.data ?? payload) as T;
+  return (fieldValue(envelope, 'data') ?? payload) as T;
 }
 
-function javaNaviTableName(row: any, driver: string): string {
-  const table = row?.Table || row?.table || row?.tableName || row?.TABLE_NAME || Object.values(row || {})[0];
-  const schema = row?.schemaName || row?.tableSchema || row?.TABLE_SCHEM || row?.schema;
+function javaNaviTableName(row: unknown, driver: string): string {
+  const record = recordValue(row);
+  const table = record.Table || record.table || record.tableName || record.TABLE_NAME || Object.values(record)[0];
+  const schema = record.schemaName || record.tableSchema || record.TABLE_SCHEM || record.schema;
   const tableText = typeof table === 'string' ? table.trim() : String(table || '').trim();
   const schemaText = typeof schema === 'string' ? schema.trim() : String(schema || '').trim();
   if (!tableText) return '';
@@ -186,19 +245,20 @@ function firstNonEmptyText(...values: unknown[]): string {
   return '';
 }
 
-function apiEnvelopeToTableResult(payload: any, config: any): QueryResult {
+function apiEnvelopeToTableResult(payload: unknown, config: unknown): QueryResult {
   const result = apiEnvelopeToQueryResult(payload, 'Tables loaded');
   if (!result.success || !Array.isArray(result.data)) return result;
   const driver = driverTypeOf(config).toLowerCase();
   result.data = result.data
-    .map((row: any) => {
-      const tableName = javaNaviTableName(row, driver);
-      const comment = firstNonEmptyText(row?.comment, row?.tableComment, row?.TABLE_COMMENT, row?.remarks, row?.REMARKS);
+    .map((row: unknown) => {
+      const record = recordValue(row);
+      const tableName = javaNaviTableName(record, driver);
+      const comment = firstNonEmptyText(record.comment, record.tableComment, record.TABLE_COMMENT, record.remarks, record.REMARKS);
       return tableName ? {
         Table: tableName,
-        tableName: row?.tableName || tableName,
-        schemaName: row?.schemaName || '',
-        tableType: row?.tableType || row?.table_type || row?.TABLE_TYPE || '',
+        tableName: record.tableName || tableName,
+        schemaName: record.schemaName || '',
+        tableType: record.tableType || record.table_type || record.TABLE_TYPE || '',
         comment,
         tableComment: comment,
       } : null;
@@ -207,33 +267,38 @@ function apiEnvelopeToTableResult(payload: any, config: any): QueryResult {
   return result;
 }
 
-function apiEnvelopeToQueryResult(payload: any, fallbackMessage = 'OK'): QueryResult {
+function apiEnvelopeToQueryResult(payload: unknown, fallbackMessage = 'OK'): QueryResult {
   const language = currentAppLanguage();
   const localizedFallback = translateBackendFallback(language, fallbackMessage);
+  const envelope = recordValue(payload);
   if (!payload) return { success: false, message: translateBackendFallback(language, 'Empty response'), data: null } as QueryResult;
-  if (payload.success === false) return { success: false, message: localizeBackendMessage(payload.error?.message || payload.message, 'Request failed'), data: payload.data ?? null } as QueryResult;
-  const data = payload.data ?? payload;
-  const fields = Array.isArray(data?.columns) ? data.columns : undefined;
+  if (fieldValue(envelope, 'success') === false) {
+    const error = recordValue(fieldValue(envelope, 'error'));
+    return { success: false, message: localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), 'Request failed'), data: fieldValue(envelope, 'data') ?? null } as QueryResult;
+  }
+  const data = fieldValue(envelope, 'data') ?? payload;
+  const dataRecord = recordValue(data);
+  const fields = Array.isArray(dataRecord.columns) ? dataRecord.columns.map(String) : undefined;
   const revealFields = {
-    revealMessage: data?.revealMessage,
-    revealTargetPath: data?.revealTargetPath,
-    revealDirectory: data?.revealDirectory,
-    revealMethod: data?.revealMethod,
-    revealed: data?.revealed,
-    revealSelected: data?.revealSelected,
+    revealMessage: dataRecord.revealMessage,
+    revealTargetPath: dataRecord.revealTargetPath,
+    revealDirectory: dataRecord.revealDirectory,
+    revealMethod: dataRecord.revealMethod,
+    revealed: dataRecord.revealed,
+    revealSelected: dataRecord.revealSelected,
   };
-  if (Array.isArray(data?.rows) && Array.isArray(data?.columns)) {
-    const affectedRow = data.columns.length === 1 && data.columns[0] === 'affectedRows' && data.rows.length > 0;
+  if (Array.isArray(dataRecord.rows) && Array.isArray(dataRecord.columns)) {
+    const affectedRow = dataRecord.columns.length === 1 && dataRecord.columns[0] === 'affectedRows' && dataRecord.rows.length > 0;
     return {
       success: true,
-      message: payload.message || localizedFallback,
-      data: affectedRow ? data.rows[0] : data.rows,
+      message: String(fieldValue(envelope, 'message') || localizedFallback),
+      data: affectedRow ? dataRecord.rows[0] : dataRecord.rows,
       fields,
-      queryId: data.queryId,
+      queryId: typeof dataRecord.queryId === 'string' ? dataRecord.queryId : undefined,
       ...revealFields,
     } as QueryResult;
   }
-  return { success: true, message: payload.message || localizedFallback, data, fields, queryId: data?.queryId, ...revealFields } as QueryResult;
+  return { success: true, message: String(fieldValue(envelope, 'message') || localizedFallback), data, fields, queryId: typeof dataRecord.queryId === 'string' ? dataRecord.queryId : undefined, ...revealFields } as QueryResult;
 }
 
 export function GenerateQueryID(): Promise<string> {
@@ -314,12 +379,13 @@ export async function DBGetDatabases(arg1: connection.ConnectionConfig): Promise
   const payload = await postJson('/schema/databases', { connection: toConnectionPayload(arg1) });
   const result = apiEnvelopeToQueryResult(payload, 'Databases loaded');
   if (result.success && Array.isArray(result.data)) {
-    result.data = result.data.map((row: any) => {
+    result.data = result.data.map((row: unknown) => {
       if (typeof row === 'string') {
         return { Database: row, database: row };
       }
-      const name = row?.Database || row?.database || row?.name || row?.schemaName;
-      return name ? { ...row, Database: row.Database || name, database: row.database || name } : row;
+      const record = recordValue(row);
+      const name = firstNonEmptyText(record.Database, record.database, record.name, record.schemaName);
+      return name ? { ...record, Database: firstNonEmptyText(record.Database, name), database: firstNonEmptyText(record.database, name) } : row;
     });
   }
   return result;
@@ -395,8 +461,8 @@ export async function DataSyncPreview(arg1:sync.SyncConfig,arg2:string,arg3:numb
   return apiEnvelopeToQueryResult(payload, 'Data sync preview loaded');
 }
 
-export async function DataSyncCancel(jobId: string): Promise<Record<string, any>> {
-  return dataOrThrow<Record<string, any>>(await postJson('/data-sync/cancel', { jobId }), 'Data sync cancel failed.');
+export async function DataSyncCancel(jobId: string): Promise<UnknownRecord> {
+  return dataOrThrow<UnknownRecord>(await postJson('/data-sync/cancel', { jobId }), 'Data sync cancel failed.');
 }
 
 export async function SchemaSyncAnalyze(arg1: schemaSync.RunConfig): Promise<connection.QueryResult> {
@@ -409,26 +475,22 @@ export async function SchemaSyncPreview(arg1: schemaSync.RunConfig, arg2: string
   return apiEnvelopeToQueryResult(payload, 'Schema sync preview loaded');
 }
 
-export async function SchemaSyncRun(arg1: schemaSync.RunConfig): Promise<Record<string, any>> {
-  return dataOrThrow<Record<string, any>>(await postJson('/schema-sync/run', arg1 || {}), 'Schema sync failed.');
+export async function SchemaSyncRun(arg1: schemaSync.RunConfig): Promise<UnknownRecord> {
+  return dataOrThrow<UnknownRecord>(await postJson('/schema-sync/run', arg1 || {}), 'Schema sync failed.');
 }
 
-export async function SchemaSyncCancel(jobId: string): Promise<Record<string, any>> {
-  return dataOrThrow<Record<string, any>>(await postJson('/schema-sync/cancel', { jobId }), 'Schema sync cancel failed.');
+export async function SchemaSyncCancel(jobId: string): Promise<UnknownRecord> {
+  return dataOrThrow<UnknownRecord>(await postJson('/schema-sync/cancel', { jobId }), 'Schema sync cancel failed.');
 }
 
 export async function CloseConnection(arg1:string): Promise<void> {
   const payload = await postJson('/connections/close', { connectionId: arg1 });
-  if (payload?.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to close JavaNavi connection pool.'));
-  }
+  assertSuccessPayload(payload, 'Failed to close JavaNavi connection pool.');
 }
 
 export async function DeleteConnection(arg1:string): Promise<void> {
   const payload = await postJson('/connections/saved/delete', { connectionId: arg1 });
-  if (payload?.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to delete JavaNavi saved connection.'));
-  }
+  assertSuccessPayload(payload, 'Failed to delete JavaNavi saved connection.');
 }
 
 export async function DeleteSavedConnection(arg1:string): Promise<void> {
@@ -485,10 +547,8 @@ export async function DropView(arg1:connection.ConnectionConfig,arg2:string,arg3
 
 export async function DuplicateConnection(arg1:string): Promise<connection.SavedConnectionView> {
   const payload = await postJson('/connections/saved/duplicate', { connectionId: arg1 });
-  if (payload?.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to duplicate JavaNavi connection.'));
-  }
-  return payload.data as connection.SavedConnectionView;
+  assertSuccessPayload(payload, 'Failed to duplicate JavaNavi connection.');
+  return payloadData<connection.SavedConnectionView>(payload) as connection.SavedConnectionView;
 }
 
 export async function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
@@ -578,10 +638,8 @@ export async function GetLanguage(): Promise<connection.QueryResult> {
 
 export async function GetSavedConnections(): Promise<Array<connection.SavedConnectionView>> {
   const payload = await postJson('/connections/saved/list', {});
-  if (payload?.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to load JavaNavi saved connections.'));
-  }
-  return Array.isArray(payload?.data) ? payload.data : [];
+  assertSuccessPayload(payload, 'Failed to load JavaNavi saved connections.');
+  return payloadArrayData<connection.SavedConnectionView>(payload);
 }
 
 export async function ImportConnectionsPayload(arg1:string,arg2:string): Promise<Array<connection.SavedConnectionView>> {
@@ -589,10 +647,8 @@ export async function ImportConnectionsPayload(arg1:string,arg2:string): Promise
     raw: arg1 || '',
     password: arg2 || '',
   });
-  if (payload?.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to import JavaNavi saved connections.'));
-  }
-  return Array.isArray(payload?.data) ? payload.data : [];
+  assertSuccessPayload(payload, 'Failed to import JavaNavi saved connections.');
+  return payloadArrayData<connection.SavedConnectionView>(payload);
 }
 
 export async function UploadImportFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:File): Promise<connection.QueryResult> {
@@ -627,9 +683,7 @@ export async function ListSQLDirectory(arg1:string): Promise<connection.QueryRes
 
 export async function LogWindowDiagnostic(arg1: string, arg2: string): Promise<void> {
   const payload = await postJson('/app/diagnostics/window', { stage: arg1, payload: arg2 });
-  if (payload?.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to log JavaNavi window diagnostic.'));
-  }
+  assertSuccessPayload(payload, 'Failed to log JavaNavi window diagnostic.');
 }
 
 export async function MongoDiscoverMembers(arg1:connection.ConnectionConfig): Promise<connection.QueryResult> {
@@ -860,10 +914,8 @@ export async function ResolveDriverRepositoryURL(arg1:string): Promise<connectio
 
 export async function SaveConnection(arg1:connection.SavedConnectionInput): Promise<connection.SavedConnectionView> {
   const payload = await postJson('/connections/saved/save', arg1);
-  if (payload?.success === false) {
-    throw new Error(localizeBackendMessage(payload?.error?.message, 'Failed to save JavaNavi connection.'));
-  }
-  return payload.data as connection.SavedConnectionView;
+  assertSuccessPayload(payload, 'Failed to save JavaNavi connection.');
+  return payloadData<connection.SavedConnectionView>(payload) as connection.SavedConnectionView;
 }
 
 export async function SaveGlobalProxy(arg1:connection.SaveGlobalProxyInput): Promise<connection.GlobalProxyView> {
