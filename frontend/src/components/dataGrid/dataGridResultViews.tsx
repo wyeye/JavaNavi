@@ -2,6 +2,8 @@ import React from 'react';
 import { Button } from 'antd';
 import Editor from '@monaco-editor/react';
 
+export type DataGridTextRow = Record<string, unknown>;
+
 export type DataGridJsonViewProps = {
     darkMode: boolean;
     rowCount: number;
@@ -14,10 +16,10 @@ export type DataGridTextViewProps = {
     darkMode: boolean;
     canModifyData: boolean;
     displayColumnNames: string[];
-    textViewRows: Record<string, any>[];
+    textViewRows: DataGridTextRow[];
     textRecordIndex: number;
-    currentTextRow: Record<string, any> | null;
-    formatTextViewValue: (value: any) => string;
+    currentTextRow: DataGridTextRow | null;
+    formatTextViewValue: (value: unknown) => string;
     onTextRecordIndexChange: React.Dispatch<React.SetStateAction<number>>;
     onEditCurrentRecord: () => void;
 };
@@ -80,7 +82,7 @@ export const DataGridTextView: React.FC<DataGridTextViewProps> = (props) => (
                         {col} :
                     </div>
                     <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', color: props.darkMode ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.88)' }}>
-                        {props.formatTextViewValue((props.currentTextRow as any)[col])}
+                        {props.formatTextViewValue(props.currentTextRow?.[col])}
                     </div>
                 </div>
             )) : (
