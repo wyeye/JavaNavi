@@ -1991,6 +1991,8 @@ const DRIVER_MANAGER_COMPATIBILITY_FALLBACKS: Record<string, string> = {
   '已安装（移除后可更换）': 'Installed (can be replaced after removal)',
   '选择驱动版本': 'Select driver version',
   '点击展开加载版本': 'Click to expand and load versions',
+  'Maven metadata 不可用，仅显示推荐版本': 'Maven metadata is unavailable; only the recommended version is shown',
+  'Maven metadata 不可用，仅显示推荐版本：': 'Maven metadata is unavailable; only the recommended version is shown: ',
   '当前启用：': 'Currently active:',
   '由': 'Managed by',
   '管理': 'management',
@@ -2093,6 +2095,7 @@ export const translateCompatibilityFallback = (
   if (normalized.endsWith(' 定义可用；连接测试需在新建连接中执行')) return `${normalized.slice(0, -16)} definition is available; run the connection test from the new-connection flow.`;
   if (normalized.endsWith(' 需要修复')) return `${normalized.slice(0, -5)} needs repair`;
   if (normalized.startsWith('驱动网络检测失败：')) return `Driver network check failed: ${normalized.slice('驱动网络检测失败：'.length)}`;
+  if (normalized.startsWith('Maven metadata 不可用，仅显示推荐版本：')) return `Maven metadata is unavailable; only the recommended version is shown: ${normalized.slice('Maven metadata 不可用，仅显示推荐版本：'.length)}`;
   if (normalized.endsWith(' 版本列表加载失败')) return `${normalized.slice(0, -8)} version list failed to load`;
   if (normalized.startsWith('加载 ') && normalized.includes(' 版本列表失败：')) {
     const [name, reason] = normalized.slice(3).split(' 版本列表失败：');

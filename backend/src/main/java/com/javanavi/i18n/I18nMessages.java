@@ -103,6 +103,8 @@ public class I18nMessages {
         put("drivers.mavenSourcePrefix", "Maven source: ", "Maven 源：");
         put("drivers.recommendedSuffix", " (recommended)", "（推荐）");
         put("drivers.uploadVersionFallback", "upload-1.0", "上传-1.0");
+        put("drivers.emptyVersionMetadata", "Maven metadata did not contain usable versions.", "Maven metadata 未包含可用版本");
+        put("drivers.versionMetadataUnavailable", "Only the recommended version is shown because Maven metadata is unavailable: {reason}", "Maven metadata 不可用，仅显示推荐版本：{reason}");
         put("drivers.openDirDisabledPrefix", "Automatic directory opening is disabled in this environment. Copy the path manually: ", "自动打开目录已被当前环境禁用，请手动复制路径：");
         put("drivers.openedDirPrefix", "Opened driver directory: ", "已打开驱动目录：");
         put("drivers.openDirInterruptedPrefix", "Opening the driver directory was interrupted. Copy the path manually: ", "打开驱动目录被中断，请手动复制路径：");
