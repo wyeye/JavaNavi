@@ -67,6 +67,14 @@ const SortableTabLabel: React.FC<SortableTabLabelProps> = ({
   );
 };
 
+
+type InsertSqlEventDetail = {
+  sql?: string;
+  runImmediately?: boolean;
+  connectionId?: string;
+  dbName?: string;
+};
+
 type DraggableTabNodeProps = {
   node: React.ReactElement;
 };
@@ -148,7 +156,7 @@ const TabManager: React.FC = () => {
   };
 
   React.useEffect(() => {
-    const handleGlobalInsertSql = (e: any) => {
+    const handleGlobalInsertSql = (e: CustomEvent<InsertSqlEventDetail>) => {
       const { sql, runImmediately, connectionId: eventConnId, dbName: eventDbName } = e.detail;
       if (!sql) return;
 
@@ -196,8 +204,8 @@ const TabManager: React.FC = () => {
         setActiveTab(newTabId);
       }
     };
-    window.addEventListener('javanavi:insert-sql', handleGlobalInsertSql);
-    return () => window.removeEventListener('javanavi:insert-sql', handleGlobalInsertSql);
+    window.addEventListener('javanavi:insert-sql', handleGlobalInsertSql as EventListener);
+    return () => window.removeEventListener('javanavi:insert-sql', handleGlobalInsertSql as EventListener);
   }, [tabs, activeTabId, addTab, setActiveTab, connections, t]);
 
   const tabIds = useMemo(() => tabs.map((tab) => tab.id), [tabs]);
