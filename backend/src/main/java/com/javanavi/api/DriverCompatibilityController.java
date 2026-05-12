@@ -63,27 +63,27 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/package-url/resolve")
-    public ApiEnvelope<Map<String, Object>> resolvePackageDownloadURL(@RequestBody(required = false) DriverContracts.DriverRepositoryRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.resolvePackageDownloadURL(
+    public ApiEnvelope<DriverContracts.DriverPackageUrlResponse> resolvePackageDownloadURL(@RequestBody(required = false) DriverContracts.DriverRepositoryRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverPackageUrlResponse.from(driverCompatibilityService.resolvePackageDownloadURL(
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.url()
-        ));
+        )));
     }
 
     @PostMapping("/versions")
-    public ApiEnvelope<Map<String, Object>> versions(@RequestBody(required = false) DriverContracts.DriverRepositoryRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.versionList(
+    public ApiEnvelope<DriverContracts.DriverVersionsResponse> versions(@RequestBody(required = false) DriverContracts.DriverRepositoryRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverVersionsResponse.from(driverCompatibilityService.versionList(
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.url()
-        ));
+        )));
     }
 
     @PostMapping("/package-size")
-    public ApiEnvelope<Map<String, Object>> packageSize(@RequestBody(required = false) DriverContracts.VersionRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.packageSize(
+    public ApiEnvelope<DriverContracts.DriverPackageSizeResponse> packageSize(@RequestBody(required = false) DriverContracts.VersionRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverPackageSizeResponse.from(driverCompatibilityService.packageSize(
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.version()
-        ));
+        )));
     }
 
     @PostMapping("/status")

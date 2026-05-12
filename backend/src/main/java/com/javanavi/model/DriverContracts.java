@@ -112,6 +112,108 @@ public final class DriverContracts {
         }
     }
 
+
+    public record DriverPackageUrlResponse(
+            String url,
+            String downloadUrl,
+            String driverType,
+            String driverName,
+            String version,
+            String engine,
+            String repositoryUrl,
+            String javaStatus,
+            Integer artifactCount,
+            boolean dryRun
+    ) {
+        public static DriverPackageUrlResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new DriverPackageUrlResponse(
+                    text(source.get("url")),
+                    text(source.get("downloadUrl")),
+                    text(source.get("driverType")),
+                    text(source.get("driverName")),
+                    text(source.get("version")),
+                    text(source.get("engine")),
+                    text(source.get("repositoryUrl")),
+                    text(source.get("javaStatus")),
+                    integerValue(source.get("artifactCount")),
+                    booleanValue(source.get("dryRun"))
+            );
+        }
+    }
+
+    public record DriverVersionOptionResponse(
+            String version,
+            String downloadUrl,
+            long packageSizeBytes,
+            String packageSizeText,
+            boolean recommended,
+            String source,
+            String displayLabel
+    ) {
+        public static DriverVersionOptionResponse from(Object value) {
+            Map<String, Object> source = mapValue(value);
+            return new DriverVersionOptionResponse(
+                    text(source.get("version")),
+                    text(source.get("downloadUrl")),
+                    longValue(source.get("packageSizeBytes")) == null ? 0L : longValue(source.get("packageSizeBytes")),
+                    text(source.get("packageSizeText")),
+                    booleanValue(source.get("recommended")),
+                    text(source.get("source")),
+                    text(source.get("displayLabel"))
+            );
+        }
+    }
+
+    public record DriverVersionsResponse(
+            String driverType,
+            String driverName,
+            String pinnedVersion,
+            String repositoryUrl,
+            List<DriverVersionOptionResponse> versions,
+            String javaStatus,
+            boolean dryRun
+    ) {
+        public static DriverVersionsResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new DriverVersionsResponse(
+                    text(source.get("driverType")),
+                    text(source.get("driverName")),
+                    text(source.get("pinnedVersion")),
+                    text(source.get("repositoryUrl")),
+                    listValue(source.get("versions")).stream().map(DriverVersionOptionResponse::from).toList(),
+                    text(source.get("javaStatus")),
+                    booleanValue(source.get("dryRun"))
+            );
+        }
+    }
+
+    public record DriverPackageSizeResponse(
+            String driverType,
+            String driverName,
+            String version,
+            long packageSizeBytes,
+            String packageSizeText,
+            String releaseAssetName,
+            String sizeSource,
+            boolean dryRun
+    ) {
+        public static DriverPackageSizeResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            Long packageSizeBytes = longValue(source.get("packageSizeBytes"));
+            return new DriverPackageSizeResponse(
+                    text(source.get("driverType")),
+                    text(source.get("driverName")),
+                    text(source.get("version")),
+                    packageSizeBytes == null ? 0L : packageSizeBytes,
+                    text(source.get("packageSizeText")),
+                    text(source.get("releaseAssetName")),
+                    text(source.get("sizeSource")),
+                    booleanValue(source.get("dryRun"))
+            );
+        }
+    }
+
     public record NetworkCheckResponse(
             String name,
             String url,
