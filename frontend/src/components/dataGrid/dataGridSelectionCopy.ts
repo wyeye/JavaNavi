@@ -30,7 +30,7 @@ export const buildSelectedCellClipboardText = ({
   rowKeyField,
 }: {
   selectedCells: SelectedGridCell[];
-  rows: Array<Record<string, any>>;
+  rows: Array<Record<string, unknown>>;
   columnOrder: string[];
   rowKeyField: string;
 }): string => {
