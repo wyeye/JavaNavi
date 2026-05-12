@@ -25,7 +25,7 @@ export const renderHighlightedCellText = (text: string, query: string): React.Re
     return <>{nodes}</>;
 };
 
-export const renderCellDisplayValue = (val: any, query: string): React.ReactNode => {
+export const renderCellDisplayValue = (val: unknown, query: string): React.ReactNode => {
     const text = formatCellDisplayText(val);
     const content = renderHighlightedCellText(text, query);
     if (val === null) return <span style={{ color: '#ccc' }}>{content}</span>;
