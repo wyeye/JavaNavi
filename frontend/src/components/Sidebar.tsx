@@ -138,6 +138,7 @@ type SidebarRuntimeNodeData = SidebarDataRef & SavedConnection & {
   groupKey?: string;
 };
 type SidebarEventNode = EventDataNode<TreeNode>;
+type SidebarMenuNode = TreeNode | SidebarEventNode;
 type SidebarSelectInfo = {
   selected: boolean;
   node: SidebarEventNode;
@@ -2314,7 +2315,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           }
 
           const config = buildRuntimeConfig(conn, conn.dbName);
-          const res = await RenameDatabase(buildRpcConnectionConfig(config) as any, oldDbName, newDbName);
+          const res = await RenameDatabase(config, oldDbName, newDbName);
           if (res.success) {
               message.success(t('sidebar.msg.dbRenameSuccess'));
               setExpandedKeys(prev => prev.filter(k => !k.toString().startsWith(`${conn.id}-${oldDbName}`)));
@@ -2331,8 +2332,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
-  const handleDeleteDatabase = (node: any) => {
-      const conn = node.dataRef;
+  const handleDeleteDatabase = (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const dbName = String(conn.dbName || '').trim();
       if (!dbName) return;
       Modal.confirm({
@@ -2341,7 +2342,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           okButtonProps: { danger: true },
           onOk: async () => {
               const config = buildRuntimeConfig(conn, conn.dbName);
-              const res = await DropDatabase(buildRpcConnectionConfig(config) as any, dbName);
+              const res = await DropDatabase(config, dbName);
               if (res.success) {
                   message.success(t('sidebar.msg.dbDeleteSuccess'));
                   closeTabsByDatabase(conn.id, dbName);
@@ -2371,7 +2372,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               return;
           }
           const config = buildRuntimeConfig(conn, conn.dbName);
-          const res = await RenameTable(buildRpcConnectionConfig(config) as any, conn.dbName, oldTableName, newTableName);
+          const res = await RenameTable(config, conn.dbName, oldTableName, newTableName);
           if (res.success) {
               message.success(t('sidebar.msg.tableRenameSuccess'));
               await loadTables(getDatabaseNodeRef(conn, conn.dbName));
@@ -2386,8 +2387,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
-  const handleDeleteTable = (node: any) => {
-      const conn = node.dataRef;
+  const handleDeleteTable = (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const tableName = String(conn.tableName || '').trim();
       if (!tableName) return;
       Modal.confirm({
@@ -2396,7 +2397,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           okButtonProps: { danger: true },
           onOk: async () => {
               const config = buildRuntimeConfig(conn, conn.dbName);
-              const res = await DropTable(buildRpcConnectionConfig(config) as any, conn.dbName, tableName);
+              const res = await DropTable(config, conn.dbName, tableName);
               if (res.success) {
                   message.success(t('sidebar.msg.tableDeleteSuccess'));
                   await loadTables(getDatabaseNodeRef(conn, conn.dbName));
@@ -2407,8 +2408,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const handleTableDataDangerAction = async (node: any, action: TableDataDangerActionKind) => {
-      const conn = node.dataRef;
+  const handleTableDataDangerAction = async (node: SidebarMenuNode, action: TableDataDangerActionKind) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const tableName = String(conn.tableName || '').trim();
       if (!tableName) return;
 
@@ -2431,10 +2432,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const hide = message.loading(t('sidebar.msg.processingTable', { label: progressLabel, name: tableName }), 0);
       const startTime = Date.now();
       try {
-          const res = await method(buildRpcConnectionConfig(config) as any, conn.dbName, [tableName]);
+          const res = await method(config, conn.dbName, [tableName]);
           hide();
           const duration = Date.now() - startTime;
-          const executedSQLs = Array.isArray(res.data?.executedSQLs) ? res.data.executedSQLs : [];
+          const resultData = res.data as SidebarExecutionResultData | undefined;
+          const executedSQLs = Array.isArray(resultData?.executedSQLs)
+              ? resultData.executedSQLs.map(String)
+              : [];
           const logSql = executedSQLs.length > 0
               ? executedSQLs.join(';\n') + ';'
               : `/* ${label} ${tableName} */`;
@@ -2449,7 +2453,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                   duration,
                   message: res.message,
                   dbName: conn.dbName,
-                  affectedRows: res.data?.count || 0,
+                  affectedRows: Number(resultData?.count || 0),
               });
               await loadTables(getDatabaseNodeRef(conn, conn.dbName));
               return;
