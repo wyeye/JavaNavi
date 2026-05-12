@@ -405,7 +405,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
         setSourceQuery('');
         setWorkflowType('sync');
         setSyncDomain(initialDomain);
-        setSyncContent('data');
+        setSyncContent(initialDomain);
         setSyncMode('insert_update');
         setAutoAddColumns(true);
         setTargetTableStrategy('existing_only');
