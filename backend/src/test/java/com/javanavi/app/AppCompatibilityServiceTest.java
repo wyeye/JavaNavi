@@ -7,6 +7,8 @@ import com.javanavi.connections.SavedConnectionService;
 import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.AppContracts;
+import com.javanavi.model.ConnectionConfigDto;
+import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.security.SecretStore;
 import com.javanavi.security.SecretStoreStatus;
 import org.junit.jupiter.api.AfterEach;
@@ -25,6 +27,8 @@ class AppCompatibilityServiceTest {
     @TempDir
     Path tempDir;
 
+    private MemorySecretStore secretStore;
+
     @AfterEach
     void clearDisableProperty() {
         System.clearProperty("javanavi.disableOsOpen");
@@ -40,6 +44,20 @@ class AppCompatibilityServiceTest {
         assertThat(saved.language()).isEqualTo("zh");
         assertThat(Path.of(tempDir.toString(), "language.json")).exists();
         assertThat(service.getLanguage().language()).isEqualTo("zh");
+    }
+
+    @Test
+    void globalProxyProviderResolvesStoredPasswordForRuntimeUse() {
+        AppCompatibilityService service = service();
+        service.saveGlobalProxy(new GlobalProxyConfigDto(true, "http", "127.0.0.1", 8080, "proxy-user", "secret", false));
+
+        ConnectionConfigDto.NetworkProxyConfigDto proxy = new GlobalProxyConfigProvider(properties(), objectMapper(), secretStore()).activeProxy().orElseThrow();
+
+        assertThat(proxy.type()).isEqualTo("http");
+        assertThat(proxy.host()).isEqualTo("127.0.0.1");
+        assertThat(proxy.port()).isEqualTo(8080);
+        assertThat(proxy.user()).isEqualTo("proxy-user");
+        assertThat(proxy.password()).isEqualTo("secret");
     }
 
     @Test
@@ -74,10 +92,9 @@ class AppCompatibilityServiceTest {
 
     private AppCompatibilityService service() {
         I18nMessages messages = new I18nMessages();
-        SecurityProperties properties = new SecurityProperties();
-        properties.setDataDirectory(tempDir.toString());
-        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
-        MemorySecretStore secretStore = new MemorySecretStore();
+        SecurityProperties properties = properties();
+        ObjectMapper objectMapper = objectMapper();
+        MemorySecretStore secretStore = secretStore();
         SavedConnectionService savedConnectionService = new SavedConnectionService(properties, objectMapper, secretStore);
         ConnectionPackageCompatibilityService packageService = new ConnectionPackageCompatibilityService(
                 objectMapper,
@@ -91,6 +108,23 @@ class AppCompatibilityServiceTest {
                 new ExportedFileRevealService(messages),
                 secretStore
         );
+    }
+
+    private SecurityProperties properties() {
+        SecurityProperties properties = new SecurityProperties();
+        properties.setDataDirectory(tempDir.toString());
+        return properties;
+    }
+
+    private ObjectMapper objectMapper() {
+        return new ObjectMapper().findAndRegisterModules();
+    }
+
+    private MemorySecretStore secretStore() {
+        if (secretStore == null) {
+            secretStore = new MemorySecretStore();
+        }
+        return secretStore;
     }
 
     private static final class MemorySecretStore implements SecretStore {

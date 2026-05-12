@@ -67,6 +67,16 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(new AppContracts.WindowDiagnosticResponse(true));
     }
 
+    @PostMapping("/local-file/select")
+    public ApiEnvelope<AppContracts.LocalFileSelectionResponse> selectLocalFile(@RequestBody(required = false) AppContracts.LocalFileSelectRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.selectLocalFile(input));
+    }
+
+    @PostMapping("/local-file/read")
+    public ApiEnvelope<AppContracts.LocalFileReadResponse> readLocalFile(@RequestBody(required = false) AppContracts.SqlFileReadRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.readLocalFile(input == null ? "" : input.value()));
+    }
+
     @PostMapping("/sql-directory/select")
     public ApiEnvelope<AppContracts.SqlWorkspaceResponse> selectSqlDirectory(@RequestBody(required = false) AppContracts.PathRequest input) {
         return ApiEnvelope.ok(appCompatibilityService.selectSqlDirectory(input == null ? "" : input.directoryValue()));

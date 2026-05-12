@@ -58,6 +58,16 @@ public final class AppContracts {
     public record WindowDiagnosticResponse(boolean logged) {
     }
 
+    public record LocalFileSelectRequest(String kind, String currentPath, String path) {
+        public String kindValue() {
+            return firstText(kind, "file");
+        }
+
+        public String currentPathValue() {
+            return firstText(currentPath, path);
+        }
+    }
+
     public record PathRequest(String path, String currentPath, String directory) {
         public String directoryValue() {
             return firstText(path, currentPath, directory);
@@ -129,6 +139,29 @@ public final class AppContracts {
             String dbName,
             boolean webManaged,
             String workspaceRoot
+    ) {
+    }
+
+    public record LocalFileSelectionResponse(
+            boolean selected,
+            String path,
+            String name,
+            String kind,
+            boolean desktopRequired,
+            String message
+    ) {
+    }
+
+    public record LocalFileReadResponse(
+            String content,
+            boolean isLargeFile,
+            String filePath,
+            String path,
+            String name,
+            long fileSize,
+            String fileSizeMB,
+            boolean webManaged,
+            boolean desktopLocal
     ) {
     }
 

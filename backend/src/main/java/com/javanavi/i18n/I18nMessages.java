@@ -63,7 +63,7 @@ public class I18nMessages {
         put("redis.membersRequired", "members cannot be empty.", "members 不能为空。");
         put("redis.streamFieldsRequired", "Stream fields cannot be empty.", "Stream 字段不能为空。");
         put("redis.unsupportedType", "Unsupported Redis data type: {type}", "不支持的 Redis 数据类型：{type}");
-        put("redis.runtimeExclusion", "JavaNavi Web Redis compatibility excludes SSH/proxy/tunnel runtime; use direct Redis TCP for this slice.", "JavaNavi Web Redis 兼容层不包含 SSH/代理/隧道运行时；此阶段请使用直连 Redis TCP。");
+        put("redis.runtimeExclusion", "Redis SSH/Proxy/HTTP Tunnel runtime is not supported yet; use direct Redis TCP.", "Redis 暂不支持 SSH/Proxy/HTTP Tunnel 运行时；请使用直连 Redis TCP。");
         put("redis.connectionFailed", "Redis connection failed: {message}", "Redis 连接失败：{message}");
         put("redis.commandFailed", "Redis command execution failed: {message}", "Redis 命令执行失败：{message}");
         put("redis.required", "{name} cannot be empty.", "{name} 不能为空。");
@@ -103,6 +103,8 @@ public class I18nMessages {
         put("drivers.mavenSourcePrefix", "Maven source: ", "Maven 源：");
         put("drivers.recommendedSuffix", " (recommended)", "（推荐）");
         put("drivers.uploadVersionFallback", "upload-1.0", "上传-1.0");
+        put("drivers.emptyVersionMetadata", "Maven metadata did not contain usable versions.", "Maven metadata 未包含可用版本");
+        put("drivers.versionMetadataUnavailable", "Only the recommended version is shown because Maven metadata is unavailable: {reason}", "Maven metadata 不可用，仅显示推荐版本：{reason}");
         put("drivers.openDirDisabledPrefix", "Automatic directory opening is disabled in this environment. Copy the path manually: ", "自动打开目录已被当前环境禁用，请手动复制路径：");
         put("drivers.openedDirPrefix", "Opened driver directory: ", "已打开驱动目录：");
         put("drivers.openDirInterruptedPrefix", "Opening the driver directory was interrupted. Copy the path manually: ", "打开驱动目录被中断，请手动复制路径：");

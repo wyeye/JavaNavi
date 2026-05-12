@@ -1,6 +1,7 @@
 package com.javanavi.db;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.connections.SavedConnectionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.i18n.I18nMessages;
@@ -62,6 +63,7 @@ public class DatabaseCompatibilityService {
     private final JdbcConnectionFactory jdbcConnectionFactory;
     private final JdbcConnectionPoolRegistry jdbcConnectionPoolRegistry;
     private final SavedConnectionService savedConnectionService;
+    private final GlobalProxyConfigProvider globalProxyConfigProvider;
     private final MongoCompatibilityService mongoCompatibilityService;
     private final I18nMessages messages;
     private final Map<String, RunningQuery> runningQueries = new ConcurrentHashMap<>();
@@ -70,7 +72,7 @@ public class DatabaseCompatibilityService {
             DemoDatabaseService demoDatabaseService,
             JdbcConnectionFactory jdbcConnectionFactory
     ) {
-        this(demoDatabaseService, jdbcConnectionFactory, new JdbcConnectionPoolRegistry(jdbcConnectionFactory), null, null, new I18nMessages());
+        this(demoDatabaseService, jdbcConnectionFactory, new JdbcConnectionPoolRegistry(jdbcConnectionFactory), null, null, null, new I18nMessages());
     }
 
     @Autowired
@@ -79,6 +81,7 @@ public class DatabaseCompatibilityService {
             JdbcConnectionFactory jdbcConnectionFactory,
             JdbcConnectionPoolRegistry jdbcConnectionPoolRegistry,
             SavedConnectionService savedConnectionService,
+            GlobalProxyConfigProvider globalProxyConfigProvider,
             MongoCompatibilityService mongoCompatibilityService,
             I18nMessages messages
     ) {
@@ -86,11 +89,21 @@ public class DatabaseCompatibilityService {
         this.jdbcConnectionFactory = jdbcConnectionFactory;
         this.jdbcConnectionPoolRegistry = jdbcConnectionPoolRegistry;
         this.savedConnectionService = savedConnectionService;
+        this.globalProxyConfigProvider = globalProxyConfigProvider;
         this.mongoCompatibilityService = mongoCompatibilityService;
         this.messages = messages;
     }
 
     public ConnectionTestResultDto testConnection(ConnectionConfigDto config) {
+        String unsupportedTunnel = unsupportedNetworkTunnelMessage(config);
+        if (unsupportedTunnel != null) {
+            return new ConnectionTestResultDto(
+                    config == null ? null : config.id(),
+                    config == null ? "unknown" : config.driverType(),
+                    false,
+                    unsupportedTunnel
+            );
+        }
         if (isMongo(config)) {
             return requireMongoCompatibilityService().testConnection(resolveSavedConnectionSecret(config));
         }
@@ -125,6 +138,10 @@ public class DatabaseCompatibilityService {
     }
 
     public ConnectionPoolStatusDto openConnectionPool(ConnectionConfigDto config) {
+        String unsupportedTunnel = unsupportedNetworkTunnelMessage(config);
+        if (unsupportedTunnel != null) {
+            throw new IllegalArgumentException(unsupportedTunnel);
+        }
         if (isMongo(config)) {
             ConnectionConfigDto resolved = resolveSavedConnectionSecret(config);
             ConnectionTestResultDto result = requireMongoCompatibilityService().testConnection(resolved);
@@ -170,6 +187,7 @@ public class DatabaseCompatibilityService {
     }
 
     public List<String> listDatabases(ConnectionConfigDto config) {
+        rejectUnsupportedNetworkTunnel(config);
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listDatabases(resolveSavedConnectionSecret(config));
         }
@@ -177,6 +195,7 @@ public class DatabaseCompatibilityService {
     }
 
     public List<TableSummaryDto> listTables(ConnectionConfigDto config, String requestedDatabase) {
+        rejectUnsupportedNetworkTunnel(config);
         if (isMongo(config)) {
             return requireMongoCompatibilityService().listTables(resolveSavedConnectionSecret(config), requestedDatabase);
         }
@@ -233,6 +252,7 @@ public class DatabaseCompatibilityService {
     }
 
     public QueryResultDto execute(QueryRequestDto request) {
+        rejectUnsupportedNetworkTunnel(request == null ? null : request.connection());
         String queryId = normalizedQueryId(request.queryId());
         if (isMongo(request.connection())) {
             return requireMongoCompatibilityService().execute(
@@ -254,6 +274,7 @@ public class DatabaseCompatibilityService {
     }
 
     public List<ResultSetDataDto> executeMulti(QueryRequestDto request) {
+        rejectUnsupportedNetworkTunnel(request == null ? null : request.connection());
         if (isMongo(request.connection())) {
             return requireMongoCompatibilityService().executeMulti(
                     resolveSavedConnectionSecret(connectionWithRequestedDatabase(request.connection(), request.database())),
@@ -1888,7 +1909,37 @@ public class DatabaseCompatibilityService {
     }
 
     private ConnectionConfigDto resolveSavedConnectionSecret(ConnectionConfigDto config) {
-        return savedConnectionService == null ? config : savedConnectionService.resolveSavedSecret(config);
+        ConnectionConfigDto resolved = savedConnectionService == null ? config : savedConnectionService.resolveSavedSecret(config);
+        if (resolved == null) {
+            return null;
+        }
+        resolved = resolved.withGlobalProxy(null);
+        if (isMongo(resolved) || globalProxyConfigProvider == null) {
+            return resolved;
+        }
+        return globalProxyConfigProvider.activeProxy()
+                .map(resolved::withGlobalProxy)
+                .orElse(resolved);
+    }
+
+    private void rejectUnsupportedNetworkTunnel(ConnectionConfigDto config) {
+        String message = unsupportedNetworkTunnelMessage(config);
+        if (message != null) {
+            throw new IllegalArgumentException(message);
+        }
+    }
+
+    private String unsupportedNetworkTunnelMessage(ConnectionConfigDto config) {
+        if (config == null) {
+            return null;
+        }
+        if (isMongo(config) && (config.proxyEnabled() || config.httpTunnelEnabled())) {
+            return "Proxy / HTTP Tunnel runtime is currently available for JDBC connections only.";
+        }
+        if (isMongo(config) && config.sshEnabled()) {
+            return "SSH tunnel runtime is currently available for JDBC connections only.";
+        }
+        return null;
     }
 
     private boolean isMongo(ConnectionConfigDto config) {

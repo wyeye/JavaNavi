@@ -40,6 +40,18 @@ try {
   const aiProviderPresets = await transpileToModule('src/utils/aiProviderPresets.ts', 'aiProviderPresets.mjs');
   const providerSecretDraft = await transpileToModule('src/utils/providerSecretDraft.ts', 'providerSecretDraft.mjs');
   const dataModificationRisk = await transpileToModule('src/utils/dataModificationRisk.ts', 'dataModificationRisk.mjs');
+  const javanaviAppSource = await readFile(path.join(projectRoot, 'src/compat/javanaviApp.ts'), 'utf8');
+
+  assert.equal(
+    javanaviAppSource.includes('payload.isLargeFile === true'),
+    true,
+    'large local SQL file execution should fail before query/multi',
+  );
+  assert.equal(
+    javanaviAppSource.includes('Large local SQL file execution is not available yet.'),
+    true,
+    'large local SQL file guard should return a clear failure message',
+  );
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(

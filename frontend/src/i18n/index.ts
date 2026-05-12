@@ -100,7 +100,9 @@ export const enUS = {
   'tools.export.title': 'Export connections',
   'tools.export.description': 'Export current connections and visible config fields.',
   'tools.sync.title': 'Data Sync',
-  'tools.sync.description': 'Enter the cross-source sync workflow.',
+  'tools.sync.description': 'Sync table rows between existing relational tables.',
+  'tools.schemaSync.title': 'Structure Sync',
+  'tools.schemaSync.description': 'Compare and apply table fields, indexes, and keys.',
   'tools.drivers.title': 'Driver Manager',
   'tools.drivers.description': 'Install, update, or remove database drivers.',
   'tools.dataRoot.title': 'Data directory',
@@ -241,7 +243,7 @@ export const enUS = {
   'proxy.hostPlaceholder': 'Example: 127.0.0.1',
   'proxy.usernameOptional': 'Username (optional)',
   'proxy.passwordOptional': 'Password (optional)',
-  'proxy.scopeHint': '* Applies to driver-manager network requests and database connections without their own proxy.',
+  'proxy.scopeHint': '* Applies to driver management and JDBC connections without their own proxy, HTTP tunnel, or SSH tunnel. Connection-level settings take precedence.',
 
   'message.unknownError': 'Unknown error',
   'message.loadDataRootFailed': 'Failed to load data root information',
@@ -1234,7 +1236,9 @@ const zhOverrides = {
   'tools.export.title': '导出连接',
   'tools.export.description': '导出当前连接和可见配置字段。',
   'tools.sync.title': '数据同步',
-  'tools.sync.description': '进入跨数据源同步流程。',
+  'tools.sync.description': '在已有关系型数据表之间同步数据。',
+  'tools.schemaSync.title': '结构同步',
+  'tools.schemaSync.description': '对比并执行字段、索引和键结构变更。',
   'tools.drivers.title': '驱动管理',
   'tools.drivers.description': '安装、更新或移除数据库驱动。',
   'tools.dataRoot.title': '数据目录',
@@ -1367,7 +1371,7 @@ const zhOverrides = {
   'proxy.hostPlaceholder': '例如：127.0.0.1',
   'proxy.usernameOptional': '用户名（可选）',
   'proxy.passwordOptional': '密码（可选）',
-  'proxy.scopeHint': '* 作用于驱动管理网络请求，以及未单独配置代理的数据库连接。',
+  'proxy.scopeHint': '* 作用于驱动管理，以及未配置代理、HTTP 隧道或 SSH 隧道的 JDBC 连接。连接级设置优先。',
   'message.unknownError': '未知错误',
   'message.loadDataRootFailed': '加载数据根目录信息失败',
   'message.loadDataRootFailedWithMessage': '加载数据根目录信息失败：{message}',
@@ -1991,6 +1995,8 @@ const DRIVER_MANAGER_COMPATIBILITY_FALLBACKS: Record<string, string> = {
   '已安装（移除后可更换）': 'Installed (can be replaced after removal)',
   '选择驱动版本': 'Select driver version',
   '点击展开加载版本': 'Click to expand and load versions',
+  'Maven metadata 不可用，仅显示推荐版本': 'Maven metadata is unavailable; only the recommended version is shown',
+  'Maven metadata 不可用，仅显示推荐版本：': 'Maven metadata is unavailable; only the recommended version is shown: ',
   '当前启用：': 'Currently active:',
   '由': 'Managed by',
   '管理': 'management',
@@ -2093,6 +2099,7 @@ export const translateCompatibilityFallback = (
   if (normalized.endsWith(' 定义可用；连接测试需在新建连接中执行')) return `${normalized.slice(0, -16)} definition is available; run the connection test from the new-connection flow.`;
   if (normalized.endsWith(' 需要修复')) return `${normalized.slice(0, -5)} needs repair`;
   if (normalized.startsWith('驱动网络检测失败：')) return `Driver network check failed: ${normalized.slice('驱动网络检测失败：'.length)}`;
+  if (normalized.startsWith('Maven metadata 不可用，仅显示推荐版本：')) return `Maven metadata is unavailable; only the recommended version is shown: ${normalized.slice('Maven metadata 不可用，仅显示推荐版本：'.length)}`;
   if (normalized.endsWith(' 版本列表加载失败')) return `${normalized.slice(0, -8)} version list failed to load`;
   if (normalized.startsWith('加载 ') && normalized.includes(' 版本列表失败：')) {
     const [name, reason] = normalized.slice(3).split(' 版本列表失败：');

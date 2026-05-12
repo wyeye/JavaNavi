@@ -2,8 +2,10 @@ package com.javanavi.driver;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.i18n.I18nMessages;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
@@ -11,12 +13,19 @@ import org.w3c.dom.NodeList;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
+import java.net.Authenticator;
+import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.Proxy;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -58,18 +67,48 @@ public class JdbcDriverRuntimeService {
 
     private final ObjectMapper objectMapper;
     private final Path defaultDriverDirectory;
-    private final HttpClient httpClient;
+    private final GlobalProxyConfigProvider globalProxyConfigProvider;
     private final I18nMessages messages;
     private final ConcurrentMap<String, DriverHandle> driverCache = new ConcurrentHashMap<>();
 
     public JdbcDriverRuntimeService(SecurityProperties securityProperties, ObjectMapper objectMapper, I18nMessages messages) {
+        this(securityProperties, objectMapper, messages, null);
+    }
+
+    @Autowired
+    public JdbcDriverRuntimeService(SecurityProperties securityProperties, ObjectMapper objectMapper, I18nMessages messages, GlobalProxyConfigProvider globalProxyConfigProvider) {
         this.objectMapper = objectMapper;
         this.messages = messages;
+        this.globalProxyConfigProvider = globalProxyConfigProvider;
         this.defaultDriverDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize().resolve("drivers");
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(20))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+    }
+
+    private HttpClient httpClient(Duration connectTimeout) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .connectTimeout(connectTimeout)
+                .followRedirects(HttpClient.Redirect.NORMAL);
+        activeGlobalProxy().ifPresent(proxy -> applyProxy(builder, proxy));
+        return builder.build();
+    }
+
+    private Optional<com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto> activeGlobalProxy() {
+        return globalProxyConfigProvider == null ? Optional.empty() : globalProxyConfigProvider.activeProxy();
+    }
+
+    private static void applyProxy(HttpClient.Builder builder, com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+        Proxy.Type proxyType = "socks5".equalsIgnoreCase(proxy.type()) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
+        builder.proxy(new SingleProxySelector(new Proxy(proxyType, new InetSocketAddress(proxy.host(), proxy.port()))));
+        if (!text(proxy.user()).isBlank() || !text(proxy.password()).isBlank()) {
+            builder.authenticator(new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    if (getRequestorType() != RequestorType.PROXY) {
+                        return null;
+                    }
+                    return new PasswordAuthentication(text(proxy.user()), text(proxy.password()).toCharArray());
+                }
+            });
+        }
     }
 
     public boolean isManagedDriver(String driverType) {
@@ -129,12 +168,15 @@ public class JdbcDriverRuntimeService {
         DriverPackageDefinition definition = requireDefinition(driverType);
         Artifact primary = definition.primaryArtifact();
         String repository = repositoryFromDownloadInput(repositoryURL, primary);
-        List<String> versions = mavenVersions(repository, primary);
+        MavenVersionLookup versionLookup = mavenVersions(repository, primary);
+        List<String> versions = versionLookup.versions();
         if (!versions.contains(definition.version())) {
             versions = new ArrayList<>(versions);
             versions.add(0, definition.version());
         }
-        boolean metadataBacked = versions.size() > 1;
+        boolean metadataBacked = versionLookup.metadataBacked();
+        boolean versionListLimited = !metadataBacked || versions.size() > MAX_MAVEN_VERSION_OPTIONS;
+        String metadataError = versionLookup.error();
         List<Map<String, Object>> options = versions.stream()
                 .limit(MAX_MAVEN_VERSION_OPTIONS)
                 .map(version -> {
@@ -158,6 +200,14 @@ public class JdbcDriverRuntimeService {
                 "repositoryUrl", repository,
                 "versions", options,
                 "javaStatus", "downloadable",
+                "metadataBacked", metadataBacked,
+                "versionListLimited", versionListLimited,
+                "metadataUrl", versionLookup.metadataURL(),
+                "metadataURL", versionLookup.metadataURL(),
+                "metadataError", metadataError,
+                "message", metadataBacked
+                        ? ""
+                        : messages.message("drivers.versionMetadataUnavailable", "reason", metadataError),
                 "dryRun", true
         );
     }
@@ -777,7 +827,7 @@ public class JdbcDriverRuntimeService {
                     .timeout(HTTP_TIMEOUT)
                     .GET()
                     .build();
-            HttpResponse<Path> response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(tmp));
+            HttpResponse<Path> response = httpClient(HTTP_TIMEOUT).send(request, HttpResponse.BodyHandlers.ofFile(tmp));
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("HTTP " + response.statusCode() + " while downloading " + url);
             }
@@ -812,7 +862,7 @@ public class JdbcDriverRuntimeService {
         return false;
     }
 
-    private List<String> mavenVersions(String repositoryURL, Artifact primaryArtifact) {
+    private MavenVersionLookup mavenVersions(String repositoryURL, Artifact primaryArtifact) {
         String metadataURL = sanitizeRepositoryURL(repositoryURL)
                 + "/" + primaryArtifact.groupId().replace('.', '/')
                 + "/" + primaryArtifact.artifactId()
@@ -822,9 +872,13 @@ public class JdbcDriverRuntimeService {
                     .timeout(Duration.ofSeconds(20))
                     .GET()
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient(Duration.ofSeconds(20)).send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                return List.of(primaryArtifact.version());
+                return MavenVersionLookup.fallback(
+                        primaryArtifact.version(),
+                        metadataURL,
+                        messages.message("drivers.httpStatus", "status", response.statusCode())
+                );
             }
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -840,10 +894,50 @@ public class JdbcDriverRuntimeService {
                     versions.add(version);
                 }
             }
-            return versions.isEmpty() ? List.of(primaryArtifact.version()) : versions;
-        } catch (Exception ignored) {
-            return List.of(primaryArtifact.version());
+            if (versions.isEmpty()) {
+                return MavenVersionLookup.fallback(
+                        primaryArtifact.version(),
+                        metadataURL,
+                        messages.message("drivers.emptyVersionMetadata")
+                );
+            }
+            return new MavenVersionLookup(List.copyOf(versions), true, metadataURL, "");
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return MavenVersionLookup.fallback(primaryArtifact.version(), metadataURL, messages.message("drivers.requestInterrupted"));
+        } catch (Exception error) {
+            return MavenVersionLookup.fallback(primaryArtifact.version(), metadataURL, normalizeRepositoryError(error));
         }
+    }
+
+    private String normalizeRepositoryError(Exception error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof IllegalArgumentException) {
+                return messages.message("drivers.invalidRepositoryUrl");
+            }
+            if (current instanceof HttpConnectTimeoutException) {
+                return messages.message("drivers.connectionTimedOut");
+            }
+            if (current instanceof HttpTimeoutException) {
+                return messages.message("drivers.readTimedOut");
+            }
+            if (current instanceof UnknownHostException) {
+                return messages.message("drivers.dnsLookupFailed");
+            }
+            if (current instanceof javax.net.ssl.SSLHandshakeException) {
+                return messages.message("drivers.tlsHandshakeFailed");
+            }
+            if (current instanceof java.net.ConnectException) {
+                return messages.message("drivers.connectionRefused");
+            }
+            if (current instanceof java.net.NoRouteToHostException) {
+                return messages.message("drivers.noRouteToHost");
+            }
+            current = current.getCause();
+        }
+        String message = text(error.getMessage());
+        return message.isBlank() ? error.getClass().getSimpleName() : message;
     }
 
     private Optional<Long> remoteContentLength(String repositoryURL, Artifact artifact) {
@@ -852,7 +946,7 @@ public class JdbcDriverRuntimeService {
                     .timeout(Duration.ofSeconds(15))
                     .method("HEAD", HttpRequest.BodyPublishers.noBody())
                     .build();
-            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = httpClient(Duration.ofSeconds(15)).send(request, HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 return Optional.empty();
             }
@@ -1363,6 +1457,25 @@ public class JdbcDriverRuntimeService {
 
     private static Artifact artifact(String groupId, String artifactId, String version, String sha256, long sizeBytes) {
         return new Artifact(groupId, artifactId, version, sha256, sizeBytes);
+    }
+
+    private record MavenVersionLookup(
+            List<String> versions,
+            boolean metadataBacked,
+            String metadataURL,
+            String error
+    ) {
+        private MavenVersionLookup {
+            versions = List.copyOf(versions);
+            metadataURL = text(metadataURL);
+            error = text(error);
+        }
+
+        private static MavenVersionLookup fallback(String version, String metadataURL, String error) {
+            String fallbackVersion = text(version);
+            List<String> versions = fallbackVersion.isBlank() ? List.of() : List.of(fallbackVersion);
+            return new MavenVersionLookup(versions, false, metadataURL, error);
+        }
     }
 
     private record DriverPackageDefinition(

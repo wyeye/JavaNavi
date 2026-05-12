@@ -1122,7 +1122,7 @@ SELECT * FROM users WHERE status = 1;
                                 }
                                 const { DBQuery } = await import('@compat/javanaviApp');
                                 const finalSql = buildAIReadonlyPreviewSQL(conn.config?.type || '', safeSql, 50, conn.config?.driver || '');
-                                const qRes = await DBQuery(buildRpcConnectionConfig(conn.config), safeDbName, finalSql);
+                                const qRes = await DBQuery(buildRpcConnectionConfig(conn.config), safeDbName, finalSql, 'ai-tool');
                                 if (qRes?.success) {
                                     const rows = Array.isArray(qRes.data) ? qRes.data : [];
                                     const limitedRows = rows.slice(0, 50);

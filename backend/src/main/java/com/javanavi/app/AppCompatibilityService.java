@@ -29,7 +29,7 @@ import java.util.stream.Stream;
 @Service
 public class AppCompatibilityService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
-    private static final String GLOBAL_PROXY_SECRET_KEY = "global-proxy:password";
+    public static final String GLOBAL_PROXY_SECRET_KEY = "global-proxy:password";
     private static final String GLOBAL_PROXY_SECRET_REF = "global-proxy";
 
     private final ObjectMapper objectMapper;
@@ -193,6 +193,57 @@ public class AppCompatibilityService {
             );
         } catch (IOException error) {
             throw new IllegalStateException("Unable to prepare JavaNavi SQL workspace directory.", error);
+        }
+    }
+
+    public AppContracts.LocalFileSelectionResponse selectLocalFile(AppContracts.LocalFileSelectRequest input) {
+        String kind = input == null ? "file" : input.kindValue();
+        return new AppContracts.LocalFileSelectionResponse(
+                false,
+                "",
+                "",
+                kind,
+                true,
+                "Use the JavaNavi desktop native file selector for local files."
+        );
+    }
+
+    public AppContracts.LocalFileReadResponse readLocalFile(String rawPath) {
+        Path file = Path.of(textOrDefault(rawPath, "")).toAbsolutePath().normalize();
+        if (!Files.isRegularFile(file)) {
+            throw new IllegalArgumentException("Selected local file does not exist.");
+        }
+        if (!file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".sql")) {
+            throw new IllegalArgumentException("Only SQL files can be opened through this action.");
+        }
+        try {
+            long size = Files.size(file);
+            if (size > 50L * 1024L * 1024L) {
+                return new AppContracts.LocalFileReadResponse(
+                        "",
+                        true,
+                        file.toString(),
+                        file.toString(),
+                        file.getFileName().toString(),
+                        size,
+                        String.format(Locale.ROOT, "%.1f", size / 1024.0 / 1024.0),
+                        false,
+                        true
+                );
+            }
+            return new AppContracts.LocalFileReadResponse(
+                    Files.readString(file, StandardCharsets.UTF_8),
+                    false,
+                    file.toString(),
+                    file.toString(),
+                    file.getFileName().toString(),
+                    size,
+                    "",
+                    false,
+                    true
+            );
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to read JavaNavi local SQL file.", error);
         }
     }
 

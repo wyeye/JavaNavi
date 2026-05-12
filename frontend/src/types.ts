@@ -42,6 +42,7 @@ export interface ConnectionConfig {
   proxy?: ProxyConfig;
   useHttpTunnel?: boolean;
   httpTunnel?: HTTPTunnelConfig;
+  globalProxy?: ProxyConfig;
   driver?: string;
   dsn?: string;
   options?: Record<string, string>;

@@ -1,6 +1,7 @@
 package com.javanavi.model;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 import java.util.List;
 import java.util.Map;
@@ -242,7 +243,7 @@ public final class DriverContracts {
             String databaseName,
             boolean available,
             boolean connectable,
-            boolean defaultDriver,
+            @JsonProperty("default") boolean defaultDriver,
             String runtimeOwnerType,
             String runtimeOwnerName,
             boolean reusedRuntime,

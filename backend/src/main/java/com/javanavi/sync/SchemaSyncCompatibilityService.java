@@ -852,6 +852,13 @@ public class SchemaSyncCompatibilityService {
                     integer(source.get("timeout")),
                     booleanValue(source.get("useSSL")),
                     text(source.get("sslMode")),
+                    booleanValue(source.get("useSSH")),
+                    networkCredential(source.get("ssh")),
+                    networkCredential(source.get("sshConfig")),
+                    booleanValue(source.get("useProxy")),
+                    networkProxy(source.get("proxy")),
+                    booleanValue(source.get("useHttpTunnel")),
+                    networkHttpTunnel(source.get("httpTunnel")),
                     text(source.get("uri")),
                     text(source.get("dsn")),
                     stringList(source.get("hosts")),
@@ -862,10 +869,45 @@ public class SchemaSyncCompatibilityService {
                     booleanValue(source.get("mongoSrv")),
                     text(source.get("mongoAuthMechanism")),
                     text(source.get("mongoReplicaUser")),
-                    text(source.get("mongoReplicaPassword")),
-                    booleanValue(source.get("useSSH")),
-                    booleanValue(source.get("useProxy")),
-                    booleanValue(source.get("useHttpTunnel"))
+                    text(source.get("mongoReplicaPassword"))
+            );
+        }
+
+        private static ConnectionConfigDto.NetworkCredentialConfigDto networkCredential(Object value) {
+            if (!(value instanceof Map<?, ?> map)) {
+                return null;
+            }
+            return new ConnectionConfigDto.NetworkCredentialConfigDto(
+                    text(map.get("host")),
+                    integer(map.get("port")),
+                    firstText(text(map.get("user")), text(map.get("username"))),
+                    text(map.get("password")),
+                    text(map.get("keyPath"))
+            );
+        }
+
+        private static ConnectionConfigDto.NetworkProxyConfigDto networkProxy(Object value) {
+            if (!(value instanceof Map<?, ?> map)) {
+                return null;
+            }
+            return new ConnectionConfigDto.NetworkProxyConfigDto(
+                    text(map.get("type")),
+                    text(map.get("host")),
+                    integer(map.get("port")),
+                    firstText(text(map.get("user")), text(map.get("username"))),
+                    text(map.get("password"))
+            );
+        }
+
+        private static ConnectionConfigDto.NetworkHttpTunnelConfigDto networkHttpTunnel(Object value) {
+            if (!(value instanceof Map<?, ?> map)) {
+                return null;
+            }
+            return new ConnectionConfigDto.NetworkHttpTunnelConfigDto(
+                    text(map.get("host")),
+                    integer(map.get("port")),
+                    firstText(text(map.get("user")), text(map.get("username"))),
+                    text(map.get("password"))
             );
         }
 

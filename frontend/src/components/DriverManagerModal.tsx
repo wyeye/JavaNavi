@@ -323,6 +323,10 @@ type DriverVersionOption = {
   displayLabel?: string;
 };
 
+type DriverVersionNotice = {
+  message: string;
+};
+
 const buildVersionOptionKey = (option: DriverVersionOption) => `${option.version}@@${option.downloadUrl}`;
 const buildVersionSizeLoadingKey = (driverType: string, optionKey: string) => `${driverType}@@${optionKey}`;
 const DRIVER_TABLE_SCROLL_X = 1560;
@@ -504,6 +508,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
   const [logDriverType, setLogDriverType] = useState('');
   const [logModalOpen, setLogModalOpen] = useState(false);
   const [versionMap, setVersionMap] = useState<Record<string, DriverVersionOption[]>>({});
+  const [versionNoticeMap, setVersionNoticeMap] = useState<Record<string, DriverVersionNotice>>({});
   const [selectedVersionMap, setSelectedVersionMap] = useState<Record<string, string>>({});
   const [versionLoadingMap, setVersionLoadingMap] = useState<Record<string, boolean>>({});
   const [versionSizeLoadingMap, setVersionSizeLoadingMap] = useState<Record<string, boolean>>({});
@@ -938,8 +943,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         }
         return [] as DriverVersionOption[];
       }
-      const data = toRecord<DriverVersionListPayload>(res?.data);
+      const data = toRecord<DriverVersionListPayload & { metadataBacked?: unknown; metadataError?: unknown; message?: unknown }>(res?.data);
       const rawVersions: DriverVersionPayload[] = Array.isArray(data.versions) ? data.versions.map((item) => toRecord<DriverVersionPayload>(item)) : [];
+      const metadataBacked = data.metadataBacked === true;
+      const metadataError = String(data.metadataError || '').trim();
+      const limitedMessage = String(data.message || '').trim()
+        || (metadataError ? `Maven metadata 不可用，仅显示推荐版本：${metadataError}` : 'Maven metadata 不可用，仅显示推荐版本');
       const installedVersions = new Set((row.installedVersions || []).map((item) => item.version).filter(Boolean));
       const activeVersion = String(row.installedVersion || '').trim();
       const options: DriverVersionOption[] = rawVersions
@@ -986,6 +995,22 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       }
 
       setVersionMap((prev) => ({ ...prev, [driverType]: options }));
+      setVersionNoticeMap((prev) => {
+        if (metadataBacked || options.length > 1) {
+          if (!prev[driverType]) {
+            return prev;
+          }
+          const next = { ...prev };
+          delete next[driverType];
+          return next;
+        }
+        return {
+          ...prev,
+          [driverType]: {
+            message: limitedMessage,
+          },
+        };
+      });
       setSelectedVersionMap((prev) => {
         const currentKey = prev[driverType];
         if (currentKey && options.some((option) => buildVersionOptionKey(option) === currentKey)) {
@@ -1095,6 +1120,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const effectiveURL = String(data.repositoryUrl || data.repositoryURL || '').trim();
       setRepositoryURL(effectiveURL);
       setVersionMap({});
+      setVersionNoticeMap({});
       setSelectedVersionMap({});
       driverNetworkSnapshotCache = null;
       await checkNetworkStatus(false, { showLoading: false });
@@ -1804,6 +1830,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             );
           }
           const options = versionMap[row.type] || [];
+          const notice = versionNoticeMap[row.type];
           const selectedKey = selectedVersionMap[row.type];
           const selectOptions = buildVersionSelectOptions(options);
           const mongoHint = row.type === 'mongodb'
@@ -1842,6 +1869,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               ) : null}
               {installedVersionsText ? (
                 <Text type="secondary" style={{ fontSize: 12 }}>{installedVersionsText}</Text>
+              ) : null}
+              {notice ? (
+                <Text type="warning" style={{ fontSize: 12 }}>
+                  {compatText(notice.message, 'jsx')}
+                </Text>
               ) : null}
               {mongoHint ? <Text type="secondary" style={{ fontSize: 12 }}>{mongoHint}</Text> : null}
             </div>
@@ -1935,7 +1967,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         },
       },
     ];
-  }, [actionState, configureDefaultDriver, defaultDriverSavingKey, installDriver, loadVersionOptions, loadVersionPackageSize, openDriverLog, operationLogMap, progressMap, removeDriver, selectedVersionMap, uploadDriverFromJarFiles, versionLoadingMap, versionMap, versionSizeLoadingMap]);
+  }, [actionState, configureDefaultDriver, defaultDriverSavingKey, installDriver, loadVersionOptions, loadVersionPackageSize, openDriverLog, operationLogMap, progressMap, removeDriver, selectedVersionMap, uploadDriverFromJarFiles, versionLoadingMap, versionMap, versionNoticeMap, versionSizeLoadingMap]);
 
   const activeLogRow = useMemo(() => {
     if (!logDriverType) {

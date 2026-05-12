@@ -9,11 +9,12 @@ type UnknownRecord = Record<string, unknown>;
 
 type NestedConnectionConfigInput = UnknownRecord | connection.SSHConfig | connection.ProxyConfig | connection.HTTPTunnelConfig;
 
-type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ssh' | 'proxy' | 'httpTunnel'>> & {
+type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ssh' | 'proxy' | 'httpTunnel' | 'globalProxy'>> & {
   id?: string;
   ssh?: NestedConnectionConfigInput;
   proxy?: NestedConnectionConfigInput;
   httpTunnel?: NestedConnectionConfigInput;
+  globalProxy?: NestedConnectionConfigInput;
   mongoSRV?: boolean;
   mongoReplicaSet?: string;
   queryTimeout?: number;
@@ -125,12 +126,19 @@ export function buildRpcConnectionConfig(
     ...(config.httpTunnel ?? {}),
     ...(overrides.httpTunnel ?? {}),
   };
+  const mergedGlobalProxy: NestedConnectionConfigInput | undefined = config.globalProxy || overrides.globalProxy
+    ? {
+        ...(config.globalProxy ?? {}),
+        ...(overrides.globalProxy ?? {}),
+      }
+    : undefined;
   const merged: ConnectionConfigInput = {
     ...config,
     ...overrides,
     ssh: mergedSSH,
     proxy: mergedProxy,
     httpTunnel: mergedHttpTunnel,
+    globalProxy: mergedGlobalProxy,
   };
   const baseId = toStringValue(config.id).trim() || toStringValue(overrides.id).trim() || undefined;
   const timeout = toOptionalInteger(merged.timeout, toOptionalInteger(config.timeout));
@@ -154,6 +162,7 @@ export function buildRpcConnectionConfig(
     proxy: normalizeProxyConfig(merged.proxy),
     useHttpTunnel: merged.useHttpTunnel === true,
     httpTunnel: normalizeHttpTunnelConfig(merged.httpTunnel),
+    globalProxy: merged.globalProxy ? normalizeProxyConfig(merged.globalProxy) : undefined,
     driver: toOptionalStringValue(merged.driver),
     dsn: toOptionalStringValue(merged.dsn),
     options: queryTimeout === undefined

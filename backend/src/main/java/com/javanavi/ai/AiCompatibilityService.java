@@ -470,13 +470,23 @@ public class AiCompatibilityService {
     }
 
     public Map<String, Object> checkSql(String sql) {
-        String normalized = firstText(sql, "").toLowerCase(Locale.ROOT);
-        boolean mutating = normalized.matches("(?s).*(\\binsert\\b|\\bupdate\\b|\\bdelete\\b|\\bdrop\\b|\\balter\\b|\\btruncate\\b|\\bcreate\\b|\\bmerge\\b|\\breplace\\b).*?");
+        SqlOperationType operationType = sqlOperationType(sql);
+        String safetyLevel = getSafetyLevel();
+        boolean allowed = switch (safetyLevel) {
+            case "full" -> true;
+            case "readwrite" -> operationType != SqlOperationType.DDL;
+            default -> operationType == SqlOperationType.QUERY;
+        };
+        boolean requiresConfirm = allowed && switch (safetyLevel) {
+            case "full" -> operationType != SqlOperationType.QUERY;
+            case "readwrite" -> operationType == SqlOperationType.DML;
+            default -> false;
+        };
         return orderedMap(
-                "allowed", true,
-                "operationType", mutating ? "write" : "read",
-                "requiresConfirm", mutating,
-                "warningMessage", mutating ? "This SQL may modify database state; confirm before execution." : null
+                "allowed", allowed,
+                "operationType", operationType.apiName(),
+                "requiresConfirm", requiresConfirm,
+                "warningMessage", sqlSafetyWarning(operationType, safetyLevel, allowed, requiresConfirm)
         );
     }
 
@@ -1586,11 +1596,105 @@ public class AiCompatibilityService {
         return normalized;
     }
 
+    private static SqlOperationType sqlOperationType(String sql) {
+        String keyword = leadingSqlKeyword(sql);
+        if (keyword.isBlank()) {
+            return SqlOperationType.OTHER;
+        }
+        if (Set.of("select", "show", "describe", "desc", "explain", "with", "values", "pragma").contains(keyword)) {
+            return SqlOperationType.QUERY;
+        }
+        if (Set.of("insert", "update", "delete", "merge", "replace", "call").contains(keyword)) {
+            return SqlOperationType.DML;
+        }
+        if (Set.of("create", "alter", "drop", "truncate", "rename", "grant", "revoke").contains(keyword)) {
+            return SqlOperationType.DDL;
+        }
+        return SqlOperationType.OTHER;
+    }
+
+    private static String leadingSqlKeyword(String sql) {
+        String text = firstText(sql, "").replace("\r\n", "\n");
+        int index = 0;
+        while (index < text.length()) {
+            while (index < text.length() && Character.isWhitespace(text.charAt(index))) {
+                index++;
+            }
+            if (index + 1 < text.length() && text.charAt(index) == '-' && text.charAt(index + 1) == '-') {
+                index += 2;
+                while (index < text.length() && text.charAt(index) != '\n') {
+                    index++;
+                }
+                continue;
+            }
+            if (index < text.length() && text.charAt(index) == '#') {
+                index++;
+                while (index < text.length() && text.charAt(index) != '\n') {
+                    index++;
+                }
+                continue;
+            }
+            if (index + 1 < text.length() && text.charAt(index) == '/' && text.charAt(index + 1) == '*') {
+                int end = text.indexOf("*/", index + 2);
+                if (end < 0) {
+                    return "";
+                }
+                index = end + 2;
+                continue;
+            }
+            int start = index;
+            while (index < text.length()) {
+                char ch = text.charAt(index);
+                if (!Character.isLetterOrDigit(ch) && ch != '_') {
+                    break;
+                }
+                index++;
+            }
+            return start == index ? "" : text.substring(start, index).toLowerCase(Locale.ROOT);
+        }
+        return "";
+    }
+
+    private static String sqlSafetyWarning(SqlOperationType operationType, String safetyLevel, boolean allowed, boolean requiresConfirm) {
+        if (!allowed) {
+            if ("readonly".equals(safetyLevel)) {
+                return "Read-only AI safety mode allows query statements only.";
+            }
+            if ("readwrite".equals(safetyLevel) && operationType == SqlOperationType.DDL) {
+                return "Read/write AI safety mode blocks DDL statements.";
+            }
+            return "AI SQL safety policy blocks this statement.";
+        }
+        if (requiresConfirm) {
+            return operationType == SqlOperationType.DDL
+                    ? "This SQL may change database structure; confirm before execution."
+                    : "This SQL may modify database state; confirm before execution.";
+        }
+        return null;
+    }
+
+    private enum SqlOperationType {
+        QUERY("query"),
+        DML("dml"),
+        DDL("ddl"),
+        OTHER("other");
+
+        private final String apiName;
+
+        SqlOperationType(String apiName) {
+            this.apiName = apiName;
+        }
+
+        String apiName() {
+            return apiName;
+        }
+    }
+
     private static String normalizeSafety(String level) {
         String value = firstText(level, "readonly").toLowerCase(Locale.ROOT);
         return switch (value) {
-            case "off", "permissive" -> "off";
-            case "confirm" -> "confirm";
+            case "readwrite", "confirm" -> "readwrite";
+            case "full", "off", "permissive" -> "full";
             default -> "readonly";
         };
     }

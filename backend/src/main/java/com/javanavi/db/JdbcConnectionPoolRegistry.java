@@ -42,6 +42,20 @@ public class JdbcConnectionPoolRegistry {
 
     public Connection openConnection(ConnectionConfigDto config) throws SQLException {
         jdbcConnectionFactory.prepareDriver(config);
+        if (config != null && config.sshEnabled()) {
+            ConnectionNetworkTunnelService.TunnelLease tunnelLease = jdbcConnectionFactory.networkTunnelService().openSshTunnel(config);
+            try {
+                ConnectionConfigDto effective = config.withEndpoint("127.0.0.1", tunnelLease.localPort());
+                return TunnelBoundConnection.wrap(jdbcConnectionFactory.openRawConnection(effective), tunnelLease);
+            } catch (SQLException | RuntimeException error) {
+                tunnelLease.close();
+                if (error instanceof SQLException sqlException) {
+                    throw connectionFailure(config, sqlException);
+                }
+                throw error;
+            }
+        }
+        jdbcConnectionFactory.networkTunnelService().rejectUnsupported(config);
         ManagedPool pool = poolFor(config);
         try {
             return pool.openConnection();
@@ -53,6 +67,7 @@ public class JdbcConnectionPoolRegistry {
 
     public ConnectionPoolStatusDto openPool(ConnectionConfigDto config) throws SQLException {
         jdbcConnectionFactory.prepareDriver(config);
+        jdbcConnectionFactory.networkTunnelService().rejectUnsupported(config);
         ManagedPool pool = poolFor(config);
         boolean discardInvalidPool = false;
         try (Connection connection = pool.openConnection()) {
@@ -128,7 +143,11 @@ public class JdbcConnectionPoolRegistry {
         applyDriverTimeoutProperties(config, driverProperties, connectionTimeoutMs);
 
         HikariConfig hikari = new HikariConfig();
-        hikari.setDataSource(jdbcConnectionFactory.dataSource(config, driverProperties));
+        if (config != null && config.sshEnabled()) {
+            hikari.setDataSource(new SshTunnelJdbcDataSource(jdbcConnectionFactory, config, driverProperties));
+        } else {
+            hikari.setDataSource(jdbcConnectionFactory.dataSource(config, driverProperties));
+        }
         hikari.setMaximumPoolSize(maxPoolSize);
         hikari.setMinimumIdle(minimumIdle);
         hikari.setConnectionTimeout(connectionTimeoutMs);
@@ -163,23 +182,62 @@ public class JdbcConnectionPoolRegistry {
     }
 
     private String fingerprint(ConnectionConfigDto config) {
+        ConnectionConfigDto effectiveConfig = jdbcConnectionFactory.effectiveConnectionConfig(config);
         StringBuilder value = new StringBuilder();
-        value.append(jdbcConnectionFactory.normalizeDriver(config)).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.host())).append('\n');
-        value.append(String.valueOf(config == null ? null : config.port())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.username())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.password())).append('\n');
-        value.append(String.valueOf(config == null ? null : config.timeout())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.driver())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.sslMode())).append('\n');
-        value.append(String.valueOf(config == null ? null : config.useSSL())).append('\n');
-        if (config != null && config.options() != null) {
-            config.options().entrySet().stream()
+        value.append(jdbcConnectionFactory.normalizeDriver(effectiveConfig)).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.host())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null ? null : effectiveConfig.port())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.username())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.password())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().host())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().user())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().keyPath())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().port())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null ? null : effectiveConfig.timeout())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.driver())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.sslMode())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null ? null : effectiveConfig.useSSL())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.sslCertPath())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.sslKeyPath())).append('\n');
+        appendNetworkFingerprint(value, effectiveConfig);
+        if (effectiveConfig != null && effectiveConfig.options() != null) {
+            effectiveConfig.options().entrySet().stream()
                     .filter(entry -> includeInFingerprint(entry.getKey()))
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> value.append(entry.getKey()).append('=').append(entry.getValue()).append('\n'));
         }
         return sha256Hex(value.toString());
+    }
+
+    private static void appendNetworkFingerprint(StringBuilder value, ConnectionConfigDto config) {
+        if (config == null) {
+            return;
+        }
+        value.append("useProxy=").append(config.useProxy()).append('\n');
+        ConnectionConfigDto.NetworkProxyConfigDto proxy = config.proxy();
+        if (proxy != null) {
+            value.append("proxy.type=").append(nullToEmpty(proxy.type())).append('\n');
+            value.append("proxy.host=").append(nullToEmpty(proxy.host())).append('\n');
+            value.append("proxy.port=").append(proxy.port()).append('\n');
+            value.append("proxy.user=").append(nullToEmpty(proxy.user())).append('\n');
+            value.append("proxy.password=").append(nullToEmpty(proxy.password())).append('\n');
+        }
+        value.append("useHttpTunnel=").append(config.useHttpTunnel()).append('\n');
+        ConnectionConfigDto.NetworkHttpTunnelConfigDto httpTunnel = config.httpTunnel();
+        if (httpTunnel != null) {
+            value.append("httpTunnel.host=").append(nullToEmpty(httpTunnel.host())).append('\n');
+            value.append("httpTunnel.port=").append(httpTunnel.port()).append('\n');
+            value.append("httpTunnel.user=").append(nullToEmpty(httpTunnel.user())).append('\n');
+            value.append("httpTunnel.password=").append(nullToEmpty(httpTunnel.password())).append('\n');
+        }
+        ConnectionConfigDto.NetworkProxyConfigDto globalProxy = config.globalProxy();
+        if (globalProxy != null) {
+            value.append("globalProxy.type=").append(nullToEmpty(globalProxy.type())).append('\n');
+            value.append("globalProxy.host=").append(nullToEmpty(globalProxy.host())).append('\n');
+            value.append("globalProxy.port=").append(globalProxy.port()).append('\n');
+            value.append("globalProxy.user=").append(nullToEmpty(globalProxy.user())).append('\n');
+            value.append("globalProxy.password=").append(nullToEmpty(globalProxy.password())).append('\n');
+        }
     }
 
     private void discardFailedPool(ManagedPool pool) {

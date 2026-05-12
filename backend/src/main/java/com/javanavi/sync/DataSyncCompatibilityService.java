@@ -1078,6 +1078,44 @@ public class DataSyncCompatibilityService {
         return null;
     }
 
+    private static ConnectionConfigDto.NetworkCredentialConfigDto networkCredential(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        return new ConnectionConfigDto.NetworkCredentialConfigDto(
+                text(map.get("host")),
+                nullableInt(map.get("port")),
+                firstText(text(map.get("user")), text(map.get("username"))),
+                text(map.get("password")),
+                text(map.get("keyPath"))
+        );
+    }
+
+    private static ConnectionConfigDto.NetworkProxyConfigDto networkProxy(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        return new ConnectionConfigDto.NetworkProxyConfigDto(
+                text(map.get("type")),
+                text(map.get("host")),
+                nullableInt(map.get("port")),
+                firstText(text(map.get("user")), text(map.get("username"))),
+                text(map.get("password"))
+        );
+    }
+
+    private static ConnectionConfigDto.NetworkHttpTunnelConfigDto networkHttpTunnel(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        return new ConnectionConfigDto.NetworkHttpTunnelConfigDto(
+                text(map.get("host")),
+                nullableInt(map.get("port")),
+                firstText(text(map.get("user")), text(map.get("username"))),
+                text(map.get("password"))
+        );
+    }
+
     private static List<String> stringList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -1702,6 +1740,13 @@ public class DataSyncCompatibilityService {
                 nullableInt(map.get("timeout")),
                 booleanValue(map.get("useSSL")),
                 text(map.get("sslMode")),
+                booleanValue(map.get("useSSH")),
+                networkCredential(map.get("ssh")),
+                networkCredential(map.get("sshConfig")),
+                booleanValue(map.get("useProxy")),
+                networkProxy(map.get("proxy")),
+                booleanValue(map.get("useHttpTunnel")),
+                networkHttpTunnel(map.get("httpTunnel")),
                 text(map.get("uri")),
                 text(map.get("dsn")),
                 stringList(map.get("hosts")),
@@ -1712,10 +1757,7 @@ public class DataSyncCompatibilityService {
                 booleanValue(map.get("mongoSrv")),
                 text(map.get("mongoAuthMechanism")),
                 text(map.get("mongoReplicaUser")),
-                text(map.get("mongoReplicaPassword")),
-                booleanValue(map.get("useSSH")),
-                booleanValue(map.get("useProxy")),
-                booleanValue(map.get("useHttpTunnel"))
+                text(map.get("mongoReplicaPassword"))
         );
     }
 

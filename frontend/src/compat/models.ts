@@ -298,6 +298,7 @@ export namespace connection {
 	    proxy?: ProxyConfig;
 	    useHttpTunnel?: boolean;
 	    httpTunnel?: HTTPTunnelConfig;
+	    globalProxy?: ProxyConfig;
 	    driver?: string;
 	    dsn?: string;
 	    options?: Record<string, string>;
@@ -340,6 +341,7 @@ export namespace connection {
 	        this.proxy = convertCompatValues(sourceRecord["proxy"], ProxyConfig) as ProxyConfig | undefined;
 	        this.useHttpTunnel = sourceRecord["useHttpTunnel"];
 	        this.httpTunnel = convertCompatValues(sourceRecord["httpTunnel"], HTTPTunnelConfig) as HTTPTunnelConfig | undefined;
+	        this.globalProxy = convertCompatValues(sourceRecord["globalProxy"], ProxyConfig) as ProxyConfig | undefined;
 	        this.driver = sourceRecord["driver"];
 	        this.dsn = sourceRecord["dsn"];
 	        this.options = sourceRecord["options"];

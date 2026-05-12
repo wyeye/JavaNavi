@@ -41,10 +41,17 @@ declare global {
     getConnectionPassword?: (connectionId: string) => string | undefined;
   };
 
+  type JavaNaviTauriBridge = {
+    core?: {
+      invoke?: <T = unknown>(command: string, args?: Record<string, unknown>) => Promise<T>;
+    };
+  };
+
   interface Window {
     go?: JavaNaviGoBridge;
     runtime?: JavaNaviRuntimeBridge;
     ipcRenderer?: JavaNaviIpcRenderer;
+    __TAURI__?: JavaNaviTauriBridge;
     __javanaviBrowserSecrets?: JavaNaviBrowserSecrets;
   }
 }

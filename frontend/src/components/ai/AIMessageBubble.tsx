@@ -329,7 +329,7 @@ const AIBlockHashRender = ({
                 50,
                 activeConnectionConfig?.driver || '',
             );
-            const res = await DBQuery(activeConnectionConfig, activeDbName || '', previewSql);
+            const res = await DBQuery(activeConnectionConfig, activeDbName || '', previewSql, 'ai-tool');
             if (res.success && Array.isArray(res.data)) {
                 const rows = res.data as QueryRow[];
                 const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
