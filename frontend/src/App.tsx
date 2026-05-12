@@ -1,6 +1,7 @@
 import React, { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Switch, Input, InputNumber, Select, Segmented, Tooltip } from 'antd';
 import type { Locale } from 'antd/es/locale';
+import type { CSSProperties } from 'react';
 import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
@@ -8,7 +9,7 @@ import 'dayjs/locale/zh-cn';
 import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
 import { DEFAULT_APPEARANCE, useStore } from './store';
-import { SavedConnection } from './types';
+import type { GlobalProxyConfig, SavedConnection } from './types';
 import { blurToFilter, isMacLikePlatform, normalizeBlurForPlatform, normalizeOpacityForPlatform, isWindowsPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from './utils/appearance';
 import { getDataGridColumnWidthModeOptions, sanitizeDataTableColumnWidthMode } from './utils/dataGridDisplay';
 import { shouldHandleMacNativeFullscreenShortcut, shouldSuppressMacNativeEscapeExit } from './utils/macWindow';
@@ -47,7 +48,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, SaveLanguage, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { ExportConnectionsPackage, GetAppInfo, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, ImportConnectionsPayload, LogWindowDiagnostic, SaveGlobalProxy, SaveLanguage, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -89,6 +90,36 @@ const mergeSavedConnections = (current: SavedConnection[], imported: SavedConnec
   imported.forEach((conn) => merged.set(conn.id, conn));
   return Array.from(merged.values());
 };
+
+
+type AppInfo = {
+  version: string;
+  author: string;
+  buildTime?: string;
+  repoUrl?: string;
+  communityUrl?: string;
+  communityName?: string;
+  communityGroupNumber?: string;
+};
+
+type LanguagePayload = {
+  language?: string;
+};
+
+type DataRootInfo = {
+  path?: string;
+  defaultPath?: string;
+  driverPath?: string;
+};
+
+type DraggableResizeHandleStyle = CSSProperties & {
+  WebkitAppRegion: 'drag';
+  '--wails-draggable': 'drag';
+};
+
+const getErrorMessage = (error: unknown, fallback = ''): string => (
+  error instanceof Error ? error.message : String(error || fallback)
+);
 
 type ConnectionPackageDialogMode = 'import' | 'export';
 
@@ -282,38 +313,32 @@ function App() {
 
       let cancelled = false;
       const loadInitialConfig = async () => {
-          const backendApp = (window as any).go?.app?.App;
           try {
-              if (typeof backendApp?.GetSavedConnections === 'function') {
-                  const latestConnections = await GetSavedConnections();
-                  if (!cancelled && Array.isArray(latestConnections)) {
-                      replaceConnections(latestConnections as SavedConnection[]);
-                  }
+              const latestConnections = await GetSavedConnections();
+              if (!cancelled && Array.isArray(latestConnections)) {
+                  replaceConnections(latestConnections as SavedConnection[]);
               }
           } catch (err) {
               console.warn('Failed to load saved connections', err);
           }
 
           try {
-              if (typeof backendApp?.GetGlobalProxyConfig === 'function') {
-                  const proxyResult = await GetGlobalProxyConfig();
-                  if (!cancelled && proxyResult?.success && proxyResult.data) {
-                      replaceGlobalProxy(createGlobalProxyDraft(proxyResult.data));
-                  }
+              const proxyResult = await GetGlobalProxyConfig();
+              if (!cancelled && proxyResult?.success && proxyResult.data) {
+                  replaceGlobalProxy(createGlobalProxyDraft(proxyResult.data as Partial<GlobalProxyConfig>));
               }
           } catch (err) {
               console.warn('Failed to load global proxy config', err);
           }
 
           try {
-              if (typeof backendApp?.GetLanguage === 'function') {
-                  const languageResult = await GetLanguage();
-                  if (!cancelled && languageResult?.success && languageResult.data?.language) {
-                      const nextLanguage = languageResult.data.language === 'zh' ? 'zh' : 'en';
-                      const currentLanguage = useStore.getState().language;
-                      if (currentLanguage !== nextLanguage) {
-                          useStore.getState().setLanguage(nextLanguage);
-                      }
+              const languageResult = await GetLanguage();
+              const languagePayload = languageResult.data as LanguagePayload | undefined;
+              if (!cancelled && languageResult?.success && languagePayload?.language) {
+                  const nextLanguage = languagePayload.language === 'zh' ? 'zh' : 'en';
+                  const currentLanguage = useStore.getState().language;
+                  if (currentLanguage !== nextLanguage) {
+                      useStore.getState().setLanguage(nextLanguage);
                   }
               }
           } catch (err) {
@@ -355,14 +380,9 @@ function App() {
       globalProxyInvalidHintShownRef.current = false;
       void message.destroy('global-proxy-invalid');
 
-      const backendApp = (window as any).go?.app?.App;
-      if (typeof backendApp?.SaveGlobalProxy !== 'function') {
-          return;
-      }
-
       let cancelled = false;
       Promise.resolve(
-          backendApp.SaveGlobalProxy(
+          SaveGlobalProxy(
               toSaveGlobalProxyInput({
                   ...globalProxy,
                   host,
@@ -918,10 +938,6 @@ function App() {
       if (!macWindowDiagnosticsEnabled) {
           return;
       }
-      const backendApp = (window as any).go?.app?.App;
-      if (typeof backendApp?.LogWindowDiagnostic !== 'function') {
-          return;
-      }
       try {
           const [isFullscreen, isMaximised, isMinimised, isNormal, size, position] = await Promise.all([
               WindowIsFullscreen().catch(() => false),
@@ -965,7 +981,7 @@ function App() {
           }
           windowDiagLastSignatureRef.current = signature;
           windowDiagLastAtRef.current = now;
-          await backendApp.LogWindowDiagnostic(stage, JSON.stringify(payload));
+          await LogWindowDiagnostic(stage, JSON.stringify(payload));
       } catch (error) {
           console.warn('Failed to emit window diagnostic', error);
       }
@@ -1083,9 +1099,9 @@ function App() {
 
   const loadAboutInfo = React.useCallback(async () => {
       setAboutLoading(true);
-      const res = await (window as any).go.app.App.GetAppInfo();
+      const res = await GetAppInfo();
       if (res?.success) {
-          setAboutInfo(res.data);
+          setAboutInfo(res.data as AppInfo);
       } else {
           void message.error(t('message.appInfoFailed', { message: res?.message || t('message.unknownError') }));
       }
@@ -1127,27 +1143,21 @@ function App() {
   }, []);
 
   const refreshConnectionsAfterImport = useCallback(async (importedViews: SavedConnection[]) => {
-      const backendApp = (window as any).go?.app?.App;
-      if (typeof backendApp?.GetSavedConnections === 'function') {
+      try {
           const latestConnections = await GetSavedConnections();
           if (!Array.isArray(latestConnections)) {
               throw new Error(t('connection.package.importRefreshFailed'));
           }
           replaceConnections(latestConnections as SavedConnection[]);
           return;
+      } catch {
+          const latestConnections = useStore.getState().connections;
+          replaceConnections(mergeSavedConnections(latestConnections, importedViews));
       }
-
-      const latestConnections = useStore.getState().connections;
-      replaceConnections(mergeSavedConnections(latestConnections, importedViews));
   }, [replaceConnections]);
 
   const importConnectionsPayload = useCallback(async (raw: string, password: string) => {
-      const backendApp = (window as any).go?.app?.App;
-      if (typeof backendApp?.ImportConnectionsPayload !== 'function') {
-          throw new Error(t('connection.package.importUnsupported'));
-      }
-
-      const importedViews = await backendApp.ImportConnectionsPayload(raw, password);
+      const importedViews = await ImportConnectionsPayload(raw, password);
       if (!Array.isArray(importedViews)) {
           throw new Error(t('connection.package.importNoList'));
       }
@@ -1171,7 +1181,7 @@ function App() {
           } else {
               void message.success(t('connection.package.importSuccess', { count: importedViews.length }));
           }
-      } catch (e: any) {
+      } catch (e: unknown) {
           if (isConnectionPackagePasswordRequiredError(e)) {
               setPendingConnectionImportPayload(raw);
               setConnectionPackageDialog({
@@ -1185,7 +1195,7 @@ function App() {
               });
               return;
           }
-          void message.error(e?.message || t('connection.package.importFailed'));
+          void message.error(getErrorMessage(e, t('connection.package.importFailed')));
       }
   }, [importConnectionsPayload, t]);
 
@@ -1203,8 +1213,8 @@ function App() {
       try {
           const raw = await file.text();
           await handleConnectionImportRaw(raw);
-      } catch (e: any) {
-          void message.error(e?.message || t('connection.package.importFailed'));
+      } catch (e: unknown) {
+          void message.error(getErrorMessage(e, t('connection.package.importFailed')));
       }
   }, [handleConnectionImportRaw, t]);
 
@@ -1226,7 +1236,6 @@ function App() {
   };
 
   const handleConfirmConnectionPackageDialog = async () => {
-      const backendApp = (window as any).go?.app?.App;
       const password = normalizeConnectionPackagePassword(connectionPackageDialog.password);
 
       if (connectionPackageDialog.mode === 'import' && !password) {
@@ -1262,11 +1271,7 @@ function App() {
 
       try {
           if (connectionPackageDialog.mode === 'export') {
-              if (typeof backendApp?.ExportConnectionsPackage !== 'function') {
-                  throw new Error(t('connection.package.exportUnsupported'));
-              }
-
-              const res = await backendApp.ExportConnectionsPackage({
+              const res = await ExportConnectionsPackage({
                   includeSecrets: connectionPackageDialog.includeSecrets,
                   filePassword: (
                       connectionPackageDialog.includeSecrets
@@ -1294,11 +1299,11 @@ function App() {
           const importedViews = await importConnectionsPayload(pendingConnectionImportPayload, password);
           closeConnectionPackageDialog();
           void message.success(t('connection.package.importSuccess', { count: importedViews.length }));
-      } catch (e: any) {
+      } catch (e: unknown) {
           setConnectionPackageDialog((current) => ({
               ...current,
               confirmLoading: false,
-              error: e?.message || (current.mode === 'export' ? t('connection.package.exportFailed') : t('connection.package.importFailed')),
+              error: getErrorMessage(e, current.mode === 'export' ? t('connection.package.exportFailed') : t('connection.package.importFailed')),
           }));
       }
   };
@@ -1312,7 +1317,7 @@ function App() {
   const [capturingShortcutAction, setCapturingShortcutAction] = useState<ShortcutAction | null>(null);
   const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
   const [isDataRootModalOpen, setIsDataRootModalOpen] = useState(false);
-  const [dataRootInfo, setDataRootInfo] = useState<any>(null);
+  const [dataRootInfo, setDataRootInfo] = useState<DataRootInfo | null>(null);
   const [dataRootLoading, setDataRootLoading] = useState(false);
   const [isAISettingsOpen, setIsAISettingsOpen] = useState(false);
   const aiEntryPlacement = resolveAIEntryPlacement();
@@ -1366,7 +1371,7 @@ function App() {
           if (!res?.success) {
               throw new Error(res?.message || t('message.loadDataRootFailed'));
           }
-          const data = (res?.data || {}) as any;
+          const data = (res?.data || {}) as DataRootInfo;
           setDataRootInfo(data);
       } catch (error) {
           const errMsg = error instanceof Error ? error.message : String(error || t('message.unknownError'));
@@ -1742,7 +1747,7 @@ function App() {
       WebkitAppRegion: 'drag',
       '--wails-draggable': 'drag',
       userSelect: 'none'
-  } as any;
+  } satisfies DraggableResizeHandleStyle;
 
   const showLinuxResizeHandles = isLinuxRuntime;
   const resizeGuideColor = darkMode ? 'rgba(246, 196, 83, 0.55)' : 'rgba(24, 144, 255, 0.5)';
