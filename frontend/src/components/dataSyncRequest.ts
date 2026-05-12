@@ -1,8 +1,9 @@
 import type { I18nKey } from '../i18n';
+import type { connection } from '../compat/models';
 
 export type SourceDatasetMode = 'table' | 'query';
 
-type ConnectionConfigPayload = Record<string, any>;
+type ConnectionConfigPayload = connection.ConnectionConfig;
 type SyncContent = 'data' | 'schema' | 'both';
 type TargetTableStrategy = 'existing_only' | 'auto_create_if_missing' | 'smart';
 export type DataSyncTableOptionsPayload = {

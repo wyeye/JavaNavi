@@ -1,6 +1,7 @@
 import type { I18nKey } from '../i18n';
+import type { connection } from '../compat/models';
 
-type ConnectionConfigPayload = Record<string, any>;
+type ConnectionConfigPayload = connection.ConnectionConfig;
 export type SchemaSyncRequestPayload = {
   sourceConfig: ConnectionConfigPayload;
   targetConfig: ConnectionConfigPayload;
