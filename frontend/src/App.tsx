@@ -5,7 +5,7 @@ import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
-import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined } from '@ant-design/icons';
+import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TableOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
 import { DEFAULT_APPEARANCE, useStore } from './store';
 import { SavedConnection } from './types';
@@ -116,6 +116,7 @@ function App() {
   const [antdLocale, setAntdLocale] = useState<Locale | undefined>(enUSLocale);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
+  const [syncModalDomain, setSyncModalDomain] = useState<'data' | 'schema'>('data');
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
   const [editingConnection, setEditingConnection] = useState<SavedConnection | null>(null);
   const windowState = useStore(state => state.windowState);
@@ -2096,6 +2097,18 @@ function App() {
                   title: t('tools.sync.title'),
                   description: t('tools.sync.description'),
                   onClick: () => {
+                    setSyncModalDomain('data');
+                    setIsToolsModalOpen(false);
+                    setIsSyncModalOpen(true);
+                  },
+                },
+                {
+                  key: 'schema-sync',
+                  icon: <TableOutlined />,
+                  title: t('tools.schemaSync.title'),
+                  description: t('tools.schemaSync.description'),
+                  onClick: () => {
+                    setSyncModalDomain('schema');
                     setIsToolsModalOpen(false);
                     setIsSyncModalOpen(true);
                   },
@@ -2268,6 +2281,7 @@ function App() {
             <Suspense fallback={null}>
               <DataSyncModal
                 open={isSyncModalOpen}
+                initialDomain={syncModalDomain}
                 onClose={() => setIsSyncModalOpen(false)}
               />
             </Suspense>

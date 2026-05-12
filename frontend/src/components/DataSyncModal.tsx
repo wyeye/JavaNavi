@@ -270,7 +270,7 @@ const buildSqlPreview = (
   };
 };
 
-const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open, onClose }) => {
+const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClose: () => void }> = ({ open, initialDomain = 'data', onClose }) => {
   const connections = useStore((state) => state.connections);
   const themeMode = useStore((state) => state.theme);
   const appearance = useStore((state) => state.appearance);
@@ -404,7 +404,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
         setSourceDatasetMode('table');
         setSourceQuery('');
         setWorkflowType('sync');
-        setSyncDomain('data');
+        setSyncDomain(initialDomain);
         setSyncContent('data');
         setSyncMode('insert_update');
         setAutoAddColumns(true);
@@ -430,7 +430,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
         jobIdRef.current = '';
         autoScrollRef.current = true;
     }
-  }, [open]);
+  }, [open, initialDomain]);
 
   useEffect(() => {
       if (workflowType === 'migration') {
@@ -1266,16 +1266,6 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                       </Text>
                   </div>
                   <Form layout="vertical">
-                      <Form.Item label="同步域">
-                          <Tabs
-                              activeKey={syncDomain}
-                              onChange={(key) => setSyncDomain(key as SyncDomain)}
-                              items={[
-                                  { key: 'data', label: '数据同步' },
-                                  { key: 'schema', label: t('schemaSync.tab.label') },
-                              ]}
-                          />
-                      </Form.Item>
                       <Form.Item label="功能类型">
                           <Select value={workflowType} onChange={setWorkflowType}>
                               <Option value="sync">数据同步（基于已有目标表做差异同步）</Option>
