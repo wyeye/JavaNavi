@@ -95,16 +95,16 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/custom-definitions")
-    public ApiEnvelope<Map<String, Object>> customDefinitions(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.customDefinitions(input == null ? "" : input.downloadDir()));
+    public ApiEnvelope<DriverContracts.CustomDriverDefinitionsResponse> customDefinitions(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
+        return ApiEnvelope.ok(DriverContracts.CustomDriverDefinitionsResponse.from(driverCompatibilityService.customDefinitions(input == null ? "" : input.downloadDir())));
     }
 
     @PostMapping("/custom-definitions/validate")
-    public ApiEnvelope<Map<String, Object>> validateCustomDefinition(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.validateCustomDefinition(
+    public ApiEnvelope<DriverContracts.CustomDriverDefinitionResponse> validateCustomDefinition(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
+        return ApiEnvelope.ok(DriverContracts.CustomDriverDefinitionResponse.from(driverCompatibilityService.validateCustomDefinition(
                 input == null ? "" : input.driverType(),
                 input == null ? "" : input.downloadDir()
-        ));
+        )));
     }
 
     @PostMapping("/default-driver")

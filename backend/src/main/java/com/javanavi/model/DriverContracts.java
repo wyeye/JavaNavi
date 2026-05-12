@@ -368,6 +368,101 @@ public final class DriverContracts {
         }
     }
 
+    public record DriverArtifactResponse(
+            String groupId,
+            String artifactId,
+            String version,
+            String fileName,
+            String filePath,
+            String sha256,
+            Long sizeBytes,
+            String downloadUrl,
+            String sourcePath
+    ) {
+        public static DriverArtifactResponse from(Object value) {
+            Map<String, Object> source = mapValue(value);
+            return new DriverArtifactResponse(
+                    text(source.get("groupId")),
+                    text(source.get("artifactId")),
+                    text(source.get("version")),
+                    text(source.get("fileName")),
+                    text(source.get("filePath")),
+                    text(source.get("sha256")),
+                    longValue(source.get("sizeBytes")),
+                    text(source.get("downloadUrl")),
+                    text(source.get("sourcePath"))
+            );
+        }
+    }
+
+    public record CustomDriverDefinitionResponse(
+            String driverType,
+            String driverName,
+            String version,
+            String driverClassName,
+            String installSource,
+            String downloadedAt,
+            List<DriverArtifactResponse> artifacts,
+            List<String> jarFileNames,
+            boolean driverLoadable,
+            boolean definitionUsable,
+            String validationStatus,
+            String message,
+            List<String> repairHints,
+            String checkedAt,
+            String engine,
+            boolean packageInstalled,
+            boolean runtimeAvailable,
+            boolean connectable,
+            String installMode
+    ) {
+        public static CustomDriverDefinitionResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new CustomDriverDefinitionResponse(
+                    text(source.get("driverType")),
+                    text(source.get("driverName")),
+                    text(source.get("version")),
+                    text(source.get("driverClassName")),
+                    text(source.get("installSource")),
+                    text(source.get("downloadedAt")),
+                    listValue(source.get("artifacts")).stream().map(DriverArtifactResponse::from).toList(),
+                    stringList(source.get("jarFileNames")),
+                    booleanValue(source.get("driverLoadable")),
+                    booleanValue(source.get("definitionUsable")),
+                    text(source.get("validationStatus")),
+                    text(source.get("message")),
+                    stringList(source.get("repairHints")),
+                    text(source.get("checkedAt")),
+                    text(source.get("engine")),
+                    booleanValue(source.get("packageInstalled")),
+                    booleanValue(source.get("runtimeAvailable")),
+                    booleanValue(source.get("connectable")),
+                    text(source.get("installMode"))
+            );
+        }
+
+        public static CustomDriverDefinitionResponse from(Object value) {
+            return from(mapValue(value));
+        }
+    }
+
+    public record CustomDriverDefinitionsResponse(
+            List<CustomDriverDefinitionResponse> definitions,
+            List<CustomDriverDefinitionResponse> customDefinitions,
+            int count,
+            boolean webManaged
+    ) {
+        public static CustomDriverDefinitionsResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new CustomDriverDefinitionsResponse(
+                    listValue(source.get("definitions")).stream().map(CustomDriverDefinitionResponse::from).toList(),
+                    listValue(source.get("customDefinitions")).stream().map(CustomDriverDefinitionResponse::from).toList(),
+                    integerValue(source.get("count")) == null ? 0 : integerValue(source.get("count")),
+                    booleanValue(source.get("webManaged"))
+            );
+        }
+    }
+
     public record NetworkCheckResponse(
             String name,
             String url,
