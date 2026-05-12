@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import Editor, { OnMount } from '@monaco-editor/react';
+import Editor, { OnMount, type Monaco } from '@monaco-editor/react';
+import type { editor, Position } from 'monaco-editor';
 import { Button, message, Modal, Input, Form, Dropdown, MenuProps, Tooltip, Select, Tabs } from 'antd';
 import { PlayCircleOutlined, SaveOutlined, FormatPainterOutlined, SettingOutlined, CloseOutlined, StopOutlined, RobotOutlined } from '@ant-design/icons';
 import { format } from 'sql-formatter';
 import { v4 as uuidv4 } from 'uuid';
-import { TabData, ColumnDefinition, IndexDefinition } from '../types';
+import type { TabData, ColumnDefinition, IndexDefinition, SavedConnection } from '../types';
 import { useStore } from '../store';
-import { DBQueryWithCancel, DBQueryMulti, DBGetTables, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetIndexes, CancelQuery, GenerateQueryID, WriteSQLFile } from '@compat/javanaviApp';
+import { DBQueryWithCancel, DBQueryMulti, DBGetTables, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetIndexes, CancelQuery, GenerateQueryID, WriteSQLFile, type QueryResult } from '@compat/javanaviApp';
 import DataGrid, { JAVANAVI_ROW_KEY } from './DataGrid';
 import ExecutionPlanResultView from './ExecutionPlanResultView';
 import { applyQueryAutoLimit } from '../utils/queryAutoLimit';
@@ -182,13 +183,70 @@ let sqlCompletionRegistered = false;
 
 // 模块级共享变量：completion provider 从这些变量读取当前活跃 Tab 的状态。
 // 每个 QueryEditor 实例在成为活跃 Tab 时更新这些变量，确保 provider 始终使用正确的上下文。
+type QueryRow = Record<string, unknown> & Partial<Record<typeof JAVANAVI_ROW_KEY, string | number>>;
+type TableMeta = { dbName: string; tableName: string };
+type ColumnMeta = { dbName: string; tableName: string; name: string; type: string };
+type QueryResultSetData = { columns?: string[]; rows?: QueryRow[] };
+type AffectedRowsPayload = { affectedRows?: number };
+type DatabaseRow = { Database?: unknown; database?: unknown };
+type SlashCommandDef = { cmd: string; label: string; desc: string; prompt: string; useSelection?: boolean };
+type InsertSqlEventDetail = { tabId?: string; sql?: string; connectionId?: string; dbName?: string; runImmediately?: boolean };
+type InsertSqlEvent = CustomEvent<InsertSqlEventDetail>;
+type QueryEditorMonaco = Monaco;
+type QueryEditorModel = editor.ITextModel;
+type QueryEditorPosition = Position;
+type QueryEditorInstance = editor.IStandaloneCodeEditor;
+
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+);
+
+const getErrorMessage = (error: unknown, fallback = '未知错误'): string => {
+    if (error instanceof Error) return error.message || fallback;
+    if (typeof error === 'string') return error || fallback;
+    if (isRecord(error) && typeof error.message === 'string' && error.message) return error.message;
+    if (error === null || error === undefined) return fallback;
+    return String(error) || fallback;
+};
+
+const queryArrayData = <T,>(result: QueryResult): T[] => (
+    Array.isArray(result.data) ? result.data as T[] : []
+);
+
+const toQueryRows = (value: unknown): QueryRow[] => (
+    Array.isArray(value) ? value.filter((row): row is QueryRow => isRecord(row)) : []
+);
+
+const firstRecordValue = (row: unknown): unknown => (
+    isRecord(row) ? Object.values(row)[0] : undefined
+);
+
+const affectedRowsOf = (value: unknown): number | undefined => {
+    if (!isRecord(value)) return undefined;
+    const affectedRows = Number((value as AffectedRowsPayload).affectedRows);
+    return Number.isFinite(affectedRows) ? affectedRows : undefined;
+};
+
+const affectedRowsRow = (affected: number): QueryRow => ({ affectedRows: affected, [JAVANAVI_ROW_KEY]: 0 });
+
+const queryResultSetDataArray = (result: QueryResult): QueryResultSetData[] => (
+    Array.isArray(result.data) ? result.data as QueryResultSetData[] : []
+);
+
 let sharedCurrentDb = '';
 let sharedCurrentConnectionId = '';
-let sharedConnections: any[] = [];
-let sharedTablesData: {dbName: string, tableName: string}[] = [];
-let sharedAllColumnsData: {dbName: string, tableName: string, name: string, type: string}[] = [];
+let sharedConnections: SavedConnection[] = [];
+let sharedTablesData: TableMeta[] = [];
+let sharedAllColumnsData: ColumnMeta[] = [];
 let sharedVisibleDbs: string[] = [];
-let sharedColumnsCacheData: Record<string, any[]> = {};
+let sharedColumnsCacheData: Record<string, ColumnDefinition[]> = {};
+
+
+declare global {
+    interface Window {
+        __javanaviSlashCmdDefs?: SlashCommandDef[];
+    }
+}
 
 type RunMode = 'all' | 'current' | 'selected';
 type RunSource = 'executionPlan' | 'reload' | 'query';
@@ -201,7 +259,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       key: string;
       sql: string;
       exportSql?: string;
-      rows: any[];
+      rows: QueryRow[];
       columns: string[];
       tableName?: string;
       pkColumns: string[];
@@ -230,14 +288,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   // Resizing state
   const [editorHeight, setEditorHeight] = useState(300);
-  const editorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
+  const editorRef = useRef<QueryEditorInstance | null>(null);
+  const monacoRef = useRef<QueryEditorMonaco | null>(null);
   const lastExternalQueryRef = useRef<string>(tab.query || '');
   const dragRef = useRef<{ startY: number, startHeight: number } | null>(null);
   const queryEditorRootRef = useRef<HTMLDivElement | null>(null);
   const editorPaneRef = useRef<HTMLDivElement | null>(null);
-  const tablesRef = useRef<{dbName: string, tableName: string}[]>([]); // Store tables for autocomplete (cross-db)
-  const allColumnsRef = useRef<{dbName: string, tableName: string, name: string, type: string}[]>([]); // Store all columns (cross-db)
+  const tablesRef = useRef<TableMeta[]>([]); // Store tables for autocomplete (cross-db)
+  const allColumnsRef = useRef<ColumnMeta[]>([]); // Store all columns (cross-db)
   const visibleDbsRef = useRef<string[]>([]); // Store visible databases for cross-db intellisense
 
   const connections = useStore(state => state.connections);
@@ -354,9 +412,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
           };
 
-          const res = await DBGetDatabases(buildRpcConnectionConfig(config) as any);
+          const res = await DBGetDatabases(buildRpcConnectionConfig(config));
           if (res.success && Array.isArray(res.data)) {
-              let dbs = res.data.map((row: any) => row.Database || row.database);
+              let dbs = queryArrayData<DatabaseRow>(res)
+                  .map((row) => String(row.Database || row.database || ''))
+                  .filter(Boolean);
 
               // 过滤只显示 includeDatabases 中配置的数据库
               const includeDbs = conn.includeDatabases;
@@ -414,18 +474,20 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
           for (const dbName of visibleDbs) {
               // 获取表
-              const resTables = await DBGetTables(buildRpcConnectionConfig(config) as any, dbName);
+              const resTables = await DBGetTables(buildRpcConnectionConfig(config), dbName);
               if (resTables.success && Array.isArray(resTables.data)) {
-                  const tableNames = resTables.data.map((row: any) => Object.values(row)[0] as string);
+                  const tableNames = queryArrayData<Record<string, unknown>>(resTables)
+                      .map((row) => String(firstRecordValue(row) || ''))
+                      .filter(Boolean);
                   tableNames.forEach((tableName: string) => {
                       allTables.push({ dbName, tableName });
                   });
               }
 
               // 获取列 (所有数据库类型都支持 DBGetAllColumns)
-              const resCols = await DBGetAllColumns(buildRpcConnectionConfig(config) as any, dbName);
+              const resCols = await DBGetAllColumns(buildRpcConnectionConfig(config), dbName);
               if (resCols.success && Array.isArray(resCols.data)) {
-                  resCols.data.forEach((col: any) => {
+                  queryArrayData<ColumnMeta>(resCols).forEach((col) => {
                       allColumns.push({
                           dbName,
                           tableName: col.tableName,
@@ -500,8 +562,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               label: action.label,
               contextMenuGroupId: '9_ai',
               contextMenuOrder: 1,
-              run: (ed: any) => {
-                  const selection = ed.getModel()?.getValueInRange(ed.getSelection());
+              run: (ed: editor.ICodeEditor) => {
+                  const selectionRange = ed.getSelection();
+                  const selection = selectionRange ? ed.getModel()?.getValueInRange(selectionRange) : '';
                   const conn = connectionsRef.current.find(c => c.id === currentConnectionIdRef.current);
                   const ctxText = conn ? `【上下文环境：${conn.config?.type || '数据库'} "${conn.name}", 当前库选定为 "${currentDbRef.current || '默认'}"】\n` : '';
                   let prompt = ctxText + action.prompt;
@@ -524,7 +587,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       sqlCompletionRegistered = true;
       monaco.languages.registerCompletionItemProvider('sql', {
           triggerCharacters: ['.'],
-          provideCompletionItems: async (model: any, position: any) => {
+          provideCompletionItems: async (model: QueryEditorModel, position: QueryEditorPosition) => {
               const word = model.getWordUntilPosition(position);
               const range = {
                   startLineNumber: position.lineNumber,
@@ -606,9 +669,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   const config = buildConnConfig();
                   if (!config) return [] as ColumnDefinition[];
 
-                  const res = await DBGetColumns(buildRpcConnectionConfig(config) as any, dbName, tableIdent);
+                  const res = await DBGetColumns(buildRpcConnectionConfig(config), dbName, tableIdent);
                   if (res?.success && Array.isArray(res.data)) {
-                      const cols = res.data as ColumnDefinition[];
+                      const cols = queryArrayData<ColumnDefinition>(res);
                       sharedColumnsCacheData[key] = cols;
                       return cols;
                   }
@@ -941,11 +1004,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           { cmd: '/mock',     label: '🎲 造测试数据',    desc: '生成 INSERT 测试数据',   prompt: '请为当前关联的表生成 10 条符合业务语义的测试数据 INSERT 语句：' },
       ];
       // 全局变量存储命令定义，供 onDidChangeModelContent 使用
-      (window as any).__javanaviSlashCmdDefs = slashCmdDefs;
+      window.__javanaviSlashCmdDefs = slashCmdDefs;
 
       monaco.languages.registerCompletionItemProvider('sql', {
           triggerCharacters: ['/'],
-          provideCompletionItems: (model: any, position: any) => {
+          provideCompletionItems: (model: QueryEditorModel, position: QueryEditorPosition) => {
               const lineContent = model.getLineContent(position.lineNumber);
               const textBefore = lineContent.substring(0, position.column - 1).trimStart();
               if (!textBefore.startsWith('/')) {
@@ -985,8 +1048,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           if (!markerMatch) return;
 
           const cmdKey = markerMatch[1].toLowerCase();
-          const defs = (window as any).__javanaviSlashCmdDefs || [];
-          const cmdDef = defs.find((c: any) => c.cmd === `/${cmdKey}`);
+          const defs = window.__javanaviSlashCmdDefs || [];
+          const cmdDef = defs.find((c) => c.cmd === `/${cmdKey}`);
           if (!cmdDef) return;
 
           // 清除标记文本（带递归保护）
@@ -1028,7 +1091,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const handleAIAction = (action: 'generate' | 'explain' | 'optimize' | 'schema') => {
       const editor = editorRef.current;
-      const selection = editor?.getModel()?.getValueInRange(editor.getSelection()) || '';
+      const selectionRange = editor?.getSelection();
+      const selection = editor && selectionRange ? editor.getModel()?.getValueInRange(selectionRange) || '' : '';
       const fullSQL = getCurrentQuery();
 
       const conn = connections.find(c => c.id === currentConnectionId);
@@ -1314,14 +1378,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           } catch {
               queryId = 'reload-' + Date.now();
           }
-          const res = await DBQueryMulti(buildRpcConnectionConfig(config) as any, currentDb, sql, queryId, 'reload');
+          const res = await DBQueryMulti(buildRpcConnectionConfig(config), currentDb, sql, queryId, 'reload');
           if (!res?.success) {
               message.error('刷新失败: ' + (res?.message || '未知错误'));
               return;
           }
 
           // 取第一个结果集（单条 SQL 只有一个结果集）
-          const resultSetDataArray = Array.isArray(res.data) ? (res.data as any[]) : [];
+          const resultSetDataArray = queryResultSetDataArray(res);
           if (resultSetDataArray.length === 0) return;
           const rsData = resultSetDataArray[0];
           const isAffectedResult = Array.isArray(rsData.rows) && rsData.rows.length === 1
@@ -1339,8 +1403,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           const cols = (rsData.columns && rsData.columns.length > 0)
               ? rsData.columns
               : (rows.length > 0 ? Object.keys(rows[0]) : []);
-          rows.forEach((row: any, i: number) => {
-              if (row && typeof row === 'object') row[JAVANAVI_ROW_KEY] = i;
+          rows.forEach((row, i) => {
+              row[JAVANAVI_ROW_KEY] = i;
           });
 
           // 只更新匹配的结果集；若列集合变化，则重新收紧为只读，避免沿用旧定位列误提交。
@@ -1354,8 +1418,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               }
               return { ...rs, rows, columns: cols, truncated };
           }));
-      } catch (err: any) {
-          message.error('刷新失败: ' + (err?.message || '未知错误'));
+      } catch (err: unknown) {
+          message.error('刷新失败: ' + getErrorMessage(err));
       } finally {
           setLoading(false);
       }
@@ -1409,7 +1473,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
     try {
         const rawSQL = runSQL;
-        const rpcConfig = buildRpcConnectionConfig(config, { queryTimeout: 120 }) as any;
+        const rpcConfig = buildRpcConnectionConfig(config, { queryTimeout: 120 });
         const dbType = String(rpcConfig.type || 'mysql');
         const normalizedDbType = dbType.trim().toLowerCase();
         const normalizedRawSQL = String(rawSQL || '').replace(/；/g, ';');
@@ -1470,7 +1534,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     status: res.success ? 'success' : 'error',
                     duration,
                     message: res.success ? '' : res.message,
-                    affectedRows: (res.success && !Array.isArray(res.data)) ? (res.data as any).affectedRows : (Array.isArray(res.data) ? res.data.length : undefined),
+                    affectedRows: (res.success && !Array.isArray(res.data)) ? affectedRowsOf(res.data) : (Array.isArray(res.data) ? res.data.length : undefined),
                     dbName: currentDb
                 });
                 if (!res.success) {
@@ -1481,7 +1545,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     return;
                 }
                 if (Array.isArray(res.data)) {
-                    let rows = (res.data as any[]) || [];
+                    let rows = toQueryRows(res.data);
                     let truncated = false;
                     if (wantsLimitProbe && Number.isFinite(maxRows) && maxRows > 0 && rows.length > maxRows) {
                         truncated = true;
@@ -1491,8 +1555,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     const cols = (res.fields && res.fields.length > 0)
                         ? (res.fields as string[])
                         : (rows.length > 0 ? Object.keys(rows[0]) : []);
-                    rows.forEach((row: any, i: number) => {
-                        if (row && typeof row === 'object') row[JAVANAVI_ROW_KEY] = i;
+                    rows.forEach((row, i) => {
+                        row[JAVANAVI_ROW_KEY] = i;
                     });
                     nextResultSets.push({
                         key: `result-${idx + 1}`,
@@ -1506,15 +1570,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         source: runSource
                     });
                 } else {
-                    const affected = Number((res.data as any)?.affectedRows);
-                    if (Number.isFinite(affected)) {
-                        const row = { affectedRows: affected };
-                        (row as any)[JAVANAVI_ROW_KEY] = 0;
+                    const affected = affectedRowsOf(res.data);
+                    if (affected !== undefined) {
                         nextResultSets.push({
                             key: `result-${idx + 1}`,
                             sql: rawStatement,
                             exportSql: rawStatement,
-                            rows: [row],
+                            rows: [affectedRowsRow(affected)],
                             columns: ['affectedRows'],
                             pkColumns: [],
                             readOnly: true,
@@ -1550,7 +1612,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             if (Number.isFinite(maxRowsForLimit) && maxRowsForLimit > 0) {
                 const stmts = splitSQLStatements(fullSQL);
                 const limitedStmts = stmts.map(s => {
-                    const result = applyQueryAutoLimit(s, normalizedDbType, maxRowsForLimit, String((rpcConfig as any).driver || ''));
+                    const result = applyQueryAutoLimit(s, normalizedDbType, maxRowsForLimit, String(rpcConfig.driver || ''));
                     if (result.applied) anyLimitApplied = true;
                     return result.sql;
                 });
@@ -1609,7 +1671,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             }
 
             // res.data 是 ResultSetData[] 数组
-            const resultSetDataArray = Array.isArray(res.data) ? (res.data as any[]) : [];
+            const resultSetDataArray = queryResultSetDataArray(res);
             const nextResultSets: ResultSet[] = [];
             const maxRows = Number(queryOptions?.maxRows) || 0;
             const forceReadOnlyResult = connCaps.forceReadOnlyQueryResult;
@@ -1629,14 +1691,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     && rsData.columns[0] === 'affectedRows';
 
                 if (isAffectedResult) {
-                    const affected = Number(rsData.rows[0]?.affectedRows);
-                    const row = { affectedRows: Number.isFinite(affected) ? affected : 0 };
-                    (row as any)[JAVANAVI_ROW_KEY] = 0;
+                    const affectedRow = Array.isArray(rsData.rows) ? rsData.rows[0] : undefined;
+                    const affected = affectedRowsOf(affectedRow) ?? 0;
                     nextResultSets.push({
                         key: `result-${idx + 1}`,
                         sql: rawStatement,
                         exportSql: rawStatement,
-                        rows: [row],
+                        rows: [affectedRowsRow(affected)],
                         columns: ['affectedRows'],
                         pkColumns: [],
                         readOnly: true,
@@ -1655,8 +1716,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         ? rsData.columns
                         : (rows.length > 0 ? Object.keys(rows[0]) : []);
 
-                    rows.forEach((row: any, i: number) => {
-                        if (row && typeof row === 'object') row[JAVANAVI_ROW_KEY] = i;
+                    rows.forEach((row, i) => {
+                        row[JAVANAVI_ROW_KEY] = i;
                     });
 
                     let simpleTableName: string | undefined = undefined;
@@ -1702,9 +1763,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             pendingPk.forEach(({ resultKey, tableName }) => {
                 Promise.all([
                     DBGetColumns(rpcConfig, currentDb, tableName),
-                    DBGetIndexes(rpcConfig, currentDb, tableName).catch(() => ({ success: false, data: [] } as any)),
+                    DBGetIndexes(rpcConfig, currentDb, tableName).catch(() => ({ success: false, message: '索引加载失败', data: [] } as QueryResult)),
                 ])
-                    .then(([resCols, resIndexes]: any[]) => {
+                    .then(([resCols, resIndexes]: [QueryResult, QueryResult]) => {
                         if (runSeqRef.current !== runSeq) return;
                         if (!resCols?.success || !Array.isArray(resCols.data)) {
                             const readOnlyLocator = resolveEditRowLocator({
@@ -1755,15 +1816,16 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             }
 
         }
-    } catch (e: any) {
-        message.error("Error executing query: " + e.message);
+    } catch (e: unknown) {
+        const errorMessage = getErrorMessage(e);
+        message.error("Error executing query: " + errorMessage);
         addSqlLog({
             id: `log-${Date.now()}-error`,
             timestamp: Date.now(),
             sql: runSQL || query,
             status: 'error',
             duration: Date.now() - runStartTime,
-            message: e.message,
+            message: errorMessage,
             dbName: currentDb
         });
         setResultSets([]);
@@ -1795,8 +1857,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         database: conn.config.database || "",
         useSSH: conn.config.useSSH || false,
         ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" },
-    }) as any;
-    const plan = buildExplainSQL(sourceSQL, String(rpcConfig.type || conn.config.type || 'mysql'), String((rpcConfig as any).driver || conn.config.driver || ''));
+    });
+    const plan = buildExplainSQL(sourceSQL, String(rpcConfig.type || conn.config.type || 'mysql'), String(rpcConfig.driver || conn.config.driver || ''));
     if (plan.error) {
         message.warning(plan.error);
         return;
@@ -1821,8 +1883,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       } else {
         message.warning(res.message);
       }
-    } catch (error: any) {
-      message.error('取消查询失败: ' + error.message);
+    } catch (error: unknown) {
+      message.error('取消查询失败: ' + getErrorMessage(error));
     }
   };
 
@@ -1910,9 +1972,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   // 监听由 TabManager 分发的专用注入事件
   useEffect(() => {
-      const handleInsertSql = (e: any) => {
-          if (e.detail?.tabId !== tab.id || !e.detail?.sql) return;
-          const { sql: sqlText, connectionId, dbName } = e.detail;
+      const handleInsertSql = (e: Event) => {
+          const detail = (e as InsertSqlEvent).detail || {};
+          if (detail.tabId !== tab.id || !detail.sql) return;
+          const { sql: sqlText, connectionId, dbName } = detail;
 
           // 同步更新 ref，防止异步 fetchDbs 竞态覆盖正确的 dbName
           if (connectionId && connectionId !== currentConnectionId) {
@@ -1935,7 +1998,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
               // runImmediately 模式下，如果编辑器内容已是待注入的 SQL（TabManager 创建时已传入），
               // 跳过追加，直接选中全部内容并执行
-              if (e.detail.runImmediately && existingContent.trim() === sqlText.trim()) {
+              if (detail.runImmediately && existingContent.trim() === sqlText.trim()) {
                   if (model) {
                       const lineCount = model.getLineCount();
                       const maxCol = model.getLineMaxColumn(lineCount);
@@ -1967,12 +2030,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   editor.setPosition({ lineNumber: targetLine + mText.split('\n').length - 1, column: 1 });
                   editor.focus();
                   
-                  if (!e.detail.runImmediately) {
+                  if (!detail.runImmediately) {
                       message.success('代码已在当前光标处成功插入');
                   }
 
-                  if (e.detail.runImmediately) {
+                  if (detail.runImmediately) {
                       const endPosition = editor.getPosition();
+                      if (!endPosition) return;
                       editor.setSelection(new monaco.Range(
                           targetLine, 1,
                           endPosition.lineNumber, endPosition.column
