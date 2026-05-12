@@ -95,6 +95,13 @@ type SchemaObjectRow = Record<string, unknown> & {
   TABLE_TYPE?: unknown;
 };
 
+type SidebarDatabaseRow = Record<string, unknown> & { Database?: unknown; database?: unknown; index?: unknown; keys?: unknown };
+type SidebarRedisDatabaseRow = Record<string, unknown> & { index?: unknown; keys?: unknown };
+type SidebarWorkspacePayload = { path?: unknown; name?: unknown };
+type SidebarExecutionResultData = { executedSQLs?: unknown; count?: unknown };
+type SidebarLargeFilePayload = { isLargeFile?: unknown; filePath?: unknown; fileSizeMB?: unknown };
+type SidebarQueryRecord = Record<string, unknown>;
+
 const getErrorMessage = (error: unknown): string => (
   error instanceof Error ? error.message : String(error)
 );
@@ -649,8 +656,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       return { routines, supported: hasSuccessfulQuery };
   };
 
-	  const loadDatabases = async (node: any) => {
-	      const conn = node.dataRef as SavedConnection;
+	  const loadDatabases = async (node: { key: React.Key; dataRef: SavedConnection }) => {
+	      const conn = node.dataRef;
 	      const loadKey = `dbs-${conn.id}`;
 	      if (loadingNodesRef.current.has(loadKey)) return;
 	      loadingNodesRef.current.add(loadKey);
@@ -669,15 +676,15 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                   const res = await RedisGetDatabases(buildRpcConnectionConfig(config));
                   if (res.success) {
                       setConnectionStates(prev => ({ ...prev, [conn.id]: 'success' }));
-                      const redisRows: any[] = Array.isArray(res.data) ? res.data : [];
-                      let dbs = redisRows.map((db: any) => ({
+                      const redisRows: SidebarRedisDatabaseRow[] = Array.isArray(res.data) ? res.data as SidebarRedisDatabaseRow[] : [];
+                      let dbs = redisRows.map((db) => ({
                           title: `db${db.index}${db.keys > 0 ? ` (${db.keys})` : ''}`,
                           key: `${conn.id}-db${db.index}`,
                           icon: <DatabaseOutlined style={{ color: '#DC382D' }} />,
                           type: 'redis-db' as const,
-                          dataRef: { ...conn, redisDB: db.index },
+                          dataRef: { ...conn, redisDB: Number(db.index) },
                           isLeaf: true,
-                          dbIndex: db.index,
+                          dbIndex: Number(db.index),
                       }));
                       // Filter Redis databases if configured
                       if (conn.includeRedisDatabases && conn.includeRedisDatabases.length > 0) {
@@ -698,16 +705,16 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           }
 
 	      try {
-	          const res = await DBGetDatabases(buildRpcConnectionConfig(config) as any);
+	          const res = await DBGetDatabases(buildRpcConnectionConfig(config));
 	          if (res.success) {
 	            setConnectionStates(prev => ({ ...prev, [conn.id]: 'success' }));
-                const dbRows: any[] = Array.isArray(res.data) ? res.data : [];
-	            let dbs = dbRows.map((row: any) => ({
-	              title: row.Database || row.database,
-              key: `${conn.id}-${row.Database || row.database}`,
+                const dbRows: SidebarDatabaseRow[] = Array.isArray(res.data) ? res.data as SidebarDatabaseRow[] : [];
+	            let dbs = dbRows.map((row) => ({
+	              title: String(row.Database || row.database || '').trim(),
+              key: `${conn.id}-${String(row.Database || row.database || '').trim()}`,
               icon: <DatabaseOutlined />,
               type: 'database' as const,
-              dataRef: { ...conn, dbName: row.Database || row.database },
+              dataRef: { ...conn, dbName: String(row.Database || row.database || '').trim() },
               isLeaf: false,
             }));
 
@@ -738,7 +745,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
 
-	  const loadTables = async (node: any) => {
+	  const loadTables = async (node: { key: React.Key; dataRef: SavedConnection & { dbName: string } }) => {
 	      const conn = node.dataRef; // has dbName
 	      const dbName = conn.dbName;
       const key = node.key;
@@ -772,11 +779,11 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	          ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
 	      };
 	      try {
-	          const res = await DBGetSchemaObjects(buildRpcConnectionConfig(config) as any, conn.dbName);
+	          const res = await DBGetSchemaObjects(buildRpcConnectionConfig(config), conn.dbName);
 	          if (res.success) {
 	            setConnectionStates(prev => ({ ...prev, [key as string]: 'success' }));
 
-                const objectRows: SchemaObjectRow[] = Array.isArray(res.data) ? res.data : [];
+                const objectRows: SchemaObjectRow[] = Array.isArray(res.data) ? res.data as SchemaObjectRow[] : [];
                 const baseTableRows = objectRows.filter((row) => !isSchemaViewObject(row));
 	            const tableEntries = baseTableRows.map((row) => {
 	                const tableName = schemaObjectName(row);
@@ -795,7 +802,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	            ]);
                 const workspaceRes = await ResolveSQLWorkspace(String(conn.id), String(conn.dbName));
                 const workspacePayload = workspaceRes.success && workspaceRes.data && typeof workspaceRes.data === 'object'
-                    ? workspaceRes.data as Record<string, unknown>
+                    ? workspaceRes.data as SidebarWorkspacePayload
                     : {};
                 const workspacePath = String(workspacePayload.path || '').trim();
                 const workspaceName = String(workspacePayload.name || t('sidebar.tree.sqlWorkspace')).trim() || t('sidebar.tree.sqlWorkspace');
@@ -831,8 +838,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 ...metadataViewRows,
                 ...(Array.isArray(viewsResult.views) ? viewsResult.views : []),
             ]));
-            const triggerRows: any[] = Array.isArray(triggersResult.triggers) ? triggersResult.triggers : [];
-            const routineRows: any[] = Array.isArray(routinesResult.routines) ? routinesResult.routines : [];
+            const triggerRows = Array.isArray(triggersResult.triggers) ? triggersResult.triggers as Array<{ displayName: string; triggerName: string; tableName: string }> : [];
+            const routineRows = Array.isArray(routinesResult.routines) ? routinesResult.routines as Array<{ displayName: string; routineName: string; routineType: string }> : [];
 
             const viewEntries = viewRows.map((viewName: string) => {
                 const parsed = splitQualifiedName(viewName);
@@ -848,7 +855,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 const triggerSeen = new Set<string>();
                 const metadataDialect = getMetadataDialect(conn as SavedConnection);
 
-                triggerRows.forEach((trigger: any) => {
+                triggerRows.forEach((trigger) => {
                     const triggerParsed = splitQualifiedName(trigger.triggerName);
                     const tableParsed = splitQualifiedName(trigger.tableName);
                     const schemaName = tableParsed.schemaName || triggerParsed.schemaName || String(conn.dbName || '').trim();
@@ -873,7 +880,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 return deduped;
             })();
 
-            const routineEntries = routineRows.map((routine: any) => {
+            const routineEntries = routineRows.map((routine) => {
                 const parsed = splitQualifiedName(routine.routineName);
                 const typeLabel = routine.routineType === 'PROCEDURE' ? 'P' : 'F';
                 return {
@@ -1451,9 +1458,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
       };
 
-      const res = await DBGetDatabases(buildRpcConnectionConfig(config) as any);
+      const res = await DBGetDatabases(buildRpcConnectionConfig(config));
       if (res.success) {
-          const dbRows: any[] = Array.isArray(res.data) ? res.data : [];
+          const dbRows: SidebarDatabaseRow[] = Array.isArray(res.data) ? res.data as SidebarDatabaseRow[] : [];
           let dbs = dbRows.map((row: any) => {
               const dbName = row.Database || row.database;
               return {
@@ -1495,7 +1502,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           return;
       }
 
-      const objectRows: SchemaObjectRow[] = Array.isArray(res.data) ? res.data : [];
+      const objectRows: SchemaObjectRow[] = Array.isArray(res.data) ? res.data as SchemaObjectRow[] : [];
       const metadataViewRows = objectRows
           .filter(isSchemaViewObject)
           .map(schemaObjectName)
@@ -1767,9 +1774,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
       };
 
-      const res = await DBGetDatabases(buildRpcConnectionConfig(config) as any);
+      const res = await DBGetDatabases(buildRpcConnectionConfig(config));
       if (res.success) {
-          const dbRows: any[] = Array.isArray(res.data) ? res.data : [];
+          const dbRows: SidebarDatabaseRow[] = Array.isArray(res.data) ? res.data as SidebarDatabaseRow[] : [];
           let dbs = dbRows.map((row: any) => {
               const dbName = row.Database || row.database;
               return {
@@ -2860,7 +2867,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   }, [searchValue, searchScopes, treeData]);
 
   const getNodeMenuItems = (node: any): MenuProps['items'] => {
-    const conn = node.dataRef as SavedConnection;
+    const conn = node.dataRef;
     const isRedis = conn?.config?.type === 'redis';
 
     // 表分组节点的右键菜单
