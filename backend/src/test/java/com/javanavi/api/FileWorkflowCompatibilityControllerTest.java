@@ -11,6 +11,7 @@ import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.files.FileWorkflowCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.CompatEventStatusDto;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.DatabaseOperationResultDto;
 import com.javanavi.model.FileWorkflowContracts;
@@ -70,6 +71,23 @@ class FileWorkflowCompatibilityControllerTest {
         assertThat(result.affectedRows()).isEqualTo(1);
         assertThat(result.tables()).containsExactly("clear_target");
         assertThat(result.executedSQLs()).hasSize(1);
+    }
+
+    @Test
+    void compatEventStatusReturnsTypedContract() {
+        I18nMessages messages = new I18nMessages();
+        CompatEventController controller = new CompatEventController(
+                new CompatEventPublisher(new LocalSessionService()),
+                new CompatEventFixtures(messages),
+                messages
+        );
+
+        ApiEnvelope<CompatEventStatusDto> envelope = controller.status();
+
+        assertThat(envelope.success()).isTrue();
+        assertThat(envelope.data().bridge()).isEqualTo("sse");
+        assertThat(envelope.data().subscriberCount()).isZero();
+        assertThat(envelope.data().fixtureFamilies()).contains("sync", "driver");
     }
 
     private FileWorkflowCompatibilityService service() {

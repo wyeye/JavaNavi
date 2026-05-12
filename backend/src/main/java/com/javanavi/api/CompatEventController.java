@@ -6,6 +6,7 @@ import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.CompatEventDto;
 import com.javanavi.model.CompatEventReplayRequestDto;
+import com.javanavi.model.CompatEventStatusDto;
 import com.javanavi.security.SecretRedactor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -40,11 +41,11 @@ public class CompatEventController {
     }
 
     @GetMapping("/status")
-    public ApiEnvelope<Map<String, Object>> status() {
-        return ApiEnvelope.ok(Map.of(
-                "bridge", "sse",
-                "subscriberCount", publisher.subscriberCount(),
-                "fixtureFamilies", fixtures.supportedFamilies()
+    public ApiEnvelope<CompatEventStatusDto> status() {
+        return ApiEnvelope.ok(new CompatEventStatusDto(
+                "sse",
+                publisher.subscriberCount(),
+                fixtures.supportedFamilies()
         ));
     }
 
