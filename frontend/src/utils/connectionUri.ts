@@ -85,6 +85,33 @@ export const supportsSSLForType = (type: string) =>
       .toLowerCase(),
   );
 
+export type ConnectionUriValues = {
+  type?: unknown;
+  host?: unknown;
+  port?: unknown;
+  user?: unknown;
+  password?: unknown;
+  database?: unknown;
+  useSSL?: unknown;
+  sslMode?: unknown;
+  sslCertPath?: unknown;
+  sslKeyPath?: unknown;
+  timeout?: unknown;
+  savePassword?: unknown;
+  mysqlTopology?: unknown;
+  mysqlReplicaHosts?: unknown;
+  redisTopology?: unknown;
+  redisHosts?: unknown;
+  redisDB?: unknown;
+  mongoTopology?: unknown;
+  mongoHosts?: unknown;
+  mongoSrv?: unknown;
+  mongoReplicaSet?: unknown;
+  mongoAuthSource?: unknown;
+  mongoReadPreference?: unknown;
+  mongoAuthMechanism?: unknown;
+};
+
 export const isFileDatabaseType = (type: string) =>
   type === "sqlite" || type === "duckdb";
 
@@ -372,7 +399,7 @@ const parseSingleHostUri = (
 export const parseUriToValues = (
   uriText: string,
   type: string,
-): Record<string, any> | null => {
+): ConnectionUriValues | null => {
   const trimmedUri = normalizeConnectionUriForParsing(uriText, type);
   if (!trimmedUri) {
     return null;
@@ -605,7 +632,7 @@ export const parseUriToValues = (
       // Oracle 需要显式 service name，避免 URI 解析后放过必填校验。
       return null;
     }
-    const parsedValues: Record<string, any> = {
+    const parsedValues: ConnectionUriValues = {
       host: parsed.host,
       port: parsed.port,
       user: parsed.username,
@@ -775,7 +802,7 @@ export const getUriPlaceholder = (dbType: string) => {
   return "例如: postgres://user:pass@127.0.0.1:5432/db_name";
 };
 
-export const buildUriFromValues = (values: any) => {
+export const buildUriFromValues = (values: ConnectionUriValues) => {
   const type = String(values.type || "")
     .trim()
     .toLowerCase();
