@@ -19,7 +19,7 @@ interface ImportPreviewModalProps {
 interface PreviewData {
     columns: string[];
     totalRows: number;
-    previewRows: any[];
+    previewRows: Record<string, unknown>[];
 }
 
 interface ImportProgress {
@@ -28,6 +28,16 @@ interface ImportProgress {
     success: number;
     errors: number;
 }
+
+interface ImportResult {
+    success?: number;
+    failed?: number;
+    errorLogs?: string[];
+}
+
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
 
 const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     visible,
@@ -44,7 +54,7 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     const [error, setError] = useState<string | null>(null);
     const [importing, setImporting] = useState(false);
     const [progress, setProgress] = useState<ImportProgress | null>(null);
-    const [importResult, setImportResult] = useState<any>(null);
+    const [importResult, setImportResult] = useState<ImportResult | null>(null);
 
     useEffect(() => {
         if (visible && filePath) {
@@ -77,8 +87,8 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             } else {
                 setError(res.message || '预览失败');
             }
-        } catch (e: any) {
-            setError('预览失败: ' + e.message);
+        } catch (e: unknown) {
+            setError('预览失败: ' + getErrorMessage(e));
         } finally {
             setLoading(false);
         }
@@ -108,7 +118,7 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                 ssh: conn.config.ssh || { host: '', port: 22, user: '', password: '', keyPath: '' }
             };
 
-            const res = await ImportDataWithProgress(buildRpcConnectionConfig(config) as any, dbName, tableName, filePath, true);
+            const res = await ImportDataWithProgress(buildRpcConnectionConfig(config), dbName, tableName, filePath, true);
 
             if (res.success && res.data) {
                 setImportResult(res.data);
@@ -118,8 +128,8 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             } else {
                 setError(res.message || '导入失败');
             }
-        } catch (e: any) {
-            setError('导入失败: ' + e.message);
+        } catch (e: unknown) {
+            setError('导入失败: ' + getErrorMessage(e));
         } finally {
             setImporting(false);
         }
@@ -212,12 +222,12 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             {importResult && (
                 <div style={{ padding: 20 }}>
                     <Alert
-                        type={importResult.failed === 0 ? 'success' : 'warning'}
+                        type={(importResult.failed ?? 0) === 0 ? 'success' : 'warning'}
                         message="导入完成"
                         description={
                             <div>
-                                <div>成功导入 {importResult.success} 行</div>
-                                {importResult.failed > 0 && <div>失败 {importResult.failed} 行</div>}
+                                <div>成功导入 {importResult.success ?? 0} 行</div>
+                                {(importResult.failed ?? 0) > 0 && <div>失败 {importResult.failed} 行</div>}
                             </div>
                         }
                         showIcon
