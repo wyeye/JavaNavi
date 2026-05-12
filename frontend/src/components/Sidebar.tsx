@@ -40,7 +40,7 @@ import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 	import { SavedConnection, ExternalSQLTreeEntry, type TabData } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
   import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
@@ -94,6 +94,10 @@ type SchemaObjectRow = Record<string, unknown> & {
   table_type?: unknown;
   TABLE_TYPE?: unknown;
 };
+
+const getErrorMessage = (error: unknown): string => (
+  error instanceof Error ? error.message : String(error)
+);
 
 interface BatchObjectItem {
   title: string;
@@ -434,21 +438,15 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const handleDuplicateConnection = async (conn: SavedConnection) => {
     if (!conn?.id) return;
 
-    const backendApp = (window as any).go?.app?.App;
-    if (typeof backendApp?.DuplicateConnection !== 'function') {
-      message.error(t('sidebar.msg.copyConnFailed'));
-      return;
-    }
-
     try {
-      const duplicatedConnection = await backendApp.DuplicateConnection(conn.id);
+      const duplicatedConnection = await DuplicateConnection(conn.id);
       if (!duplicatedConnection) {
         throw new Error(t('sidebar.msg.copyConnError'));
       }
-      addConnection(duplicatedConnection);
+      addConnection(duplicatedConnection as SavedConnection);
       message.success(t('sidebar.msg.copyConnSuccess', { name: duplicatedConnection.name }));
-    } catch (error: any) {
-      message.error(error?.message || t('sidebar.msg.copyConnError'));
+    } catch (error: unknown) {
+      message.error(getErrorMessage(error) || t('sidebar.msg.copyConnError'));
     }
   };
   const updateTreeData = (list: TreeNode[], key: React.Key, children: TreeNode[] | undefined): TreeNode[] => {
@@ -668,7 +666,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           // Handle Redis connections differently
           if (conn.config.type === 'redis') {
               try {
-                  const res = await (window as any).go.app.App.RedisGetDatabases(buildRpcConnectionConfig(config));
+                  const res = await RedisGetDatabases(buildRpcConnectionConfig(config));
                   if (res.success) {
                       setConnectionStates(prev => ({ ...prev, [conn.id]: 'success' }));
                       const redisRows: any[] = Array.isArray(res.data) ? res.data : [];
@@ -690,9 +688,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                       setConnectionStates(prev => ({ ...prev, [conn.id]: 'error' }));
                       message.error({ content: res.message, key: `conn-${conn.id}-dbs` });
                   }
-              } catch (e: any) {
+              } catch (e: unknown) {
                   setConnectionStates(prev => ({ ...prev, [conn.id]: 'error' }));
-                  message.error({ content: t('sidebar.msg.connFailed', { message: e?.message || String(e) }), key: `conn-${conn.id}-dbs` });
+                  message.error({ content: t('sidebar.msg.connFailed', { message: getErrorMessage(e) }), key: `conn-${conn.id}-dbs` });
               } finally {
                   loadingNodesRef.current.delete(loadKey);
               }
@@ -730,10 +728,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	            setLoadedKeys(prev => prev.filter(k => k !== node.key));
 	            message.error({ content: res.message, key: `conn-${conn.id}-dbs` });
 	          }
-	      } catch (e: any) {
+	      } catch (e: unknown) {
 	          setConnectionStates(prev => ({ ...prev, [conn.id]: 'error' }));
 	          setLoadedKeys(prev => prev.filter(k => k !== node.key));
-	          message.error({ content: t('sidebar.msg.connFailed', { message: e?.message || String(e) }), key: `conn-${conn.id}-dbs` });
+	          message.error({ content: t('sidebar.msg.connFailed', { message: getErrorMessage(e) }), key: `conn-${conn.id}-dbs` });
 	      } finally {
 	          loadingNodesRef.current.delete(loadKey);
 	      }
@@ -1061,9 +1059,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	            setConnectionStates(prev => ({ ...prev, [key as string]: 'error' }));
 	            message.error({ content: res.message, key: `db-${key}-tables` });
           }
-	      } catch (e: any) {
+	      } catch (e: unknown) {
 	          setConnectionStates(prev => ({ ...prev, [key as string]: 'error' }));
-	          message.error({ content: t('sidebar.msg.loadTablesFailed', { message: e?.message || String(e) }), key: `db-${key}-tables` });
+	          message.error({ content: t('sidebar.msg.loadTablesFailed', { message: getErrorMessage(e) }), key: `db-${key}-tables` });
 	      } finally {
 	          loadingNodesRef.current.delete(loadKey);
 	      }
@@ -1365,16 +1363,16 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const dbName = conn.dbName || node.title;
       const hide = message.loading(includeData ? t('sidebar.msg.backingUpDb', { name: dbName }) : t('sidebar.msg.exportingDbSchema', { name: dbName }), 0);
       try {
-          const res = await (window as any).go.app.App.ExportDatabaseSQL(normalizeConnConfig(conn.config), dbName, includeData);
+          const res = await ExportDatabaseSQL(normalizeConnConfig(conn.config), dbName, includeData);
           hide();
           if (res.success) {
               showExportSuccess(res);
           } else if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.exportFailed', { message: res.message }));
           }
-      } catch (e: any) {
+      } catch (e: unknown) {
           hide();
-          message.error(t('sidebar.msg.exportFailed', { message: e?.message || String(e) }));
+          message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
       }
   };
 
@@ -1392,16 +1390,16 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const tableNames = nodes.map(n => n.dataRef.tableName).filter(Boolean);
       const hide = message.loading(includeData ? t('sidebar.msg.backingUpTables', { count: tableNames.length }) : t('sidebar.msg.exportingTableSchema', { count: tableNames.length }), 0);
       try {
-          const res = await (window as any).go.app.App.ExportTablesSQL(normalizeConnConfig(first.config), dbName, tableNames, includeData);
+          const res = await ExportTablesSQL(normalizeConnConfig(first.config), dbName, tableNames, includeData);
           hide();
           if (res.success) {
               showExportSuccess(res);
           } else if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.exportFailed', { message: res.message }));
           }
-      } catch (e: any) {
+      } catch (e: unknown) {
           hide();
-          message.error(t('sidebar.msg.exportFailed', { message: e?.message || String(e) }));
+          message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
       }
   };
 
@@ -1581,10 +1579,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               : t('sidebar.msg.exportingTableSchema', { count: objectNames.length });
       const hide = message.loading(loadingText, 0);
       try {
-          const app = (window as any).go.app.App;
           const res = mode === 'dataOnly'
-              ? await app.ExportTablesDataSQL(normalizeConnConfig(conn.config), dbName, objectNames)
-              : await app.ExportTablesSQL(normalizeConnConfig(conn.config), dbName, objectNames, mode === 'backup');
+              ? await ExportTablesDataSQL(normalizeConnConfig(conn.config), dbName, objectNames)
+              : await ExportTablesSQL(normalizeConnConfig(conn.config), dbName, objectNames, mode === 'backup');
           hide();
           if (res.success) {
               if (mode !== 'schema' && selectedViewCount > 0) {
@@ -1595,9 +1592,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           } else if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.exportFailed', { message: res.message }));
           }
-      } catch (e: any) {
+      } catch (e: unknown) {
           hide();
-          message.error(t('sidebar.msg.exportFailed', { message: e?.message || String(e) }));
+          message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
       }
   };
 
@@ -1627,8 +1624,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const hide = message.loading(t('sidebar.msg.clearingTables', { count: objectNames.length }), 0);
       const startTime = Date.now();
       try {
-          const app = (window as any).go.app.App;
-          const res = await app.ClearTables(normalizeConnConfig(conn.config), dbName, objectNames);
+          const res = await ClearTables(normalizeConnConfig(conn.config), dbName, objectNames);
           hide();
           const duration = Date.now() - startTime;
           if (res.success) {
@@ -1669,10 +1665,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                   dbName
               });
           }
-      } catch (e: any) {
+      } catch (e: unknown) {
           const duration = Date.now() - startTime;
           hide();
-          const errMsg = e?.message || String(e);
+          const errMsg = getErrorMessage(e);
           message.error(t('sidebar.msg.clearFailed', { message: errMsg }));
           // 记录异常的日志
           let logSql = `/* Clear Tables (${objectNames.length} tables) - ERROR */\n`;
@@ -1816,7 +1812,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       for (const db of selectedDbs) {
           const hide = message.loading(includeData ? t('sidebar.msg.backingUpDb', { name: db.dbName }) : t('sidebar.msg.exportingDbSchema', { name: db.dbName }), 0);
           try {
-              const res = await (window as any).go.app.App.ExportDatabaseSQL(normalizeConnConfig(batchConnContext.config), db.dbName, includeData);
+              const res = await ExportDatabaseSQL(normalizeConnConfig(batchConnContext.config), db.dbName, includeData);
               hide();
               if (res.success) {
                   showExportSuccess(res, t('sidebar.msg.dbExportSuccess', { name: db.dbName }));
@@ -1826,9 +1822,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               } else {
                   break; // User cancelled
               }
-          } catch (e: any) {
+          } catch (e: unknown) {
               hide();
-              message.error(t('sidebar.msg.dbExportFailed', { name: db.dbName, message: e?.message || String(e) }));
+              message.error(t('sidebar.msg.dbExportFailed', { name: db.dbName, message: getErrorMessage(e) }));
               break;
           }
       }
@@ -1965,7 +1961,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           setSqlFileExecState(prev => ({
               ...prev,
               status: 'error',
-              resultMessage: String(err?.message || err),
+              resultMessage: getErrorMessage(err),
           }));
       });
   };
@@ -2324,12 +2320,11 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (!confirmed) return;
 
       const config = buildRuntimeConfig(conn, conn.dbName);
-      const app = (window as any).go.app.App;
-      const methodName = action === 'truncate' ? 'TruncateTables' : 'ClearTables';
+      const method = action === 'truncate' ? TruncateTables : ClearTables;
       const hide = message.loading(t('sidebar.msg.processingTable', { label: progressLabel, name: tableName }), 0);
       const startTime = Date.now();
       try {
-          const res = await app[methodName](buildRpcConnectionConfig(config) as any, conn.dbName, [tableName]);
+          const res = await method(buildRpcConnectionConfig(config) as any, conn.dbName, [tableName]);
           hide();
           const duration = Date.now() - startTime;
           const executedSQLs = Array.isArray(res.data?.executedSQLs) ? res.data.executedSQLs : [];
@@ -2365,9 +2360,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.processFailed', { label: progressLabel, message: res.message }));
           }
-      } catch (e: any) {
+      } catch (e: unknown) {
           const duration = Date.now() - startTime;
-          const errMsg = e?.message || String(e);
+          const errMsg = getErrorMessage(e);
           hide();
           addSqlLog({
               id: Date.now().toString(),
@@ -3070,18 +3065,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                             content: t('sidebar.confirm.deleteConnection', { name: node.title }),
                             onOk: async () => {
                                 const connId = String(node.key);
-                                const backendApp = (window as any).go?.app?.App;
-                                if (typeof backendApp?.DeleteConnection !== 'function') {
-                                    message.error(t('sidebar.msg.deleteConnFailed'));
-                                    throw new Error('DeleteConnection unavailable');
-                                }
                                 try {
-                                    await backendApp.DeleteConnection(connId);
+                                    await DeleteConnection(connId);
                                     closeTabsByConnection(connId);
                                     removeConnection(connId);
                                     message.success(t('sidebar.msg.connDeleted'));
-                                } catch (error: any) {
-                                    message.error(error?.message || t('sidebar.msg.deleteConnError'));
+                                } catch (error: unknown) {
+                                    message.error(getErrorMessage(error) || t('sidebar.msg.deleteConnError'));
                                     throw error;
                                 }
                             }
@@ -3223,18 +3213,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                          content: t('sidebar.confirm.deleteConnection', { name: node.title }),
                          onOk: async () => {
                              const connId = String(node.key);
-                             const backendApp = (window as any).go?.app?.App;
-                             if (typeof backendApp?.DeleteConnection !== 'function') {
-                                 message.error(t('sidebar.msg.deleteConnFailed'));
-                                 throw new Error('DeleteConnection unavailable');
-                             }
                              try {
-                                 await backendApp.DeleteConnection(connId);
+                                 await DeleteConnection(connId);
                                  closeTabsByConnection(connId);
                                  removeConnection(connId);
                                  message.success(t('sidebar.msg.connDeleted'));
-                             } catch (error: any) {
-                                 message.error(error?.message || t('sidebar.msg.deleteConnError'));
+                             } catch (error: unknown) {
+                                 message.error(getErrorMessage(error) || t('sidebar.msg.deleteConnError'));
                                  throw error;
                              }
                          }
