@@ -3,7 +3,9 @@ import { createPortal } from 'react-dom';
 import { EditOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
 import { JAVANAVI_ROW_KEY } from './dataGridCells';
 
-export type DataGridCellContextMenuState<TRecord = any> = {
+type DataGridContextRecord = Record<string, unknown>;
+
+export type DataGridCellContextMenuState<TRecord = DataGridContextRecord> = {
     visible: boolean;
     x: number;
     y: number;
@@ -47,7 +49,7 @@ type DataGridCellContextMenuActionOptions = {
     disabled?: boolean;
 };
 
-type DataGridCellContextMenuProps<TRecord = any> = {
+type DataGridCellContextMenuProps<TRecord = DataGridContextRecord> = {
     viewMode: string;
     menuState: DataGridCellContextMenuState<TRecord>;
     bgContextMenu: string;
@@ -56,7 +58,7 @@ type DataGridCellContextMenuProps<TRecord = any> = {
     selectedRowKeysLength: number;
     hasCopiedCellPatch: boolean;
     supportsCopyInsert: boolean;
-    getTargets: (record: TRecord) => any[];
+    getTargets: (record: TRecord) => TRecord[];
     copyToClipboard: (text: string) => void;
     onClose: () => void;
     onCellSetNull: () => void;
@@ -71,7 +73,7 @@ type DataGridCellContextMenuProps<TRecord = any> = {
     renderExportActions: (record: TRecord | null) => React.ReactNode;
 };
 
-export const DataGridCellContextMenu = <TRecord extends Record<string, any>,>({
+export const DataGridCellContextMenu = <TRecord extends DataGridContextRecord,>({
     viewMode,
     menuState,
     bgContextMenu,
@@ -137,7 +139,8 @@ export const DataGridCellContextMenu = <TRecord extends Record<string, any>,>({
                         if (menuState.record) onBatchFillToSelected(menuState.record, menuState.dataIndex);
                     }, { icon: <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />, disabled: selectedRowKeysLength === 0 })}
                     {renderAction('粘贴已复制列（同名列）', () => {
-                        const fallbackKey = menuState.record?.[JAVANAVI_ROW_KEY];
+                        const rawFallbackKey = menuState.record?.[JAVANAVI_ROW_KEY];
+                        const fallbackKey = (typeof rawFallbackKey === 'string' || typeof rawFallbackKey === 'number') ? rawFallbackKey : undefined;
                         onPasteCopiedColumnsToSelectedRows(fallbackKey);
                     }, { icon: <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />, disabled: !hasCopiedCellPatch })}
                     {divider}
@@ -155,7 +158,7 @@ export const DataGridCellContextMenu = <TRecord extends Record<string, any>,>({
             {renderAction('复制为 Markdown', () => {
                 if (menuState.record) {
                     const records = getTargets(menuState.record);
-                    const lines = records.map((record: any) => {
+                    const lines = records.map((record) => {
                         const { [JAVANAVI_ROW_KEY]: _rowKey, ...vals } = record;
                         return `| ${Object.values(vals).join(' | ')} |`;
                     });
