@@ -1,14 +1,33 @@
 import React from 'react';
 import { Input, Select, AutoComplete, Tooltip, Modal, Checkbox, Spin, message, Button, Tag } from 'antd';
+import type { TextAreaRef } from 'antd/es/input/TextArea';
 import { DatabaseOutlined, SendOutlined, TableOutlined, SearchOutlined, PictureOutlined, ExclamationCircleFilled } from '@ant-design/icons';
 import { useStore } from '../../store';
 import { DBGetTables, DBShowCreateTable, DBGetDatabases, DBGetColumns } from '@compat/javanaviApp';
 import type { OverlayWorkbenchTheme } from '../../utils/overlayWorkbenchTheme';
 import type { AIComposerNotice } from '../../utils/aiComposerNotice';
 import { buildRpcConnectionConfig } from '../../utils/connectionRpcConfig';
+import type { RpcConnectionConfig } from '../../utils/connectionRpcConfig';
 import { resolveAITableSchemaToolResult } from '../../utils/aiTableSchemaTool';
 import { getAIChatSendShortcutLabel } from '../../utils/aiChatSendShortcut';
 import type { ShortcutBinding } from '../../utils/shortcuts';
+import type { AIProviderConfig, ConnectionConfig } from '../../types';
+
+type ActiveChatContext = {
+    connectionId: string;
+    dbName?: string;
+} | null;
+
+type QueryRow = Record<string, unknown>;
+
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
+
+const getFirstRowStringValue = (row: QueryRow): string => {
+    const firstValue = Object.values(row)[0];
+    return firstValue === undefined || firstValue === null ? '' : String(firstValue);
+};
 
 interface AIChatInputProps {
     input: string;
@@ -20,15 +39,15 @@ interface AIChatInputProps {
     onStop: () => void;
     handleKeyDown: (e: React.KeyboardEvent) => void;
     activeConnName: string;
-    activeContext: any;
-    activeProvider: any;
+    activeContext: ActiveChatContext;
+    activeProvider: AIProviderConfig | null;
     dynamicModels: string[];
     loadingModels: boolean;
     sendShortcutBinding: ShortcutBinding;
     composerNotice?: AIComposerNotice | null;
     onModelChange: (val: string) => void;
     onFetchModels: () => void;
-    textareaRef: React.RefObject<HTMLTextAreaElement>;
+    textareaRef: React.RefObject<HTMLTextAreaElement | TextAreaRef>;
     darkMode: boolean;
     textColor: string;
     mutedColor: string;
@@ -125,19 +144,19 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
     const connectionKey = activeContext?.connectionId ? `${activeContext.connectionId}:${activeContext.dbName || ''}` : 'default';
     const activeContextItems = aiContexts[connectionKey] || [];
 
-    const fetchTablesForDb = async (dbName: string, connConfig: any) => {
+    const fetchTablesForDb = async (dbName: string, connConfig: ConnectionConfig | RpcConnectionConfig) => {
         setContextLoading(true);
         setSelectedDbName(dbName);
         try {
             const res = await DBGetTables(buildRpcConnectionConfig(connConfig), dbName);
             if (res.success && Array.isArray(res.data)) {
-                setContextTables(res.data.map(r => ({ name: Object.values(r)[0] as string })));
+                setContextTables(res.data.map(r => ({ name: getFirstRowStringValue(r as QueryRow) })));
             } else {
                 message.error('获取表格失败: ' + res.message);
                 setContextTables([]);
             }
-        } catch (e: any) {
-            message.error(e.message);
+        } catch (e: unknown) {
+            message.error(getErrorMessage(e));
             setContextTables([]);
         } finally {
             setContextLoading(false);
@@ -160,29 +179,30 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
         
         try {
             // Fetch databases
-            const dbRes = await DBGetDatabases(buildRpcConnectionConfig(conn.config) as any);
+            const dbRes = await DBGetDatabases(buildRpcConnectionConfig(conn.config));
             if (dbRes.success && Array.isArray(dbRes.data)) {
-                const databases = dbRes.data.map((r: any) => Object.values(r)[0] as string);
+                const databases = dbRes.data.map((r) => getFirstRowStringValue(r as QueryRow));
                 setDbList(databases);
             }
 
             // Fetch tables for the active contextual database
             const initDbName = activeContext.dbName || '';
             setSelectedDbName(initDbName);
-            const tablesRes = await DBGetTables(buildRpcConnectionConfig(conn.config) as any, initDbName);
+            const tablesRes = await DBGetTables(buildRpcConnectionConfig(conn.config), initDbName);
             if (tablesRes.success && Array.isArray(tablesRes.data)) {
-                setContextTables(tablesRes.data.map((r: any) => ({ name: Object.values(r)[0] as string })));
+                setContextTables(tablesRes.data.map((r) => ({ name: getFirstRowStringValue(r as QueryRow) })));
             } else {
                 setContextTables([]);
             }
-        } catch (e: any) {
-            message.error(e.message);
+        } catch (e: unknown) {
+            message.error(getErrorMessage(e));
         } finally {
             setContextLoading(false);
         }
     };
 
     const handleAppendContext = async () => {
+        if (!activeContext) return;
         const conn = useStore.getState().connections.find(c => c.id === activeContext.connectionId);
         if (!conn) return;
 
@@ -206,7 +226,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                 if (activeContextItems.find(c => c.dbName === dbName && c.tableName === tableName)) {
                     continue;
                 }
-                const rpcConfig = buildRpcConnectionConfig(conn.config) as any;
+                const rpcConfig = buildRpcConnectionConfig(conn.config);
                 const schemaResult = await resolveAITableSchemaToolResult({
                     tableName,
                     fetchDDL: () => DBShowCreateTable(rpcConfig, dbName, tableName),
@@ -238,8 +258,8 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                 message.info('选中的表未发生变化');
             }
             setContextOpen(false);
-        } catch (e: any) {
-            message.error(e.message);
+        } catch (e: unknown) {
+            message.error(getErrorMessage(e));
         } finally {
             setAppendingContext(false);
         }
@@ -367,7 +387,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                 }
                             }
                         }}
-                        ref={textareaRef as any}
+                        ref={textareaRef as React.Ref<TextAreaRef>}
                         value={input}
                         onChange={(e) => {
                             const val = e.target.value;
@@ -381,7 +401,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                 setSlashFilter('');
                             }
                         }}
-                        onKeyDown={handleKeyDown as any}
+                        onKeyDown={handleKeyDown}
                         placeholder={`输入消息... (${getAIChatSendShortcutLabel(sendShortcutBinding)}，Shift+Enter 换行，/ 快捷命令)`}
                         variant="borderless"
                         autoSize={{ minRows: 1, maxRows: 8 }}
