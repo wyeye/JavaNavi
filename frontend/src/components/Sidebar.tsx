@@ -101,6 +101,7 @@ type SidebarWorkspacePayload = { path?: unknown; name?: unknown };
 type SidebarExecutionResultData = { executedSQLs?: unknown; count?: unknown };
 type SidebarLargeFilePayload = { isLargeFile?: unknown; filePath?: unknown; fileSizeMB?: unknown };
 type SidebarQueryRecord = Record<string, unknown>;
+type SidebarLoadTreeNode = { key?: React.Key; dataRef?: object };
 
 const getErrorMessage = (error: unknown): string => (
   error instanceof Error ? error.message : String(error)
@@ -656,8 +657,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       return { routines, supported: hasSuccessfulQuery };
   };
 
-	  const loadDatabases = async (node: { key: React.Key; dataRef: SavedConnection }) => {
-	      const conn = node.dataRef;
+	  const loadDatabases = async (node: SidebarLoadTreeNode) => {
+	      if (node.key === undefined) return;
+	      const nodeKey = node.key;
+	      const conn = node.dataRef as SavedConnection;
 	      const loadKey = `dbs-${conn.id}`;
 	      if (loadingNodesRef.current.has(loadKey)) return;
 	      loadingNodesRef.current.add(loadKey);
@@ -677,20 +680,24 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                   if (res.success) {
                       setConnectionStates(prev => ({ ...prev, [conn.id]: 'success' }));
                       const redisRows: SidebarRedisDatabaseRow[] = Array.isArray(res.data) ? res.data as SidebarRedisDatabaseRow[] : [];
-                      let dbs = redisRows.map((db) => ({
-                          title: `db${db.index}${db.keys > 0 ? ` (${db.keys})` : ''}`,
-                          key: `${conn.id}-db${db.index}`,
+                      let dbs = redisRows.map((db) => {
+                          const redisIndex = Number(db.index);
+                          const redisKeys = Number(db.keys) || 0;
+                          return {
+                          title: `db${redisIndex}${redisKeys > 0 ? ` (${redisKeys})` : ''}`,
+                          key: `${conn.id}-db${redisIndex}`,
                           icon: <DatabaseOutlined style={{ color: '#DC382D' }} />,
                           type: 'redis-db' as const,
-                          dataRef: { ...conn, redisDB: Number(db.index) },
+                          dataRef: { ...conn, redisDB: redisIndex },
                           isLeaf: true,
-                          dbIndex: Number(db.index),
-                      }));
+                          dbIndex: redisIndex,
+                      };
+                      });
                       // Filter Redis databases if configured
                       if (conn.includeRedisDatabases && conn.includeRedisDatabases.length > 0) {
                           dbs = dbs.filter(db => conn.includeRedisDatabases!.includes(db.dbIndex));
                       }
-                      setTreeData(origin => updateTreeData(origin, node.key, dbs));
+	                      setTreeData(origin => updateTreeData(origin, nodeKey, dbs));
                   } else {
                       setConnectionStates(prev => ({ ...prev, [conn.id]: 'error' }));
                       message.error({ content: res.message, key: `conn-${conn.id}-dbs` });
@@ -724,7 +731,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             }
 
             if (dbs.length > 0) {
-                setTreeData(origin => updateTreeData(origin, node.key, dbs));
+	                setTreeData(origin => updateTreeData(origin, nodeKey, dbs));
             } else {
                 // 空列表：清理 loadedKeys 以允许重新加载，不设置 children = []
                 setLoadedKeys(prev => prev.filter(k => k !== node.key));
@@ -745,8 +752,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
 
-	  const loadTables = async (node: { key: React.Key; dataRef: SavedConnection & { dbName: string } }) => {
-	      const conn = node.dataRef; // has dbName
+	  const loadTables = async (node: SidebarLoadTreeNode) => {
+	      if (node.key === undefined) return;
+	      const conn = node.dataRef as SavedConnection & { dbName: string }; // has dbName
 	      const dbName = conn.dbName;
       const key = node.key;
       const loadKey = `tables-${conn.id}-${dbName}`;
