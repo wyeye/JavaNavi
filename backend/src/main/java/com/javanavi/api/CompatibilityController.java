@@ -1,5 +1,6 @@
 package com.javanavi.api;
 
+import com.javanavi.ai.AiCompatibilityService;
 import com.javanavi.db.DatabaseCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
@@ -27,6 +28,7 @@ import com.javanavi.model.TriggerDefinitionDto;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -55,11 +57,20 @@ public class CompatibilityController {
             new CapabilityDto("saved-secrets", "Saved secrets compatibility", "ready", "Saved connections, global proxy secrets, and JavaNavi connection packages use SecretStore-backed redaction")
     );
 
+    private static final String REQUEST_SOURCE_HEADER = "X-JavaNavi-Request-Source";
+    private static final String AI_TOOL_REQUEST_SOURCE = "ai-tool";
+
     private final DatabaseCompatibilityService databaseCompatibilityService;
+    private final AiCompatibilityService aiCompatibilityService;
     private final I18nMessages messages;
 
-    public CompatibilityController(DatabaseCompatibilityService databaseCompatibilityService, I18nMessages messages) {
+    public CompatibilityController(
+            DatabaseCompatibilityService databaseCompatibilityService,
+            AiCompatibilityService aiCompatibilityService,
+            I18nMessages messages
+    ) {
         this.databaseCompatibilityService = databaseCompatibilityService;
+        this.aiCompatibilityService = aiCompatibilityService;
         this.messages = messages;
     }
 
@@ -160,13 +171,37 @@ public class CompatibilityController {
     }
 
     @PostMapping("/query")
-    public ApiEnvelope<QueryResultDto> query(@Valid @RequestBody QueryRequestDto request) {
+    public ApiEnvelope<QueryResultDto> query(
+            @Valid @RequestBody QueryRequestDto request,
+            @RequestHeader(value = REQUEST_SOURCE_HEADER, required = false) String requestSource
+    ) {
+        enforceAiSqlSafety(request, requestSource);
         return ApiEnvelope.ok(databaseCompatibilityService.execute(request));
     }
 
     @PostMapping("/query/multi")
-    public ApiEnvelope<List<ResultSetDataDto>> queryMulti(@Valid @RequestBody QueryRequestDto request) {
+    public ApiEnvelope<List<ResultSetDataDto>> queryMulti(
+            @Valid @RequestBody QueryRequestDto request,
+            @RequestHeader(value = REQUEST_SOURCE_HEADER, required = false) String requestSource
+    ) {
+        enforceAiSqlSafety(request, requestSource);
         return ApiEnvelope.ok(databaseCompatibilityService.executeMulti(request));
+    }
+
+    private void enforceAiSqlSafety(QueryRequestDto request, String requestSource) {
+        if (!AI_TOOL_REQUEST_SOURCE.equals(requestSource)) {
+            return;
+        }
+        Map<String, Object> safety = aiCompatibilityService.checkSql(request.sql());
+        if (!Boolean.TRUE.equals(safety.get("allowed"))) {
+            throw new IllegalArgumentException(String.valueOf(safety.getOrDefault(
+                    "warningMessage",
+                    "AI SQL safety policy blocks this statement."
+            )));
+        }
+        if (Boolean.TRUE.equals(safety.get("requiresConfirm"))) {
+            throw new IllegalArgumentException("AI SQL safety policy requires user confirmation before this statement can run.");
+        }
     }
 
     @PostMapping("/query/cancel")

@@ -24,6 +24,7 @@ const DEFAULT_JAVA_ARGS: &[&str] = &[
 const EXTRA_JAVA_ARGS_ENV: &str = "JAVANAVI_DESKTOP_JAVA_OPTS";
 const DISABLE_DEFAULT_JAVA_ARGS_ENV: &str = "JAVANAVI_DESKTOP_DISABLE_DEFAULT_JAVA_OPTS";
 const ALLOW_PRIVATE_AI_ENDPOINTS_ENV: &str = "JAVANAVI_ALLOW_PRIVATE_AI_ENDPOINTS";
+const DESKTOP_ALLOW_PRIVATE_AI_ENDPOINTS_ENV: &str = "JAVANAVI_DESKTOP_ALLOW_PRIVATE_AI_ENDPOINTS";
 
 #[derive(Debug, Clone)]
 pub struct SidecarError {
@@ -274,13 +275,26 @@ fn spawn_java(
         command.arg(arg);
     }
 
-    let child = command
+    command
         .arg("-jar")
         .arg(&jar_path)
         .env("SERVER_ADDRESS", "127.0.0.1")
         .env("SERVER_PORT", port.to_string())
-        .env("JAVANAVI_DATA_DIR", &data_dir)
-        .env(ALLOW_PRIVATE_AI_ENDPOINTS_ENV, "true")
+        .env("JAVANAVI_DATA_DIR", &data_dir);
+    if allow_private_ai_endpoints() {
+        command.env(ALLOW_PRIVATE_AI_ENDPOINTS_ENV, private_ai_endpoint_flag_value());
+        append_log(
+            log_path,
+            &format!(
+                "Private AI provider endpoints enabled by {}=true\n",
+                DESKTOP_ALLOW_PRIVATE_AI_ENDPOINTS_ENV
+            ),
+        );
+    } else {
+        command.env_remove(ALLOW_PRIVATE_AI_ENDPOINTS_ENV);
+    }
+
+    let child = command
         .stdout(Stdio::from(stdout))
         .stderr(Stdio::from(stderr))
         .spawn()
@@ -335,6 +349,16 @@ fn split_java_opts(raw: &str) -> Vec<String> {
         .filter(|arg| !arg.is_empty())
         .map(ToString::to_string)
         .collect()
+}
+
+fn allow_private_ai_endpoints() -> bool {
+    env::var(DESKTOP_ALLOW_PRIVATE_AI_ENDPOINTS_ENV)
+        .map(|value| is_truthy_env(&value))
+        .unwrap_or(false)
+}
+
+fn private_ai_endpoint_flag_value() -> &'static str {
+    "true"
 }
 
 fn is_truthy_env(value: &str) -> bool {

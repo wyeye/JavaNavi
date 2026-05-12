@@ -1,16 +1,24 @@
 package com.javanavi.ai;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.api.CompatibilityController;
 import com.javanavi.config.SecurityProperties;
+import com.javanavi.db.DatabaseCompatibilityService;
+import com.javanavi.db.DemoDatabaseService;
+import com.javanavi.db.JdbcConnectionFactory;
 import com.javanavi.events.CompatEventPublisher;
 import com.javanavi.i18n.AppLanguage;
 import com.javanavi.i18n.I18nContext;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.security.LocalSessionService;
 import com.javanavi.security.SecretStore;
+import com.javanavi.model.ConnectionConfigDto;
+import com.javanavi.model.QueryRequestDto;
 import com.javanavi.security.SecretStoreStatus;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.datasource.DriverManagerDataSource;
 
 import java.nio.file.Path;
 import java.util.List;
@@ -19,6 +27,7 @@ import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 class AiCompatibilityServiceTest {
     @TempDir
@@ -292,6 +301,36 @@ class AiCompatibilityServiceTest {
                 .contains("enable transportEnabled");
     }
 
+
+    @Test
+    void readonlySqlSafetyBlocksMutatingStatements() {
+        AiCompatibilityService service = service();
+        service.setSafetyLevel("readonly");
+
+        Map<String, Object> result = service.checkSql("UPDATE users SET admin = true WHERE id = 1");
+
+        assertThat(result.get("allowed")).isEqualTo(false);
+        assertThat(result.get("operationType")).isEqualTo("dml");
+        assertThat(result.get("requiresConfirm")).isEqualTo(false);
+        assertThat(result.get("warningMessage")).asString().contains("Read-only");
+    }
+
+    @Test
+    void readwriteSqlSafetyBlocksDdlButAllowsDmlWithConfirmation() {
+        AiCompatibilityService service = service();
+        service.setSafetyLevel("readwrite");
+
+        Map<String, Object> dml = service.checkSql("delete from users where id = 1");
+        Map<String, Object> ddl = service.checkSql("drop table users");
+
+        assertThat(dml.get("allowed")).isEqualTo(true);
+        assertThat(dml.get("operationType")).isEqualTo("dml");
+        assertThat(dml.get("requiresConfirm")).isEqualTo(true);
+        assertThat(ddl.get("allowed")).isEqualTo(false);
+        assertThat(ddl.get("operationType")).isEqualTo("ddl");
+        assertThat(ddl.get("requiresConfirm")).isEqualTo(false);
+    }
+
     @Test
     void explicitProviderSecretClearRemovesStoredSecret() {
         AiCompatibilityService service = service();
@@ -318,6 +357,42 @@ class AiCompatibilityServiceTest {
 
         assertThat(cleared.get("hasSecret")).isEqualTo(false);
         assertThat(service.getProviders().get(0).get("hasSecret")).isEqualTo(false);
+    }
+
+
+    @Test
+    void queryRouteBlocksAiToolSqlThatRequiresConfirmation() {
+        AiCompatibilityService aiService = service();
+        aiService.setSafetyLevel("readwrite");
+        CompatibilityController controller = new CompatibilityController(
+                demoDatabaseCompatibilityService(),
+                aiService,
+                new I18nMessages()
+        );
+        QueryRequestDto request = new QueryRequestDto(
+                new ConnectionConfigDto("demo-h2", "Demo", "h2", "localhost", null, "", "sa", "", Map.of()),
+                "",
+                "UPDATE demo_connections SET name = 'blocked' WHERE id = 'demo-h2'",
+                null,
+                null,
+                null
+        );
+
+        assertThatThrownBy(() -> controller.query(request, "ai-tool"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("requires user confirmation");
+    }
+
+
+    private DatabaseCompatibilityService demoDatabaseCompatibilityService() {
+        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+                "jdbc:h2:mem:javanavi-ai-query-route-test;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1",
+                "sa",
+                ""
+        );
+        dataSource.setDriverClassName("org.h2.Driver");
+        DemoDatabaseService demoDatabaseService = new DemoDatabaseService(new JdbcTemplate(dataSource), new I18nMessages());
+        return new DatabaseCompatibilityService(demoDatabaseService, new JdbcConnectionFactory());
     }
 
     private AiCompatibilityService service() {

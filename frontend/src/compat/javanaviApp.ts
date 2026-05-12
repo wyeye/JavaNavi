@@ -349,8 +349,8 @@ export async function DBGetTriggers(arg1:connection.ConnectionConfig,arg2:string
   return apiEnvelopeToQueryResult(payload, 'Triggers loaded');
 }
 
-export async function DBQuery(arg1: connection.ConnectionConfig, arg2: string, arg3: string): Promise<connection.QueryResult> {
-  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3 }, { requestSource: 'query' });
+export async function DBQuery(arg1: connection.ConnectionConfig, arg2: string, arg3: string, requestSource = 'query'): Promise<connection.QueryResult> {
+  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3 }, { requestSource });
   return apiEnvelopeToQueryResult(payload, 'Query executed');
 }
 
