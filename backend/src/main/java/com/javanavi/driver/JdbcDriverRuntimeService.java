@@ -2,8 +2,10 @@ package com.javanavi.driver;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.i18n.I18nMessages;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Document;
 import org.w3c.dom.NodeList;
@@ -11,6 +13,10 @@ import org.w3c.dom.NodeList;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
+import java.net.Authenticator;
+import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.Proxy;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -61,18 +67,48 @@ public class JdbcDriverRuntimeService {
 
     private final ObjectMapper objectMapper;
     private final Path defaultDriverDirectory;
-    private final HttpClient httpClient;
+    private final GlobalProxyConfigProvider globalProxyConfigProvider;
     private final I18nMessages messages;
     private final ConcurrentMap<String, DriverHandle> driverCache = new ConcurrentHashMap<>();
 
     public JdbcDriverRuntimeService(SecurityProperties securityProperties, ObjectMapper objectMapper, I18nMessages messages) {
+        this(securityProperties, objectMapper, messages, null);
+    }
+
+    @Autowired
+    public JdbcDriverRuntimeService(SecurityProperties securityProperties, ObjectMapper objectMapper, I18nMessages messages, GlobalProxyConfigProvider globalProxyConfigProvider) {
         this.objectMapper = objectMapper;
         this.messages = messages;
+        this.globalProxyConfigProvider = globalProxyConfigProvider;
         this.defaultDriverDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize().resolve("drivers");
-        this.httpClient = HttpClient.newBuilder()
-                .connectTimeout(Duration.ofSeconds(20))
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+    }
+
+    private HttpClient httpClient(Duration connectTimeout) {
+        HttpClient.Builder builder = HttpClient.newBuilder()
+                .connectTimeout(connectTimeout)
+                .followRedirects(HttpClient.Redirect.NORMAL);
+        activeGlobalProxy().ifPresent(proxy -> applyProxy(builder, proxy));
+        return builder.build();
+    }
+
+    private Optional<com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto> activeGlobalProxy() {
+        return globalProxyConfigProvider == null ? Optional.empty() : globalProxyConfigProvider.activeProxy();
+    }
+
+    private static void applyProxy(HttpClient.Builder builder, com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+        Proxy.Type proxyType = "socks5".equalsIgnoreCase(proxy.type()) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
+        builder.proxy(new SingleProxySelector(new Proxy(proxyType, new InetSocketAddress(proxy.host(), proxy.port()))));
+        if (!text(proxy.user()).isBlank() || !text(proxy.password()).isBlank()) {
+            builder.authenticator(new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    if (getRequestorType() != RequestorType.PROXY) {
+                        return null;
+                    }
+                    return new PasswordAuthentication(text(proxy.user()), text(proxy.password()).toCharArray());
+                }
+            });
+        }
     }
 
     public boolean isManagedDriver(String driverType) {
@@ -791,7 +827,7 @@ public class JdbcDriverRuntimeService {
                     .timeout(HTTP_TIMEOUT)
                     .GET()
                     .build();
-            HttpResponse<Path> response = httpClient.send(request, HttpResponse.BodyHandlers.ofFile(tmp));
+            HttpResponse<Path> response = httpClient(HTTP_TIMEOUT).send(request, HttpResponse.BodyHandlers.ofFile(tmp));
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 throw new IllegalStateException("HTTP " + response.statusCode() + " while downloading " + url);
             }
@@ -836,7 +872,7 @@ public class JdbcDriverRuntimeService {
                     .timeout(Duration.ofSeconds(20))
                     .GET()
                     .build();
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+            HttpResponse<String> response = httpClient(Duration.ofSeconds(20)).send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 return MavenVersionLookup.fallback(
                         primaryArtifact.version(),
@@ -910,7 +946,7 @@ public class JdbcDriverRuntimeService {
                     .timeout(Duration.ofSeconds(15))
                     .method("HEAD", HttpRequest.BodyPublishers.noBody())
                     .build();
-            HttpResponse<Void> response = httpClient.send(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = httpClient(Duration.ofSeconds(15)).send(request, HttpResponse.BodyHandlers.discarding());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 return Optional.empty();
             }

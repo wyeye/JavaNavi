@@ -28,7 +28,7 @@ import java.util.stream.Stream;
 @Service
 public class AppCompatibilityService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
-    private static final String GLOBAL_PROXY_SECRET_KEY = "global-proxy:password";
+    public static final String GLOBAL_PROXY_SECRET_KEY = "global-proxy:password";
     private static final String GLOBAL_PROXY_SECRET_REF = "global-proxy";
 
     private final ObjectMapper objectMapper;

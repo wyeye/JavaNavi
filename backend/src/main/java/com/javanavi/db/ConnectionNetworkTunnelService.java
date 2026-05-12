@@ -93,10 +93,7 @@ class ConnectionNetworkTunnelService {
             if (proxy == null) {
                 throw new IllegalArgumentException("Proxy config is required.");
             }
-            String type = normalizeProxyType(proxy.type());
-            String host = requireText(proxy.host(), "Proxy host");
-            int port = validPort(proxy.port(), defaultProxyPort(type), "Proxy port");
-            return new JdbcProxyEndpoint(type, host, port, text(proxy.user()), text(proxy.password()));
+            return jdbcProxyEndpoint(proxy);
         }
         if (httpTunnelRequested) {
             ConnectionConfigDto.NetworkHttpTunnelConfigDto tunnel = config.httpTunnel();
@@ -107,7 +104,24 @@ class ConnectionNetworkTunnelService {
             int port = validPort(tunnel.port(), 8080, "HTTP Tunnel port");
             return new JdbcProxyEndpoint("http-connect", host, port, text(tunnel.user()), text(tunnel.password()));
         }
+        if (config.sshEnabled()) {
+            return null;
+        }
+        ConnectionConfigDto.NetworkProxyConfigDto globalProxy = config.globalProxy();
+        if (globalProxy != null && text(globalProxy.host()) != null) {
+            return jdbcProxyEndpoint(globalProxy);
+        }
         return null;
+    }
+
+    static JdbcProxyEndpoint jdbcProxyEndpoint(ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+        if (proxy == null) {
+            return null;
+        }
+        String type = normalizeProxyType(proxy.type());
+        String host = requireText(proxy.host(), "Proxy host");
+        int port = validPort(proxy.port(), defaultProxyPort(type), "Proxy port");
+        return new JdbcProxyEndpoint(type, host, port, text(proxy.user()), text(proxy.password()));
     }
 
     private static String normalizeProxyType(String value) {

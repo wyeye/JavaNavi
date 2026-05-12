@@ -2,6 +2,7 @@ package com.javanavi.driver;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.events.CompatEventFixtures;
 import com.javanavi.events.CompatEventPublisher;
@@ -12,6 +13,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.net.Authenticator;
+import java.net.InetSocketAddress;
+import java.net.PasswordAuthentication;
+import java.net.Proxy;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.UnknownHostException;
@@ -67,10 +72,10 @@ public class DriverCompatibilityService {
     private final CompatEventPublisher publisher;
     private final CompatEventFixtures fixtures;
     private final JdbcDriverRuntimeService jdbcDriverRuntimeService;
+    private final GlobalProxyConfigProvider globalProxyConfigProvider;
     private final I18nMessages messages;
     private final Path dataDirectory;
     private final Path defaultDriverDirectory;
-    private final HttpClient repositoryProbeClient;
 
     public DriverCompatibilityService(
             SecurityProperties securityProperties,
@@ -78,19 +83,54 @@ public class DriverCompatibilityService {
             CompatEventPublisher publisher,
             CompatEventFixtures fixtures,
             JdbcDriverRuntimeService jdbcDriverRuntimeService,
+            GlobalProxyConfigProvider globalProxyConfigProvider,
             I18nMessages messages
     ) {
         this.objectMapper = objectMapper;
         this.publisher = publisher;
         this.fixtures = fixtures;
         this.jdbcDriverRuntimeService = jdbcDriverRuntimeService;
+        this.globalProxyConfigProvider = globalProxyConfigProvider;
         this.messages = messages;
         this.dataDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize();
         this.defaultDriverDirectory = dataDirectory.resolve("drivers").normalize();
-        this.repositoryProbeClient = HttpClient.newBuilder()
+    }
+
+    private HttpClient repositoryHttpClient() {
+        HttpClient.Builder builder = HttpClient.newBuilder()
                 .connectTimeout(REPOSITORY_CONNECT_TIMEOUT)
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .build();
+                .followRedirects(HttpClient.Redirect.NORMAL);
+        activeGlobalProxy().ifPresent(proxy -> applyProxy(builder, proxy));
+        return builder.build();
+    }
+
+    private static void applyProxy(HttpClient.Builder builder, com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+        Proxy.Type proxyType = "socks5".equalsIgnoreCase(proxy.type()) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
+        builder.proxy(new SingleProxySelector(new Proxy(proxyType, new InetSocketAddress(proxy.host(), proxy.port()))));
+        if (!text(proxy.user()).isBlank() || !text(proxy.password()).isBlank()) {
+            builder.authenticator(new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    if (getRequestorType() != RequestorType.PROXY) {
+                        return null;
+                    }
+                    return new PasswordAuthentication(text(proxy.user()), text(proxy.password()).toCharArray());
+                }
+            });
+        }
+    }
+
+    private Optional<com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto> activeGlobalProxy() {
+        return globalProxyConfigProvider == null ? Optional.empty() : globalProxyConfigProvider.activeProxy();
+    }
+
+    private Map<String, String> proxySummary(com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+        return orderedStringMap(
+                "scope", "global",
+                "type", proxy.type(),
+                "host", proxy.host(),
+                "port", String.valueOf(proxy.port())
+        );
     }
 
     public Map<String, Object> networkStatus() {
@@ -99,6 +139,7 @@ public class DriverCompatibilityService {
         Map<String, Object> repositorySettings = jdbcDriverRuntimeService.repositorySettings();
         String repositoryUrl = textOrDefault(repositorySettings.get("repositoryUrl"), jdbcDriverRuntimeService.defaultRepositoryURL());
         String repositoryHost = repositoryHost(repositoryUrl);
+        Optional<com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto> globalProxy = activeGlobalProxy();
         Map<String, Object> repositoryProbe = probeRepository(repositoryUrl);
         boolean repositoryReachable = Boolean.TRUE.equals(repositoryProbe.get("reachable"));
         boolean overallReachable = workspaceAvailable && repositoryReachable;
@@ -124,9 +165,9 @@ public class DriverCompatibilityService {
                 "summary", workspaceAvailable
                         ? messages.message("drivers.workspaceReady")
                         : messages.message("drivers.workspaceUnavailable"),
-                "recommendedProxy", workspaceAvailable && !repositoryReachable,
-                "proxyConfigured", false,
-                "proxyEnv", Map.of(),
+                "recommendedProxy", workspaceAvailable && !repositoryReachable && globalProxy.isEmpty(),
+                "proxyConfigured", globalProxy.isPresent(),
+                "proxyEnv", globalProxy.map(this::proxySummary).orElseGet(Map::of),
                 "downloadChainReachable", repositoryReachable,
                 "downloadRequiredHosts", repositoryHost.isBlank() ? List.of() : List.of(repositoryHost),
                 "defaultRepositoryURL", jdbcDriverRuntimeService.defaultRepositoryURL(),
@@ -178,7 +219,7 @@ public class DriverCompatibilityService {
             HttpRequest request = "HEAD".equalsIgnoreCase(method)
                     ? builder.method("HEAD", HttpRequest.BodyPublishers.noBody()).build()
                     : builder.GET().build();
-            HttpResponse<Void> response = repositoryProbeClient.send(request, HttpResponse.BodyHandlers.discarding());
+            HttpResponse<Void> response = repositoryHttpClient().send(request, HttpResponse.BodyHandlers.discarding());
             long latencyMs = Math.max(1L, Duration.ofNanos(System.nanoTime() - startedAt).toMillis());
             int statusCode = response.statusCode();
             boolean reachable = statusCode >= 200 && statusCode < 400;
@@ -1208,6 +1249,14 @@ public class DriverCompatibilityService {
     private static String textOrDefault(Object value, String fallback) {
         String text = text(value);
         return text.isBlank() ? fallback : text;
+    }
+
+    private static Map<String, String> orderedStringMap(String... entries) {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (int i = 0; i + 1 < entries.length; i += 2) {
+            map.put(entries[i], entries[i + 1]);
+        }
+        return map;
     }
 
     private static Map<String, Object> orderedMap(Object... entries) {
