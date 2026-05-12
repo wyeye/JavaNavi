@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { Spin, Alert } from 'antd';
-import { TabData } from '../types';
+import type { SavedConnection, TabData } from '../types';
 import { useStore } from '../store';
 import { DBQuery } from '@compat/javanaviApp';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
+import type { RpcConnectionConfig } from '../utils/connectionRpcConfig';
 
 interface TriggerViewerProps {
     tab: TabData;
 }
+
+type QueryRow = Record<string, unknown>;
+
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
+
+const firstDefinedValue = (row: QueryRow): unknown => Object.values(row)[0];
 
 const TriggerViewer: React.FC<TriggerViewerProps> = ({ tab }) => {
     const [loading, setLoading] = useState(true);
@@ -24,7 +33,7 @@ const TriggerViewer: React.FC<TriggerViewerProps> = ({ tab }) => {
     const escapeSQLLiteral = (raw: string): string => String(raw || '').replace(/'/g, "''");
     const quoteSqlServerIdentifier = (raw: string): string => `[${String(raw || '').replace(/]/g, ']]')}]`;
 
-    const getMetadataDialect = (conn: any): string => {
+    const getMetadataDialect = (conn: SavedConnection | undefined): string => {
         const type = String(conn?.config?.type || '').trim().toLowerCase();
         if (type === 'custom') {
             const driver = String(conn?.config?.driver || '').trim().toLowerCase();
@@ -36,7 +45,7 @@ const TriggerViewer: React.FC<TriggerViewerProps> = ({ tab }) => {
         return type;
     };
 
-    const isSphinxConnection = (conn: any): boolean => {
+    const isSphinxConnection = (conn: SavedConnection | undefined): boolean => {
         const type = String(conn?.config?.type || '').trim().toLowerCase();
         if (type === 'sphinx') return true;
         if (type !== 'custom') return false;
@@ -91,27 +100,27 @@ LIMIT 1`];
     };
 
     const runQueryCandidates = async (
-        config: Record<string, any>,
+        config: RpcConnectionConfig,
         dbName: string,
         queries: string[]
-    ): Promise<{ success: boolean; data: any[]; message?: string }> => {
+    ): Promise<{ success: boolean; data: QueryRow[]; message?: string }> => {
         let lastMessage = '';
         let hasSuccessfulQuery = false;
         for (const query of queries) {
             const sql = String(query || '').trim();
             if (!sql) continue;
             try {
-                const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, sql);
+                const result = await DBQuery(config, dbName, sql);
                 if (!result.success || !Array.isArray(result.data)) {
                     lastMessage = result.message || lastMessage;
                     continue;
                 }
                 hasSuccessfulQuery = true;
                 if (result.data.length > 0) {
-                    return { success: true, data: result.data };
+                    return { success: true, data: result.data as QueryRow[] };
                 }
-            } catch (error: any) {
-                lastMessage = error?.message || String(error);
+            } catch (error: unknown) {
+                lastMessage = getErrorMessage(error);
             }
         }
         if (hasSuccessfulQuery) {
@@ -120,25 +129,25 @@ LIMIT 1`];
         return { success: false, data: [], message: lastMessage };
     };
 
-    const getVersionHint = async (config: Record<string, any>, dbName: string): Promise<string> => {
+    const getVersionHint = async (config: RpcConnectionConfig, dbName: string): Promise<string> => {
         const candidates = [
             `SELECT VERSION() AS version`,
             `SHOW VARIABLES LIKE 'version'`,
         ];
         for (const query of candidates) {
             try {
-                const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, query);
+                const result = await DBQuery(config, dbName, query);
                 if (!result.success || !Array.isArray(result.data) || result.data.length === 0) {
                     continue;
                 }
-                const row = result.data[0] as Record<string, any>;
+                const row = result.data[0] as QueryRow;
                 const version =
                     row.version
                     || row.VERSION
                     || row.Value
                     || row.value
                     || Object.values(row)[1]
-                    || Object.values(row)[0];
+                    || firstDefinedValue(row);
                 const text = String(version || '').trim();
                 if (text) return text;
             } catch {
@@ -148,7 +157,7 @@ LIMIT 1`];
         return '';
     };
 
-    const extractTriggerDefinition = (dialect: string, data: any[]): string => {
+    const extractTriggerDefinition = (dialect: string, data: QueryRow[]): string => {
         if (!data || data.length === 0) {
             return '-- 未找到触发器定义';
         }
@@ -166,8 +175,8 @@ LIMIT 1`];
                     return String(row.ACTION_STATEMENT || row.action_statement);
                 }
                 const sqlKey = keys.find(k => k.toLowerCase().includes('statement') || k.toLowerCase() === 'sql original statement');
-                if (sqlKey) return row[sqlKey];
-                // Fallback: try to find any key containing CREATE TRIGGER
+                if (sqlKey) return String(row[sqlKey] ?? '');
+                // Fallback: try to find a key containing CREATE TRIGGER
                 for (const key of keys) {
                     const val = String(row[key] || '');
                     if (val.toUpperCase().includes('CREATE TRIGGER')) {
@@ -180,17 +189,17 @@ LIMIT 1`];
             case 'kingbase':
             case 'highgo':
             case 'vastbase': {
-                return row.trigger_definition || row.TRIGGER_DEFINITION || Object.values(row)[0] || '';
+                return String(row.trigger_definition || row.TRIGGER_DEFINITION || firstDefinedValue(row) || '');
             }
             case 'sqlserver': {
-                return row.trigger_definition || row.TRIGGER_DEFINITION || Object.values(row)[0] || '';
+                return String(row.trigger_definition || row.TRIGGER_DEFINITION || firstDefinedValue(row) || '');
             }
             case 'oracle':
             case 'dm': {
-                return row.trigger_body || row.TRIGGER_BODY || Object.values(row)[0] || '';
+                return String(row.trigger_body || row.TRIGGER_BODY || firstDefinedValue(row) || '');
             }
             case 'sqlite': {
-                return row.sql || row.SQL || Object.values(row)[0] || '';
+                return String(row.sql || row.SQL || firstDefinedValue(row) || '');
             }
             default:
                 return JSON.stringify(row, null, 2);
@@ -238,7 +247,8 @@ LIMIT 1`];
                     ssh: conn.config.ssh || { host: '', port: 22, user: '', password: '', keyPath: '' }
                 };
 
-                const result = await runQueryCandidates(config, dbName, queries);
+                const rpcConfig = buildRpcConnectionConfig(config);
+                const result = await runQueryCandidates(rpcConfig, dbName, queries);
 
                 if (result.success && Array.isArray(result.data) && result.data.length > 0) {
                     const definition = extractTriggerDefinition(dialect, result.data);
@@ -248,21 +258,21 @@ LIMIT 1`];
 
                 if (result.success) {
                     if (sphinxLike) {
-                        const version = await getVersionHint(config, dbName);
+                        const version = await getVersionHint(rpcConfig, dbName);
                         const versionText = version ? `（版本: ${version}）` : '';
                         setTriggerDefinition(`-- 当前 Sphinx 实例${versionText}未返回触发器定义。\n-- 已执行多套兼容查询，可能是版本能力限制或对象类型不支持。`);
                         return;
                     }
                     setTriggerDefinition('-- 未找到触发器定义');
                 } else if (sphinxLike) {
-                    const version = await getVersionHint(config, dbName);
+                    const version = await getVersionHint(rpcConfig, dbName);
                     const versionText = version ? `（版本: ${version}）` : '';
                     setTriggerDefinition(`-- 当前 Sphinx 实例${versionText}不支持触发器定义查询。\n-- 已自动尝试兼容语句，返回失败信息: ${result.message || 'unknown error'}`);
                 } else {
                     setError(result.message || '查询触发器定义失败');
                 }
-            } catch (e: any) {
-                setError('查询触发器定义失败: ' + (e?.message || String(e)));
+            } catch (e: unknown) {
+                setError('查询触发器定义失败: ' + getErrorMessage(e));
             } finally {
                 setLoading(false);
             }
