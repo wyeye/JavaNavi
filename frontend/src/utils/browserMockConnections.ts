@@ -12,7 +12,16 @@ export const resolveBrowserMockSecretFlag = (nextValue: unknown, clearFlag: bool
   return !!existingFlag;
 };
 
-export const buildBrowserMockDuplicateName = (rawName: string, items: any[]): string => {
+type BrowserMockConnectionLike = {
+  id?: string;
+  name?: string;
+  config?: Record<string, unknown>;
+  includeDatabases?: unknown;
+  includeRedisDatabases?: unknown;
+  [key: string]: unknown;
+};
+
+export const buildBrowserMockDuplicateName = (rawName: string, items: BrowserMockConnectionLike[]): string => {
   const baseName = String(rawName || '').trim() || '连接';
   const suffix = ' - 副本';
   const usedNames = new Set(items.map((item) => String(item?.name || '').trim()));
@@ -26,8 +35,8 @@ export const buildBrowserMockDuplicateName = (rawName: string, items: any[]): st
 };
 
 interface DuplicateBrowserMockConnectionInput {
-  existing: any;
-  items: any[];
+  existing: BrowserMockConnectionLike;
+  items: BrowserMockConnectionLike[];
   nextId: string;
 }
 
@@ -35,7 +44,7 @@ export const duplicateBrowserMockConnection = ({ existing, items, nextId }: Dupl
   const duplicated = cloneBrowserMockValue({
     ...existing,
     id: nextId,
-    name: buildBrowserMockDuplicateName(existing?.name, items),
+    name: buildBrowserMockDuplicateName(existing.name || '', items),
     config: {
       ...cloneBrowserMockValue(existing?.config),
       id: nextId,
