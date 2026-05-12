@@ -14,6 +14,21 @@ interface RedisCommandEditorProps {
 
 type RedisCommandResultValue = string | number | boolean | null | RedisCommandResultValue[] | { [key: string]: RedisCommandResultValue | undefined };
 
+const toRedisCommandResultValue = (value: unknown): RedisCommandResultValue => {
+    if (value === null || value === undefined || typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+        return value as RedisCommandResultValue;
+    }
+    if (Array.isArray(value)) {
+        return value.map(toRedisCommandResultValue);
+    }
+    if (typeof value === 'object') {
+        return Object.fromEntries(
+            Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, toRedisCommandResultValue(item)]),
+        );
+    }
+    return String(value);
+};
+
 declare global {
     interface Window {
         __redisCompletionRegistered?: boolean;
@@ -215,7 +230,7 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
                 const res = await RedisExecuteCommand(buildRpcConnectionConfig(config), cmd);
                 newResults.push({
                     command: cmd,
-                    result: res.success ? res.data : null,
+                    result: res.success ? toRedisCommandResultValue(res.data) : null,
                     error: res.success ? undefined : res.message,
                     timestamp: Date.now(),
                     durationMs: Date.now() - start

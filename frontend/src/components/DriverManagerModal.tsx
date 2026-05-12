@@ -1118,7 +1118,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         message.error(compatText(result?.message || '设置默认驱动失败', 'message'));
         return;
       }
-      message.success(compatText(`${row.name || row.type} 默认驱动已设置为 ${result.data?.defaultDriverName || targetDriverType}`, 'message'));
+      const resultData = toRecord<DriverStatusItem>(result.data);
+      message.success(compatText(`${row.name || row.type} 默认驱动已设置为 ${String(resultData.defaultDriverName || targetDriverType)}`, 'message'));
       await refreshStatus(false);
     } catch (err: unknown) {
       message.error(compatText(`设置默认驱动失败：${getErrorMessage(err)}`, 'message'));

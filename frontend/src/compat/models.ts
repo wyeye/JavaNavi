@@ -396,7 +396,7 @@ export namespace connection {
 	export class QueryResult {
 	    success: boolean;
 	    message: string;
-	    data: any;
+	    data: unknown;
 	    fields?: string[];
 	    queryId?: string;
 	    revealMessage?: string;

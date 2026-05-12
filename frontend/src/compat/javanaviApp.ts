@@ -772,7 +772,8 @@ export async function RedisDeleteKeys(arg1:connection.ConnectionConfig,arg2:Arra
 export async function RedisExecuteCommand(arg1:connection.ConnectionConfig,arg2:string): Promise<connection.QueryResult> {
   const payload = await postJson('/redis/command/execute', { connection: toConnectionPayload(arg1), command: arg2 });
   const result = apiEnvelopeToQueryResult(payload, 'Redis command executed');
-  if (result.success && result.data && Object.prototype.hasOwnProperty.call(result.data, 'result')) result.data = result.data.result;
+  const resultData = recordValue(result.data);
+  if (result.success && Object.prototype.hasOwnProperty.call(resultData, 'result')) result.data = resultData.result;
   return result;
 }
 

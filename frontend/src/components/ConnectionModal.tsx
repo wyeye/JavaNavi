@@ -1140,9 +1140,9 @@ const ConnectionModal: React.FC<{
       const currentPath = String(form.getFieldValue("sshKeyPath") || "").trim();
       const res = await SelectSSHKeyFile(currentPath);
       if (res?.success) {
-        const data = res.data || {};
+        const data = res.data;
         const selectedPath =
-          typeof data === "string" ? data : String(data.path || "").trim();
+          typeof data === "string" ? data : String(toRecord(data).path || "").trim();
         if (selectedPath) {
           form.setFieldValue("sshKeyPath", selectedPath);
         }
@@ -1169,11 +1169,12 @@ const ConnectionModal: React.FC<{
       const currentPath = String(form.getFieldValue("host") || "").trim();
       const res = await nativeApp["SelectDatabaseFile"](currentPath, dbType);
       if (res?.success !== false) {
-        const data = res?.data ?? res ?? {};
+        const data = res?.data ?? res;
+        const dataRecord = toRecord(data);
         const selectedPath =
           typeof data === "string"
             ? data
-            : String(data.path || data.filePath || "").trim();
+            : String(dataRecord.path || dataRecord.filePath || "").trim();
         if (selectedPath) {
           form.setFieldValue("host", normalizeFileDbPath(selectedPath));
         }

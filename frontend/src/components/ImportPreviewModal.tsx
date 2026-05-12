@@ -22,6 +22,8 @@ interface PreviewData {
     previewRows: Record<string, unknown>[];
 }
 
+type PreviewPayload = { columns?: unknown; totalRows?: unknown; previewRows?: unknown };
+
 interface ImportProgress {
     current: number;
     total: number;
@@ -37,6 +39,10 @@ interface ImportResult {
 
 const getErrorMessage = (error: unknown): string => (
     error instanceof Error ? error.message : String(error)
+);
+
+const toPreviewPayload = (value: unknown): PreviewPayload => (
+    value && typeof value === 'object' && !Array.isArray(value) ? value as PreviewPayload : {}
 );
 
 const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
@@ -79,10 +85,11 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
         try {
             const res = await PreviewImportFile(filePath);
             if (res.success && res.data) {
+                const payload = toPreviewPayload(res.data);
                 setPreviewData({
-                    columns: res.data.columns || [],
-                    totalRows: res.data.totalRows || 0,
-                    previewRows: res.data.previewRows || []
+                    columns: Array.isArray(payload.columns) ? payload.columns.map(String) : [],
+                    totalRows: typeof payload.totalRows === 'number' ? payload.totalRows : Number(payload.totalRows || 0),
+                    previewRows: Array.isArray(payload.previewRows) ? payload.previewRows as Record<string, unknown>[] : []
                 });
             } else {
                 setError(res.message || '预览失败');
@@ -121,8 +128,9 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             const res = await ImportDataWithProgress(buildRpcConnectionConfig(config), dbName, tableName, filePath, true);
 
             if (res.success && res.data) {
-                setImportResult(res.data);
-                if (res.data.failed === 0) {
+                const resultData = toPreviewPayload(res.data) as ImportResult;
+                setImportResult(resultData);
+                if (resultData.failed === 0) {
                     onSuccess();
                 }
             } else {

@@ -153,6 +153,7 @@ export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 type Item = DataGridItem;
 type DataGridRecord = Record<string, unknown>;
+type ImportUploadResultData = { filePath?: unknown };
 type DataGridRecordPatchMap = Record<string, DataGridRecord>;
 type DataGridColumn = ColumnType<Item> & { editable?: boolean };
 type DataGridCellProps = React.HTMLAttributes<HTMLElement> & {
@@ -3183,8 +3184,10 @@ const DataGrid: React.FC<DataGridProps> = ({
           const hide = message.loading(`正在上传导入文件...`, 0);
           try {
               const res = await UploadImportFile(buildRpcConnectionConfig(config), dbName || '', tableName, file);
-              if (res.success && res.data && res.data.filePath) {
-                  setImportFilePath(res.data.filePath);
+              const uploadData = res.data && typeof res.data === 'object' ? res.data as ImportUploadResultData : {};
+              const uploadedFilePath = String(uploadData.filePath || '').trim();
+              if (res.success && uploadedFilePath) {
+                  setImportFilePath(uploadedFilePath);
                   setImportPreviewVisible(true);
               } else if (res.message !== "已取消") {
                   void message.error("上传文件失败: " + res.message);
