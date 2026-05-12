@@ -6,6 +6,8 @@ import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanit
 
 export type QueryResult = connection.QueryResult;
 
+type QueryResultPayload = Pick<QueryResult, 'success' | 'message' | 'data'>;
+
 const API_BASE = '/api/v1';
 
 type PostJsonOptions = {
@@ -271,10 +273,10 @@ function apiEnvelopeToQueryResult(payload: unknown, fallbackMessage = 'OK'): Que
   const language = currentAppLanguage();
   const localizedFallback = translateBackendFallback(language, fallbackMessage);
   const envelope = recordValue(payload);
-  if (!payload) return { success: false, message: translateBackendFallback(language, 'Empty response'), data: null } as unknown as QueryResult;
+  if (!payload) return { success: false, message: translateBackendFallback(language, 'Empty response'), data: null } satisfies QueryResultPayload;
   if (fieldValue(envelope, 'success') === false) {
     const error = recordValue(fieldValue(envelope, 'error'));
-    return { success: false, message: localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), 'Request failed'), data: fieldValue(envelope, 'data') ?? null } as unknown as QueryResult;
+    return { success: false, message: localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), 'Request failed'), data: fieldValue(envelope, 'data') ?? null } satisfies QueryResultPayload;
   }
   const data = fieldValue(envelope, 'data') ?? payload;
   const dataRecord = recordValue(data);
