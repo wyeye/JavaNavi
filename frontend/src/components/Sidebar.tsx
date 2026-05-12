@@ -71,6 +71,7 @@ import {
   splitQualifiedName,
   type MetadataQueryResult,
   type MetadataQuerySpec,
+  type MetadataRow,
  } from '../utils/sidebarMetadata';
 import { resolveConnectionAccentColor, resolveConnectionIconType } from '../utils/connectionVisual';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
@@ -584,7 +585,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   const queryMetadataRowsBySpecs = async (
-      conn: any,
+      conn: SavedConnection,
       dbName: string,
       specs: MetadataQuerySpec[]
   ): Promise<{ results: MetadataQueryResult[]; hasSuccessfulQuery: boolean }> => {
@@ -598,13 +599,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
       for (const spec of normalizedSpecs) {
           try {
-              const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, spec.sql);
+              const result = await DBQuery(config, dbName, spec.sql);
               if (!result.success || !Array.isArray(result.data)) {
                   continue;
               }
               hasSuccessfulQuery = true;
               results.push({
-                  rows: result.data as Record<string, any>[],
+                  rows: result.data as MetadataRow[],
                   inferredType: spec.inferredType,
               });
           } catch {
@@ -614,9 +615,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       return { results, hasSuccessfulQuery };
   };
 
-  const loadViews = async (conn: any, dbName: string): Promise<{ views: string[]; supported: boolean }> => {
-      const savedConn = conn as SavedConnection;
-      const dialect = getMetadataDialect(savedConn);
+  const loadViews = async (conn: SavedConnection, dbName: string): Promise<{ views: string[]; supported: boolean }> => {
+      const dialect = getMetadataDialect(conn);
       const querySpecs = buildViewsMetadataQuerySpecs(dialect, dbName);
       const { results, hasSuccessfulQuery } = await queryMetadataRowsBySpecs(conn, dbName, querySpecs);
       const seen = new Set<string>();
@@ -641,10 +641,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   const loadDatabaseTriggers = async (
-      conn: any,
+      conn: SavedConnection,
       dbName: string
   ): Promise<{ triggers: Array<{ displayName: string; triggerName: string; tableName: string }>; supported: boolean }> => {
-      const dialect = getMetadataDialect(conn as SavedConnection);
+      const dialect = getMetadataDialect(conn);
       const querySpecs = buildTriggersMetadataQuerySpecs(dialect, dbName);
       const { results, hasSuccessfulQuery } = await queryMetadataRowsBySpecs(conn, dbName, querySpecs);
       const seen = new Set<string>();
@@ -685,10 +685,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   const loadFunctions = async (
-      conn: any,
+      conn: SavedConnection,
       dbName: string
   ): Promise<{ routines: Array<{ displayName: string; routineName: string; routineType: string }>; supported: boolean }> => {
-      const dialect = getMetadataDialect(conn as SavedConnection);
+      const dialect = getMetadataDialect(conn);
       const querySpecs = buildFunctionsMetadataQuerySpecs(dialect, dbName);
       const { results, hasSuccessfulQuery } = await queryMetadataRowsBySpecs(conn, dbName, querySpecs);
       const seen = new Set<string>();
@@ -1038,7 +1038,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	                groupTitle: string,
 	                groupIcon: React.ReactNode,
 	                children: TreeNode[],
-	                extraData: Record<string, any> = {}
+	                extraData: SidebarDataRef = {}
 	            ): TreeNode => ({
 	                title: `${groupTitle} (${children.length})`,
 	                key: `${parentKey}-${groupKey}`,
