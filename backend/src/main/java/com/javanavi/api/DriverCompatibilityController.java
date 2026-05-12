@@ -38,18 +38,18 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/runtime-directory")
-    public ApiEnvelope<Map<String, Object>> configureRuntimeDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.configureRuntimeDirectory(input == null ? "" : input.value()));
+    public ApiEnvelope<DriverContracts.DriverDirectoryResponse> configureRuntimeDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverDirectoryResponse.from(driverCompatibilityService.configureRuntimeDirectory(input == null ? "" : input.value())));
     }
 
     @PostMapping("/download-directory/open")
-    public ApiEnvelope<Map<String, Object>> openDownloadDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.openDownloadDirectory(input == null ? "" : input.value()));
+    public ApiEnvelope<DriverContracts.DriverDirectoryResponse> openDownloadDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverDirectoryResponse.from(driverCompatibilityService.openDownloadDirectory(input == null ? "" : input.value())));
     }
 
     @PostMapping("/download-directory/resolve")
-    public ApiEnvelope<Map<String, Object>> resolveDownloadDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.resolveDownloadDirectory(input == null ? "" : input.value()));
+    public ApiEnvelope<DriverContracts.DriverDirectoryResponse> resolveDownloadDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverDirectoryResponse.from(driverCompatibilityService.resolveDownloadDirectory(input == null ? "" : input.value())));
     }
 
     @PostMapping("/repository/resolve")

@@ -59,6 +59,31 @@ public final class DriverContracts {
     ) {
     }
 
+    public record DriverDirectoryResponse(
+            String path,
+            String directory,
+            String defaultPath,
+            boolean isDefaultPath,
+            boolean webManaged,
+            boolean opened,
+            String openMethod,
+            String message
+    ) {
+        public static DriverDirectoryResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new DriverDirectoryResponse(
+                    text(source.get("path")),
+                    text(source.get("directory")),
+                    text(source.get("defaultPath")),
+                    booleanValue(source.get("isDefaultPath")),
+                    booleanValue(source.get("webManaged")),
+                    booleanValue(source.get("opened")),
+                    text(source.get("openMethod")),
+                    text(source.get("message"))
+            );
+        }
+    }
+
     public record NetworkCheckResponse(
             String name,
             String url,
