@@ -116,6 +116,31 @@ public final class FileWorkflowContracts {
         }
     }
 
+    public record SqlFileOpenResponse(
+            String content,
+            boolean isLargeFile,
+            String filePath,
+            long fileSize,
+            String fileSizeMB,
+            boolean webManaged
+    ) {
+        public static SqlFileOpenResponse from(String value) {
+            String text = value == null ? "" : value;
+            Map<String, Object> json = jsonObject(text);
+            if (!json.isEmpty()) {
+                return new SqlFileOpenResponse(
+                        "",
+                        booleanValue(json.get("isLargeFile")),
+                        text(json.get("filePath")),
+                        longValue(json.get("fileSize")),
+                        text(json.get("fileSizeMB")),
+                        booleanValue(json.get("webManaged"))
+                );
+            }
+            return new SqlFileOpenResponse(text, false, "", 0L, "", false);
+        }
+    }
+
     public record ImportSelectionResponse(
             String filePath,
             String path,
@@ -231,6 +256,20 @@ public final class FileWorkflowContracts {
                     text(source.get("revealTargetPath")),
                     text(source.get("revealMessage"))
             );
+        }
+    }
+
+
+    private static Map<String, Object> jsonObject(String value) {
+        String trimmed = value == null ? "" : value.trim();
+        if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) {
+            return Map.of();
+        }
+        try {
+            Object parsed = new com.fasterxml.jackson.databind.ObjectMapper().readValue(trimmed, Object.class);
+            return parsed instanceof Map<?, ?> map ? mapValue(map) : Map.of();
+        } catch (Exception ignored) {
+            return Map.of();
         }
     }
 

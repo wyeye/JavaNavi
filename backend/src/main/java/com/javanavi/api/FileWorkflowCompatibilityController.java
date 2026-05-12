@@ -30,8 +30,8 @@ public class FileWorkflowCompatibilityController {
     }
 
     @PostMapping("/sql/open")
-    public ApiEnvelope<Object> openSqlFile() {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.openSqlFile());
+    public ApiEnvelope<FileWorkflowContracts.SqlFileOpenResponse> openSqlFile() {
+        return ApiEnvelope.ok(FileWorkflowContracts.SqlFileOpenResponse.from(fileWorkflowCompatibilityService.openSqlFile()));
     }
 
     @PostMapping("/ssh-key/select")
