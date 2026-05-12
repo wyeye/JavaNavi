@@ -18,8 +18,10 @@ export type ResolveEditRowLocatorParams = {
   dbType?: string;
 };
 
+type RowLocatorValueMap = Record<string, unknown>;
+
 export type ResolveRowLocatorValuesResult =
-  | { ok: true; values: Record<string, any> }
+  | { ok: true; values: RowLocatorValueMap }
   | { ok: false; error: string };
 
 const normalizeColumnName = (value: string): string => String(value || '').trim();
@@ -36,7 +38,7 @@ const findColumn = (columns: string[], target: string): string => {
 
 const normalizeDbType = (dbType?: string): string => String(dbType || '').trim().toLowerCase();
 
-const isRowLocatorValueEmpty = (row: Record<string, any> | string[], valueColumn: string): boolean => {
+const isRowLocatorValueEmpty = (row: RowLocatorValueMap | string[], valueColumn: string): boolean => {
   if (Array.isArray(row)) return false;
   const value = row?.[valueColumn];
   return value === null || value === undefined || value === '';
@@ -98,13 +100,13 @@ export const resolveEditRowLocator = ({
 
 export const resolveRowLocatorValues = (
   locator: EditRowLocator | undefined,
-  row: Record<string, any>,
+  row: RowLocatorValueMap,
 ): ResolveRowLocatorValuesResult => {
   if (!locator || locator.readOnly || locator.strategy === 'none') {
     return { ok: false, error: locator?.reason || '当前结果没有可用的安全行定位方式，无法提交修改。' };
   }
 
-  const values: Record<string, any> = {};
+  const values: RowLocatorValueMap = {};
   for (let index = 0; index < locator.columns.length; index++) {
     const column = locator.columns[index];
     const valueColumn = locator.valueColumns[index] || column;
