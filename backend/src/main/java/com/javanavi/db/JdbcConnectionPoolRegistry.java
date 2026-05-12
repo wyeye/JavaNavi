@@ -182,25 +182,26 @@ public class JdbcConnectionPoolRegistry {
     }
 
     private String fingerprint(ConnectionConfigDto config) {
+        ConnectionConfigDto effectiveConfig = jdbcConnectionFactory.effectiveConnectionConfig(config);
         StringBuilder value = new StringBuilder();
-        value.append(jdbcConnectionFactory.normalizeDriver(config)).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.host())).append('\n');
-        value.append(String.valueOf(config == null ? null : config.port())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.username())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.password())).append('\n');
-        value.append(nullToEmpty(config == null || config.ssh() == null ? null : config.ssh().host())).append('\n');
-        value.append(nullToEmpty(config == null || config.ssh() == null ? null : config.ssh().user())).append('\n');
-        value.append(nullToEmpty(config == null || config.ssh() == null ? null : config.ssh().keyPath())).append('\n');
-        value.append(String.valueOf(config == null || config.ssh() == null ? null : config.ssh().port())).append('\n');
-        value.append(String.valueOf(config == null ? null : config.timeout())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.driver())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.sslMode())).append('\n');
-        value.append(String.valueOf(config == null ? null : config.useSSL())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.sslCertPath())).append('\n');
-        value.append(nullToEmpty(config == null ? null : config.sslKeyPath())).append('\n');
-        appendNetworkFingerprint(value, config);
-        if (config != null && config.options() != null) {
-            config.options().entrySet().stream()
+        value.append(jdbcConnectionFactory.normalizeDriver(effectiveConfig)).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.host())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null ? null : effectiveConfig.port())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.username())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.password())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().host())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().user())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().keyPath())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null || effectiveConfig.ssh() == null ? null : effectiveConfig.ssh().port())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null ? null : effectiveConfig.timeout())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.driver())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.sslMode())).append('\n');
+        value.append(String.valueOf(effectiveConfig == null ? null : effectiveConfig.useSSL())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.sslCertPath())).append('\n');
+        value.append(nullToEmpty(effectiveConfig == null ? null : effectiveConfig.sslKeyPath())).append('\n');
+        appendNetworkFingerprint(value, effectiveConfig);
+        if (effectiveConfig != null && effectiveConfig.options() != null) {
+            effectiveConfig.options().entrySet().stream()
                     .filter(entry -> includeInFingerprint(entry.getKey()))
                     .sorted(Map.Entry.comparingByKey())
                     .forEach(entry -> value.append(entry.getKey()).append('=').append(entry.getValue()).append('\n'));

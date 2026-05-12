@@ -340,6 +340,27 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
+    void jdbcConnectionFactoryAppliesInjectedGlobalProxyForDirectConsumers() {
+        ConnectionConfigDto.NetworkProxyConfigDto globalProxy =
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, "global-user", "global-secret");
+        JdbcConnectionFactory factory = new JdbcConnectionFactory(
+                null,
+                new I18nMessages(),
+                null,
+                globalProxyProvider(globalProxy)
+        );
+
+        Properties properties = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable", null, null, null, null));
+
+        assertThat(properties)
+                .containsEntry("javanavi.proxy.type", "http")
+                .containsEntry("javanavi.proxy.host", "global.proxy")
+                .containsEntry("javanavi.proxy.port", "8080")
+                .containsEntry("javanavi.proxy.user", "global-user")
+                .containsEntry("javanavi.proxy.password", "global-secret");
+    }
+
+    @Test
     void jdbcNetworkProxyAndHttpTunnelValidateForJdbcWithoutGenericRejection() {
         JdbcConnectionFactory factory = new JdbcConnectionFactory();
 
@@ -491,11 +512,33 @@ class DriverCompatibilityServiceTest {
                 new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, "tunnel-user", "secret"),
                 null,
                 null)));
+        String connectionProxyGlobalA = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
+                null,
+                null,
+                null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global-a", 8080, null, null))));
+        String connectionProxyGlobalB = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
+                null,
+                null,
+                null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global-b", 8080, null, null))));
 
         assertThat(proxy).isNotEqualTo(direct);
         assertThat(otherProxy).isNotEqualTo(proxy);
         assertThat(httpTunnel).isNotEqualTo(proxy);
         assertThat(httpTunnel).isNotEqualTo(direct);
+        assertThat(connectionProxyGlobalA).isEqualTo(connectionProxyGlobalB);
+    }
+
+    private GlobalProxyConfigProvider globalProxyProvider(ConnectionConfigDto.NetworkProxyConfigDto globalProxy) {
+        SecurityProperties securityProperties = new SecurityProperties();
+        securityProperties.setDataDirectory(tempDir.toString());
+        return new GlobalProxyConfigProvider(securityProperties, new ObjectMapper().findAndRegisterModules(), null) {
+            @Override
+            public java.util.Optional<ConnectionConfigDto.NetworkProxyConfigDto> activeProxy() {
+                return java.util.Optional.of(globalProxy);
+            }
+        };
     }
 
     private DriverCompatibilityService service() {
