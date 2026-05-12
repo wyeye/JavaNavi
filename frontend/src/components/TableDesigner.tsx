@@ -132,7 +132,10 @@ const CHARSETS = [
     { label: 'ascii', value: 'ascii' },
 ];
 
-const COLLATIONS = {
+type CollationOption = { label: string; value: string };
+type CharsetKey = 'utf8mb4' | 'utf8';
+
+const COLLATIONS: Record<CharsetKey, CollationOption[]> = {
     'utf8mb4': [
         { label: 'utf8mb4_unicode_ci (Default)', value: 'utf8mb4_unicode_ci' },
         { label: 'utf8mb4_general_ci', value: 'utf8mb4_general_ci' },
@@ -145,6 +148,16 @@ const COLLATIONS = {
         { label: 'utf8_bin', value: 'utf8_bin' },
     ]
 };
+
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
+
+const getCollationOptions = (value: string): CollationOption[] => (
+    Object.prototype.hasOwnProperty.call(COLLATIONS, value)
+        ? COLLATIONS[value as CharsetKey]
+        : []
+);
 
 // --- Resizable Header Component (Native, same interaction as DataGrid) ---
 const ResizableTitle = (props: ResizeHeaderCellProps) => {
@@ -232,19 +245,19 @@ const SortableRow = ({ children, ...props }: RowProps) => {
 
 const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   const isNewTable = !tab.tableName;
-  
+
   const [columns, setColumns] = useState<EditableColumn[]>([]);
   const [originalColumns, setOriginalColumns] = useState<EditableColumn[]>([]);
   const [indexes, setIndexes] = useState<IndexDefinition[]>([]);
   const [fks, setFks] = useState<ForeignKeyDefinition[]>([]);
   const [triggers, setTriggers] = useState<TriggerDefinition[]>([]);
   const [ddl, setDdl] = useState<string>('');
-  
+
   // New Table State
   const [newTableName, setNewTableName] = useState('');
   const [charset, setCharset] = useState('utf8mb4');
   const [collation, setCollation] = useState('utf8mb4_unicode_ci');
-  
+
   const [loading, setLoading] = useState(false);
   const [previewSql, setPreviewSql] = useState<string>('');
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
@@ -289,7 +302,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   const [commentEditorColumnKey, setCommentEditorColumnKey] = useState('');
   const [commentEditorColumnName, setCommentEditorColumnName] = useState('');
   const [commentEditorValue, setCommentEditorValue] = useState('');
-  
+
   const connections = useStore(state => state.connections);
   const language = useStore(state => state.language);
   const theme = useStore(state => state.theme);
@@ -433,28 +446,28 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   useEffect(() => {
       const columnTypeOptions = resolveColumnTypeOptions(getDbType());
       const initialCols: ResizableColumn<EditableColumn>[] = [
-          { 
-              title: t('designer.columns.name'), 
-              dataIndex: 'name', 
-              key: 'name', 
+          {
+              title: t('designer.columns.name'),
+              dataIndex: 'name',
+              key: 'name',
               width: 180,
               render: (text: string, record: EditableColumn) => readOnly ? text : (
                   <Input {...noAutoCapInputProps} value={text} onChange={e => handleColumnChange(record._key, 'name', e.target.value)} variant="borderless" />
               )
           },
-          { 
-              title: t('designer.columns.type'), 
-              dataIndex: 'type', 
-              key: 'type', 
+          {
+              title: t('designer.columns.type'),
+              dataIndex: 'type',
+              key: 'type',
               width: 150,
               render: (text: string, record: EditableColumn) => readOnly ? text : (
                   <AutoComplete options={columnTypeOptions} value={text} onChange={val => handleColumnChange(record._key, 'type', val)} style={{ width: '100%' }} variant="borderless" />
               )
           },
-          { 
-              title: t('designer.columns.primaryKey'), 
-              dataIndex: 'key', 
-              key: 'key', 
+          {
+              title: t('designer.columns.primaryKey'),
+              dataIndex: 'key',
+              key: 'key',
               width: 60,
               align: 'center',
               render: (text: string, record: EditableColumn) => (
@@ -471,28 +484,28 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
                   <Checkbox checked={val} disabled={readOnly} onChange={e => handleColumnChange(record._key, 'isAutoIncrement', e.target.checked)} />
               )
           },
-          { 
-              title: t('designer.columns.notNull'), 
-              dataIndex: 'nullable', 
-              key: 'nullable', 
+          {
+              title: t('designer.columns.notNull'),
+              dataIndex: 'nullable',
+              key: 'nullable',
               width: 80,
               align: 'center',
               render: (text: string, record: EditableColumn) => (
                   <Checkbox checked={text === 'NO'} disabled={readOnly || record.key === 'PRI'} onChange={e => handleColumnChange(record._key, 'nullable', e.target.checked ? 'NO' : 'YES')} />
               )
           },
-          { 
-              title: t('designer.columns.default'), 
-              dataIndex: 'default', 
-              key: 'default', 
+          {
+              title: t('designer.columns.default'),
+              dataIndex: 'default',
+              key: 'default',
               width: 180, // Increased default width
               render: (text: string, record: EditableColumn) => readOnly ? text : (
                   <AutoComplete options={COMMON_DEFAULTS} value={text} onChange={val => handleColumnChange(record._key, 'default', val)} style={{ width: '100%' }} variant="borderless" placeholder="NULL" />
               )
           },
-          { 
-              title: t('designer.columns.comment'), 
-              dataIndex: 'comment', 
+          {
+              title: t('designer.columns.comment'),
+              dataIndex: 'comment',
               key: 'comment',
               width: 200,
               render: (text: string, record: EditableColumn) => readOnly ? (
@@ -644,8 +657,8 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
         return;
     }
 
-    const config = { 
-        ...conn.config, 
+    const config = {
+        ...conn.config,
         port: Number(conn.config.port),
         password: conn.config.password || "",
         database: conn.config.database || "",
@@ -701,7 +714,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
             setTableCommentDraft(parsedTableComment);
         }
     }
-    
+
     setLoading(false);
   };
 
@@ -888,7 +901,7 @@ ${selectedTrigger.statement}`;
         const dropSql = buildDropTriggerSql(selectedTrigger.name);
 
         try {
-          const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', dropSql);
+          const res = await DBQuery(buildRpcConnectionConfig(config), tab.dbName || '', dropSql);
           if (res.success) {
             message.success(t('designer.triggerDeleted'));
             setSelectedTrigger(null);
@@ -896,8 +909,8 @@ ${selectedTrigger.statement}`;
           } else {
             message.error(t('designer.deleteFailed', { message: res.message }));
           }
-        } catch (e: any) {
-          message.error(t('designer.deleteFailed', { message: e?.message || String(e) }));
+        } catch (e: unknown) {
+          message.error(t('designer.deleteFailed', { message: getErrorMessage(e) }));
         }
       }
     });
@@ -925,7 +938,7 @@ ${selectedTrigger.statement}`;
       // 如果是编辑模式，先删除旧触发器
       if (triggerEditMode === 'edit' && selectedTrigger) {
         const dropSql = buildDropTriggerSql(selectedTrigger.name);
-        const dropRes = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', dropSql);
+        const dropRes = await DBQuery(buildRpcConnectionConfig(config), tab.dbName || '', dropSql);
         if (!dropRes.success) {
           message.error(t('designer.trigger.deleteOldFailed', { message: dropRes.message }));
           setTriggerExecuting(false);
@@ -934,7 +947,7 @@ ${selectedTrigger.statement}`;
       }
 
       // 执行创建语句
-      const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', triggerEditSql);
+      const res = await DBQuery(buildRpcConnectionConfig(config), tab.dbName || '', triggerEditSql);
       if (res.success) {
         message.success(triggerEditMode === 'create' ? t('designer.triggerCreated') : t('designer.triggerUpdated'));
         setIsTriggerEditModalOpen(false);
@@ -943,8 +956,8 @@ ${selectedTrigger.statement}`;
       } else {
         message.error(t('designer.executeFailed', { message: res.message }));
       }
-    } catch (e: any) {
-      message.error(t('designer.executeFailed', { message: e?.message || String(e) }));
+    } catch (e: unknown) {
+      message.error(t('designer.executeFailed', { message: getErrorMessage(e) }));
     } finally {
       setTriggerExecuting(false);
     }
@@ -1381,9 +1394,9 @@ ${selectedTrigger.statement}`;
       const sourceName = (tab.tableName || 'new_table').trim();
       setCopyTableName(`${sourceName}_copy`);
       setCopyCharset(charset);
-      const charsetCollations = (COLLATIONS as any)[charset] || [];
+      const charsetCollations = getCollationOptions(charset);
       setCopyCollation(
-          charsetCollations.some((item: any) => item.value === collation)
+          charsetCollations.some((item) => item.value === collation)
               ? collation
               : (charsetCollations[0]?.value || 'utf8mb4_unicode_ci')
       );
@@ -1415,7 +1428,7 @@ ${selectedTrigger.statement}`;
       const sql = buildCreateTableSql(copyTableName.trim(), selectedColumns, copyCharset, copyCollation);
       setCopyExecuting(true);
       try {
-          const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', sql);
+          const res = await DBQuery(buildRpcConnectionConfig(config), tab.dbName || '', sql);
           if (res.success) {
               message.success(t('designer.fieldsCopiedToNewTable', { count: selectedColumns.length, name: copyTableName.trim() }));
               setIsCopyColumnsModalOpen(false);
@@ -1444,7 +1457,7 @@ ${selectedTrigger.statement}`;
       for (let i = 0; i < statements.length; i++) {
           let stmt = statements[i];
           if (!stmt.endsWith(';')) stmt += ';';
-          const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', stmt);
+          const res = await DBQuery(buildRpcConnectionConfig(config), tab.dbName || '', stmt);
           if (!res.success) {
               const prefix = statements.length > 1
                   ? `[#${i + 1}/${statements.length}] ${t('designer.executeFailed', { message: '' })}`
@@ -1511,8 +1524,8 @@ ${selectedTrigger.statement}`;
           message.success(successMessage);
           await fetchData();
           return true;
-      } catch (e: any) {
-          message.error(t('designer.executeFailed', { message: e?.message || String(e) }));
+      } catch (e: unknown) {
+          message.error(t('designer.executeFailed', { message: getErrorMessage(e) }));
           return false;
       }
   };
@@ -2262,12 +2275,12 @@ END;`;
         `}</style>
         {readOnly ? (
         <Table<EditableColumn>
-            dataSource={columns} 
-            columns={columnsWithSelect} 
-            rowKey="_key" 
+            dataSource={columns}
+            columns={columnsWithSelect}
+            rowKey="_key"
             rowClassName={(record: EditableColumn) => record._key === focusColumnKey ? 'table-designer-focus-row' : ''}
-            size="small" 
-            pagination={false} 
+            size="small"
+            pagination={false}
             loading={loading}
             scroll={{ y: tableHeight }}
             bordered={false}
@@ -2281,12 +2294,12 @@ END;`;
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
         <SortableContext items={columns.map(c => c._key)} strategy={verticalListSortingStrategy}>
             <Table<EditableColumn>
-                dataSource={columns} 
-                columns={columnsWithSelect} 
-                rowKey="_key" 
+                dataSource={columns}
+                columns={columnsWithSelect}
+                rowKey="_key"
                 rowClassName={(record: EditableColumn) => record._key === focusColumnKey ? 'table-designer-focus-row' : ''}
-                size="small" 
-                pagination={false} 
+                size="small"
+                pagination={false}
                 loading={loading}
                 scroll={{ y: tableHeight }}
                 bordered={false}
@@ -2440,29 +2453,29 @@ END;`;
         >
             {isNewTable && (
                 <>
-                    <Input 
+                    <Input
                         {...noAutoCapInputProps}
-                        placeholder={t('designer.enterTableName')} 
-                        value={newTableName} 
-                        onChange={e => setNewTableName(e.target.value)} 
-                        style={{ width: 150 }} 
+                        placeholder={t('designer.enterTableName')}
+                        value={newTableName}
+                        onChange={e => setNewTableName(e.target.value)}
+                        style={{ width: 150 }}
                     />
-                    <Select 
-                        value={charset} 
+                    <Select
+                        value={charset}
                         onChange={v => {
                             setCharset(v);
                             // Set default collation
-                            const cols = (COLLATIONS as any)[v];
+                            const cols = getCollationOptions(v);
                             if (cols && cols.length > 0) setCollation(cols[0].value);
-                        }} 
-                        options={CHARSETS} 
-                        style={{ width: 120 }} 
+                        }}
+                        options={CHARSETS}
+                        style={{ width: 120 }}
                     />
-                    <Select 
-                        value={collation} 
-                        onChange={setCollation} 
-                        options={(COLLATIONS as any)[charset] || []} 
-                        style={{ width: 150 }} 
+                    <Select
+                        value={collation}
+                        onChange={setCollation}
+                        options={getCollationOptions(charset)}
+                        style={{ width: 150 }}
                     />
                 </>
             )}
@@ -2494,7 +2507,7 @@ END;`;
             )}
             <div style={{ flex: 1 }} />
         </div>
-        <Tabs 
+        <Tabs
             activeKey={activeKey}
             onChange={(key) => React.startTransition(() => setActiveKey(key))}
             style={{
@@ -2584,7 +2597,7 @@ END;`;
                                     </div>
                                 )}
                                 <Table<ForeignKeyDisplayRow>
-                                    dataSource={groupedForeignKeys} 
+                                    dataSource={groupedForeignKeys}
                                     columns={[
                                         { title: t('designer.fk.constraintName'), dataIndex: 'constraintName', key: 'constraintName', width: 220 },
                                         {
@@ -2601,9 +2614,9 @@ END;`;
                                             render: (vals: string[]) => vals?.length ? vals.join(', ') : '-',
                                         },
                                     ]}
-                                    rowKey="key" 
-                                    size="small" 
-                                    pagination={false} 
+                                    rowKey="key"
+                                    size="small"
+                                    pagination={false}
                                     loading={loading}
                                     scroll={{ x: 980, y: tableHeight }}
                                     rowSelection={{
@@ -2766,7 +2779,7 @@ END;`;
                         value={copyCharset}
                         onChange={v => {
                             setCopyCharset(v);
-                            const cols = (COLLATIONS as any)[v];
+                            const cols = getCollationOptions(v);
                             if (cols && cols.length > 0) setCopyCollation(cols[0].value);
                         }}
                         options={CHARSETS}
@@ -2775,7 +2788,7 @@ END;`;
                     <Select
                         value={copyCollation}
                         onChange={setCopyCollation}
-                        options={(COLLATIONS as any)[copyCharset] || []}
+                        options={getCollationOptions(copyCharset)}
                         style={{ width: 220 }}
                     />
                 </Space>
