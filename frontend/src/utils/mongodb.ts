@@ -1186,10 +1186,10 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
     }
 
     return { recognized: false };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       recognized: true,
-      error: String(error?.message || error || 'Mongo shell command parse failed'),
+      error: error instanceof Error ? error.message : String(error || 'Mongo shell command parse failed'),
     };
   }
 };
