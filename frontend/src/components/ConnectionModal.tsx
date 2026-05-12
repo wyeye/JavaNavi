@@ -75,6 +75,7 @@ import {
   parseHostPort,
   parseUriToValues,
   supportsSSLForType,
+  type ConnectionUriValues,
   toAddress,
 } from "../utils/connectionUri";
 import {
@@ -97,8 +98,11 @@ import {
   TestConnection,
   RedisConnect,
   SelectSSHKeyFile,
+  SaveConnection,
+  type QueryResult,
 } from "@compat/javanaviApp";
-import { ConnectionConfig, MongoMemberInfo, SavedConnection } from "../types";
+import type { ConnectionConfig, MongoMemberInfo, SavedConnection } from "../types";
+import { connection } from "@compat/models";
 
 const { Text } = Typography;
 type ChoiceCardOption = {
@@ -158,6 +162,110 @@ type DriverOption = {
   runtimeOwnerName?: string;
   driverClassName?: string;
   message?: string;
+};
+
+type UnknownRecord = Record<string, unknown>;
+type ConnectionFormValues = Record<string, unknown>;
+type DriverStatusPayload = { drivers?: DriverStatusPayloadItem[] };
+type DriverStatusPayloadItem = {
+  type?: unknown;
+  driverOptions?: DriverOptionPayload[];
+  defaultDriverType?: unknown;
+  defaultDriverName?: unknown;
+  name?: unknown;
+  connectable?: unknown;
+  message?: unknown;
+};
+type DriverOptionPayload = {
+  driverType?: unknown;
+  driverName?: unknown;
+  databaseType?: unknown;
+  databaseName?: unknown;
+  available?: unknown;
+  connectable?: unknown;
+  default?: unknown;
+  reusedRuntime?: unknown;
+  runtimeOwnerType?: unknown;
+  runtimeOwnerName?: unknown;
+  driverClassName?: unknown;
+  message?: unknown;
+};
+type DatabaseRow = { Database?: unknown; database?: unknown };
+type MongoDiscoverPayload = {
+  members?: MongoMemberPayload[];
+  replicaSet?: unknown;
+};
+type MongoMemberPayload = {
+  host?: unknown;
+  role?: unknown;
+  state?: unknown;
+  stateCode?: unknown;
+  healthy?: unknown;
+  isSelf?: unknown;
+};
+type NativeAppBridge = Partial<JavaNaviAppBridge> & {
+  SelectDatabaseFile?: (currentPath: string, dbType: string) => Promise<QueryResult>;
+};
+
+const toRecord = (value: unknown): UnknownRecord => (
+  value && typeof value === "object" && !Array.isArray(value) ? value as UnknownRecord : {}
+);
+
+const getErrorMessage = (error: unknown, fallback = "未知错误"): string => {
+  if (error instanceof Error) return error.message || fallback;
+  if (typeof error === "string") return error || fallback;
+  const messageValue = toRecord(error).message;
+  if (typeof messageValue === "string" && messageValue) return messageValue;
+  if (error === null || error === undefined) return fallback;
+  return String(error) || fallback;
+};
+
+const toNumberList = (value: unknown): number[] => (
+  Array.isArray(value) ? value.map((entry) => Number(entry)) : []
+);
+
+const toStringList = (value: unknown): string[] | undefined => (
+  Array.isArray(value) ? value.map((entry) => String(entry)).filter(Boolean) : undefined
+);
+
+const queryArrayData = <T,>(result: QueryResult): T[] => (
+  Array.isArray(result.data) ? result.data as T[] : []
+);
+
+const toSavedConnection = (value: connection.SavedConnectionView): SavedConnection => {
+  const raw = toRecord(value);
+  const configRaw = toRecord(raw.config);
+  const normalizedType = normalizeDriverType(String(configRaw.type || configRaw.driverType || "mysql"));
+  const useSSL = configRaw.useSSL === true;
+  return {
+    id: String(raw.id || ""),
+    name: String(raw.name || ""),
+    config: {
+      ...configRaw,
+      id: String(configRaw.id || raw.id || ""),
+      type: normalizedType,
+      host: String(configRaw.host || "localhost"),
+      port: Number(configRaw.port || getDefaultPortByType(normalizedType)),
+      user: String(configRaw.user || configRaw.username || ""),
+      password: String(configRaw.password || ""),
+      database: String(configRaw.database || ""),
+      useSSL,
+      sslMode: resolveEffectiveSSLMode(configRaw.sslMode, useSSL),
+    } as ConnectionConfig,
+    includeDatabases: toStringList(raw.includeDatabases),
+    includeRedisDatabases: toNumberList(raw.includeRedisDatabases),
+    iconType: typeof raw.iconType === "string" ? raw.iconType : undefined,
+    iconColor: typeof raw.iconColor === "string" ? raw.iconColor : undefined,
+    secretRef: typeof raw.secretRef === "string" ? raw.secretRef : undefined,
+    hasPrimaryPassword: raw.hasPrimaryPassword === true,
+    hasSSHPassword: raw.hasSSHPassword === true,
+    hasProxyPassword: raw.hasProxyPassword === true,
+    hasHttpTunnelPassword: raw.hasHttpTunnelPassword === true,
+    hasMySQLReplicaPassword: raw.hasMySQLReplicaPassword === true,
+    hasMongoReplicaPassword: raw.hasMongoReplicaPassword === true,
+    hasOpaqueURI: raw.hasOpaqueURI === true,
+    hasOpaqueDSN: raw.hasOpaqueDSN === true,
+  };
 };
 
 const normalizeDriverType = (value: string): string => {
@@ -232,8 +340,8 @@ const ConnectionModal: React.FC<{
   const updateConnection = useStore((state) => state.updateConnection);
   const theme = useStore((state) => state.theme);
   const appearance = useStore((state) => state.appearance);
-  const nativeApp =
-    typeof window !== "undefined" ? (window as any).go?.app?.App : null;
+  const nativeApp: NativeAppBridge | null =
+    typeof window !== "undefined" ? window.go?.app?.App ?? null : null;
   const canBrowseDatabaseFile =
     typeof nativeApp?.SelectDatabaseFile === "function";
   const darkMode = theme === "dark";
@@ -606,9 +714,7 @@ const ConnectionModal: React.FC<{
       const supportedDbs = Array.from({ length: 16 }, (_, i) => i);
       setRedisDbList(supportedDbs);
       const selectedDbsRaw = form.getFieldValue("includeRedisDatabases");
-      const selectedDbs = Array.isArray(selectedDbsRaw)
-        ? selectedDbsRaw.map((entry: any) => Number(entry))
-        : [];
+      const selectedDbs = toNumberList(selectedDbsRaw);
       const validDbs = selectedDbs
         .filter((entry: number) => Number.isFinite(entry))
         .map((entry: number) => Math.trunc(entry))
@@ -679,7 +785,7 @@ const ConnectionModal: React.FC<{
     clearConnectionTestResultForChoice();
     const currentDsn = String(form.getFieldValue("dsn") || "").trim();
     const currentName = String(form.getFieldValue("name") || "").trim();
-    const nextValues: Record<string, any> = {
+    const nextValues: ConnectionFormValues = {
       customDataSourceId: source.id,
       driver: source.driverType || source.driver || "",
       connectionInputMode: "target",
@@ -782,14 +888,14 @@ const ConnectionModal: React.FC<{
     if (!res?.success) {
       return result;
     }
-    const data = (res?.data || {}) as any;
+    const data = toRecord(res?.data) as DriverStatusPayload;
     const drivers = Array.isArray(data.drivers) ? data.drivers : [];
-    drivers.forEach((item: any) => {
+    drivers.forEach((item) => {
       const type = normalizeDriverType(String(item.type || "").trim());
       if (!type) return;
       const parsedDriverOptions: DriverOption[] = Array.isArray(item.driverOptions)
         ? item.driverOptions
-            .map((option: any) => {
+            .map((option) => {
               const driverType = normalizeDriverType(
                 String(option.driverType || "").trim(),
               );
@@ -1043,8 +1149,8 @@ const ConnectionModal: React.FC<{
       } else if (res?.message !== "已取消") {
         message.error(`选择私钥文件失败: ${res?.message || "未知错误"}`);
       }
-    } catch (e: any) {
-      message.error(`选择私钥文件失败: ${e?.message || String(e)}`);
+    } catch (e: unknown) {
+      message.error(`选择私钥文件失败: ${getErrorMessage(e)}`);
     } finally {
       setSelectingSSHKey(false);
     }
@@ -1074,8 +1180,8 @@ const ConnectionModal: React.FC<{
       } else if (res?.message !== "已取消") {
         message.error(`选择数据库文件失败: ${res?.message || "未知错误"}`);
       }
-    } catch (e: any) {
-      message.error(`选择数据库文件失败: ${e?.message || String(e)}`);
+    } catch (e: unknown) {
+      message.error(`选择数据库文件失败: ${getErrorMessage(e)}`);
     } finally {
       setSelectingDbFile(false);
     }
@@ -1107,7 +1213,7 @@ const ConnectionModal: React.FC<{
       if (initialValues) {
         // Edit mode: Go directly to step 2
         setStep(2);
-        const config: any = initialValues.config || {};
+        const config = initialValues.config || {};
         const configType = String(config.type || "mysql");
         const selectedInitialCustomDataSource =
           configType === "custom"
@@ -1272,7 +1378,10 @@ const ConnectionModal: React.FC<{
     };
   }, []);
 
-  const buildSavedConnectionInput = (config: ConnectionConfig, values: any) => {
+  const buildSavedConnectionInput = (
+    config: ConnectionConfig,
+    values: ConnectionFormValues,
+  ): connection.SavedConnectionInput => {
     const resolvedConnectionInputMode: ConnectionInputMode =
       values.connectionInputMode === "url" ? "url" : "target";
     const connectionId =
@@ -1340,64 +1449,63 @@ const ConnectionModal: React.FC<{
       trimInput: true,
     });
     const isRedisType = values.type === "redis";
-    const displayHost = String(
-      (config as any).host || values.host || "",
-    ).trim();
-    const nextName =
+    const displayHost = String(config.host || values.host || "").trim();
+    const nextName = String(
       values.name ||
-      (isFileDatabaseType(values.type)
+      (isFileDatabaseType(String(values.type || ""))
         ? values.type === "duckdb"
           ? "DuckDB DB"
           : "SQLite DB"
         : values.type === "redis"
           ? `Redis ${displayHost}`
-          : displayHost);
+          : displayHost),
+    );
+    const payloadConfig = {
+      ...config,
+      id: connectionId,
+      password: primaryDraft.value,
+      ssh: {
+        host: config.ssh?.host || "",
+        port: config.ssh?.port || 22,
+        user: config.ssh?.user || "",
+        keyPath: config.ssh?.keyPath || "",
+        password: sshDraft.value,
+      },
+      proxy: {
+        ...(config.proxy || {
+          type: "socks5",
+          host: "",
+          port: 1080,
+          user: "",
+          password: "",
+        }),
+        password: proxyDraft.value,
+      },
+      httpTunnel: {
+        ...(config.httpTunnel || {
+          host: "",
+          port: 8080,
+          user: "",
+          password: "",
+        }),
+        password: httpTunnelDraft.value,
+      },
+      uri: opaqueUriDraft.value,
+      dsn: opaqueDsnDraft.value,
+      mysqlReplicaPassword: mysqlReplicaDraft.value,
+      mongoReplicaPassword: mongoReplicaDraft.value,
+    };
+    const includeDatabases = toStringList(values.includeDatabases);
+    const includeRedisDatabases = isRedisType
+      ? toNumberList(values.includeRedisDatabases)
+      : undefined;
 
-    return {
+    return new connection.SavedConnectionInput({
       id: connectionId,
       name: nextName,
-      config: {
-        ...config,
-        id: connectionId,
-        password: primaryDraft.value,
-        ssh: {
-          ...(config.ssh || {
-            host: "",
-            port: 22,
-            user: "",
-            password: "",
-            keyPath: "",
-          }),
-          password: sshDraft.value,
-        },
-        proxy: {
-          ...(config.proxy || {
-            type: "socks5",
-            host: "",
-            port: 1080,
-            user: "",
-            password: "",
-          }),
-          password: proxyDraft.value,
-        },
-        httpTunnel: {
-          ...(config.httpTunnel || {
-            host: "",
-            port: 8080,
-            user: "",
-            password: "",
-          }),
-          password: httpTunnelDraft.value,
-        },
-        uri: opaqueUriDraft.value,
-        dsn: opaqueDsnDraft.value,
-        mysqlReplicaPassword: mysqlReplicaDraft.value,
-        mongoReplicaPassword: mongoReplicaDraft.value,
-      },
-      includeDatabases: values.includeDatabases,
-      includeRedisDatabases: isRedisType
-        ? values.includeRedisDatabases
-        : undefined,
+      config: new connection.ConnectionConfig(payloadConfig as Record<string, unknown>),
+      includeDatabases,
+      includeRedisDatabases,
       iconType: customIconType || "",
       iconColor: customIconColor || "",
       clearPrimaryPassword: primaryDraft.clearStoredSecret,
@@ -1408,7 +1516,7 @@ const ConnectionModal: React.FC<{
       clearMongoReplicaPassword: mongoReplicaDraft.clearStoredSecret,
       clearOpaqueURI: opaqueUriDraft.clearStoredSecret,
       clearOpaqueDSN: opaqueDsnDraft.clearStoredSecret,
-    };
+    });
   };
   const handleOk = async () => {
     try {
@@ -1426,8 +1534,7 @@ const ConnectionModal: React.FC<{
 
       const config = await buildConfig(values, true);
       const payload = buildSavedConnectionInput(config, values);
-      const backendApp = (window as any).go?.app?.App;
-      const savedConnection = await backendApp?.SaveConnection?.(payload);
+      const savedConnection = toSavedConnection(await SaveConnection(payload));
       if (!savedConnection) {
         throw new Error("保存连接失败：后端接口不可用");
       }
@@ -1460,9 +1567,9 @@ const ConnectionModal: React.FC<{
       setStep(1);
       setClearSecrets(createEmptyConnectionSecretClearState());
       onClose();
-    } catch (e: any) {
+    } catch (e: unknown) {
       message.error(
-        normalizeConnectionSecretErrorMessage(e?.message || e, "保存失败"),
+        normalizeConnectionSecretErrorMessage(getErrorMessage(e), "保存失败"),
       );
     } finally {
       setLoading(false);
@@ -1501,10 +1608,12 @@ const ConnectionModal: React.FC<{
     }
   };
 
-  const getBlockingSecretClearMessage = (values: any): string | null => {
+  const getBlockingSecretClearMessage = (
+    values: ConnectionFormValues,
+  ): string | null => {
     if (
       clearSecrets.primaryPassword &&
-      !isFileDatabaseType(values.type) &&
+      !isFileDatabaseType(String(values.type || "")) &&
       String(values.password ?? "") === ""
     ) {
       return "测试连接前请填写新的密码，或取消清除已保存密码";
@@ -1612,8 +1721,8 @@ const ConnectionModal: React.FC<{
       const isRedisType = values.type === "redis";
       const res = await withClientTimeout(
         isRedisType
-          ? RedisConnect(config as any)
-          : TestConnection(config as any),
+          ? RedisConnect(new connection.ConnectionConfig(config as unknown as Record<string, unknown>))
+          : TestConnection(new connection.ConnectionConfig(config as unknown as Record<string, unknown>)),
         rpcTimeoutMs,
         `连接测试超时（>${timeoutSeconds} 秒），请检查网络/代理/SSH配置后重试`,
       );
@@ -1650,16 +1759,16 @@ const ConnectionModal: React.FC<{
         } else {
           // Other databases: fetch database list
           const dbRes = await withClientTimeout(
-            DBGetDatabases(config as any),
+            DBGetDatabases(new connection.ConnectionConfig(config as unknown as Record<string, unknown>)),
             rpcTimeoutMs,
             `连接成功但拉取数据库列表超时（>${timeoutSeconds} 秒）`,
           );
           if (dbRes.success) {
-            const dbRows = Array.isArray(dbRes.data) ? dbRes.data : [];
+            const dbRows = queryArrayData<DatabaseRow>(dbRes);
             const dbs = dbRows
-              .map((row: any) => row?.Database || row?.database)
+              .map((row) => row?.Database || row?.database)
               .filter(
-                (name: any) => typeof name === "string" && name.trim() !== "",
+                (name): name is string => typeof name === "string" && name.trim() !== "",
               );
             setDbList(dbs);
             if (dbs.length === 0) {
@@ -1728,17 +1837,17 @@ const ConnectionModal: React.FC<{
       if (initialValues?.id) {
         config.id = initialValues.id;
       }
-      const result = await MongoDiscoverMembers(config as any);
+      const result = await MongoDiscoverMembers(new connection.ConnectionConfig(config as unknown as Record<string, unknown>));
       if (!result.success) {
         message.error(
           normalizeConnectionSecretErrorMessage(result.message, "成员发现失败"),
         );
         return;
       }
-      const data = (result.data as Record<string, any>) || {};
+      const data = toRecord(result.data) as MongoDiscoverPayload;
       const membersRaw = Array.isArray(data.members) ? data.members : [];
       const members: MongoMemberInfo[] = membersRaw
-        .map((item: any) => ({
+        .map((item) => ({
           host: String(item.host || "").trim(),
           role: String(item.role || item.state || "UNKNOWN").trim(),
           state: String(item.state || item.role || "UNKNOWN").trim(),
@@ -1752,10 +1861,10 @@ const ConnectionModal: React.FC<{
         form.setFieldValue("mongoReplicaSet", String(data.replicaSet));
       }
       message.success(result.message || `发现 ${members.length} 个成员`);
-    } catch (error: any) {
+    } catch (error: unknown) {
       message.error(
         normalizeConnectionSecretErrorMessage(
-          error?.message || error,
+          getErrorMessage(error),
           "成员发现失败",
         ),
       );
@@ -1765,10 +1874,10 @@ const ConnectionModal: React.FC<{
   };
 
   const buildConfig = async (
-    values: any,
+    values: ConnectionFormValues,
     forPersist: boolean,
   ): Promise<ConnectionConfig> => {
-    const mergedValues = { ...values };
+    const mergedValues: ConnectionFormValues = { ...values };
     const type = String(mergedValues.type || "").toLowerCase();
     const resolvedConnectionInputMode: ConnectionInputMode =
       mergedValues.connectionInputMode === "url" ? "url" : "target";
@@ -1778,14 +1887,14 @@ const ConnectionModal: React.FC<{
       mergedValues.uri = "";
     }
     const parsedUriValues = shouldUseConnectionUri
-      ? parseUriToValues(mergedValues.uri, mergedValues.type)
+      ? parseUriToValues(String(mergedValues.uri || ""), String(mergedValues.type || type))
       : null;
     if (parsedUriValues) {
       Object.entries(parsedUriValues).forEach(([key, value]) => {
         // 连接 URL / 目标地址由显式模式二选一；只有 URL 模式才用解析结果
         // 覆盖目标地址字段，目标地址模式会清空并忽略历史 URL。
         if (value !== undefined && value !== null) {
-          (mergedValues as any)[key] = value;
+          mergedValues[key] = value as ConnectionUriValues[keyof ConnectionUriValues];
         }
       });
     }
@@ -1801,7 +1910,7 @@ const ConnectionModal: React.FC<{
         parsedUriValues &&
         Object.prototype.hasOwnProperty.call(parsedUriValues, "user")
       ) {
-        mergedValues.user = String((parsedUriValues as any).user || "");
+        mergedValues.user = String(parsedUriValues.user || "");
       } else if (String(mergedValues.user || "").trim() === "root") {
         mergedValues.user = "";
       }
@@ -1827,7 +1936,7 @@ const ConnectionModal: React.FC<{
     } else {
       const parsedPrimary = parseHostPort(
         toAddress(
-          mergedValues.host || "localhost",
+          String(mergedValues.host || "localhost"),
           Number(mergedValues.port || defaultPort),
           defaultPort,
         ),
@@ -1935,11 +2044,11 @@ const ConnectionModal: React.FC<{
 
     const sshConfig = mergedValues.useSSH
       ? {
-          host: mergedValues.sshHost,
+          host: String(mergedValues.sshHost || ""),
           port: Number(mergedValues.sshPort),
-          user: mergedValues.sshUser,
-          password: mergedValues.sshPassword || "",
-          keyPath: mergedValues.sshKeyPath || "",
+          user: String(mergedValues.sshUser || ""),
+          password: String(mergedValues.sshPassword || ""),
+          keyPath: String(mergedValues.sshKeyPath || ""),
         }
       : { host: "", port: 22, user: "", password: "", keyPath: "" };
     const effectiveUseHttpTunnel =
@@ -1960,7 +2069,7 @@ const ConnectionModal: React.FC<{
               mergedValues.proxyPort || (proxyTypeRaw === "http" ? 8080 : 1080),
             ),
             user: String(mergedValues.proxyUser || "").trim(),
-            password: mergedValues.proxyPassword || "",
+            password: String(mergedValues.proxyPassword || ""),
           }
         : {
             type: "socks5",
@@ -1975,7 +2084,7 @@ const ConnectionModal: React.FC<{
             host: String(mergedValues.httpTunnelHost || "").trim(),
             port: Number(mergedValues.httpTunnelPort || 8080),
             user: String(mergedValues.httpTunnelUser || "").trim(),
-            password: mergedValues.httpTunnelPassword || "",
+            password: String(mergedValues.httpTunnelPassword || ""),
           }
         : {
             host: "",
@@ -2042,13 +2151,13 @@ const ConnectionModal: React.FC<{
         : undefined;
 
     return {
-      type: mergedValues.type,
+      type: String(mergedValues.type || "mysql"),
       host: primaryHost,
       port: Number(primaryPort || 0),
-      user: mergedValues.user || "",
-      password: keepPassword ? mergedValues.password || "" : "",
+      user: String(mergedValues.user || ""),
+      password: keepPassword ? String(mergedValues.password || "") : "",
       savePassword: savePassword,
-      database: mergedValues.database || "",
+      database: String(mergedValues.database || ""),
       useSSL: effectiveUseSSL,
       sslMode: effectiveUseSSL ? sslMode : "disable",
       sslCertPath: sslCertPath,
@@ -2317,7 +2426,7 @@ const ConnectionModal: React.FC<{
       String(form.getFieldValue("driver") || ""),
     );
     const initialDriver = normalizeDriverType(
-      String((initialValues?.config as any)?.driver || ""),
+      String(initialValues?.config?.driver || ""),
     );
     const shouldApplyConfiguredDefault =
       !initialDriver &&
@@ -4640,9 +4749,7 @@ const ConnectionModal: React.FC<{
             const supportedDbs = Array.from({ length: 16 }, (_, i) => i);
             setRedisDbList(supportedDbs);
             const selectedDbsRaw = form.getFieldValue("includeRedisDatabases");
-            const selectedDbs = Array.isArray(selectedDbsRaw)
-              ? selectedDbsRaw.map((entry: any) => Number(entry))
-              : [];
+            const selectedDbs = toNumberList(selectedDbsRaw);
             const validDbs = selectedDbs
               .filter((entry: number) => Number.isFinite(entry))
               .map((entry: number) => Math.trunc(entry))
