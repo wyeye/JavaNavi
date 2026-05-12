@@ -156,6 +156,12 @@ const toTrimmedString = (value: unknown, fallback = ""): string => {
   return fallback;
 };
 
+const toUnknownRecord = (value: unknown): Record<string, unknown> => (
+  value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+);
+
 const normalizePort = (value: unknown, fallbackPort: number): number => {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallbackPort;
@@ -258,10 +264,7 @@ const normalizeConnectionType = (value: unknown): string => {
 };
 
 const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
-  const raw =
-    value && typeof value === "object"
-      ? (value as Record<string, unknown>)
-      : {};
+  const raw = toUnknownRecord(value);
   const type = normalizeConnectionType(raw.type);
   const defaultPort = getDefaultPortByType(type);
   const savePassword =
@@ -271,10 +274,7 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
   const useSSL = sslCapable && raw.useSSL === true;
   const sslMode = resolveEffectiveSSLMode(raw.sslMode, useSSL);
 
-  const sshRaw =
-    raw.ssh && typeof raw.ssh === "object"
-      ? (raw.ssh as Record<string, unknown>)
-      : {};
+  const sshRaw = toUnknownRecord(raw.ssh);
   const ssh = {
     host: toTrimmedString(sshRaw.host),
     port: normalizePort(sshRaw.port, 22),
@@ -282,10 +282,7 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     password: toTrimmedString(sshRaw.password),
     keyPath: toTrimmedString(sshRaw.keyPath),
   };
-  const proxyRaw =
-    raw.proxy && typeof raw.proxy === "object"
-      ? (raw.proxy as Record<string, unknown>)
-      : {};
+  const proxyRaw = toUnknownRecord(raw.proxy);
   const proxyTypeRaw = toTrimmedString(proxyRaw.type, "socks5").toLowerCase();
   const proxyType: "socks5" | "http" =
     proxyTypeRaw === "http" ? "http" : "socks5";
@@ -296,12 +293,10 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     user: toTrimmedString(proxyRaw.user),
     password: toTrimmedString(proxyRaw.password),
   };
-  const httpTunnelRaw =
-    raw.httpTunnel && typeof raw.httpTunnel === "object"
-      ? (raw.httpTunnel as Record<string, unknown>)
-      : raw.HTTPTunnel && typeof raw.HTTPTunnel === "object"
-        ? (raw.HTTPTunnel as Record<string, unknown>)
-        : {};
+  const rawHttpTunnel = toUnknownRecord(raw.httpTunnel);
+  const httpTunnelRaw = Object.keys(rawHttpTunnel).length > 0
+    ? rawHttpTunnel
+    : toUnknownRecord(raw.HTTPTunnel);
   const httpTunnel = {
     host: toTrimmedString(httpTunnelRaw.host ?? raw.httpTunnelHost),
     port: normalizePort(httpTunnelRaw.port ?? raw.httpTunnelPort, 8080),
@@ -723,22 +718,10 @@ const hasLegacyConnectionSecrets = (
   connections: SavedConnection[],
 ): boolean => {
   return connections.some((connection) => {
-    const config =
-      connection?.config && typeof connection.config === "object"
-        ? (connection.config as unknown as Record<string, unknown>)
-        : {};
-    const ssh =
-      config.ssh && typeof config.ssh === "object"
-        ? (config.ssh as Record<string, unknown>)
-        : {};
-    const proxy =
-      config.proxy && typeof config.proxy === "object"
-        ? (config.proxy as Record<string, unknown>)
-        : {};
-    const httpTunnel =
-      config.httpTunnel && typeof config.httpTunnel === "object"
-        ? (config.httpTunnel as Record<string, unknown>)
-        : {};
+    const config = toUnknownRecord(connection?.config);
+    const ssh = toUnknownRecord(config.ssh);
+    const proxy = toUnknownRecord(config.proxy);
+    const httpTunnel = toUnknownRecord(config.httpTunnel);
 
     return (
       toTrimmedString(config.password) !== "" ||
