@@ -1727,12 +1727,16 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           const res = await ClearTables(normalizeConnConfig(conn.config), dbName, objectNames);
           hide();
           const duration = Date.now() - startTime;
+          const resultData = res.data as SidebarExecutionResultData | undefined;
+          const executedSQLs = Array.isArray(resultData?.executedSQLs)
+              ? resultData.executedSQLs.map(String)
+              : [];
           if (res.success) {
               message.success(t('sidebar.msg.clearSuccess'));
               // 构造 SQL 日志
               let logSql = `/* Clear Tables (${objectNames.length} tables) */\n`;
-              if (res.data && res.data.executedSQLs && Array.isArray(res.data.executedSQLs)) {
-                  logSql += res.data.executedSQLs.join(';\n') + ';';
+              if (executedSQLs.length > 0) {
+                  logSql += executedSQLs.join(';\n') + ';';
               } else {
                   logSql += objectNames.map(name => name).join('; ');
               }
@@ -1744,14 +1748,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                   duration,
                   message: res.message,
                   dbName,
-                  affectedRows: res.data?.count || 0
+                  affectedRows: Number(resultData?.count || 0)
               });
           } else if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.clearFailed', { message: res.message }));
               // 记录失败的日志
               let logSql = `/* Clear Tables (${objectNames.length} tables) - FAILED */\n`;
-              if (res.data && res.data.executedSQLs && Array.isArray(res.data.executedSQLs)) {
-                  logSql += res.data.executedSQLs.join(';\n') + ';';
+              if (executedSQLs.length > 0) {
+                  logSql += executedSQLs.join(';\n') + ';';
               } else {
                   logSql += objectNames.map(name => name).join('; ');
               }
