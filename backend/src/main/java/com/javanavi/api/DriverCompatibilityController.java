@@ -87,11 +87,11 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/status")
-    public ApiEnvelope<Map<String, Object>> status(@RequestBody(required = false) DriverContracts.StatusRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.statusList(
+    public ApiEnvelope<DriverContracts.DriverStatusResponse> status(@RequestBody(required = false) DriverContracts.StatusRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverStatusResponse.from(driverCompatibilityService.statusList(
                 input == null ? "" : input.downloadDir(),
                 input == null ? "" : input.manifestURL()
-        ));
+        )));
     }
 
     @PostMapping("/custom-definitions")

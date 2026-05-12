@@ -84,7 +84,6 @@ public final class DriverContracts {
         }
     }
 
-
     public record DriverRepositoryResponse(
             String url,
             String repositoryUrl,
@@ -111,7 +110,6 @@ public final class DriverContracts {
             );
         }
     }
-
 
     public record DriverPackageUrlResponse(
             String url,
@@ -210,6 +208,162 @@ public final class DriverContracts {
                     text(source.get("releaseAssetName")),
                     text(source.get("sizeSource")),
                     booleanValue(source.get("dryRun"))
+            );
+        }
+    }
+
+    public record DriverInstalledVersionResponse(
+            String version,
+            boolean active,
+            String installMode,
+            String installSource,
+            String downloadedAt,
+            String installDir,
+            String filePath
+    ) {
+        public static DriverInstalledVersionResponse from(Object value) {
+            Map<String, Object> source = mapValue(value);
+            return new DriverInstalledVersionResponse(
+                    text(source.get("version")),
+                    booleanValue(source.get("active")),
+                    text(source.get("installMode")),
+                    text(source.get("installSource")),
+                    text(source.get("downloadedAt")),
+                    text(source.get("installDir")),
+                    text(source.get("filePath"))
+            );
+        }
+    }
+
+    public record DriverOptionResponse(
+            String driverType,
+            String driverName,
+            String databaseType,
+            String databaseName,
+            boolean available,
+            boolean connectable,
+            boolean defaultDriver,
+            String runtimeOwnerType,
+            String runtimeOwnerName,
+            boolean reusedRuntime,
+            String driverClassName,
+            String message
+    ) {
+        public static DriverOptionResponse from(Object value) {
+            Map<String, Object> source = mapValue(value);
+            return new DriverOptionResponse(
+                    text(source.get("driverType")),
+                    text(source.get("driverName")),
+                    text(source.get("databaseType")),
+                    text(source.get("databaseName")),
+                    booleanValue(source.get("available")),
+                    booleanValue(source.get("connectable")),
+                    booleanValue(source.get("default")),
+                    text(source.get("runtimeOwnerType")),
+                    text(source.get("runtimeOwnerName")),
+                    booleanValue(source.get("reusedRuntime")),
+                    text(source.get("driverClassName")),
+                    text(source.get("message"))
+            );
+        }
+    }
+
+    public record DriverStatusItemResponse(
+            String type,
+            String name,
+            String engine,
+            boolean builtIn,
+            boolean managedJarUploadAllowed,
+            boolean managedDownload,
+            boolean downloadRequired,
+            String reusedDriverType,
+            String reusedDriverName,
+            String pinnedVersion,
+            String installedVersion,
+            List<DriverInstalledVersionResponse> installedVersions,
+            Integer installedVersionCount,
+            String packageSizeText,
+            boolean runtimeAvailable,
+            boolean packageInstalled,
+            boolean connectable,
+            String defaultDownloadUrl,
+            String installDir,
+            String javaStatus,
+            String installMode,
+            String installSource,
+            String installSourceLabel,
+            String installSourceDetail,
+            String defaultDriverType,
+            String defaultDriverName,
+            List<DriverOptionResponse> driverOptions,
+            String message,
+            String packagePath,
+            String packageFileName,
+            String downloadedAt,
+            String executablePath,
+            String reusedPackagePath,
+            String reusedPackageFileName,
+            String reusedDownloadedAt
+    ) {
+        public static DriverStatusItemResponse from(Object value) {
+            Map<String, Object> source = mapValue(value);
+            return new DriverStatusItemResponse(
+                    text(source.get("type")),
+                    text(source.get("name")),
+                    text(source.get("engine")),
+                    booleanValue(source.get("builtIn")),
+                    booleanValue(source.get("managedJarUploadAllowed")),
+                    booleanValue(source.get("managedDownload")),
+                    booleanValue(source.get("downloadRequired")),
+                    text(source.get("reusedDriverType")),
+                    text(source.get("reusedDriverName")),
+                    text(source.get("pinnedVersion")),
+                    text(source.get("installedVersion")),
+                    listValue(source.get("installedVersions")).stream().map(DriverInstalledVersionResponse::from).toList(),
+                    integerValue(source.get("installedVersionCount")),
+                    text(source.get("packageSizeText")),
+                    booleanValue(source.get("runtimeAvailable")),
+                    booleanValue(source.get("packageInstalled")),
+                    booleanValue(source.get("connectable")),
+                    text(source.get("defaultDownloadUrl")),
+                    text(source.get("installDir")),
+                    text(source.get("javaStatus")),
+                    text(source.get("installMode")),
+                    text(source.get("installSource")),
+                    text(source.get("installSourceLabel")),
+                    text(source.get("installSourceDetail")),
+                    text(source.get("defaultDriverType")),
+                    text(source.get("defaultDriverName")),
+                    listValue(source.get("driverOptions")).stream().map(DriverOptionResponse::from).toList(),
+                    text(source.get("message")),
+                    text(source.get("packagePath")),
+                    text(source.get("packageFileName")),
+                    text(source.get("downloadedAt")),
+                    text(source.get("executablePath")),
+                    text(source.get("reusedPackagePath")),
+                    text(source.get("reusedPackageFileName")),
+                    text(source.get("reusedDownloadedAt"))
+            );
+        }
+    }
+
+    public record DriverStatusResponse(
+            String downloadDir,
+            List<DriverStatusItemResponse> drivers,
+            Map<String, String> defaultDrivers,
+            String manifestURL,
+            String manifestError,
+            boolean webManaged
+    ) {
+        public static DriverStatusResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new DriverStatusResponse(
+                    text(source.get("downloadDir")),
+                    listValue(source.get("drivers")).stream().map(DriverStatusItemResponse::from).toList(),
+                    stringMap(source.get("defaultDrivers")),
+                    text(source.get("manifestURL")),
+                    text(source.get("manifestError")),
+                    booleanValue(source.get("webManaged"))
             );
         }
     }
@@ -333,6 +487,16 @@ public final class DriverContracts {
                 .map(DriverContracts::text)
                 .filter(item -> !item.isBlank())
                 .toList();
+    }
+
+    private static Map<String, String> stringMap(Object value) {
+        Map<String, Object> map = mapValue(value);
+        if (map.isEmpty()) {
+            return Map.of();
+        }
+        java.util.LinkedHashMap<String, String> result = new java.util.LinkedHashMap<>();
+        map.forEach((key, item) -> result.put(key, text(item)));
+        return result;
     }
 
     private static Map<String, Object> mapValue(Object value) {
