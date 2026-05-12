@@ -3,11 +3,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Button, Tooltip, message } from 'antd';
 import { UserOutlined, RobotOutlined, EditOutlined, ReloadOutlined, DeleteOutlined, CheckOutlined, CopyOutlined, PlayCircleOutlined, ApiOutlined, LoadingOutlined, CaretRightOutlined, CaretDownOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import type { Components } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import mermaid from 'mermaid';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter';
 import { vscDarkPlus, vs } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import type { AIChatMessage, AIToolCall } from '../../types';
+import type { RpcConnectionConfig } from '../../utils/connectionRpcConfig';
 import { useStore } from '../../store';
 import type { OverlayWorkbenchTheme } from '../../utils/overlayWorkbenchTheme';
 import { normalizeAiMarkdown } from '../../utils/aiMarkdown';
@@ -15,6 +17,22 @@ import { buildAIReadonlyPreviewSQL } from '../../utils/aiSqlLimit';
 
 // 🔧 性能优化：将 ReactMarkdown 包装为 Memo 组件并提取固定的 plugins
 const remarkPlugins = [remarkGfm];
+
+type QueryRow = Record<string, unknown>;
+type CodeLanguageMatch = RegExpExecArray;
+type CodeChildren = React.ReactNode;
+type MarkdownCodeProps = React.ComponentProps<'code'> & {
+    inline?: boolean;
+    node?: unknown;
+};
+
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
+
+const syntaxThemeStyle = (darkMode: boolean): Record<string, React.CSSProperties> => (
+    darkMode ? vscDarkPlus : vs
+);
 
 const MemoizedMarkdown = React.memo(({ 
     content, 
@@ -27,14 +45,14 @@ const MemoizedMarkdown = React.memo(({
     content: string;
     darkMode: boolean;
     overlayTheme: OverlayWorkbenchTheme;
-    activeConnectionConfig?: any;
+    activeConnectionConfig?: RpcConnectionConfig;
     activeConnectionId?: string;
     activeDbName?: string;
 }) => {
     const normalizedContent = React.useMemo(() => normalizeAiMarkdown(content), [content]);
     // 缓存 components 对象，避免每次渲染都生成新的函数引用击穿内部子组件的 memo
     const components = React.useMemo(() => ({
-        code({ node, inline, className, children, ...props }: any) {
+        code({ inline, className, children, ...props }: MarkdownCodeProps) {
             const match = /language-(\w+)/.exec(className || '');
             if (!inline && match && match[1] === 'mermaid') {
                 return <MermaidRenderer chart={String(children).replace(/\n$/, '')} darkMode={darkMode} />;
@@ -47,7 +65,7 @@ const MemoizedMarkdown = React.memo(({
                 </code>
             );
         }
-    }), [darkMode, overlayTheme, activeConnectionConfig, activeConnectionId, activeDbName]);
+    }), [darkMode, overlayTheme, activeConnectionConfig, activeConnectionId, activeDbName]) satisfies Components;
 
     return (
         <ReactMarkdown remarkPlugins={remarkPlugins} components={components}>
@@ -65,7 +83,7 @@ interface AIMessageBubbleProps {
     onRetry: (msg: AIChatMessage) => void;
     onDelete: (id: string) => void;
     activeConnectionId?: string;
-    activeConnectionConfig?: any;
+    activeConnectionConfig?: RpcConnectionConfig;
     activeDbName?: string;
     allMessages?: AIChatMessage[];
 }
@@ -113,7 +131,7 @@ const MermaidRenderer = ({ chart, darkMode }: { chart: string, darkMode: boolean
                 mermaid.initialize({ startOnLoad: false, theme: darkMode ? 'dark' : 'default' });
                 const id = `mermaid-${Math.random().toString(36).substring(2)}`;
                 (async () => {
-                    const result: any = await mermaid.render(id, chart);
+                    const result = await mermaid.render(id, chart);
                     if (active && containerRef.current) {
                         const rawSvg = String(result?.svg || result || '');
                         const parsed = new DOMParser().parseFromString(rawSvg, 'image/svg+xml');
@@ -135,13 +153,13 @@ const MermaidRenderer = ({ chart, darkMode }: { chart: string, darkMode: boolean
                         });
                         containerRef.current.replaceChildren(document.importNode(svg, true));
                     }
-                })().catch((e: any) => {
+                })().catch((e: unknown) => {
                     if (active) {
-                        setErrorText(`Mermaid 解析失败: ${String(e?.message || e)}`);
+                        setErrorText(`Mermaid 解析失败: ${getErrorMessage(e)}`);
                     }
                 });
-            } catch (e: any) {
-                setErrorText(`Mermaid 渲染异常: ${String(e?.message || e)}`);
+            } catch (e: unknown) {
+                setErrorText(`Mermaid 渲染异常: ${getErrorMessage(e)}`);
             }
         }
         return () => {
@@ -266,12 +284,28 @@ const CodeRunBtn = ({ text, connectionId, dbName }: { text: string; connectionId
 };
 
 // 阶段2: 代码块体验升级 (折叠展开、行号显示、内联SQL预览)
-const AIBlockHashRender = ({ match, darkMode, overlayTheme, children, activeConnectionConfig, activeConnectionId, activeDbName }: any) => {
+const AIBlockHashRender = ({
+    match,
+    darkMode,
+    overlayTheme,
+    children,
+    activeConnectionConfig,
+    activeConnectionId,
+    activeDbName,
+}: {
+    match: CodeLanguageMatch;
+    darkMode: boolean;
+    overlayTheme: OverlayWorkbenchTheme;
+    children: CodeChildren;
+    activeConnectionConfig?: RpcConnectionConfig;
+    activeConnectionId?: string;
+    activeDbName?: string;
+}) => {
     const codeText = String(children).replace(/\n$/, '');
     // 将 @context 注释行从显示文本中剔除，用户无需看到内部元数据
     const displayText = codeText.replace(/^--\s*@context\s+.*\n?/gm, '').trim();
     const [expanded, setExpanded] = useState(false);
-    const [previewData, setPreviewData] = useState<any[] | null>(null);
+    const [previewData, setPreviewData] = useState<QueryRow[] | null>(null);
     const [previewCols, setPreviewCols] = useState<string[]>([]);
     const [previewLoading, setPreviewLoading] = useState(false);
     const [previewError, setPreviewError] = useState('');
@@ -297,7 +331,7 @@ const AIBlockHashRender = ({ match, darkMode, overlayTheme, children, activeConn
             );
             const res = await DBQuery(activeConnectionConfig, activeDbName || '', previewSql);
             if (res.success && Array.isArray(res.data)) {
-                const rows = res.data as any[];
+                const rows = res.data as QueryRow[];
                 const cols = rows.length > 0 ? Object.keys(rows[0]) : [];
                 setPreviewCols(cols);
                 setPreviewData(rows.slice(0, 20));
@@ -305,8 +339,8 @@ const AIBlockHashRender = ({ match, darkMode, overlayTheme, children, activeConn
             } else {
                 setPreviewError(res.message || '查询无结果');
             }
-        } catch (err: any) {
-            setPreviewError(err?.message || '执行失败');
+        } catch (err: unknown) {
+            setPreviewError(getErrorMessage(err) || '执行失败');
         } finally {
             setPreviewLoading(false);
         }
@@ -344,7 +378,7 @@ const AIBlockHashRender = ({ match, darkMode, overlayTheme, children, activeConn
 
             <div style={{ position: 'relative' }}>
                 <SyntaxHighlighter
-                    style={darkMode ? vscDarkPlus as any : vs as any}
+                    style={syntaxThemeStyle(darkMode)}
                     language={match[1]}
                     PreTag="div"
                     showLineNumbers={true}
@@ -449,7 +483,7 @@ const AIBlockHashRender = ({ match, darkMode, overlayTheme, children, activeConn
 };
 
 // 可折叠思考过程组件
-const ThinkingBlock: React.FC<{ displayThinking: string; totalLen: number; isTyping: boolean; isGlobalLoading: boolean; darkMode: boolean; overlayTheme: any; hasContent: boolean }> = ({ displayThinking, totalLen, isTyping, isGlobalLoading, darkMode, overlayTheme, hasContent }) => {
+const ThinkingBlock: React.FC<{ displayThinking: string; totalLen: number; isTyping: boolean; isGlobalLoading: boolean; darkMode: boolean; overlayTheme: OverlayWorkbenchTheme; hasContent: boolean }> = ({ displayThinking, totalLen, isTyping, isGlobalLoading, darkMode, overlayTheme, hasContent }) => {
     // 如果整体在loading，且尚未吐出content，我们认为真正的思考还在进行；如果吐出content了，思考框就算告一段落
     const isActivelyThinking = isGlobalLoading && !hasContent;
     const [expanded, setExpanded] = useState(isActivelyThinking);
@@ -510,7 +544,7 @@ const ThinkingBlock: React.FC<{ displayThinking: string; totalLen: number; isTyp
 };
 
 // 工具调用进度面板聚合展示组件
-const AIToolCallingBlock: React.FC<{ tool_calls: AIToolCall[]; loading: boolean; allMessages: AIChatMessage[]; darkMode: boolean; overlayTheme: any; hasContent: boolean }> = ({ tool_calls, loading, allMessages, darkMode, overlayTheme, hasContent }) => {
+const AIToolCallingBlock: React.FC<{ tool_calls: AIToolCall[]; loading: boolean; allMessages: AIChatMessage[]; darkMode: boolean; overlayTheme: OverlayWorkbenchTheme; hasContent: boolean }> = ({ tool_calls, loading, allMessages, darkMode, overlayTheme, hasContent }) => {
     const totalCalls = tool_calls.length;
     const allDone = tool_calls.every(tc => allMessages?.find(m => m.role === 'tool' && m.tool_call_id === tc.id));
     const [expanded, setExpanded] = useState(!allDone && loading);
