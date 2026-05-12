@@ -9,6 +9,15 @@ export type ColumnMeta = {
     comment: string;
 };
 
+type ColumnDefinitionLike = {
+    name?: string;
+    Name?: string;
+    type?: string;
+    Type?: string;
+    comment?: string;
+    Comment?: string;
+};
+
 export const buildDataGridMetadataCacheKey = ({
     connectionId,
     dbName,
@@ -21,7 +30,7 @@ export const buildDataGridMetadataCacheKey = ({
 
 export const normalizeColumnMetaMap = (columns: ColumnDefinition[]): Record<string, ColumnMeta> => {
     const nextMap: Record<string, ColumnMeta> = {};
-    columns.forEach((column: any) => {
+    columns.forEach((column: ColumnDefinition | ColumnDefinitionLike) => {
         const name = String(column?.name ?? column?.Name ?? '').trim();
         if (!name) return;
         const type = String(column?.type ?? column?.Type ?? '').trim();
@@ -88,7 +97,7 @@ export const fetchColumnMetaMap = async ({
     dbName: string;
     tableName: string;
 }): Promise<Record<string, ColumnMeta> | null> => {
-    const res = await DBGetColumns(buildRpcConnectionConfig(buildConnectionConfig(connection)) as any, dbName, tableName);
+    const res = await DBGetColumns(buildRpcConnectionConfig(buildConnectionConfig(connection)), dbName, tableName);
     if (!res.success || !Array.isArray(res.data)) {
         return null;
     }
@@ -104,7 +113,7 @@ export const fetchUniqueKeyGroups = async ({
     dbName: string;
     tableName: string;
 }): Promise<string[][] | null> => {
-    const res = await DBGetIndexes(buildRpcConnectionConfig(buildConnectionConfig(connection)) as any, dbName, tableName);
+    const res = await DBGetIndexes(buildRpcConnectionConfig(buildConnectionConfig(connection)), dbName, tableName);
     if (!res.success || !Array.isArray(res.data)) {
         return null;
     }
