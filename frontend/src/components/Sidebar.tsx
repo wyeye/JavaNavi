@@ -2489,8 +2489,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   // --- 视图操作 ---
-  const openViewDefinition = (node: any) => {
-      const { viewName, dbName, id } = node.dataRef;
+  const openViewDefinition = (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const viewName = String(conn.viewName || '').trim();
+      const dbName = conn.dbName;
+      const id = conn.id;
+      if (!viewName) return;
       addTab({
           id: `view-def-${id}-${dbName}-${viewName}`,
           title: t('sidebar.tree.viewDef', { name: viewName }),
@@ -2501,9 +2505,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const openEditView = async (node: any) => {
-      const conn = node.dataRef;
-      const { viewName, dbName, id } = conn;
+  const openEditView = async (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const viewName = String(conn.viewName || '').trim();
+      const dbName = conn.dbName;
+      const id = conn.id;
+      if (!viewName) return;
       // 获取视图定义后打开查询编辑器
       const dialect = getMetadataDialect(conn as SavedConnection);
       let template = `${t('sidebar.template.editViewHeader', { name: viewName })}\n${t('sidebar.template.modifyThenExecute')}\nCREATE OR REPLACE VIEW ${viewName} AS\nSELECT * FROM your_table;`;
@@ -2537,9 +2544,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               }
           }
           if (query) {
-              const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, query);
-              if (result.success && Array.isArray(result.data) && result.data.length > 0) {
-                  const row = result.data[0] as Record<string, any>;
+              const result = await DBQuery(config, dbName, query);
+              const rows = Array.isArray(result.data) ? result.data as SidebarQueryRecord[] : [];
+              if (result.success && rows.length > 0) {
+                  const row = rows[0];
                   const def = row.view_definition || row.VIEW_DEFINITION || Object.values(row).find(v => typeof v === 'string' && String(v).length > 10) || '';
                   if (def) {
                       if (dialect === 'mysql') {
@@ -2562,8 +2570,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const openCreateView = (node: any) => {
-      const conn = node.dataRef;
+  const openCreateView = (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const { dbName, id } = conn;
       const dialect = getMetadataDialect(conn as SavedConnection);
       let template: string;
@@ -2597,8 +2605,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const handleDropView = (node: any) => {
-      const conn = node.dataRef;
+  const handleDropView = (node: SidebarMenuNode) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const viewName = String(conn.viewName || '').trim();
       if (!viewName) return;
       Modal.confirm({
@@ -2607,7 +2615,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           okButtonProps: { danger: true },
           onOk: async () => {
               const config = buildRuntimeConfig(conn, conn.dbName);
-              const res = await DropView(buildRpcConnectionConfig(config) as any, conn.dbName, viewName);
+              const res = await DropView(config, conn.dbName, viewName);
               if (res.success) {
                   message.success(t('sidebar.msg.viewDeleteSuccess'));
                   await loadTables(getDatabaseNodeRef(conn, conn.dbName));
@@ -2634,7 +2642,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               return;
           }
           const config = buildRuntimeConfig(conn, conn.dbName);
-          const res = await RenameView(buildRpcConnectionConfig(config) as any, conn.dbName, oldViewName, newViewName);
+          const res = await RenameView(config, conn.dbName, oldViewName, newViewName);
           if (res.success) {
               message.success(t('sidebar.msg.viewRenameSuccess'));
               await loadTables(getDatabaseNodeRef(conn, conn.dbName));
