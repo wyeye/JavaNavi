@@ -3,6 +3,7 @@ package com.javanavi.api;
 import com.javanavi.app.AppCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.AppContracts;
 import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import org.springframework.http.MediaType;
@@ -15,7 +16,6 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/app")
@@ -29,79 +29,77 @@ public class AppCompatibilityController {
     }
 
     @GetMapping("/info")
-    public ApiEnvelope<Map<String, Object>> appInfo() {
+    public ApiEnvelope<AppContracts.AppInfoResponse> appInfo() {
         return ApiEnvelope.ok(appCompatibilityService.appInfo());
     }
 
     @GetMapping("/data-root")
-    public ApiEnvelope<Map<String, Object>> dataRootInfo() {
+    public ApiEnvelope<AppContracts.DataRootInfoResponse> dataRootInfo() {
         return ApiEnvelope.ok(appCompatibilityService.dataRootInfo());
     }
 
     @GetMapping("/global-proxy")
-    public ApiEnvelope<Map<String, Object>> getGlobalProxy() {
+    public ApiEnvelope<AppContracts.GlobalProxyResponse> getGlobalProxy() {
         return ApiEnvelope.ok(appCompatibilityService.getGlobalProxy());
     }
 
     @GetMapping("/language")
-    public ApiEnvelope<Map<String, Object>> getLanguage() {
+    public ApiEnvelope<AppContracts.LanguageResponse> getLanguage() {
         return ApiEnvelope.ok(appCompatibilityService.getLanguage());
     }
 
     @PostMapping("/global-proxy")
-    public ApiEnvelope<Map<String, Object>> saveGlobalProxy(@RequestBody GlobalProxyConfigDto input) {
+    public ApiEnvelope<AppContracts.GlobalProxyResponse> saveGlobalProxy(@RequestBody GlobalProxyConfigDto input) {
         return ApiEnvelope.ok(appCompatibilityService.saveGlobalProxy(input));
     }
 
     @PostMapping("/language")
-    public ApiEnvelope<Map<String, Object>> saveLanguage(@RequestBody Map<String, Object> input) {
-        String rawLanguage = input == null || input.get("language") == null ? "" : String.valueOf(input.get("language"));
+    public ApiEnvelope<AppContracts.LanguageResponse> saveLanguage(@RequestBody(required = false) AppContracts.LanguageRequest input) {
+        String rawLanguage = input == null ? "" : input.language();
         return ApiEnvelope.ok(appCompatibilityService.saveLanguage(rawLanguage));
     }
 
     @PostMapping("/diagnostics/window")
-    public ApiEnvelope<Map<String, Object>> logWindowDiagnostic(@RequestBody Map<String, Object> input) {
-        String stage = input == null || input.get("stage") == null ? "" : String.valueOf(input.get("stage"));
-        String payload = input == null || input.get("payload") == null ? "" : String.valueOf(input.get("payload"));
+    public ApiEnvelope<AppContracts.WindowDiagnosticResponse> logWindowDiagnostic(@RequestBody(required = false) AppContracts.WindowDiagnosticRequest input) {
+        String stage = input == null ? "" : input.stage();
+        String payload = input == null ? "" : input.payload();
         appCompatibilityService.logWindowDiagnostic(stage, payload);
-        return ApiEnvelope.ok(Map.of("logged", true));
+        return ApiEnvelope.ok(new AppContracts.WindowDiagnosticResponse(true));
     }
 
     @PostMapping("/sql-directory/select")
-    public ApiEnvelope<Map<String, Object>> selectSqlDirectory(@RequestBody Map<String, Object> input) {
-        String currentPath = stringValue(input, "path", "currentPath", "directory");
-        return ApiEnvelope.ok(appCompatibilityService.selectSqlDirectory(currentPath));
+    public ApiEnvelope<AppContracts.SqlWorkspaceResponse> selectSqlDirectory(@RequestBody(required = false) AppContracts.PathRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.selectSqlDirectory(input == null ? "" : input.directoryValue()));
     }
 
     @PostMapping("/sql-directory/list")
-    public ApiEnvelope<Object> listSqlDirectory(@RequestBody Map<String, Object> input) {
-        String directory = stringValue(input, "path", "directory");
-        return ApiEnvelope.ok(appCompatibilityService.listSqlDirectory(directory));
+    public ApiEnvelope<List<AppContracts.SqlDirectoryEntryResponse>> listSqlDirectory(@RequestBody(required = false) AppContracts.PathRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.listSqlDirectory(input == null ? "" : input.directoryValue()));
     }
 
     @PostMapping("/sql-workspace/resolve")
-    public ApiEnvelope<Map<String, Object>> resolveSqlWorkspace(@RequestBody Map<String, Object> input) {
+    public ApiEnvelope<AppContracts.SqlWorkspaceResponse> resolveSqlWorkspace(@RequestBody(required = false) AppContracts.SqlWorkspaceRequest input) {
         return ApiEnvelope.ok(appCompatibilityService.resolveDatabaseSqlWorkspace(
-                stringValue(input, "connectionId"),
-                stringValue(input, "dbName", "database")
+                input == null ? "" : input.connectionId(),
+                input == null ? "" : input.databaseValue()
         ));
     }
 
     @PostMapping("/sql-file/read")
-    public ApiEnvelope<Object> readSqlFile(@RequestBody Map<String, Object> input) {
-        String filePath = stringValue(input, "path", "filePath");
-        return ApiEnvelope.ok(appCompatibilityService.readSqlFile(filePath));
+    public ApiEnvelope<AppContracts.SqlFileReadResponse> readSqlFile(@RequestBody(required = false) AppContracts.SqlFileReadRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.readSqlFile(input == null ? "" : input.value()));
     }
 
     @PostMapping("/sql-file/write")
-    public ApiEnvelope<Map<String, Object>> writeSqlFile(@RequestBody Map<String, Object> input) {
-        String filePath = stringValue(input, "path", "filePath");
-        String content = stringValue(input, "content", "sql");
-        return ApiEnvelope.ok(appCompatibilityService.writeSqlFile(filePath, content));
+    public ApiEnvelope<AppContracts.SqlFileInfoResponse> writeSqlFile(@RequestBody(required = false) AppContracts.SqlFileWriteRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.writeSqlFile(
+                input == null ? "" : input.pathValue(),
+                input == null ? "" : input.contentValue()
+        ));
     }
 
     @PostMapping(value = "/sql-file/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
-    public ApiEnvelope<Map<String, Object>> uploadSqlFile(
+    public ApiEnvelope<AppContracts.SqlFileInfoResponse> uploadSqlFile(
             @RequestParam(value = "directoryPath", required = false) String directoryPath,
             @RequestParam(value = "path", required = false) String path,
             @RequestParam(value = "file", required = false) MultipartFile file
@@ -110,46 +108,35 @@ public class AppCompatibilityController {
     }
 
     @PostMapping("/sql-directory/create")
-    public ApiEnvelope<Map<String, Object>> createSqlDirectory(@RequestBody Map<String, Object> input) {
+    public ApiEnvelope<AppContracts.SqlDirectoryEntryResponse> createSqlDirectory(@RequestBody(required = false) AppContracts.SqlDirectoryCreateRequest input) {
         return ApiEnvelope.ok(appCompatibilityService.createSqlDirectory(
-                stringValue(input, "parentPath", "path", "directoryPath"),
-                stringValue(input, "name", "directoryName")
+                input == null ? "" : input.parentValue(),
+                input == null ? "" : input.nameValue()
         ));
     }
 
     @PostMapping("/sql-path/rename")
-    public ApiEnvelope<Map<String, Object>> renameSqlPath(@RequestBody Map<String, Object> input) {
+    public ApiEnvelope<AppContracts.SqlDirectoryEntryResponse> renameSqlPath(@RequestBody(required = false) AppContracts.SqlPathRenameRequest input) {
         return ApiEnvelope.ok(appCompatibilityService.renameSqlPath(
-                stringValue(input, "path", "filePath"),
-                stringValue(input, "newName", "name")
+                input == null ? "" : input.pathValue(),
+                input == null ? "" : input.nameValue()
         ));
     }
 
     @PostMapping("/connections/export-package")
-    public ApiEnvelope<Map<String, Object>> exportConnectionsPackage(@RequestBody Map<String, Object> input) {
-        Boolean includeSecrets = input == null ? false : Boolean.TRUE.equals(input.get("includeSecrets"));
-        String filePassword = input == null || input.get("filePassword") == null ? "" : String.valueOf(input.get("filePassword"));
-        return ApiEnvelope.ok(appCompatibilityService.exportConnectionsPackage(includeSecrets, filePassword));
+    public ApiEnvelope<AppContracts.ConnectionExportPackageResponse> exportConnectionsPackage(@RequestBody(required = false) AppContracts.ConnectionExportPackageRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.exportConnectionsPackage(
+                input != null && input.includeSecretsValue(),
+                input == null ? "" : input.filePassword()
+        ));
     }
 
     @PostMapping("/connections/import-payload")
-    public ApiEnvelope<List<SavedConnectionViewDto>> importConnectionsPayload(@RequestBody Map<String, Object> input) {
-        String raw = stringValue(input, "raw", "payload", "content");
-        String password = stringValue(input, "password", "filePassword");
-        return ApiEnvelope.ok(appCompatibilityService.importConnectionsPayload(raw, password));
-    }
-
-    private static String stringValue(Map<String, Object> input, String... keys) {
-        if (input == null) {
-            return "";
-        }
-        for (String key : keys) {
-            Object value = input.get(key);
-            if (value != null) {
-                return String.valueOf(value);
-            }
-        }
-        return "";
+    public ApiEnvelope<List<SavedConnectionViewDto>> importConnectionsPayload(@RequestBody(required = false) AppContracts.ConnectionImportPayloadRequest input) {
+        return ApiEnvelope.ok(appCompatibilityService.importConnectionsPayload(
+                input == null ? "" : input.rawValue(),
+                input == null ? "" : input.passwordValue()
+        ));
     }
 
     private static String firstText(String... values) {

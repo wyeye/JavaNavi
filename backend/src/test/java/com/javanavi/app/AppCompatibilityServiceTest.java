@@ -6,6 +6,7 @@ import com.javanavi.connections.ConnectionPackageCompatibilityService;
 import com.javanavi.connections.SavedConnectionService;
 import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.model.AppContracts;
 import com.javanavi.security.SecretStore;
 import com.javanavi.security.SecretStoreStatus;
 import org.junit.jupiter.api.AfterEach;
@@ -34,11 +35,11 @@ class AppCompatibilityServiceTest {
     void persistsAndReloadsLanguageInAppDataDirectory() throws Exception {
         AppCompatibilityService service = service();
 
-        Map<String, Object> saved = service.saveLanguage("zh-CN");
+        AppContracts.LanguageResponse saved = service.saveLanguage("zh-CN");
 
-        assertThat(saved).containsEntry("language", "zh");
+        assertThat(saved.language()).isEqualTo("zh");
         assertThat(Path.of(tempDir.toString(), "language.json")).exists();
-        assertThat(service.getLanguage()).containsEntry("language", "zh");
+        assertThat(service.getLanguage().language()).isEqualTo("zh");
     }
 
     @Test
@@ -46,17 +47,29 @@ class AppCompatibilityServiceTest {
         System.setProperty("javanavi.disableOsOpen", "true");
         AppCompatibilityService service = service();
 
-        Map<String, Object> result = service.exportConnectionsPackage(false, "");
+        AppContracts.ConnectionExportPackageResponse result = service.exportConnectionsPackage(false, "");
 
-        Path exported = Path.of(String.valueOf(result.get("path")));
+        Path exported = Path.of(result.path());
         assertThat(Files.exists(exported)).isTrue();
-        assertThat(result)
-                .containsEntry("filePath", exported.toString())
-                .containsEntry("filename", exported.getFileName().toString())
-                .containsEntry("revealed", false)
-                .containsEntry("revealSelected", false)
-                .containsEntry("revealMethod", "disabled");
-        assertThat(result.get("revealTargetPath")).isEqualTo(exported.toAbsolutePath().normalize().toString());
+        assertThat(result.filePath()).isEqualTo(exported.toString());
+        assertThat(result.filename()).isEqualTo(exported.getFileName().toString());
+        assertThat(result.revealed()).isFalse();
+        assertThat(result.revealSelected()).isFalse();
+        assertThat(result.revealMethod()).isEqualTo("disabled");
+        assertThat(result.revealTargetPath()).isEqualTo(exported.toAbsolutePath().normalize().toString());
+    }
+
+    @Test
+    void exposesTypedSqlFileInfoWhenWritingWorkspaceSql() {
+        AppCompatibilityService service = service();
+
+        AppContracts.SqlFileInfoResponse result = service.writeSqlFile("", "select 1;");
+
+        assertThat(result.path()).endsWith(".sql");
+        assertThat(result.filePath()).isEqualTo(result.path());
+        assertThat(result.name()).endsWith(".sql");
+        assertThat(result.size()).isGreaterThan(0);
+        assertThat(result.webManaged()).isTrue();
     }
 
     private AppCompatibilityService service() {

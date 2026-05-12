@@ -6,6 +6,7 @@ import com.javanavi.config.SecurityProperties;
 import com.javanavi.connections.ConnectionPackageCompatibilityService;
 import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.i18n.AppLanguage;
+import com.javanavi.model.AppContracts;
 import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import com.javanavi.security.SecretStore;
@@ -57,36 +58,36 @@ public class AppCompatibilityService {
         this.sqlWorkspaceDirectory = dataDirectory.resolve("sql-workspace").normalize();
     }
 
-    public Map<String, Object> appInfo() {
-        return orderedMap(
-                "name", "JavaNavi",
-                "version", "0.1.5",
-                "backend", "java-spring-boot",
-                "packageType", "java-web",
-                "dataDirectory", dataDirectory.toString(),
-                "author", "wyeye",
-                "communityName", "QQ群",
-                "communityGroupNumber", "1001949448",
-                "communityUrl", "",
-                "repoUrl", "https://github.com/wyeye/JavaNavi"
+    public AppContracts.AppInfoResponse appInfo() {
+        return new AppContracts.AppInfoResponse(
+                "JavaNavi",
+                "0.1.5",
+                "java-spring-boot",
+                "java-web",
+                dataDirectory.toString(),
+                "wyeye",
+                "QQ群",
+                "1001949448",
+                "",
+                "https://github.com/wyeye/JavaNavi"
         );
     }
 
-    public Map<String, Object> dataRootInfo() {
+    public AppContracts.DataRootInfoResponse dataRootInfo() {
         Path driverPath = dataDirectory.resolve("drivers");
-        return orderedMap(
-                "path", dataDirectory.toString(),
-                "directory", dataDirectory.toString(),
-                "defaultPath", dataDirectory.toString(),
-                "driverPath", driverPath.toString(),
-                "bootstrapPath", dataDirectory.resolve("connections.json").toString(),
-                "exists", Files.isDirectory(dataDirectory),
-                "isDefaultPath", true,
-                "webManaged", true
+        return new AppContracts.DataRootInfoResponse(
+                dataDirectory.toString(),
+                dataDirectory.toString(),
+                dataDirectory.toString(),
+                driverPath.toString(),
+                dataDirectory.resolve("connections.json").toString(),
+                Files.isDirectory(dataDirectory),
+                true,
+                true
         );
     }
 
-    public synchronized Map<String, Object> getGlobalProxy() {
+    public synchronized AppContracts.GlobalProxyResponse getGlobalProxy() {
         Map<String, Object> stored = readMap(globalProxyFile);
         boolean hasPassword = secretStore.get(GLOBAL_PROXY_SECRET_KEY).isPresent() || bool(stored.get("hasPassword"));
         Map<String, Object> result = defaultGlobalProxy();
@@ -94,23 +95,23 @@ public class AppCompatibilityService {
         result.put("password", "");
         result.put("hasPassword", hasPassword);
         result.put("secretRef", GLOBAL_PROXY_SECRET_REF);
-        return result;
+        return globalProxyResponse(result);
     }
 
-    public synchronized Map<String, Object> getLanguage() {
+    public synchronized AppContracts.LanguageResponse getLanguage() {
         Map<String, Object> stored = readMap(languageFile);
         String language = AppLanguage.from(stored.get("language")) == AppLanguage.ZH ? "zh" : "en";
-        return orderedMap("language", language);
+        return new AppContracts.LanguageResponse(language);
     }
 
-    public synchronized Map<String, Object> saveLanguage(String rawLanguage) {
+    public synchronized AppContracts.LanguageResponse saveLanguage(String rawLanguage) {
         AppLanguage language = AppLanguage.from(rawLanguage);
         Map<String, Object> value = orderedMap("language", language == AppLanguage.ZH ? "zh" : "en");
         writeMap(languageFile, value);
-        return value;
+        return new AppContracts.LanguageResponse(String.valueOf(value.get("language")));
     }
 
-    public synchronized Map<String, Object> saveGlobalProxy(GlobalProxyConfigDto input) {
+    public synchronized AppContracts.GlobalProxyResponse saveGlobalProxy(GlobalProxyConfigDto input) {
         Map<String, Object> next = defaultGlobalProxy();
         if (input != null) {
             next.put("enabled", Boolean.TRUE.equals(input.enabled()));
@@ -152,7 +153,7 @@ public class AppCompatibilityService {
         }
     }
 
-    public Map<String, Object> exportConnectionsPackage(Boolean includeSecrets, String filePassword) {
+    public AppContracts.ConnectionExportPackageResponse exportConnectionsPackage(Boolean includeSecrets, String filePassword) {
         try {
             Files.createDirectories(dataDirectory.resolve("exports"));
             Path exportFile = dataDirectory.resolve("exports").resolve("connections-" + Instant.now().toEpochMilli() + ".javanavi-conn");
@@ -168,7 +169,7 @@ public class AppCompatibilityService {
                     "protection", payload.get("p")
             );
             result.putAll(exportedFileRevealService.revealFields(exportFile));
-            return result;
+            return connectionExportPackageResponse(result);
         } catch (IOException error) {
             throw new IllegalStateException("Unable to export JavaNavi connections package.", error);
         }
@@ -178,39 +179,41 @@ public class AppCompatibilityService {
         return connectionPackageCompatibilityService.importPayload(raw, password);
     }
 
-    public Map<String, Object> resolveDatabaseSqlWorkspace(String connectionId, String dbName) {
+    public AppContracts.SqlWorkspaceResponse resolveDatabaseSqlWorkspace(String connectionId, String dbName) {
         try {
             Path directory = databaseSqlWorkspaceDirectory(connectionId, dbName);
             Files.createDirectories(directory);
-            return orderedMap(
-                    "path", directory.toString(),
-                    "name", directory.getFileName() == null ? directory.toString() : directory.getFileName().toString(),
-                    "connectionId", safePathSegment(connectionId, "connection"),
-                    "dbName", textOrDefault(dbName, "database"),
-                    "webManaged", true,
-                    "workspaceRoot", sqlWorkspaceDirectory.toString()
+            return new AppContracts.SqlWorkspaceResponse(
+                    directory.toString(),
+                    directory.getFileName() == null ? directory.toString() : directory.getFileName().toString(),
+                    safePathSegment(connectionId, "connection"),
+                    textOrDefault(dbName, "database"),
+                    true,
+                    sqlWorkspaceDirectory.toString()
             );
         } catch (IOException error) {
             throw new IllegalStateException("Unable to prepare JavaNavi SQL workspace directory.", error);
         }
     }
 
-    public Map<String, Object> selectSqlDirectory(String currentPath) {
+    public AppContracts.SqlWorkspaceResponse selectSqlDirectory(String currentPath) {
         try {
             Path directory = resolveSqlWorkspacePath(currentPath, true);
             Files.createDirectories(directory);
-            return orderedMap(
-                    "path", directory.toString(),
-                    "name", directory.getFileName() == null ? directory.toString() : directory.getFileName().toString(),
-                    "webManaged", true,
-                    "workspaceRoot", sqlWorkspaceDirectory.toString()
+            return new AppContracts.SqlWorkspaceResponse(
+                    directory.toString(),
+                    directory.getFileName() == null ? directory.toString() : directory.getFileName().toString(),
+                    "",
+                    "",
+                    true,
+                    sqlWorkspaceDirectory.toString()
             );
         } catch (IOException error) {
             throw new IllegalStateException("Unable to prepare JavaNavi SQL workspace directory.", error);
         }
     }
 
-    public List<Map<String, Object>> listSqlDirectory(String directoryPath) {
+    public List<AppContracts.SqlDirectoryEntryResponse> listSqlDirectory(String directoryPath) {
         try {
             Path directory = resolveSqlWorkspacePath(directoryPath, true);
             Files.createDirectories(directory);
@@ -228,7 +231,7 @@ public class AppCompatibilityService {
         }
     }
 
-    public Map<String, Object> uploadSqlFile(String directoryPath, MultipartFile file) {
+    public AppContracts.SqlFileInfoResponse uploadSqlFile(String directoryPath, MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new IllegalArgumentException("Please upload a non-empty SQL file.");
         }
@@ -240,19 +243,19 @@ public class AppCompatibilityService {
                 throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
             }
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
-            return orderedMap(
-                    "path", target.toString(),
-                    "filePath", target.toString(),
-                    "name", target.getFileName().toString(),
-                    "size", Files.size(target),
-                    "webManaged", true
+            return new AppContracts.SqlFileInfoResponse(
+                    target.toString(),
+                    target.toString(),
+                    target.getFileName().toString(),
+                    Files.size(target),
+                    true
             );
         } catch (IOException error) {
             throw new IllegalStateException("Unable to upload JavaNavi SQL workspace file.", error);
         }
     }
 
-    public Map<String, Object> createSqlDirectory(String parentPath, String name) {
+    public AppContracts.SqlDirectoryEntryResponse createSqlDirectory(String parentPath, String name) {
         try {
             Path parent = resolveSqlWorkspacePath(parentPath, true);
             Files.createDirectories(parent);
@@ -267,7 +270,7 @@ public class AppCompatibilityService {
         }
     }
 
-    public Map<String, Object> renameSqlPath(String path, String newName) {
+    public AppContracts.SqlDirectoryEntryResponse renameSqlPath(String path, String newName) {
         try {
             Path source = resolveSqlWorkspaceExistingPath(path);
             if (!Files.exists(source)) {
@@ -287,7 +290,7 @@ public class AppCompatibilityService {
         }
     }
 
-    public Object readSqlFile(String filePath) {
+    public AppContracts.SqlFileReadResponse readSqlFile(String filePath) {
         try {
             Path file = resolveSqlWorkspacePath(filePath, false);
             if (!Files.isRegularFile(file)) {
@@ -295,22 +298,22 @@ public class AppCompatibilityService {
             }
             long size = Files.size(file);
             if (size > 50L * 1024L * 1024L) {
-                return orderedMap(
-                        "isLargeFile", true,
-                        "filePath", file.toString(),
-                        "path", file.toString(),
-                        "fileSize", size,
-                        "fileSizeMB", String.format("%.1f", size / 1024.0 / 1024.0),
-                        "webManaged", true
+                return new AppContracts.LargeSqlFileResponse(
+                        true,
+                        file.toString(),
+                        file.toString(),
+                        size,
+                        String.format("%.1f", size / 1024.0 / 1024.0),
+                        true
                 );
             }
-            return Files.readString(file, StandardCharsets.UTF_8);
+            return new AppContracts.SqlFileContentResponse(Files.readString(file, StandardCharsets.UTF_8));
         } catch (IOException error) {
             throw new IllegalStateException("Unable to read JavaNavi SQL workspace file.", error);
         }
     }
 
-    public Map<String, Object> writeSqlFile(String filePath, String content) {
+    public AppContracts.SqlFileInfoResponse writeSqlFile(String filePath, String content) {
         try {
             Path file = resolveSqlWorkspacePath(filePath, false);
             if (Files.isDirectory(file)) {
@@ -318,12 +321,12 @@ public class AppCompatibilityService {
             }
             Files.createDirectories(file.getParent());
             Files.writeString(file, content == null ? "" : content, StandardCharsets.UTF_8);
-            return orderedMap(
-                    "filePath", file.toString(),
-                    "path", file.toString(),
-                    "name", file.getFileName().toString(),
-                    "size", Files.size(file),
-                    "webManaged", true
+            return new AppContracts.SqlFileInfoResponse(
+                    file.toString(),
+                    file.toString(),
+                    file.getFileName().toString(),
+                    Files.size(file),
+                    true
             );
         } catch (IOException error) {
             throw new IllegalStateException("Unable to write JavaNavi SQL workspace file.", error);
@@ -346,29 +349,29 @@ public class AppCompatibilityService {
         }
     }
 
-    private Map<String, Object> sqlDirectoryEntry(Path path) {
+    private AppContracts.SqlDirectoryEntryResponse sqlDirectoryEntry(Path path) {
         try {
             boolean directory = Files.isDirectory(path);
-            Map<String, Object> result = orderedMap(
-                    "name", path.getFileName().toString(),
-                    "path", path.toAbsolutePath().normalize().toString(),
-                    "isDir", directory,
-                    "size", directory ? 0 : Files.size(path),
-                    "webManaged", true
-            );
+            List<AppContracts.SqlDirectoryEntryResponse> children = null;
             if (directory) {
                 try (Stream<Path> stream = Files.list(path)) {
-                    List<Map<String, Object>> children = stream
+                    children = stream
                             .filter(child -> Files.isDirectory(child) || child.getFileName().toString().toLowerCase().endsWith(".sql"))
                             .sorted(Comparator
                                     .comparing((Path child) -> !Files.isDirectory(child))
                                     .thenComparing(child -> child.getFileName().toString().toLowerCase()))
                             .map(this::sqlDirectoryEntry)
                             .toList();
-                    result.put("children", children);
                 }
             }
-            return result;
+            return new AppContracts.SqlDirectoryEntryResponse(
+                    path.getFileName().toString(),
+                    path.toAbsolutePath().normalize().toString(),
+                    directory,
+                    directory ? 0 : Files.size(path),
+                    true,
+                    children
+            );
         } catch (IOException error) {
             throw new IllegalStateException("Unable to inspect JavaNavi SQL workspace path.", error);
         }
@@ -482,12 +485,59 @@ public class AppCompatibilityService {
         return "http".equalsIgnoreCase(type) ? 8080 : 1080;
     }
 
+    private static AppContracts.GlobalProxyResponse globalProxyResponse(Map<String, Object> map) {
+        return new AppContracts.GlobalProxyResponse(
+                bool(map.get("enabled")),
+                textOrDefault(stringValue(map.get("type")), "socks5"),
+                textOrDefault(stringValue(map.get("host")), ""),
+                intValue(map.get("port")),
+                textOrDefault(stringValue(map.get("user")), ""),
+                textOrDefault(stringValue(map.get("password")), ""),
+                bool(map.get("hasPassword")),
+                textOrDefault(stringValue(map.get("secretRef")), GLOBAL_PROXY_SECRET_REF)
+        );
+    }
+
+    private static AppContracts.ConnectionExportPackageResponse connectionExportPackageResponse(Map<String, Object> map) {
+        return new AppContracts.ConnectionExportPackageResponse(
+                textOrDefault(stringValue(map.get("path")), ""),
+                textOrDefault(stringValue(map.get("filePath")), ""),
+                textOrDefault(stringValue(map.get("filename")), ""),
+                bool(map.get("secretsIncluded")),
+                bool(map.get("javaNaviPackage")),
+                intValue(map.get("schemaVersion")),
+                intValue(map.get("protection")),
+                bool(map.get("revealed")),
+                bool(map.get("revealSelected")),
+                textOrDefault(stringValue(map.get("revealMethod")), ""),
+                textOrDefault(stringValue(map.get("revealTargetPath")), ""),
+                textOrDefault(stringValue(map.get("revealDirectory")), ""),
+                textOrDefault(stringValue(map.get("revealMessage")), "")
+        );
+    }
+
     private static String textOrDefault(String value, String fallback) {
         return value == null || value.isBlank() ? fallback : value.trim();
     }
 
     private static boolean bool(Object value) {
         return value instanceof Boolean bool && bool;
+    }
+
+    private static int intValue(Object value) {
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            String text = stringValue(value);
+            return text.isBlank() ? 0 : Integer.parseInt(text);
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private static String stringValue(Object value) {
+        return value == null ? "" : String.valueOf(value).trim();
     }
 
     private static Map<String, Object> orderedMap(Object... entries) {
