@@ -7,11 +7,15 @@ export interface TreeNode {
   isLeaf?: boolean;
   children?: TreeNode[];
   icon?: ReactNode;
-  dataRef?: any;
+  dataRef?: object;
   type?: 'connection' | 'database' | 'table' | 'view' | 'db-trigger' | 'routine' | 'object-group' | 'queries-folder' | 'saved-query' | 'external-sql-root' | 'external-sql-directory' | 'external-sql-folder' | 'external-sql-file' | 'folder-columns' | 'folder-indexes' | 'folder-fks' | 'folder-triggers' | 'redis-db' | 'tag';
 }
 
 export type SearchScope = 'smart' | 'object' | 'database' | 'host' | 'tag';
+
+const getNodeDataRef = (node: TreeNode | null | undefined): Record<string, unknown> => (
+  node?.dataRef && typeof node.dataRef === 'object' ? node.dataRef as Record<string, unknown> : {}
+);
 
 export const normalizeMySQLViewDDLForEditing = (viewName: string, rawDefinition: unknown): string => {
   const text = String(rawDefinition || '').trim();
@@ -33,15 +37,15 @@ export const normalizeMySQLViewDDLForEditing = (viewName: string, rawDefinition:
 export const resolveCopyableSidebarNodeName = (node: TreeNode | null | undefined): string => {
   switch (node?.type) {
     case 'database':
-      return String(node?.dataRef?.dbName || '').trim();
+      return String(getNodeDataRef(node).dbName || '').trim();
     case 'table':
-      return String(node?.dataRef?.tableName || '').trim();
+      return String(getNodeDataRef(node).tableName || '').trim();
     case 'view':
-      return String(node?.dataRef?.viewName || '').trim();
+      return String(getNodeDataRef(node).viewName || '').trim();
     case 'routine':
-      return String(node?.dataRef?.routineName || '').trim();
+      return String(getNodeDataRef(node).routineName || '').trim();
     case 'db-trigger':
-      return String(node?.dataRef?.triggerName || '').trim();
+      return String(getNodeDataRef(node).triggerName || '').trim();
     default:
       return '';
   }
@@ -49,13 +53,13 @@ export const resolveCopyableSidebarNodeName = (node: TreeNode | null | undefined
 
 const getConnectionHostSearchText = (node: TreeNode): string => {
   if (node.type !== 'connection') return '';
-  const config = node.dataRef?.config || {};
+  const config = getNodeDataRef(node).config as Parameters<typeof resolveConnectionHostTokens>[0] | undefined;
   return resolveConnectionHostTokens(config).join(' ');
 };
 
 const getConnectionNameSearchText = (node: TreeNode): string => {
   if (node.type !== 'connection') return '';
-  const name = node.dataRef?.name ?? node.title;
+  const name = getNodeDataRef(node).name ?? node.title;
   return String(name || '').toLowerCase();
 };
 

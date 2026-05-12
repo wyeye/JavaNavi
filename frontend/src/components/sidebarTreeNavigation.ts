@@ -8,7 +8,7 @@ type SidebarTreeNode = {
     title?: unknown;
     type?: string;
     children?: SidebarTreeNode[];
-    dataRef?: Record<string, unknown>;
+    dataRef?: object;
 };
 
 type SidebarTableTarget = {
@@ -42,6 +42,10 @@ type LocateSidebarTableOptions = {
 };
 
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+const getNodeDataRef = (node: SidebarTreeNode): Record<string, unknown> => (
+    node.dataRef && typeof node.dataRef === 'object' ? node.dataRef as Record<string, unknown> : {}
+);
 
 const normalizeText = (value: unknown) => String(value ?? '').trim();
 const normalizeComparableName = (value: unknown) => normalizeText(value).toLowerCase();
@@ -84,24 +88,24 @@ const waitForSidebarTreePath = async (
 };
 
 const isSameConnection = (node: SidebarTreeNode, connectionId: string) => {
-    return normalizeText(node.key) === connectionId || normalizeText(node.dataRef?.id) === connectionId;
+    return normalizeText(node.key) === connectionId || normalizeText(getNodeDataRef(node).id) === connectionId;
 };
 
 const isSameDatabase = (node: SidebarTreeNode, target: SidebarTableTarget) => {
     return node.type === 'database'
-        && normalizeText(node.dataRef?.id) === target.connectionId
-        && normalizeText(node.dataRef?.dbName) === target.dbName;
+        && normalizeText(getNodeDataRef(node).id) === target.connectionId
+        && normalizeText(getNodeDataRef(node).dbName) === target.dbName;
 };
 
 const isSameTableOrView = (node: SidebarTreeNode, target: SidebarTableTarget) => {
     if (node.type !== 'table' && node.type !== 'view') return false;
-    if (normalizeText(node.dataRef?.id) !== target.connectionId) return false;
-    if (normalizeText(node.dataRef?.dbName) !== target.dbName) return false;
+    if (normalizeText(getNodeDataRef(node).id) !== target.connectionId) return false;
+    if (normalizeText(getNodeDataRef(node).dbName) !== target.dbName) return false;
 
     const targetName = normalizeComparableName(target.tableName);
     return [
-        node.dataRef?.tableName,
-        node.dataRef?.viewName,
+        getNodeDataRef(node).tableName,
+        getNodeDataRef(node).viewName,
         node.title,
     ].some((value) => normalizeComparableName(value) === targetName);
 };
