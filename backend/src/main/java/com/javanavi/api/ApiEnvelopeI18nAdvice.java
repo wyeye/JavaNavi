@@ -11,6 +11,7 @@ import org.springframework.http.server.ServerHttpResponse;
 import org.springframework.web.bind.annotation.ControllerAdvice;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseBodyAdvice;
 
+import java.lang.reflect.RecordComponent;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -73,6 +74,27 @@ public class ApiEnvelopeI18nAdvice implements ResponseBodyAdvice<Object> {
         if (value instanceof List<?> list) {
             return list.stream().map(this::localizeData).toList();
         }
+        if (value != null && value.getClass().isRecord()) {
+            Map<String, Object> copy = new LinkedHashMap<>();
+            for (RecordComponent component : value.getClass().getRecordComponents()) {
+                String key = component.getName();
+                Object rawValue = recordComponentValue(value, component);
+                if (rawValue instanceof String text && LOCALIZED_VALUE_KEYS.contains(key)) {
+                    copy.put(key, messages.localizeFallback(text));
+                } else {
+                    copy.put(key, localizeData(rawValue));
+                }
+            }
+            return copy;
+        }
         return value;
+    }
+
+    private static Object recordComponentValue(Object value, RecordComponent component) {
+        try {
+            return component.getAccessor().invoke(value);
+        } catch (ReflectiveOperationException error) {
+            throw new IllegalStateException("Unable to read API response record component.", error);
+        }
     }
 }
