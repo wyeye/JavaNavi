@@ -9,8 +9,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/v1/data-sync")
 public class DataSyncCompatibilityController {
@@ -21,23 +19,23 @@ public class DataSyncCompatibilityController {
     }
 
     @PostMapping("/run")
-    public ApiEnvelope<Map<String, Object>> run(@RequestBody DataSyncRequestDto request) {
-        return ApiEnvelope.ok(dataSyncCompatibilityService.run(request == null ? Map.of() : request.toCompatibilityMap()));
+    public ApiEnvelope<DataSyncRequestDto.DataSyncResultDto> run(@RequestBody DataSyncRequestDto request) {
+        return ApiEnvelope.ok(DataSyncRequestDto.DataSyncResultDto.from(dataSyncCompatibilityService.run(request == null ? java.util.Map.of() : request.toCompatibilityMap())));
     }
 
     @PostMapping("/analyze")
-    public ApiEnvelope<Map<String, Object>> analyze(@RequestBody DataSyncRequestDto request) {
-        return ApiEnvelope.ok(dataSyncCompatibilityService.analyze(request == null ? Map.of() : request.toCompatibilityMap()));
+    public ApiEnvelope<DataSyncRequestDto.DataSyncAnalyzeDto> analyze(@RequestBody DataSyncRequestDto request) {
+        return ApiEnvelope.ok(DataSyncRequestDto.DataSyncAnalyzeDto.from(dataSyncCompatibilityService.analyze(request == null ? java.util.Map.of() : request.toCompatibilityMap())));
     }
 
     @PostMapping("/preview")
-    public ApiEnvelope<Map<String, Object>> preview(@RequestBody DataSyncRequestDto request) {
-        return ApiEnvelope.ok(dataSyncCompatibilityService.preview(request == null ? Map.of() : request.toCompatibilityMap()));
+    public ApiEnvelope<DataSyncRequestDto.DataSyncPreviewDto> preview(@RequestBody DataSyncRequestDto request) {
+        return ApiEnvelope.ok(DataSyncRequestDto.DataSyncPreviewDto.from(dataSyncCompatibilityService.preview(request == null ? java.util.Map.of() : request.toCompatibilityMap())));
     }
 
     @PostMapping("/cancel")
-    public ApiEnvelope<Map<String, Object>> cancel(@RequestBody SyncCancelRequestDto request) {
+    public ApiEnvelope<DataSyncRequestDto.DataSyncCancelDto> cancel(@RequestBody SyncCancelRequestDto request) {
         String jobId = request == null || request.jobId() == null ? "" : request.jobId();
-        return ApiEnvelope.ok(dataSyncCompatibilityService.cancel(jobId));
+        return ApiEnvelope.ok(DataSyncRequestDto.DataSyncCancelDto.from(dataSyncCompatibilityService.cancel(jobId)));
     }
 }
