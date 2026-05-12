@@ -105,6 +105,36 @@ type SidebarLargeFilePayload = { isLargeFile?: unknown; filePath?: unknown; file
 type SidebarQueryRecord = Record<string, unknown>;
 type SidebarLoadTreeNode = { key?: React.Key; dataRef?: object };
 type SidebarDataRef = Record<string, unknown>;
+type SidebarNodeData = SavedConnection & {
+  dbName?: string;
+  tableName?: string;
+  viewName?: string;
+  triggerName?: string;
+  triggerTableName?: string;
+  routineName?: string;
+  routineType?: string;
+  schemaName?: string;
+  groupKey?: string;
+  connectionId?: string;
+  redisDB?: number;
+  path?: string;
+  name?: string;
+  connectionIds?: string[];
+  comment?: string;
+  tableComment?: string;
+};
+type SidebarAvailableDatabase = { title: string; key: string; dbName: string };
+type SidebarBatchDatabase = SidebarAvailableDatabase & { dataRef: SavedConnection & { dbName: string } };
+type SidebarBatchDbContext = { conn: SavedConnection; dbName: string } | null;
+type SidebarRuntimeNodeData = SidebarDataRef & SavedConnection & {
+  dbName: string;
+  tableName?: string;
+  viewName?: string;
+  routineName?: string;
+  routineType?: string;
+  triggerName?: string;
+  groupKey?: string;
+};
 type SidebarEventNode = EventDataNode<TreeNode>;
 type SidebarSelectInfo = {
   selected: boolean;
@@ -125,8 +155,8 @@ const getErrorMessage = (error: unknown): string => (
   error instanceof Error ? error.message : String(error)
 );
 
-const getSidebarDataRef = (node: { dataRef?: object } | null | undefined): SidebarDataRef => (
-  node?.dataRef && typeof node.dataRef === 'object' ? node.dataRef as SidebarDataRef : {}
+const getSidebarDataRef = <T extends SidebarDataRef = SidebarDataRef>(node: { dataRef?: object } | null | undefined): T => (
+  node?.dataRef && typeof node.dataRef === 'object' ? node.dataRef as T : {} as T
 );
 
 const getSidebarNodeKeyText = (node: { key?: React.Key } | null | undefined): string => String(node?.key ?? '').trim();
@@ -136,7 +166,7 @@ interface BatchObjectItem {
   key: string;
   objectName: string;
   objectType: BatchObjectType;
-  dataRef: SidebarDataRef;
+  dataRef: SidebarNodeData;
 }
 
 const schemaObjectName = (row: SchemaObjectRow): string => (
@@ -322,16 +352,16 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   // Create Database Modal
   const [isCreateDbModalOpen, setIsCreateDbModalOpen] = useState(false);
   const [createDbForm] = Form.useForm();
-  const [targetConnection, setTargetConnection] = useState<any>(null);
+  const [targetConnection, setTargetConnection] = useState<TreeNode | null>(null);
   const [isRenameDbModalOpen, setIsRenameDbModalOpen] = useState(false);
   const [renameDbForm] = Form.useForm();
-  const [renameDbTarget, setRenameDbTarget] = useState<any>(null);
+  const [renameDbTarget, setRenameDbTarget] = useState<TreeNode | null>(null);
   const [isRenameTableModalOpen, setIsRenameTableModalOpen] = useState(false);
   const [renameTableForm] = Form.useForm();
-  const [renameTableTarget, setRenameTableTarget] = useState<any>(null);
+  const [renameTableTarget, setRenameTableTarget] = useState<TreeNode | null>(null);
   const [isRenameViewModalOpen, setIsRenameViewModalOpen] = useState(false);
   const [renameViewForm] = Form.useForm();
-  const [renameViewTarget, setRenameViewTarget] = useState<any>(null);
+  const [renameViewTarget, setRenameViewTarget] = useState<TreeNode | null>(null);
 
   // Connection Tag Modals
   const [isCreateTagModalOpen, setIsCreateTagModalOpen] = useState(false);
@@ -341,10 +371,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const [isBatchModalOpen, setIsBatchModalOpen] = useState(false);
   const [batchTables, setBatchTables] = useState<BatchObjectItem[]>([]);
   const [checkedTableKeys, setCheckedTableKeys] = useState<string[]>([]);
-  const [batchDbContext, setBatchDbContext] = useState<any>(null);
+  const [batchDbContext, setBatchDbContext] = useState<SidebarBatchDbContext>(null);
   const [selectedConnection, setSelectedConnection] = useState<string>('');
   const [selectedDatabase, setSelectedDatabase] = useState<string>('');
-  const [availableDatabases, setAvailableDatabases] = useState<any[]>([]);
+  const [availableDatabases, setAvailableDatabases] = useState<SidebarAvailableDatabase[]>([]);
   const [batchFilterKeyword, setBatchFilterKeyword] = useState<string>('');
   const [batchFilterType, setBatchFilterType] = useState<BatchObjectFilterType>('all');
   const [batchSelectionScope, setBatchSelectionScope] = useState<BatchSelectionScope>('filtered');
@@ -389,9 +419,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
   // Batch Database Operations Modal
   const [isBatchDbModalOpen, setIsBatchDbModalOpen] = useState(false);
-  const [batchDatabases, setBatchDatabases] = useState<any[]>([]);
+  const [batchDatabases, setBatchDatabases] = useState<SidebarBatchDatabase[]>([]);
   const [checkedDbKeys, setCheckedDbKeys] = useState<string[]>([]);
-  const [batchConnContext, setBatchConnContext] = useState<any>(null);
+  const [batchConnContext, setBatchConnContext] = useState<SavedConnection | null>(null);
   const [selectedDbConnection, setSelectedDbConnection] = useState<string>('');
 
   // Find in Database Modal
@@ -1628,6 +1658,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
       setIsBatchModalOpen(false);
 
+      if (!batchDbContext) return;
       const { conn, dbName } = batchDbContext;
       const objectNames = selectedObjects.map(t => t.objectName);
       const selectedViewCount = selectedObjects.filter(item => item.objectType === 'view').length;
@@ -1665,6 +1696,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           return;
       }
 
+      if (!batchDbContext) return;
       const { conn, dbName } = batchDbContext;
       const objectNames = selectedObjects.map(t => t.objectName);
 
@@ -1874,6 +1906,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       for (const db of selectedDbs) {
           const hide = message.loading(includeData ? t('sidebar.msg.backingUpDb', { name: db.dbName }) : t('sidebar.msg.exportingDbSchema', { name: db.dbName }), 0);
           try {
+              if (!batchConnContext) return;
               const res = await ExportDatabaseSQL(normalizeConnConfig(batchConnContext.config), db.dbName, includeData);
               hide();
               if (res.success) {
@@ -2191,25 +2224,25 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   const handleCreateDatabase = async () => {
+      if (!targetConnection) return;
       try {
           const values = await createDbForm.validateFields();
-          const conn = targetConnection.dataRef;
-          const config = { 
-              ...conn.config, 
+          const conn = getSidebarDataRef<SidebarRuntimeNodeData>(targetConnection);
+          const config = {
+              ...conn.config,
               port: Number(conn.config.port),
               password: conn.config.password || "",
               database: (conn.config.type === 'oracle' || conn.config.type === 'dameng') ? (conn.config.database || "") : "",
               useSSH: conn.config.useSSH || false,
               ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
           };
-          
-          const res = await CreateDatabase(buildRpcConnectionConfig(config) as any, values.name);
+
+          const res = await CreateDatabase(buildRpcConnectionConfig(config), values.name);
           if (res.success) {
               message.success(t('sidebar.msg.dbCreateSuccess'));
               setIsCreateDbModalOpen(false);
               createDbForm.resetFields();
-              // Refresh node
-              loadDatabases(targetConnection);
+              await loadDatabases(targetConnection);
           } else {
               message.error(t('sidebar.msg.dbCreateFailed', { message: res.message }));
           }
@@ -2218,24 +2251,24 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
-  const buildRuntimeConfig = (conn: any, overrideDatabase?: string, clearDatabase: boolean = false) => {
+  const buildRuntimeConfig = (conn: SavedConnection, overrideDatabase?: string, clearDatabase: boolean = false): RpcConnectionConfig => {
       return buildRpcConnectionConfig(conn.config, {
           database: resolveSidebarRuntimeDatabase(
               conn?.config?.type,
-              conn?.config?.driver,
-              conn?.config?.database,
+              conn?.config?.driver || '',
+              conn?.config?.database || '',
               overrideDatabase,
               clearDatabase,
           ),
       });
   };
 
-  const getConnectionNodeRef = (connRef: any) => {
+  const getConnectionNodeRef = (connRef: SavedConnection): SidebarLoadTreeNode => {
       const latestConn = connections.find(c => c.id === connRef.id);
       return { key: connRef.id, dataRef: latestConn || connRef };
   };
 
-  const getDatabaseNodeRef = (connRef: any, dbName: string) => {
+  const getDatabaseNodeRef = (connRef: SavedConnection, dbName: string): SidebarLoadTreeNode => {
       const latestConn = connections.find(c => c.id === connRef.id);
       return {
           key: `${connRef.id}-${dbName}`,
@@ -2256,7 +2289,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (!renameDbTarget) return;
       try {
           const values = await renameDbForm.validateFields();
-          const conn = renameDbTarget.dataRef;
+          const conn = getSidebarDataRef<SidebarRuntimeNodeData>(renameDbTarget);
           const oldDbName = String(conn.dbName || '').trim();
           const newDbName = String(values.newName || '').trim();
           if (!oldDbName || !newDbName) {
@@ -2314,7 +2347,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (!renameTableTarget) return;
       try {
           const values = await renameTableForm.validateFields();
-          const conn = renameTableTarget.dataRef;
+          const conn = getSidebarDataRef<SidebarRuntimeNodeData>(renameTableTarget);
           const oldTableName = String(conn.tableName || '').trim();
           const newTableName = String(values.newName || '').trim();
           if (!oldTableName || !newTableName) {
@@ -2573,7 +2606,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (!renameViewTarget) return;
       try {
           const values = await renameViewForm.validateFields();
-          const conn = renameViewTarget.dataRef;
+          const conn = getSidebarDataRef<SidebarRuntimeNodeData>(renameViewTarget);
           const oldViewName = String(conn.viewName || '').trim();
           const newViewName = String(values.newName || '').trim();
           if (!oldViewName || !newViewName) {
@@ -4042,17 +4075,17 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             onOk={() => {
                 createTagForm.validateFields().then(values => {
                     if (renameViewTarget?.type === 'tag') {
-                        // Rename
+                        const tag = getSidebarDataRef(renameViewTarget) as unknown as ConnectionTag;
                         updateConnectionTag({
-                            ...renameViewTarget.dataRef,
-                            name: values.name,
+                            ...tag,
+                            name: String(values.name || ''),
                             connectionIds: values.connectionIds || []
                         });
                         // update cross-connections
-                        const allOtherTagsIds = connectionTags.filter(t => t.id !== renameViewTarget.dataRef.id).flatMap(t => t.connectionIds);
+                        const allOtherTagsIds = connectionTags.filter(t => t.id !== tag.id).flatMap(t => t.connectionIds);
                         (values.connectionIds || []).forEach((cid: string) => {
                            if (allOtherTagsIds.includes(cid)) {
-                               moveConnectionToTag(cid, renameViewTarget.dataRef.id);
+                               moveConnectionToTag(cid, tag.id);
                            }
                         });
                     } else {
@@ -4109,7 +4142,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         </Modal>
 
         <Modal
-            title={t('sidebar.modal.renameDatabase', { suffix: renameDbTarget?.dataRef?.dbName ? ` (${renameDbTarget.dataRef.dbName})` : '' })}
+            title={t('sidebar.modal.renameDatabase', { suffix: getSidebarDataRef(renameDbTarget).dbName ? ` (${getSidebarDataRef(renameDbTarget).dbName})` : '' })}
             open={isRenameDbModalOpen}
             onOk={handleRenameDatabase}
             onCancel={() => {
@@ -4126,7 +4159,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         </Modal>
 
         <Modal
-            title={t('sidebar.modal.renameTable', { suffix: renameTableTarget?.dataRef?.tableName ? ` (${renameTableTarget.dataRef.tableName})` : '' })}
+            title={t('sidebar.modal.renameTable', { suffix: getSidebarDataRef(renameTableTarget).tableName ? ` (${getSidebarDataRef(renameTableTarget).tableName})` : '' })}
             open={isRenameTableModalOpen}
             onOk={handleRenameTable}
             onCancel={() => {
@@ -4143,7 +4176,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         </Modal>
 
         <Modal
-            title={t('sidebar.modal.renameView', { suffix: renameViewTarget?.dataRef?.viewName ? ` (${renameViewTarget.dataRef.viewName})` : '' })}
+            title={t('sidebar.modal.renameView', { suffix: getSidebarDataRef(renameViewTarget).viewName ? ` (${getSidebarDataRef(renameViewTarget).viewName})` : '' })}
             open={isRenameViewModalOpen}
             onOk={handleRenameView}
             onCancel={() => {
