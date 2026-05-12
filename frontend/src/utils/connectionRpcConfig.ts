@@ -19,7 +19,7 @@ type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ss
   queryTimeout?: number;
 };
 
-type ConnectionConfigInput = ConnectionConfigKnownFields | (UnknownRecord & ConnectionConfigKnownFields);
+export type ConnectionConfigInput = ConnectionConfigKnownFields | (UnknownRecord & ConnectionConfigKnownFields);
 type SSHConfigInput = Partial<connection.SSHConfig> | UnknownRecord;
 type ProxyConfigInput = Partial<connection.ProxyConfig> | UnknownRecord;
 type HttpTunnelConfigInput = Partial<connection.HTTPTunnelConfig> | UnknownRecord;

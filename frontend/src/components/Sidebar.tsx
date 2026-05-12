@@ -40,7 +40,7 @@ import type { EventDataNode } from 'rc-tree/lib/interface';
 	} from '@ant-design/icons';
 import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
-	import { SavedConnection, ExternalSQLTreeEntry, type TabData } from '../types';
+	import { SavedConnection, ExternalSQLTreeEntry, type ConnectionTag, type TabData } from '../types';
 import { getDbIcon } from './DatabaseIcons';
 	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
@@ -48,7 +48,7 @@ import { supportsTableTruncateAction, type TableDataDangerActionKind } from './t
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import FindInDatabaseModal from './FindInDatabaseModal';
-import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
+import { buildRpcConnectionConfig, type RpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { noAutoCapInputProps } from '../utils/inputAutoCap';
 import {
   buildDuckDBMacroDDL,
