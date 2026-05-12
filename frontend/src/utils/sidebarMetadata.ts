@@ -132,8 +132,10 @@ export type MetadataQuerySpec = {
   inferredType?: 'FUNCTION' | 'PROCEDURE';
 };
 
+export type MetadataRow = Record<string, unknown>;
+
 export type MetadataQueryResult = {
-  rows: Record<string, any>[];
+  rows: MetadataRow[];
   inferredType?: 'FUNCTION' | 'PROCEDURE';
 };
 
@@ -159,8 +161,8 @@ export const normalizeMetadataQuerySpecs = (specs: MetadataQuerySpec[]): Metadat
   return normalized;
 };
 
-export const getCaseInsensitiveValue = (row: Record<string, any>, candidateKeys: string[]): string => {
-  const keyMap = new Map<string, any>();
+export const getCaseInsensitiveValue = (row: MetadataRow, candidateKeys: string[]): string => {
+  const keyMap = new Map<string, unknown>();
   Object.keys(row || {}).forEach((key) => keyMap.set(key.toLowerCase(), row[key]));
   for (const key of candidateKeys) {
     const value = keyMap.get(key.toLowerCase());
@@ -172,8 +174,8 @@ export const getCaseInsensitiveValue = (row: Record<string, any>, candidateKeys:
   return '';
 };
 
-export const getCaseInsensitiveRawValue = (row: Record<string, any>, candidateKeys: string[]): any => {
-  const keyMap = new Map<string, any>();
+export const getCaseInsensitiveRawValue = (row: MetadataRow, candidateKeys: string[]): unknown => {
+  const keyMap = new Map<string, unknown>();
   Object.keys(row || {}).forEach((key) => keyMap.set(key.toLowerCase(), row[key]));
   for (const key of candidateKeys) {
     const value = keyMap.get(key.toLowerCase());
@@ -184,7 +186,7 @@ export const getCaseInsensitiveRawValue = (row: Record<string, any>, candidateKe
   return undefined;
 };
 
-export const getFirstRowValue = (row: Record<string, any>): string => {
+export const getFirstRowValue = (row: MetadataRow): string => {
   for (const value of Object.values(row || {})) {
     if (value !== undefined && value !== null) {
       const normalized = String(value).trim();
@@ -194,7 +196,7 @@ export const getFirstRowValue = (row: Record<string, any>): string => {
   return '';
 };
 
-export const getMySQLShowTablesName = (row: Record<string, any>): string => {
+export const getMySQLShowTablesName = (row: MetadataRow): string => {
   for (const key of Object.keys(row || {})) {
     if (!key.toLowerCase().startsWith('tables_in_')) continue;
     const value = row[key];
@@ -214,7 +216,7 @@ export const buildQualifiedName = (schemaName: string, objectName: string): stri
   return `${schema}.${name}`;
 };
 
-export const parseDuckDBParameterNames = (raw: any): string[] => {
+export const parseDuckDBParameterNames = (raw: unknown): string[] => {
   if (Array.isArray(raw)) {
     return raw
       .map((item) => String(item ?? '').trim())
@@ -235,8 +237,8 @@ export const parseDuckDBParameterNames = (raw: any): string[] => {
 export const buildDuckDBMacroDDL = (
   schemaName: string,
   functionName: string,
-  parametersRaw: any,
-  macroDefinitionRaw: any
+  parametersRaw: unknown,
+  macroDefinitionRaw: unknown
 ): string => {
   const schema = String(schemaName || '').trim();
   const name = String(functionName || '').trim();
