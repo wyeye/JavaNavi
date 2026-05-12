@@ -28,7 +28,7 @@ export const getTemporalPickerType = (columnType?: string): TemporalPickerType =
   return null;
 };
 
-export const parseToDayjs = (val: any, pickerType: TemporalPickerType): dayjs.Dayjs | null => {
+export const parseToDayjs = (val: unknown, pickerType: TemporalPickerType): dayjs.Dayjs | null => {
   if (val === null || val === undefined || val === '') return null;
   const str = String(val).trim();
   if (!str || /^0{4}-0{2}-0{2}/.test(str)) return null;
@@ -44,13 +44,13 @@ export const formatFromDayjs = (val: dayjs.Dayjs | null, pickerType: TemporalPic
 };
 
 export const resolveTemporalEditorSaveValue = (
-  formValue: any,
+  formValue: unknown,
   pickerValue: dayjs.Dayjs | null | undefined,
   pickerType: TemporalPickerType,
-): string | null | any => {
+): string | null | unknown => {
   const value = pickerValue !== undefined ? pickerValue : formValue;
   if (value && dayjs.isDayjs(value)) {
-    return formatFromDayjs(value as dayjs.Dayjs, pickerType);
+    return formatFromDayjs(value, pickerType);
   }
   if (!value) {
     return null;
