@@ -30,6 +30,26 @@ import { buildRedisWorkbenchTheme } from './redisViewerWorkbenchTheme';
 import { noAutoCapInputProps } from '../utils/inputAutoCap';
 import { normalizeRedisSearchDraftChange, normalizeRedisSearchInput, type RedisSearchMode } from '../utils/redisSearchPattern';
 import { decodeRedisUtf8Value, formatRedisStringValue, toHexDisplay } from '../utils/redisValueDisplay';
+import {
+    RedisDeleteHashField,
+    RedisDeleteKeys,
+    RedisGetValue,
+    RedisKeyExists,
+    RedisListPush,
+    RedisListSet,
+    RedisRenameKey,
+    RedisScanKeys,
+    RedisSetAdd,
+    RedisSetHashField,
+    RedisSetRemove,
+    RedisSetString,
+    RedisSetTTL,
+    RedisStreamAdd,
+    RedisStreamDelete,
+    RedisZSetAdd,
+    RedisZSetRemove,
+    type QueryResult,
+} from '@compat/javanaviApp';
 
 const { Search } = Input;
 
@@ -49,6 +69,52 @@ interface RedisViewerProps {
     connectionId: string;
     redisDB: number;
 }
+
+interface RedisOperationDeletedResult {
+    deleted: number;
+}
+
+interface RedisScanData {
+    keys?: RedisKeyInfo[];
+    cursor?: string | number;
+}
+
+interface RedisKeyExistsData {
+    exists?: boolean;
+}
+
+interface RedisStreamAddData {
+    id?: string;
+}
+
+type RedisDisplayMeta = {
+    displayValue: string;
+    isBinary: boolean;
+    isJson: boolean;
+    encoding?: string;
+};
+
+type HashFieldRow = RedisDisplayMeta & { field: string; value: string };
+type ListItemRow = RedisDisplayMeta & { index: number; value: string };
+type SetMemberRow = RedisDisplayMeta & { index: number; member: string };
+type ZSetMemberRow = Omit<RedisDisplayMeta, 'displayValue'> & { index: number; member: string; score: number; displayMember: string };
+type StreamRow = Omit<RedisDisplayMeta, 'displayValue'> & { index: number; id: string; rawFieldsText: string; displayFields: string };
+
+const getErrorMessage = (error: unknown, fallback = '未知错误'): string => {
+    if (error instanceof Error) {
+        return error.message || fallback;
+    }
+    if (typeof error === 'object' && error !== null && 'message' in error) {
+        const messageValue = (error as { message?: unknown }).message;
+        return typeof messageValue === 'string' && messageValue ? messageValue : fallback;
+    }
+    if (typeof error === 'string' && error) {
+        return error;
+    }
+    return fallback;
+};
+
+const queryData = <T,>(res: QueryResult): T | undefined => res.data as T | undefined;
 
 // 可拖拽分隔条组件 - 使用直接 DOM 操作避免卡顿
 const ResizableDivider: React.FC<{
@@ -309,12 +375,12 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
 
         setLoading(true);
         try {
-            const res = await (window as any).go.app.App.RedisScanKeys(buildRpcConnectionConfig(config), normalizedPattern, fromCursor, effectiveTargetCount);
+            const res = await RedisScanKeys(buildRpcConnectionConfig(config), normalizedPattern, fromCursor, effectiveTargetCount);
             if (requestId !== latestLoadRequestIdRef.current) {
                 return;
             }
             if (res.success) {
-                const result = res.data;
+                const result = queryData<RedisScanData>(res);
                 const scannedKeys = Array.isArray(result?.keys) ? result.keys : [];
                 const nextCursor = normalizeRedisCursor(result?.cursor);
                 if (append) {
@@ -332,11 +398,11 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
             } else {
                 message.error('加载 Key 失败: ' + res.message);
             }
-        } catch (e: any) {
+        } catch (e: unknown) {
             if (requestId !== latestLoadRequestIdRef.current) {
                 return;
             }
-            message.error('加载 Key 失败: ' + (e?.message || String(e)));
+            message.error('加载 Key 失败: ' + getErrorMessage(e));
         } finally {
             if (requestId === latestLoadRequestIdRef.current) {
                 setLoading(false);
@@ -410,9 +476,9 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
 
         setValueLoading(true);
         try {
-            const res = await (window as any).go.app.App.RedisGetValue(buildRpcConnectionConfig(config), key);
+            const res = await RedisGetValue(buildRpcConnectionConfig(config), key);
             if (res.success) {
-                setKeyValue(res.data);
+                setKeyValue(queryData<RedisValue>(res) ?? null);
                 setSelectedKey(key);
             } else {
                 const messageText = String(res.message || '');
@@ -423,8 +489,8 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                     message.error('获取值失败: ' + messageText);
                 }
             }
-        } catch (e: any) {
-            const messageText = e?.message || String(e);
+        } catch (e: unknown) {
+            const messageText = getErrorMessage(e);
             if (isRedisKeyGoneErrorMessage(messageText)) {
                 removeMissingKeyFromView(key);
                 message.warning('Key 已不存在或已过期，已从列表移除');
@@ -441,9 +507,9 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         if (!config) return;
 
         try {
-            const res = await (window as any).go.app.App.RedisDeleteKeys(buildRpcConnectionConfig(config), keysToDelete);
+            const res = await RedisDeleteKeys(buildRpcConnectionConfig(config), keysToDelete);
             if (res.success) {
-                message.success(`已删除 ${res.data.deleted} 个 Key`);
+                message.success(`已删除 ${queryData<RedisOperationDeletedResult>(res)?.deleted ?? 0} 个 Key`);
                 setKeys(prev => prev.filter(k => !keysToDelete.includes(k.key)));
                 if (selectedKey && keysToDelete.includes(selectedKey)) {
                     setSelectedKey(null);
@@ -453,8 +519,8 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
             } else {
                 message.error('删除失败: ' + res.message);
             }
-        } catch (e: any) {
-            message.error('删除失败: ' + (e?.message || String(e)));
+        } catch (e: unknown) {
+            message.error('删除失败: ' + getErrorMessage(e));
         }
     };
 
@@ -469,7 +535,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
 
         try {
             const values = await ttlForm.validateFields();
-            const res = await (window as any).go.app.App.RedisSetTTL(buildRpcConnectionConfig(config), selectedKey, values.ttl);
+            const res = await RedisSetTTL(buildRpcConnectionConfig(config), selectedKey, values.ttl);
             if (res.success) {
                 message.success('TTL 设置成功');
                 setTtlModalOpen(false);
@@ -478,8 +544,8 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
             } else {
                 message.error('设置失败: ' + res.message);
             }
-        } catch (e: any) {
-            message.error('设置失败: ' + (e?.message || String(e)));
+        } catch (e: unknown) {
+            message.error('设置失败: ' + getErrorMessage(e));
         }
     };
 
@@ -488,7 +554,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         if (!config || !selectedKey) return;
 
         try {
-            const res = await (window as any).go.app.App.RedisSetString(buildRpcConnectionConfig(config), selectedKey, editValue, keyValue?.ttl || -1);
+            const res = await RedisSetString(buildRpcConnectionConfig(config), selectedKey, editValue, keyValue?.ttl || -1);
             if (res.success) {
                 message.success('保存成功');
                 setEditModalOpen(false);
@@ -496,8 +562,8 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
             } else {
                 message.error('保存失败: ' + res.message);
             }
-        } catch (e: any) {
-            message.error('保存失败: ' + (e?.message || String(e)));
+        } catch (e: unknown) {
+            message.error('保存失败: ' + getErrorMessage(e));
         }
     };
 
@@ -507,7 +573,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
 
         try {
             const values = await newKeyForm.validateFields();
-            const res = await (window as any).go.app.App.RedisSetString(buildRpcConnectionConfig(config), values.key, values.value, values.ttl || -1);
+            const res = await RedisSetString(buildRpcConnectionConfig(config), values.key, values.value, values.ttl || -1);
             if (res.success) {
                 message.success('创建成功');
                 setNewKeyModalOpen(false);
@@ -516,8 +582,8 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
             } else {
                 message.error('创建失败: ' + res.message);
             }
-        } catch (e: any) {
-            message.error('创建失败: ' + (e?.message || String(e)));
+        } catch (e: unknown) {
+            message.error('创建失败: ' + getErrorMessage(e));
         }
     };
 
@@ -544,17 +610,17 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 return;
             }
 
-            const existsRes = await (window as any).go.app.App.RedisKeyExists(buildRpcConnectionConfig(config), nextKey);
+            const existsRes = await RedisKeyExists(buildRpcConnectionConfig(config), nextKey);
             if (!existsRes?.success) {
                 message.error('校验目标 Key 失败: ' + (existsRes?.message || '未知错误'));
                 return;
             }
-            if (existsRes?.data?.exists) {
+            if (queryData<RedisKeyExistsData>(existsRes)?.exists) {
                 message.error(`目标 Key 已存在: ${nextKey}`);
                 return;
             }
 
-            const res = await (window as any).go.app.App.RedisRenameKey(buildRpcConnectionConfig(config), renameTargetKey, nextKey);
+            const res = await RedisRenameKey(buildRpcConnectionConfig(config), renameTargetKey, nextKey);
             if (res.success) {
                 const nextState = applyRenamedRedisKeyState(
                     {
@@ -579,8 +645,8 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
             } else {
                 message.error('重命名失败: ' + res.message);
             }
-        } catch (e: any) {
-            message.error('重命名失败: ' + (e?.message || String(e)));
+        } catch (e: unknown) {
+            message.error('重命名失败: ' + getErrorMessage(e));
         }
     };
 
@@ -1037,7 +1103,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         };
 
         const renderHashValue = () => {
-            const data = Object.entries(keyValue.value as Record<string, string>).map(([field, value]) => {
+            const data: HashFieldRow[] = Object.entries(keyValue.value as Record<string, string>).map(([field, value]) => {
                 const { displayValue, isBinary, isJson, encoding } = processValueForCurrentView(value);
                 return { field, value, displayValue, isBinary, isJson, encoding };
             });
@@ -1046,15 +1112,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisSetHashField(buildRpcConnectionConfig(config), selectedKey, field, newValue);
+                    const res = await RedisSetHashField(buildRpcConnectionConfig(config), selectedKey, field, newValue);
                     if (res.success) {
                         message.success('修改成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('修改失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('修改失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('修改失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1062,15 +1128,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisDeleteHashField(buildRpcConnectionConfig(config), selectedKey, [field]);
+                    const res = await RedisDeleteHashField(buildRpcConnectionConfig(config), selectedKey, [field]);
                     if (res.success) {
                         message.success('删除成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('删除失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('删除失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('删除失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1109,7 +1175,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 dataIndex: 'displayValue',
                                 key: 'value',
                                 ellipsis: true,
-                                render: (text: string, record: any) => {
+                                render: (text: string, record: HashFieldRow) => {
                                     const tooltipContent = record.encoding && record.encoding !== 'UTF-8'
                                         ? `[${record.encoding}]\n${text}`
                                         : text;
@@ -1131,7 +1197,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 title: '操作',
                                 key: 'action',
                                 width: 120,
-                                render: (_: any, record: any) => (
+                                render: (_: unknown, record: HashFieldRow) => (
                                     <Space size="small">
                                         <Tooltip title="复制值">
                                             <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => {
@@ -1175,7 +1241,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         };
 
         const renderListValue = () => {
-            const data = (keyValue.value as string[]).map((value, index) => {
+            const data: ListItemRow[] = (keyValue.value as string[]).map((value, index) => {
                 const { displayValue, isBinary, isJson, encoding } = processValueForCurrentView(value);
                 return { index, value, displayValue, isBinary, isJson, encoding };
             });
@@ -1184,15 +1250,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisListSet(buildRpcConnectionConfig(config), selectedKey, index, newValue);
+                    const res = await RedisListSet(buildRpcConnectionConfig(config), selectedKey, index, newValue);
                     if (res.success) {
                         message.success('修改成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('修改失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('修改失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('修改失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1200,15 +1266,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisListPush(buildRpcConnectionConfig(config), selectedKey, { values: [value], position });
+                    const res = await RedisListPush(buildRpcConnectionConfig(config), selectedKey, { values: [value], position });
                     if (res.success) {
                         message.success('添加成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('添加失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('添加失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('添加失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1259,7 +1325,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 dataIndex: 'displayValue',
                                 key: 'value',
                                 ellipsis: true,
-                                render: (text: string, record: any) => {
+                                render: (text: string, record: ListItemRow) => {
                                     const tooltipContent = record.encoding && record.encoding !== 'UTF-8'
                                         ? `[${record.encoding}]\n${text}`
                                         : text;
@@ -1281,7 +1347,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 title: '操作',
                                 key: 'action',
                                 width: 80,
-                                render: (_: any, record: any) => (
+                                render: (_: unknown, record: ListItemRow) => (
                                     <Space size="small">
                                         <Tooltip title="复制值">
                                             <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => {
@@ -1322,7 +1388,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         };
 
         const renderSetValue = () => {
-            const data = (keyValue.value as string[]).map((member, index) => {
+            const data: SetMemberRow[] = (keyValue.value as string[]).map((member, index) => {
                 const { displayValue, isBinary, isJson, encoding } = processValueForCurrentView(member);
                 return { index, member, displayValue, isBinary, isJson, encoding };
             });
@@ -1331,15 +1397,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisSetAdd(buildRpcConnectionConfig(config), selectedKey, [member]);
+                    const res = await RedisSetAdd(buildRpcConnectionConfig(config), selectedKey, [member]);
                     if (res.success) {
                         message.success('添加成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('添加失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('添加失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('添加失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1347,15 +1413,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisSetRemove(buildRpcConnectionConfig(config), selectedKey, [member]);
+                    const res = await RedisSetRemove(buildRpcConnectionConfig(config), selectedKey, [member]);
                     if (res.success) {
                         message.success('删除成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('删除失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('删除失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('删除失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1385,7 +1451,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 dataIndex: 'displayValue',
                                 key: 'member',
                                 ellipsis: true,
-                                render: (text: string, record: any) => {
+                                render: (text: string, record: SetMemberRow) => {
                                     const tooltipContent = record.encoding && record.encoding !== 'UTF-8'
                                         ? `[${record.encoding}]\n${text}`
                                         : text;
@@ -1407,7 +1473,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 title: '操作',
                                 key: 'action',
                                 width: 80,
-                                render: (_: any, record: any) => (
+                                render: (_: unknown, record: SetMemberRow) => (
                                     <Space size="small">
                                         <Tooltip title="复制值">
                                             <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => {
@@ -1436,7 +1502,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         };
 
         const renderZSetValue = () => {
-            const data = (keyValue.value as Array<{ member: string; score: number }>).map((item, index) => {
+            const data: ZSetMemberRow[] = (keyValue.value as Array<{ member: string; score: number }>).map((item, index) => {
                 const { displayValue, isBinary, isJson, encoding } = processValueForCurrentView(item.member);
                 return { ...item, index, displayMember: displayValue, isBinary, isJson, encoding };
             });
@@ -1445,15 +1511,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisZSetAdd(buildRpcConnectionConfig(config), selectedKey, [{ member, score }]);
+                    const res = await RedisZSetAdd(buildRpcConnectionConfig(config), selectedKey, [{ member, score }]);
                     if (res.success) {
                         message.success('添加成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('添加失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('添加失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('添加失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1461,15 +1527,15 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 const config = getConfig();
                 if (!config) return;
                 try {
-                    const res = await (window as any).go.app.App.RedisZSetRemove(buildRpcConnectionConfig(config), selectedKey, [member]);
+                    const res = await RedisZSetRemove(buildRpcConnectionConfig(config), selectedKey, [member]);
                     if (res.success) {
                         message.success('删除成功');
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('删除失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('删除失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('删除失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1510,7 +1576,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 dataIndex: 'displayMember',
                                 key: 'member',
                                 ellipsis: true,
-                                render: (text: string, record: any) => {
+                                render: (text: string, record: ZSetMemberRow) => {
                                     const tooltipContent = record.encoding && record.encoding !== 'UTF-8'
                                         ? `[${record.encoding}]\n${text}`
                                         : text;
@@ -1532,7 +1598,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 title: '操作',
                                 key: 'action',
                                 width: 120,
-                                render: (_: any, record: any) => (
+                                render: (_: unknown, record: ZSetMemberRow) => (
                                     <Space size="small">
                                         <Tooltip title="复制值">
                                             <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => {
@@ -1578,7 +1644,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         };
 
         const renderStreamValue = () => {
-            const data = (keyValue.value as StreamEntry[]).map((item, index) => {
+            const data: StreamRow[] = (keyValue.value as StreamEntry[]).map((item, index) => {
                 const rawFieldsText = JSON.stringify(item.fields ?? {}, null, 2);
                 const { displayValue, isBinary, isJson, encoding } = processValueForCurrentView(rawFieldsText);
                 return {
@@ -1620,16 +1686,17 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 }
 
                 try {
-                    const res = await (window as any).go.app.App.RedisStreamAdd(buildRpcConnectionConfig(config), selectedKey, fieldMap, id || '*');
+                    const res = await RedisStreamAdd(buildRpcConnectionConfig(config), selectedKey, fieldMap, id || '*');
                     if (res.success) {
-                        const newID = res.data?.id ? ` (${res.data.id})` : '';
+                        const newIDValue = queryData<RedisStreamAddData>(res)?.id;
+                        const newID = newIDValue ? ` (${newIDValue})` : '';
                         message.success(`添加成功${newID}`);
                         loadKeyValue(selectedKey);
                     } else {
                         message.error('添加失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('添加失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('添加失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1638,9 +1705,9 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 if (!config) return;
 
                 try {
-                    const res = await (window as any).go.app.App.RedisStreamDelete(buildRpcConnectionConfig(config), selectedKey, [id]);
+                    const res = await RedisStreamDelete(buildRpcConnectionConfig(config), selectedKey, [id]);
                     if (res.success) {
-                        const deleted = Number(res.data?.deleted ?? 0);
+                        const deleted = Number(queryData<RedisOperationDeletedResult>(res)?.deleted ?? 0);
                         if (deleted > 0) {
                             message.success('删除成功');
                         } else {
@@ -1650,8 +1717,8 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                     } else {
                         message.error('删除失败: ' + res.message);
                     }
-                } catch (e: any) {
-                    message.error('删除失败: ' + (e?.message || String(e)));
+                } catch (e: unknown) {
+                    message.error('删除失败: ' + getErrorMessage(e));
                 }
             };
 
@@ -1697,7 +1764,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 dataIndex: 'displayFields',
                                 key: 'fields',
                                 ellipsis: true,
-                                render: (text: string, record: any) => {
+                                render: (text: string, record: StreamRow) => {
                                     const tooltipContent = record.encoding && record.encoding !== 'UTF-8'
                                         ? `[${record.encoding}]\n${text}`
                                         : text;
@@ -1719,7 +1786,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                                 title: '操作',
                                 key: 'action',
                                 width: 140,
-                                render: (_: any, record: any) => (
+                                render: (_: unknown, record: StreamRow) => (
                                     <Space size="small">
                                         <Tooltip title="复制 ID">
                                             <Button type="text" size="small" icon={<CopyOutlined />} onClick={() => {
