@@ -1,8 +1,8 @@
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { message } from 'antd';
-import { TabData, ColumnDefinition, IndexDefinition } from '../types';
+import type { TabData, ColumnDefinition, IndexDefinition, ConnectionConfig } from '../types';
 import { useStore } from '../store';
-import { DBQuery, DBGetColumns, DBGetIndexes } from '@compat/javanaviApp';
+import { DBQuery, DBGetColumns, DBGetIndexes, type QueryResult } from '@compat/javanaviApp';
 import DataGrid, { JAVANAVI_ROW_KEY } from './DataGrid';
 import { resolveEditRowLocator, type EditRowLocator } from '../utils/rowLocator';
 import { buildOrderBySQL, buildPaginatedSelectSQL, buildWhereSQL, hasExplicitSort, quoteIdentPart, quoteQualifiedIdent, withSortBufferTuningSQL, type FilterCondition } from '../utils/sql';
@@ -28,7 +28,57 @@ type ViewerPaginationState = {
   totalCountCancelled: boolean;
 };
 
+type DataRow = Record<string, unknown> & Partial<Record<typeof JAVANAVI_ROW_KEY, string | number>>;
+type ViewerSortOrder = 'ascend' | 'descend';
+type ViewerSortInfo = { columnKey: string; order: ViewerSortOrder; enabled?: boolean };
+type QueryResultWithData<T> = Omit<QueryResult, 'data'> & { data?: T | null };
+
 const JS_MAX_SAFE_INTEGER_BIGINT = BigInt(Number.MAX_SAFE_INTEGER);
+
+const toRecord = (value: unknown): Record<string, unknown> | null => (
+  value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+);
+
+const getErrorMessage = (error: unknown, fallback = '操作失败'): string => {
+  if (error instanceof Error) return error.message || fallback;
+  if (typeof error === 'string') return error || fallback;
+  const record = toRecord(error);
+  const messageValue = record?.message;
+  if (typeof messageValue === 'string' && messageValue) return messageValue;
+  if (error === null || error === undefined) return fallback;
+  return String(error) || fallback;
+};
+
+const isViewerSortOrder = (value: unknown): value is ViewerSortOrder => (
+  value === 'ascend' || value === 'descend'
+);
+
+const normalizeViewerSortInfo = (value: unknown): ViewerSortInfo[] => {
+  const items = Array.isArray(value) ? value : (value ? [value] : []);
+  return items
+    .map((item): ViewerSortInfo | null => {
+      const record = toRecord(item);
+      if (!record) return null;
+      const columnKey = String(record.columnKey || '').trim();
+      if (!columnKey || !isViewerSortOrder(record.order)) return null;
+      return {
+        columnKey,
+        order: record.order,
+        enabled: record.enabled !== false,
+      };
+    })
+    .filter((item): item is ViewerSortInfo => item !== null);
+};
+
+const toDataRows = (value: unknown): DataRow[] => (
+  Array.isArray(value)
+    ? value.filter((row): row is DataRow => Boolean(toRecord(row)))
+    : []
+);
+
+const queryArrayData = <T,>(result: QueryResult): T[] => (
+  Array.isArray(result.data) ? result.data as T[] : []
+);
 
 const isIntegerText = (text: string): boolean => /^[+-]?\d+$/.test(text);
 
@@ -59,7 +109,7 @@ const toNonNegativeFiniteNumber = (value: unknown): number | null => {
   return null;
 };
 
-const parseTotalFromCountRow = (row: any): number | null => {
+const parseTotalFromCountRow = (row: unknown): number | null => {
   if (!row || typeof row !== 'object') return null;
   const entries = Object.entries(row as Record<string, unknown>);
   if (entries.length === 0) return null;
@@ -144,7 +194,7 @@ type ViewerFilterSnapshot = {
   quickWhereCondition: string;
   currentPage: number;
   pageSize: number;
-  sortInfo: Array<{ columnKey: string, order: string, enabled?: boolean }>;
+  sortInfo: ViewerSortInfo[];
   scrollTop: number;
   scrollLeft: number;
 };
@@ -180,10 +230,7 @@ const getViewerFilterSnapshot = (tabId: string): ViewerFilterSnapshot => {
     quickWhereCondition: normalizeQuickWhereCondition(cached.quickWhereCondition),
     currentPage: Number.isFinite(Number(cached.currentPage)) && Number(cached.currentPage) > 0 ? Number(cached.currentPage) : 1,
     pageSize: Number.isFinite(Number(cached.pageSize)) && Number(cached.pageSize) > 0 ? Number(cached.pageSize) : 100,
-    sortInfo: Array.isArray(cached.sortInfo)
-      ? cached.sortInfo.filter(s => s && s.columnKey && (s.order === 'ascend' || s.order === 'descend'))
-          .map(s => ({ columnKey: String(s.columnKey), order: s.order }))
-      : (cached.sortInfo && (cached.sortInfo as any).columnKey ? [{ columnKey: String((cached.sortInfo as any).columnKey), order: (cached.sortInfo as any).order }] : []),
+    sortInfo: normalizeViewerSortInfo(cached.sortInfo),
     scrollTop: Number.isFinite(Number(cached.scrollTop)) ? Number(cached.scrollTop) : 0,
     scrollLeft: Number.isFinite(Number(cached.scrollLeft)) ? Number(cached.scrollLeft) : 0,
   };
@@ -191,7 +238,7 @@ const getViewerFilterSnapshot = (tabId: string): ViewerFilterSnapshot => {
 
 const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isActive = true }) => {
   const initialViewerSnapshot = useMemo(() => getViewerFilterSnapshot(tab.id), [tab.id]);
-  const [data, setData] = useState<any[]>([]);
+  const [data, setData] = useState<DataRow[]>([]);
   const [columnNames, setColumnNames] = useState<string[]>([]);
   const [pkColumns, setPkColumns] = useState<string[]>([]);
   const [editLocator, setEditLocator] = useState<EditRowLocator | undefined>(undefined);
@@ -209,7 +256,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
   const manualCountKeyRef = useRef<string>('');
   const editLocatorSeqRef = useRef(0);
   const editLocatorKeyRef = useRef<string>('');
-  const latestConfigRef = useRef<any>(null);
+  const latestConfigRef = useRef<ConnectionConfig | null>(null);
   const latestDbTypeRef = useRef<string>('');
   const latestDbNameRef = useRef<string>('');
   const latestCountSqlRef = useRef<string>('');
@@ -231,7 +278,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
       totalCountCancelled: false,
   });
 
-  const [sortInfo, setSortInfo] = useState<Array<{ columnKey: string, order: string, enabled?: boolean }>>(initialViewerSnapshot.sortInfo);
+  const [sortInfo, setSortInfo] = useState<ViewerSortInfo[]>(initialViewerSnapshot.sortInfo);
   
   const [showFilter, setShowFilter] = useState<boolean>(initialViewerSnapshot.showFilter);
   const [filterConditions, setFilterConditions] = useState<FilterCondition[]>(initialViewerSnapshot.conditions);
@@ -337,7 +384,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     const countConfig = buildRpcConnectionConfig(config, { queryTimeout: 120 });
 
     try {
-      const resCount = await DBQuery(countConfig as any, dbName, countSql);
+      const resCount = await DBQuery(countConfig, dbName, countSql);
       const countDuration = Date.now() - countStart;
       addSqlLog({
         id: `log-${Date.now()}-manual-count`,
@@ -378,11 +425,11 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
         totalCountLoading: false,
         totalCountCancelled: false,
       }));
-    } catch (e: any) {
+    } catch (e: unknown) {
       if (manualCountSeqRef.current !== countSeq) return;
       if (manualCountKeyRef.current !== countKey) return;
       setPagination(prev => ({ ...prev, totalCountLoading: false }));
-      message.error(`统计总数失败: ${String(e?.message || e)}`);
+      message.error(`统计总数失败: ${getErrorMessage(e)}`);
     }
   }, [addSqlLog]);
 
@@ -434,8 +481,8 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     if (isMongoDB) {
         try {
             mongoFilter = buildMongoFilter(effectiveFilterConditions);
-        } catch (e: any) {
-            message.error(`Mongo 筛选条件无效：${String(e?.message || e || '解析失败')}`);
+        } catch (e: unknown) {
+            message.error(`Mongo 筛选条件无效：${getErrorMessage(e, '解析失败')}`);
             if (fetchSeqRef.current === seq) setLoading(false);
             return;
         }
@@ -503,10 +550,10 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     const requestStartTime = Date.now();
     let executedSql = sql;
     try {
-        const executeDataQuery = async (querySql: string, attemptLabel: string) => {
+        const executeDataQuery = async (querySql: string, attemptLabel: string): Promise<QueryResultWithData<DataRow[]>> => {
             const startTime = Date.now();
             try {
-                const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, querySql);
+                const result = await DBQuery(buildRpcConnectionConfig(config), dbName, querySql);
                 addSqlLog({
                     id: `log-${Date.now()}-data`,
                     timestamp: Date.now(),
@@ -517,9 +564,9 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     affectedRows: Array.isArray(result.data) ? result.data.length : undefined,
                     dbName
                 });
-                return result;
-            } catch (e: any) {
-                const errMessage = String(e?.message || e || 'query failed');
+                return result as QueryResultWithData<DataRow[]>;
+            } catch (e: unknown) {
+                const errMessage = getErrorMessage(e, 'query failed');
                 addSqlLog({
                     id: `log-${Date.now()}-data`,
                     timestamp: Date.now(),
@@ -529,7 +576,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     message: `${attemptLabel}: ${errMessage}`,
                     dbName
                 });
-                return { success: false, message: errMessage, data: [], fields: [] };
+                return { success: false, message: errMessage, data: [], fields: [] } as QueryResultWithData<DataRow[]>;
             }
         };
 
@@ -542,7 +589,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
             let safeSelect = duckdbSafeSelectCacheRef.current[cacheKey] || '';
             if (!safeSelect) {
                 try {
-                    const resCols = await DBGetColumns(buildRpcConnectionConfig(config) as any, dbName, tableName);
+                    const resCols = await DBGetColumns(buildRpcConnectionConfig(config), dbName, tableName);
                     if (resCols?.success && Array.isArray(resCols.data)) {
                         const columnDefs = resCols.data as ColumnDefinition[];
                         const selectParts = columnDefs.map((col) => {
@@ -591,8 +638,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
         }
         
         if (resData.success) {
-            let resultData = resData.data as any[];
-            if (!Array.isArray(resultData)) resultData = [];
+            let resultData = toDataRows(resData.data);
 
             if (useClickHouseReversePagination) {
                 // 反向查询后恢复为原排序方向，保证用户看到的仍是“最后一页正序数据”。
@@ -625,10 +671,10 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                 setPkColumns([]);
                 setEditLocator(undefined);
                 Promise.all([
-                    DBGetColumns(buildRpcConnectionConfig(config) as any, dbName, tableName),
-                    DBGetIndexes(buildRpcConnectionConfig(config) as any, dbName, tableName).catch(() => ({ success: false, data: [] } as any)),
+                    DBGetColumns(buildRpcConnectionConfig(config), dbName, tableName),
+                    DBGetIndexes(buildRpcConnectionConfig(config), dbName, tableName).catch(() => ({ success: false, message: '索引加载失败', data: [] } as QueryResult)),
                 ])
-                    .then(([resCols, resIndexes]: any[]) => {
+                    .then(([resCols, resIndexes]: [QueryResult, QueryResult]) => {
                         if (editLocatorSeqRef.current !== editSeq) return;
                         if (editLocatorKeyRef.current !== editLocatorKey) return;
                         if (!resCols?.success || !Array.isArray(resCols.data)) {
@@ -636,8 +682,8 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                             setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower }));
                             return;
                         }
-                        const pks = (resCols.data as ColumnDefinition[]).filter((c: any) => c.key === 'PRI').map((c: any) => c.name);
-                        const indexes = resIndexes?.success && Array.isArray(resIndexes.data) ? (resIndexes.data as IndexDefinition[]) : [];
+                        const pks = queryArrayData<ColumnDefinition>(resCols).filter((c) => c.key === 'PRI').map((c) => c.name);
+                        const indexes = resIndexes?.success ? queryArrayData<IndexDefinition>(resIndexes) : [];
                         setPkColumns(pks);
                         setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: pks, indexes, dbType: dbTypeLower }));
                     })
@@ -649,7 +695,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     });
             }
 
-            resultData.forEach((row: any, i: number) => {
+            resultData.forEach((row, i) => {
                 if (row && typeof row === 'object') row[JAVANAVI_ROW_KEY] = `row-${offset + i}`;
             });
             setData(resultData);
@@ -732,7 +778,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     const countConfig = buildRpcConnectionConfig(config, { queryTimeout: 5 });
 
                     DBQuery(countConfig, dbName, countSql)
-                        .then((resCount: any) => {
+                        .then((resCount) => {
                             const countDuration = Date.now() - countStart;
 
                             addSqlLog({
@@ -792,7 +838,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     (async () => {
                         for (const approxSql of approxSqlCandidates) {
                             try {
-                                const approxRes = await DBQuery(approxConfig as any, dbName, approxSql);
+                                const approxRes = await DBQuery(approxConfig, dbName, approxSql);
                                 if (duckdbApproxSeqRef.current !== approxSeq) return;
                                 if (latestCountKeyRef.current !== countKey) return;
                                 if (!approxRes?.success || !Array.isArray(approxRes.data) || approxRes.data.length === 0) continue;
@@ -827,8 +873,8 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     const approxConfig = buildRpcConnectionConfig(config, { queryTimeout: 3 });
                     const approxSql = buildOracleApproximateTotalSql({ dbName, tableName });
 
-                    DBQuery(approxConfig as any, dbName, approxSql)
-                        .then((approxRes: any) => {
+                    DBQuery(approxConfig, dbName, approxSql)
+                        .then((approxRes) => {
                             if (oracleApproxSeqRef.current !== approxSeq) return;
                             if (latestCountKeyRef.current !== countKey) return;
                             if (!approxRes?.success || !Array.isArray(approxRes.data) || approxRes.data.length === 0) return;
@@ -858,16 +904,17 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
         } else {
             message.error(String(resData.message || '查询失败'));
         }
-    } catch (e: any) {
+    } catch (e: unknown) {
         if (fetchSeqRef.current !== seq) return;
-        message.error("Error fetching data: " + e.message);
+        const errorMessage = getErrorMessage(e, 'Error fetching data');
+        message.error("Error fetching data: " + errorMessage);
         addSqlLog({
             id: `log-${Date.now()}-error`,
             timestamp: Date.now(),
             sql: executedSql,
             status: 'error',
             duration: Date.now() - requestStartTime,
-            message: e.message,
+            message: errorMessage,
             dbName
         });
     }
@@ -885,11 +932,11 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     try {
       const parsed = JSON.parse(field);
       if (Array.isArray(parsed)) {
-        setSortInfo(parsed.filter((s: any) => s && s.columnKey && (s.order === 'ascend' || s.order === 'descend')));
+        setSortInfo(normalizeViewerSortInfo(parsed));
         return;
       }
     } catch { /* 单字段模式 */ }
-    const normalizedOrder = order === 'ascend' || order === 'descend' ? order : '';
+    const normalizedOrder = isViewerSortOrder(order) ? order : undefined;
     const normalizedField = String(field || '').trim();
     if (!normalizedField || !normalizedOrder) {
       setSortInfo([]);
