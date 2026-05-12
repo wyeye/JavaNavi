@@ -511,6 +511,16 @@ export async function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:strin
     const readResult = await ReadLocalFile(arg3.trim());
     if (!readResult.success) return readResult;
     const payload = readResult.data && typeof readResult.data === 'object' ? readResult.data as Record<string, any> : {};
+    if (payload.isLargeFile === true && typeof payload.content !== 'string') {
+      return apiEnvelopeToQueryResult(
+        {
+          success: false,
+          error: { message: 'Large local SQL file execution is not available yet. Open the file in the editor or split it into smaller SQL files.' },
+          data: payload,
+        },
+        'SQL file executed',
+      );
+    }
     sqlText = String(payload.content ?? readResult.data ?? '');
   }
   const payload = await postJson('/query/multi', {
