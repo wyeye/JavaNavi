@@ -1,14 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import Editor from '@monaco-editor/react';
 import { Spin, Alert } from 'antd';
-import { TabData } from '../types';
+import type { SavedConnection, TabData } from '../types';
 import { useStore } from '../store';
 import { DBQuery } from '@compat/javanaviApp';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
+import type { RpcConnectionConfig } from '../utils/connectionRpcConfig';
 
 interface DefinitionViewerProps {
     tab: TabData;
 }
+
+type QueryRow = Record<string, unknown>;
+
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
+
+const firstDefinedValue = (row: QueryRow): unknown => Object.values(row)[0];
 
 const normalizeMySQLViewDDL = (rawDefinition: unknown): string => {
     const text = String(rawDefinition || '').trim();
@@ -38,7 +47,7 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
 
     const escapeSQLLiteral = (raw: string): string => String(raw || '').replace(/'/g, "''");
 
-    const getMetadataDialect = (conn: any): string => {
+    const getMetadataDialect = (conn: SavedConnection | undefined): string => {
         const type = String(conn?.config?.type || '').trim().toLowerCase();
         if (type === 'custom') {
             const driver = String(conn?.config?.driver || '').trim().toLowerCase();
@@ -50,7 +59,7 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
         return type;
     };
 
-    const isSphinxConnection = (conn: any): boolean => {
+    const isSphinxConnection = (conn: SavedConnection | undefined): boolean => {
         const type = String(conn?.config?.type || '').trim().toLowerCase();
         if (type === 'sphinx') return true;
         if (type !== 'custom') return false;
@@ -67,8 +76,8 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
         return { schema: '', name: raw };
     };
 
-    const getCaseInsensitiveRawValue = (row: Record<string, any>, candidateKeys: string[]): any => {
-        const keyMap = new Map<string, any>();
+    const getCaseInsensitiveRawValue = (row: QueryRow, candidateKeys: string[]): unknown => {
+        const keyMap = new Map<string, unknown>();
         Object.keys(row || {}).forEach((key) => keyMap.set(key.toLowerCase(), row[key]));
         for (const key of candidateKeys) {
             const value = keyMap.get(key.toLowerCase());
@@ -79,7 +88,7 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
         return undefined;
     };
 
-    const parseDuckDBParameterNames = (raw: any): string[] => {
+    const parseDuckDBParameterNames = (raw: unknown): string[] => {
         if (Array.isArray(raw)) {
             return raw
                 .map((item) => String(item ?? '').trim())
@@ -99,8 +108,8 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
     const buildDuckDBMacroDDL = (
         schemaName: string,
         functionName: string,
-        parametersRaw: any,
-        macroDefinitionRaw: any
+        parametersRaw: unknown,
+        macroDefinitionRaw: unknown
     ): string => {
         const schema = String(schemaName || '').trim();
         const name = String(functionName || '').trim();
@@ -209,27 +218,27 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
     };
 
     const runQueryCandidates = async (
-        config: Record<string, any>,
+        config: RpcConnectionConfig,
         dbName: string,
         queries: string[]
-    ): Promise<{ success: boolean; data: any[]; message?: string }> => {
+    ): Promise<{ success: boolean; data: QueryRow[]; message?: string }> => {
         let lastMessage = '';
         let hasSuccessfulQuery = false;
         for (const query of queries) {
             const sql = String(query || '').trim();
             if (!sql) continue;
             try {
-                const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, sql);
+                const result = await DBQuery(config, dbName, sql);
                 if (!result.success || !Array.isArray(result.data)) {
                     lastMessage = result.message || lastMessage;
                     continue;
                 }
                 hasSuccessfulQuery = true;
                 if (result.data.length > 0) {
-                    return { success: true, data: result.data };
+                    return { success: true, data: result.data as QueryRow[] };
                 }
-            } catch (error: any) {
-                lastMessage = error?.message || String(error);
+            } catch (error: unknown) {
+                lastMessage = getErrorMessage(error);
             }
         }
         if (hasSuccessfulQuery) {
@@ -238,25 +247,25 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
         return { success: false, data: [], message: lastMessage };
     };
 
-    const getVersionHint = async (config: Record<string, any>, dbName: string): Promise<string> => {
+    const getVersionHint = async (config: RpcConnectionConfig, dbName: string): Promise<string> => {
         const candidates = [
             `SELECT VERSION() AS version`,
             `SHOW VARIABLES LIKE 'version'`,
         ];
         for (const query of candidates) {
             try {
-                const result = await DBQuery(buildRpcConnectionConfig(config) as any, dbName, query);
+                const result = await DBQuery(config, dbName, query);
                 if (!result.success || !Array.isArray(result.data) || result.data.length === 0) {
                     continue;
                 }
-                const row = result.data[0] as Record<string, any>;
+                const row = result.data[0] as QueryRow;
                 const version =
                     row.version
                     || row.VERSION
                     || row.Value
                     || row.value
                     || Object.values(row)[1]
-                    || Object.values(row)[0];
+                    || firstDefinedValue(row);
                 const text = String(version || '').trim();
                 if (text) return text;
             } catch {
@@ -266,7 +275,7 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
         return '';
     };
 
-    const extractViewDefinition = (dialect: string, data: any[]): string => {
+    const extractViewDefinition = (dialect: string, data: QueryRow[]): string => {
         if (!data || data.length === 0) return '-- 未找到视图定义';
         const row = data[0];
 
@@ -289,13 +298,13 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
             }
             case 'oracle':
             case 'dm':
-                return row.view_definition || row.VIEW_DEFINITION || row.text || row.TEXT || Object.values(row)[0] || '';
+                return String(row.view_definition || row.VIEW_DEFINITION || row.text || row.TEXT || firstDefinedValue(row) || '');
             default:
-                return row.view_definition || row.VIEW_DEFINITION || row.sql || row.SQL || Object.values(row)[0] || '';
+                return String(row.view_definition || row.VIEW_DEFINITION || row.sql || row.SQL || firstDefinedValue(row) || '');
         }
     };
 
-    const extractRoutineDefinition = (dialect: string, data: any[]): string => {
+    const extractRoutineDefinition = (dialect: string, data: QueryRow[]): string => {
         if (!data || data.length === 0) return '-- 未找到函数/存储过程定义';
 
         switch (dialect) {
@@ -306,7 +315,7 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
                     return String(row.routine_definition || row.ROUTINE_DEFINITION);
                 }
                 const sqlKey = keys.find(k => k.toLowerCase().includes('create function') || k.toLowerCase().includes('create procedure'));
-                if (sqlKey) return row[sqlKey];
+                if (sqlKey) return String(row[sqlKey] ?? '');
                 for (const key of keys) {
                     const val = String(row[key] || '');
                     if (val.toUpperCase().includes('CREATE') && (val.toUpperCase().includes('FUNCTION') || val.toUpperCase().includes('PROCEDURE'))) {
@@ -323,10 +332,10 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
             case 'oracle':
             case 'dm': {
                 // Oracle/DM ALL_SOURCE returns multiple rows, one per line
-                return data.map(row => row.text || row.TEXT || Object.values(row)[0] || '').join('');
+                return data.map(row => String(row.text || row.TEXT || firstDefinedValue(row) || '')).join('');
             }
             case 'duckdb': {
-                const row = data[0] as Record<string, any>;
+                const row = data[0];
                 const ddl = buildDuckDBMacroDDL(
                     String(getCaseInsensitiveRawValue(row, ['schema_name']) || '').trim(),
                     String(getCaseInsensitiveRawValue(row, ['function_name', 'routine_name', 'name']) || '').trim(),
@@ -342,7 +351,7 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
             }
             default: {
                 const row = data[0];
-                return row.routine_definition || row.ROUTINE_DEFINITION || Object.values(row)[0] || '';
+                return String(row.routine_definition || row.ROUTINE_DEFINITION || firstDefinedValue(row) || '');
             }
         }
     };
@@ -364,7 +373,7 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
             const sphinxLike = isSphinxConnection(conn) && dialect === 'mysql';
 
             let queries: string[];
-            let extractFn: (dialect: string, data: any[]) => string;
+            let extractFn: (dialect: string, data: QueryRow[]) => string;
             let objectLabel: string;
 
             if (tab.type === 'view-def') {
@@ -406,7 +415,8 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
                     ssh: conn.config.ssh || { host: '', port: 22, user: '', password: '', keyPath: '' }
                 };
 
-                const result = await runQueryCandidates(config, dbName, queries);
+                const rpcConfig = buildRpcConnectionConfig(config);
+                const result = await runQueryCandidates(rpcConfig, dbName, queries);
 
                 if (result.success && Array.isArray(result.data) && result.data.length > 0) {
                     const def = extractFn(dialect, result.data);
@@ -416,21 +426,21 @@ const DefinitionViewer: React.FC<DefinitionViewerProps> = ({ tab }) => {
 
                 if (result.success) {
                     if (sphinxLike) {
-                        const version = await getVersionHint(config, dbName);
+                        const version = await getVersionHint(rpcConfig, dbName);
                         const versionText = version ? `（版本: ${version}）` : '';
                         setDefinition(`-- 当前 Sphinx 实例${versionText}未返回${objectLabel}定义。\n-- 已执行多套兼容查询，可能是版本能力限制或对象类型不支持。`);
                         return;
                     }
                     setDefinition(`-- 未找到${objectLabel}定义`);
                 } else if (sphinxLike) {
-                    const version = await getVersionHint(config, dbName);
+                    const version = await getVersionHint(rpcConfig, dbName);
                     const versionText = version ? `（版本: ${version}）` : '';
                     setDefinition(`-- 当前 Sphinx 实例${versionText}不支持${objectLabel}定义查询。\n-- 已自动尝试兼容语句，返回失败信息: ${result.message || 'unknown error'}`);
                 } else {
                     setError(result.message || '查询定义失败');
                 }
-            } catch (e: any) {
-                setError('查询定义失败: ' + (e?.message || String(e)));
+            } catch (e: unknown) {
+                setError('查询定义失败: ' + getErrorMessage(e));
             } finally {
                 setLoading(false);
             }
