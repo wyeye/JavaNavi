@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Collapse, Form, Input, Modal, Progress, Select, Space, Table, Tag, Typography, message } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
 import { DatabaseOutlined, DeleteOutlined, DownloadOutlined, FolderOpenOutlined, InfoCircleFilled, ReloadOutlined, UploadOutlined } from '@ant-design/icons';
 import { EventsOn } from '@compat/runtime';
 import { useStore } from '../store';
@@ -35,6 +36,157 @@ import { getRuntimeLanguage, translateCompatibilityFallback } from '../i18n';
 const { Paragraph, Text } = Typography;
 
 const compatText = (text: string, kind: 'text' | 'jsx' | 'message' = 'text') => translateCompatibilityFallback(getRuntimeLanguage(), text, kind);
+
+type JsonRecord = Record<string, unknown>;
+
+type DriverStatusResponseData = {
+  downloadDir?: unknown;
+  drivers?: unknown;
+};
+
+type DriverStatusItem = JsonRecord & {
+  type?: unknown;
+  name?: unknown;
+  builtIn?: unknown;
+  managedJarUploadAllowed?: unknown;
+  managedDownload?: unknown;
+  downloadRequired?: unknown;
+  reusedDriverType?: unknown;
+  reusedDriverName?: unknown;
+  pinnedVersion?: unknown;
+  installedVersion?: unknown;
+  installedVersions?: unknown;
+  installedVersionCount?: unknown;
+  packageSizeText?: unknown;
+  runtimeAvailable?: unknown;
+  packageInstalled?: unknown;
+  connectable?: unknown;
+  defaultDownloadUrl?: unknown;
+  installDir?: unknown;
+  packagePath?: unknown;
+  executablePath?: unknown;
+  downloadedAt?: unknown;
+  installMode?: unknown;
+  installSource?: unknown;
+  installSourceLabel?: unknown;
+  installSourceDetail?: unknown;
+  defaultDriverType?: unknown;
+  defaultDriverName?: unknown;
+  driverOptions?: unknown;
+  message?: unknown;
+};
+
+type DriverOptionPayload = JsonRecord & {
+  driverType?: unknown;
+  driverName?: unknown;
+  databaseType?: unknown;
+  databaseName?: unknown;
+  available?: unknown;
+  connectable?: unknown;
+  default?: unknown;
+  runtimeOwnerType?: unknown;
+  runtimeOwnerName?: unknown;
+  reusedRuntime?: unknown;
+  driverClassName?: unknown;
+  message?: unknown;
+};
+
+type DriverInstalledVersionPayload = JsonRecord & {
+  version?: unknown;
+  active?: unknown;
+  installMode?: unknown;
+  installSource?: unknown;
+  downloadedAt?: unknown;
+  installDir?: unknown;
+  filePath?: unknown;
+};
+
+type DriverNetworkStatusPayload = JsonRecord & {
+  checks?: unknown;
+  reachable?: unknown;
+  summary?: unknown;
+  recommendedProxy?: unknown;
+  proxyConfigured?: unknown;
+  downloadChainReachable?: unknown;
+  downloadRequiredHosts?: unknown;
+  proxyEnv?: unknown;
+  checkedAt?: unknown;
+  logPath?: unknown;
+  repositoryURL?: unknown;
+  repositoryUrl?: unknown;
+  configuredRepositoryURL?: unknown;
+  configuredRepositoryUrl?: unknown;
+  defaultRepositoryURL?: unknown;
+  defaultRepositoryUrl?: unknown;
+  repositoryConfigured?: unknown;
+};
+
+type DriverNetworkProbePayload = JsonRecord & {
+  name?: unknown;
+  url?: unknown;
+  reachable?: unknown;
+  httpStatus?: unknown;
+  latencyMs?: unknown;
+  tcpLatencyMs?: unknown;
+  httpLatencyMs?: unknown;
+  method?: unknown;
+  error?: unknown;
+};
+
+type DriverVersionListPayload = JsonRecord & {
+  versions?: unknown;
+};
+
+type DriverVersionPayload = JsonRecord & {
+  version?: unknown;
+  downloadUrl?: unknown;
+  packageSizeText?: unknown;
+  recommended?: unknown;
+  source?: unknown;
+  year?: unknown;
+  displayLabel?: unknown;
+};
+
+type DriverPackageSizePayload = JsonRecord & {
+  packageSizeText?: unknown;
+};
+
+type DriverRepositoryPayload = JsonRecord & {
+  repositoryUrl?: unknown;
+  repositoryURL?: unknown;
+};
+
+type DriverDirectoryPayload = JsonRecord & {
+  opened?: unknown;
+  path?: unknown;
+  directory?: unknown;
+  message?: unknown;
+};
+
+type AntdValidationError = { errorFields?: unknown };
+
+type VersionSelectOption = { value: string; label: string };
+type VersionSelectGroup = { label: string; options: VersionSelectOption[] };
+type VersionSelectEntry = VersionSelectOption | VersionSelectGroup;
+
+const toRecord = <T extends JsonRecord>(value: unknown): T => (
+  value && typeof value === 'object' && !Array.isArray(value) ? value as T : {} as T
+);
+
+const getErrorMessage = (error: unknown, fallback = ''): string => (
+  error instanceof Error ? error.message : String(error || fallback)
+);
+
+const isAntdValidationError = (error: unknown): error is AntdValidationError => (
+  !!error && typeof error === 'object' && 'errorFields' in error
+);
+
+const toStringRecord = (value: unknown): Record<string, string> => {
+  const record = toRecord(value);
+  return Object.fromEntries(
+    Object.entries(record).map(([key, item]) => [key, String(item ?? '')]),
+  );
+};
 
 type DriverOption = {
   driverType: string;
@@ -266,18 +418,15 @@ let driverNetworkSnapshotCache: { status: DriverNetworkStatus; cachedAt: number 
 
 const isFreshCache = (cachedAt: number, ttlMs: number): boolean => Date.now() - cachedAt <= ttlMs;
 
-const buildVersionSelectOptions = (options: DriverVersionOption[]) => {
-  type SelectOption = { value: string; label: string };
-  type SelectGroup = { label: string; options: SelectOption[] };
-
+const buildVersionSelectOptions = (options: DriverVersionOption[]): VersionSelectEntry[] => {
   if (options.length === 0) {
-    return [] as Array<SelectOption | SelectGroup>;
+    return [];
   }
 
-  const yearGroups = new Map<string, SelectOption[]>();
-  const others: SelectOption[] = [];
+  const yearGroups = new Map<string, VersionSelectOption[]>();
+  const others: VersionSelectOption[] = [];
   options.forEach((option) => {
-    const selectOption: SelectOption = {
+    const selectOption: VersionSelectOption = {
       value: buildVersionOptionKey(option),
       label: option.displayLabel || option.version || compatText('默认版本'),
     };
@@ -302,7 +451,7 @@ const buildVersionSelectOptions = (options: DriverVersionOption[]) => {
     return b.localeCompare(a);
   });
 
-  const grouped: SelectGroup[] = sortedYears.map((year) => ({
+  const grouped: VersionSelectGroup[] = sortedYears.map((year) => ({
     label: `${year} 年`,
     options: yearGroups.get(year) || [],
   }));
@@ -511,9 +660,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             throw new Error(res?.message || '拉取驱动状态失败');
           }
 
-          const data = (res?.data || {}) as any;
+          const data = toRecord<DriverStatusResponseData>(res?.data);
           const resolvedDir = String(data.downloadDir || '').trim();
-          const drivers = Array.isArray(data.drivers) ? data.drivers : [];
+          const drivers: DriverStatusItem[] = Array.isArray(data.drivers) ? data.drivers.map((item) => toRecord<DriverStatusItem>(item)) : [];
           if (drivers.length === 0) {
             throw new Error('驱动状态为空，请稍后重试');
           }
@@ -523,11 +672,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             setDownloadDir(resolvedDir);
           }
 
-          const nextRows: DriverStatusRow[] = drivers.map((item: any) => {
+          const nextRows: DriverStatusRow[] = drivers.map((item) => {
             const rowType = String(item.type || '').trim();
             const parsedDriverOptions: DriverOption[] = Array.isArray(item.driverOptions)
               ? item.driverOptions
-                  .map((option: any) => {
+                  .map((rawOption: unknown) => {
+                    const option = toRecord<DriverOptionPayload>(rawOption);
                     const driverType = String(option.driverType || '').trim();
                     if (!driverType) {
                       return null;
@@ -568,7 +718,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
               installedVersion: String(item.installedVersion || '').trim() || undefined,
               installedVersions: Array.isArray(item.installedVersions)
                 ? item.installedVersions
-                    .map((entry: any) => {
+                    .map((rawEntry: unknown) => {
+                      const entry = toRecord<DriverInstalledVersionPayload>(rawEntry);
                       const version = String(entry.version || '').trim();
                       if (!version) {
                         return null;
@@ -615,8 +766,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             cachedAt: Date.now(),
           };
           return true;
-        } catch (error: any) {
-          lastErrorText = error?.message || String(error || '拉取驱动状态失败');
+        } catch (error: unknown) {
+          lastErrorText = getErrorMessage(error, '拉取驱动状态失败');
           if (attempt < retryCount) {
             await sleep(DRIVER_STATUS_RETRY_DELAY_MS * (attempt + 1));
           }
@@ -627,8 +778,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         message.error(compatText(lastErrorText || '拉取驱动状态失败', 'message'));
       }
       return false;
-    } catch (err: any) {
-      const errText = err?.message || String(err);
+    } catch (err: unknown) {
+      const errText = getErrorMessage(err);
       setStatusLoadError(errText);
       if (toastOnError) {
         message.error(compatText(`拉取驱动状态失败：${errText}`, 'message'));
@@ -656,11 +807,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       );
       setCustomDataSources(nextSources);
       return nextSources;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const latestSources = loadCustomDataSources();
       setCustomDataSources(latestSources);
       if (toastOnError) {
-        message.error(compatText(error?.message || '加载自定义数据源定义失败', 'message'));
+        message.error(compatText(getErrorMessage(error, '加载自定义数据源定义失败'), 'message'));
       }
       return latestSources;
     } finally {
@@ -692,8 +843,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       } else {
         message.warning(compatText(merged.runtimeStatus?.message || `${merged.name} 需要修复`, 'message'));
       }
-    } catch (error: any) {
-      message.error(compatText(error?.message || '校验自定义数据源失败', 'message'));
+    } catch (error: unknown) {
+      message.error(compatText(getErrorMessage(error, '校验自定义数据源失败'), 'message'));
     } finally {
       setCustomDefinitionValidating((prev) => ({ ...prev, [source.id]: false }));
     }
@@ -715,9 +866,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         }
         return;
       }
-      const data = (res?.data || {}) as any;
-      const checks = Array.isArray(data.checks) ? data.checks : [];
-      const normalizedChecks: DriverNetworkProbe[] = checks.map((item: any) => ({
+      const data = toRecord<DriverNetworkStatusPayload>(res?.data);
+      const checks: DriverNetworkProbePayload[] = Array.isArray(data.checks) ? data.checks.map((item) => toRecord<DriverNetworkProbePayload>(item)) : [];
+      const normalizedChecks: DriverNetworkProbe[] = checks.map((item) => ({
         name: String(item.name || '').trim(),
         url: String(item.url || '').trim(),
         reachable: !!item.reachable,
@@ -737,7 +888,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         downloadRequiredHosts: Array.isArray(data.downloadRequiredHosts)
           ? data.downloadRequiredHosts.map((item: unknown) => String(item || '').trim()).filter(Boolean)
           : undefined,
-        proxyEnv: (data.proxyEnv || {}) as Record<string, string>,
+        proxyEnv: toStringRecord(data.proxyEnv),
         checkedAt: String(data.checkedAt || '').trim() || undefined,
         checks: normalizedChecks,
         logPath: String(data.logPath || '').trim() || undefined,
@@ -758,9 +909,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         status: nextStatus,
         cachedAt: Date.now(),
       };
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (toastOnError) {
-        message.error(compatText(`驱动网络检测失败：${err?.message || String(err)}`, 'message'));
+        message.error(compatText(`驱动网络检测失败：${getErrorMessage(err)}`, 'message'));
       }
     } finally {
       if (showLoading) {
@@ -786,12 +937,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         }
         return [] as DriverVersionOption[];
       }
-      const data = (res?.data || {}) as any;
-      const rawVersions = Array.isArray(data.versions) ? data.versions : [];
+      const data = toRecord<DriverVersionListPayload>(res?.data);
+      const rawVersions: DriverVersionPayload[] = Array.isArray(data.versions) ? data.versions.map((item) => toRecord<DriverVersionPayload>(item)) : [];
       const installedVersions = new Set((row.installedVersions || []).map((item) => item.version).filter(Boolean));
       const activeVersion = String(row.installedVersion || '').trim();
       const options: DriverVersionOption[] = rawVersions
-        .map((item: any) => {
+        .map((item) => {
           const version = String(item.version || '').trim();
           const downloadUrl = String(item.downloadUrl || '').trim();
           if (!version && !downloadUrl) {
@@ -850,9 +1001,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         return { ...prev, [driverType]: buildVersionOptionKey(preferred) };
       });
       return options;
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (toastOnError) {
-        message.error(compatText(`加载 ${row.name} 版本列表失败：${err?.message || String(err)}`, 'message'));
+        message.error(compatText(`加载 ${row.name} 版本列表失败：${getErrorMessage(err)}`, 'message'));
       }
       return [] as DriverVersionOption[];
     } finally {
@@ -894,7 +1045,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       if (!res?.success) {
         return;
       }
-      const data = (res?.data || {}) as any;
+      const data = toRecord<DriverPackageSizePayload>(res?.data);
       const sizeText = String(data.packageSizeText || '').trim();
       if (!sizeText) {
         return;
@@ -939,7 +1090,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
         message.error(compatText(result?.message || '保存 Maven 源失败', 'message'));
         return;
       }
-      const data = (result?.data || {}) as any;
+      const data = toRecord<DriverRepositoryPayload>(result?.data);
       const effectiveURL = String(data.repositoryUrl || data.repositoryURL || '').trim();
       setRepositoryURL(effectiveURL);
       setVersionMap({});
@@ -947,8 +1098,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       driverNetworkSnapshotCache = null;
       await checkNetworkStatus(false, { showLoading: false });
       message.success(compatText('Maven 源已保存，后续版本列表、自动下载与首次连接会使用该源', 'message'));
-    } catch (err: any) {
-      message.error(compatText(`保存 Maven 源失败：${err?.message || String(err)}`, 'message'));
+    } catch (err: unknown) {
+      message.error(compatText(`保存 Maven 源失败：${getErrorMessage(err)}`, 'message'));
     } finally {
       setRepositorySaving(false);
     }
@@ -969,8 +1120,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       }
       message.success(compatText(`${row.name || row.type} 默认驱动已设置为 ${result.data?.defaultDriverName || targetDriverType}`, 'message'));
       await refreshStatus(false);
-    } catch (err: any) {
-      message.error(compatText(`设置默认驱动失败：${err?.message || String(err)}`, 'message'));
+    } catch (err: unknown) {
+      message.error(compatText(`设置默认驱动失败：${getErrorMessage(err)}`, 'message'));
     } finally {
       setDefaultDriverSavingKey('');
     }
@@ -1119,11 +1270,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       customDataSourceForm.resetFields();
       await refreshStatus(false);
       await refreshCustomDefinitions(false);
-    } catch (error: any) {
-      if (error?.errorFields) {
+    } catch (error: unknown) {
+      if (isAntdValidationError(error)) {
         return;
       }
-      message.error(compatText(error?.message || '新增自定义数据源失败', 'message'));
+      message.error(compatText(getErrorMessage(error, '新增自定义数据源失败'), 'message'));
     } finally {
       setCustomDataSourceSaving(false);
     }
@@ -1411,7 +1562,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       if (!res?.success) {
         throw new Error(res?.message || '打开驱动目录失败');
       }
-      const data = (res.data || {}) as any;
+      const data = toRecord<DriverDirectoryPayload>(res.data);
       const opened = !!data.opened;
       const pathText = String(data.path || data.directory || downloadDir || '').trim();
       const responseMessage = String(data.message || '').trim();
@@ -1468,7 +1619,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
     }
   }, [appendOperationLog, downloadDir, refreshStatus]);
 
-  const columns = useMemo(() => {
+  const columns = useMemo<ColumnsType<DriverStatusRow>>(() => {
     return [
       {
         title: compatText('数据源'),
@@ -1669,7 +1820,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                 disabled={actionState.driverType === row.type}
                 placeholder={options.length > 0 ? compatText('选择驱动版本') : compatText('点击展开加载版本')}
                 value={selectedKey}
-                options={selectOptions as any}
+                options={selectOptions}
                 onOpenChange={(open) => {
                   if (open && options.length === 0 && !versionLoadingMap[row.type]) {
                     void loadVersionOptions(row, true);
@@ -2140,7 +2291,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
             className="driver-manager-table"
             rowKey="type"
             loading={loading}
-            columns={columns as any}
+            columns={columns}
             dataSource={filteredRows}
             pagination={false}
             size="middle"
