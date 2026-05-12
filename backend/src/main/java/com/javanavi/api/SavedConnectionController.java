@@ -2,6 +2,7 @@ package com.javanavi.api;
 
 import com.javanavi.connections.SavedConnectionService;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.SavedConnectionDeleteResultDto;
 import com.javanavi.model.SavedConnectionIdRequestDto;
 import com.javanavi.model.SavedConnectionInputDto;
 import com.javanavi.model.SavedConnectionViewDto;
@@ -12,7 +13,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1/connections/saved")
@@ -34,10 +34,10 @@ public class SavedConnectionController {
     }
 
     @PostMapping("/delete")
-    public ApiEnvelope<Map<String, Object>> delete(@RequestBody SavedConnectionIdRequestDto request) {
+    public ApiEnvelope<SavedConnectionDeleteResultDto> delete(@RequestBody SavedConnectionIdRequestDto request) {
         String id = request == null ? null : request.resolvedId();
         boolean deleted = savedConnectionService.delete(id);
-        return ApiEnvelope.ok(Map.of("connectionId", id, "deleted", deleted));
+        return ApiEnvelope.ok(new SavedConnectionDeleteResultDto(id, deleted));
     }
 
     @PostMapping("/duplicate")

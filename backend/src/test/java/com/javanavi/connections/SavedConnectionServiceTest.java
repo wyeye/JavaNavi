@@ -1,8 +1,12 @@
 package com.javanavi.connections;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.api.SavedConnectionController;
 import com.javanavi.config.SecurityProperties;
+import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.ConnectionConfigDto;
+import com.javanavi.model.SavedConnectionDeleteResultDto;
+import com.javanavi.model.SavedConnectionIdRequestDto;
 import com.javanavi.model.SavedConnectionInputDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import com.javanavi.security.SecretStore;
@@ -99,6 +103,35 @@ class SavedConnectionServiceTest {
         assertThat(resolved.mongoReplicaPassword()).isEqualTo("replica-secret");
         assertThat(resolved.uri()).isEqualTo("mongodb://primary:primary-secret@mongo.local/admin");
         assertThat(resolved.dsn()).isEqualTo("jdbc:custom://opaque");
+    }
+
+    @Test
+    void deleteEndpointReturnsTypedDeleteResult() {
+        SavedConnectionService service = service();
+        service.save(new SavedConnectionInputDto(
+                "to-delete",
+                "To Delete",
+                Map.of("id", "to-delete", "type", "demo"),
+                null,
+                null,
+                null,
+                null,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false,
+                false
+        ));
+        SavedConnectionController controller = new SavedConnectionController(service);
+
+        ApiEnvelope<SavedConnectionDeleteResultDto> envelope = controller.delete(new SavedConnectionIdRequestDto("to-delete", null));
+
+        assertThat(envelope.success()).isTrue();
+        assertThat(envelope.data().connectionId()).isEqualTo("to-delete");
+        assertThat(envelope.data().deleted()).isTrue();
     }
 
     private SavedConnectionService service() {
