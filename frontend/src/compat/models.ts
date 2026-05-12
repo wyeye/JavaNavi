@@ -6,46 +6,50 @@ type CompatModelSource = Record<string, unknown> | string;
 type CompatToolCallFunction = { name?: string; arguments?: string };
 type CompatToolParameters = Record<string, unknown>;
 type CompatDataRow = Record<string, unknown>;
+type CompatModelConstructor<T> = new (source: CompatModelSource) => T;
+
+function convertCompatValues<T>(value: unknown, ModelClass: CompatModelConstructor<T>, asMap: true): Record<string, T> | undefined;
+function convertCompatValues<T>(value: unknown, ModelClass: CompatModelConstructor<T>, asMap?: false): T | T[] | undefined;
+function convertCompatValues<T>(value: unknown, ModelClass: CompatModelConstructor<T>, asMap: boolean = false): T | T[] | Record<string, T> | undefined {
+    if (value === null || value === undefined) {
+        return undefined;
+    }
+    if (Array.isArray(value)) {
+        return value.map((item) => convertCompatValues(item, ModelClass) as T);
+    }
+    if (typeof value === 'object') {
+        if (asMap) {
+            return Object.fromEntries(
+                Object.entries(value as Record<string, unknown>).map(([key, item]) => [key, new ModelClass(item as CompatModelSource)]),
+            );
+        }
+        return new ModelClass(value as CompatModelSource);
+    }
+    return value as T;
+}
 
 function parseModelSource(source: CompatModelSource = {}): Record<string, never> {
     return typeof source === 'string' ? JSON.parse(source) as Record<string, never> : source as Record<string, never>;
 }
 export namespace ai {
-	
+
 	export class ToolCall {
 	    id: string;
 	    type: string;
 	    // Go type: struct { Name string "json:\"name\""; Arguments string "json:\"arguments\"" }
 	    function: CompatToolCallFunction;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ToolCall(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.id = sourceRecord["id"];
 	        this.type = sourceRecord["type"];
-	        this.function = this.convertValues(sourceRecord["function"], Object);
+	        this.function = sourceRecord["function"] as CompatToolCallFunction;
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 	export class Message {
 	    role: string;
@@ -53,37 +57,20 @@ export namespace ai {
 	    images?: string[];
 	    tool_call_id?: string;
 	    tool_calls?: ToolCall[];
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new Message(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.role = sourceRecord["role"];
 	        this.content = sourceRecord["content"];
 	        this.images = sourceRecord["images"];
 	        this.tool_call_id = sourceRecord["tool_call_id"];
-	        this.tool_calls = this.convertValues(sourceRecord["tool_calls"], ToolCall);
+	        this.tool_calls = convertCompatValues(sourceRecord["tool_calls"], ToolCall) as ToolCall[] | undefined;
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 	export class ProviderConfig {
 	    id: string;
@@ -102,11 +89,11 @@ export namespace ai {
 	    modelDiscoverySupported?: boolean;
 	    maxTokens: number;
 	    temperature: number;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ProviderConfig(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.id = sourceRecord["id"];
@@ -132,11 +119,11 @@ export namespace ai {
 	    operationType: string;
 	    requiresConfirm: boolean;
 	    warningMessage?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new SafetyResult(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.allowed = sourceRecord["allowed"];
@@ -149,11 +136,11 @@ export namespace ai {
 	    name: string;
 	    description: string;
 	    parameters: CompatToolParameters;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ToolFunction(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.name = sourceRecord["name"];
@@ -164,49 +151,32 @@ export namespace ai {
 	export class Tool {
 	    type: string;
 	    function: ToolFunction;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new Tool(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.type = sourceRecord["type"];
-	        this.function = this.convertValues(sourceRecord["function"], ToolFunction);
+	        this.function = convertCompatValues(sourceRecord["function"], ToolFunction) as ToolFunction;
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
-	
+
 
 }
 
 export namespace app {
-	
+
 	export class ConnectionExportOptions {
 	    includeSecrets: boolean;
 	    filePassword?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ConnectionExportOptions(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.includeSecrets = sourceRecord["includeSecrets"];
@@ -217,15 +187,15 @@ export namespace app {
 }
 
 export namespace connection {
-	
+
 	export class UpdateRow {
 	    keys: CompatDataRow;
 	    values: CompatDataRow;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new UpdateRow(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.keys = sourceRecord["keys"];
@@ -237,47 +207,30 @@ export namespace connection {
 	    updates: UpdateRow[];
 	    deletes: CompatDataRow[];
 	    locatorStrategy?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ChangeSet(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.inserts = sourceRecord["inserts"];
-	        this.updates = this.convertValues(sourceRecord["updates"], UpdateRow);
+	        this.updates = convertCompatValues(sourceRecord["updates"], UpdateRow) as UpdateRow[] || [];
 	        this.deletes = sourceRecord["deletes"];
 	        this.locatorStrategy = sourceRecord["locatorStrategy"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 	export class HTTPTunnelConfig {
 	    host: string;
 	    port: number;
 	    user?: string;
 	    password?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new HTTPTunnelConfig(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.host = sourceRecord["host"];
@@ -292,11 +245,11 @@ export namespace connection {
 	    port: number;
 	    user?: string;
 	    password?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ProxyConfig(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.type = sourceRecord["type"];
@@ -312,11 +265,11 @@ export namespace connection {
 	    user: string;
 	    password: string;
 	    keyPath: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new SSHConfig(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.host = sourceRecord["host"];
@@ -340,7 +293,7 @@ export namespace connection {
 	    sslCertPath?: string;
 	    sslKeyPath?: string;
 	    useSSH: boolean;
-	    ssh: SSHConfig;
+	    ssh?: SSHConfig;
 	    useProxy?: boolean;
 	    proxy?: ProxyConfig;
 	    useHttpTunnel?: boolean;
@@ -362,11 +315,11 @@ export namespace connection {
 	    mongoAuthMechanism?: string;
 	    mongoReplicaUser?: string;
 	    mongoReplicaPassword?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ConnectionConfig(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.id = sourceRecord["id"];
@@ -382,11 +335,11 @@ export namespace connection {
 	        this.sslCertPath = sourceRecord["sslCertPath"];
 	        this.sslKeyPath = sourceRecord["sslKeyPath"];
 	        this.useSSH = sourceRecord["useSSH"];
-	        this.ssh = this.convertValues(sourceRecord["ssh"], SSHConfig);
+	        this.ssh = convertCompatValues(sourceRecord["ssh"], SSHConfig) as SSHConfig | undefined;
 	        this.useProxy = sourceRecord["useProxy"];
-	        this.proxy = this.convertValues(sourceRecord["proxy"], ProxyConfig);
+	        this.proxy = convertCompatValues(sourceRecord["proxy"], ProxyConfig) as ProxyConfig | undefined;
 	        this.useHttpTunnel = sourceRecord["useHttpTunnel"];
-	        this.httpTunnel = this.convertValues(sourceRecord["httpTunnel"], HTTPTunnelConfig);
+	        this.httpTunnel = convertCompatValues(sourceRecord["httpTunnel"], HTTPTunnelConfig) as HTTPTunnelConfig | undefined;
 	        this.driver = sourceRecord["driver"];
 	        this.dsn = sourceRecord["dsn"];
 	        this.options = sourceRecord["options"];
@@ -405,24 +358,7 @@ export namespace connection {
 	        this.mongoReplicaUser = sourceRecord["mongoReplicaUser"];
 	        this.mongoReplicaPassword = sourceRecord["mongoReplicaPassword"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 	export class GlobalProxyView {
 	    enabled: boolean;
@@ -433,11 +369,11 @@ export namespace connection {
 	    password?: string;
 	    hasPassword?: boolean;
 	    secretRef?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new GlobalProxyView(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.enabled = sourceRecord["enabled"];
@@ -450,13 +386,13 @@ export namespace connection {
 	        this.secretRef = sourceRecord["secretRef"];
 	    }
 	}
-	
-	
-	
-	
-	
-	
-	
+
+
+
+
+
+
+
 	export class QueryResult {
 	    success: boolean;
 	    message: string;
@@ -469,11 +405,11 @@ export namespace connection {
 	    revealMethod?: string;
 	    revealed?: boolean;
 	    revealSelected?: boolean;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new QueryResult(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.success = sourceRecord["success"];
@@ -489,7 +425,7 @@ export namespace connection {
 	        this.revealSelected = sourceRecord["revealSelected"];
 	    }
 	}
-	
+
 	export class SaveGlobalProxyInput {
 	    enabled: boolean;
 	    type: string;
@@ -497,11 +433,11 @@ export namespace connection {
 	    port: number;
 	    user?: string;
 	    password?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new SaveGlobalProxyInput(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.enabled = sourceRecord["enabled"];
@@ -528,16 +464,16 @@ export namespace connection {
 	    clearMongoReplicaPassword?: boolean;
 	    clearOpaqueURI?: boolean;
 	    clearOpaqueDSN?: boolean;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new SavedConnectionInput(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.id = sourceRecord["id"];
 	        this.name = sourceRecord["name"];
-	        this.config = this.convertValues(sourceRecord["config"], ConnectionConfig);
+	        this.config = convertCompatValues(sourceRecord["config"], ConnectionConfig) as ConnectionConfig;
 	        this.includeDatabases = sourceRecord["includeDatabases"];
 	        this.includeRedisDatabases = sourceRecord["includeRedisDatabases"];
 	        this.iconType = sourceRecord["iconType"];
@@ -551,24 +487,7 @@ export namespace connection {
 	        this.clearOpaqueURI = sourceRecord["clearOpaqueURI"];
 	        this.clearOpaqueDSN = sourceRecord["clearOpaqueDSN"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 	export class SavedConnectionView {
 	    id: string;
@@ -587,16 +506,16 @@ export namespace connection {
 	    hasMongoReplicaPassword?: boolean;
 	    hasOpaqueURI?: boolean;
 	    hasOpaqueDSN?: boolean;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new SavedConnectionView(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.id = sourceRecord["id"];
 	        this.name = sourceRecord["name"];
-	        this.config = this.convertValues(sourceRecord["config"], ConnectionConfig);
+	        this.config = convertCompatValues(sourceRecord["config"], ConnectionConfig) as ConnectionConfig;
 	        this.includeDatabases = sourceRecord["includeDatabases"];
 	        this.includeRedisDatabases = sourceRecord["includeRedisDatabases"];
 	        this.iconType = sourceRecord["iconType"];
@@ -611,39 +530,22 @@ export namespace connection {
 	        this.hasOpaqueURI = sourceRecord["hasOpaqueURI"];
 	        this.hasOpaqueDSN = sourceRecord["hasOpaqueDSN"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 
 }
 
 
 export namespace redis {
-	
+
 	export class ZSetMember {
 	    member: string;
 	    score: number;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ZSetMember(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.member = sourceRecord["member"];
@@ -654,7 +556,7 @@ export namespace redis {
 }
 
 export namespace sync {
-	
+
 	export class TableOptions {
 	    insert?: boolean;
 	    update?: boolean;
@@ -662,11 +564,11 @@ export namespace sync {
 	    selectedInsertPks?: string[];
 	    selectedUpdatePks?: string[];
 	    selectedDeletePks?: string[];
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new TableOptions(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.insert = sourceRecord["insert"];
@@ -690,15 +592,15 @@ export namespace sync {
 	    createIndexes?: boolean;
 	    mongoCollectionName?: string;
 	    tableOptions?: Record<string, TableOptions>;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new SyncConfig(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
-	        this.sourceConfig = this.convertValues(sourceRecord["sourceConfig"], connection.ConnectionConfig);
-	        this.targetConfig = this.convertValues(sourceRecord["targetConfig"], connection.ConnectionConfig);
+	        this.sourceConfig = convertCompatValues(sourceRecord["sourceConfig"], connection.ConnectionConfig) as connection.ConnectionConfig;
+	        this.targetConfig = convertCompatValues(sourceRecord["targetConfig"], connection.ConnectionConfig) as connection.ConnectionConfig;
 	        this.tables = sourceRecord["tables"];
 	        this.sourceQuery = sourceRecord["sourceQuery"];
 	        this.content = sourceRecord["content"];
@@ -708,26 +610,9 @@ export namespace sync {
 	        this.targetTableStrategy = sourceRecord["targetTableStrategy"];
 	        this.createIndexes = sourceRecord["createIndexes"];
 	        this.mongoCollectionName = sourceRecord["mongoCollectionName"];
-	        this.tableOptions = this.convertValues(sourceRecord["tableOptions"], TableOptions, true);
+	        this.tableOptions = convertCompatValues(sourceRecord["tableOptions"], TableOptions, true);
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 	export class SyncResult {
 	    success: boolean;
@@ -738,11 +623,11 @@ export namespace sync {
 	    rowsInserted: number;
 	    rowsUpdated: number;
 	    rowsDeleted: number;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new SyncResult(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.success = sourceRecord["success"];
@@ -759,7 +644,7 @@ export namespace sync {
 }
 
 export namespace schemaSync {
-	
+
 	export class DiffItem {
 	    id: string;
 	    tableName: string;
@@ -773,11 +658,11 @@ export namespace schemaSync {
 	    sql?: string[];
 	    sqlStatements?: string[];
 	    warnings?: string[];
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new DiffItem(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.id = sourceRecord["id"];
@@ -805,11 +690,11 @@ export namespace schemaSync {
 	    items?: DiffItem[];
 	    selectedItemIds?: string[];
 	    deleteItemIds?: string[];
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new TableDiff(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
 	        this.table = sourceRecord["table"];
@@ -819,28 +704,11 @@ export namespace schemaSync {
 	        this.schemaDiffCount = sourceRecord["schemaDiffCount"];
 	        this.message = sourceRecord["message"];
 	        this.warnings = sourceRecord["warnings"];
-	        this.items = this.convertValues(sourceRecord["items"], DiffItem);
+	        this.items = convertCompatValues(sourceRecord["items"], DiffItem) as DiffItem[] | undefined;
 	        this.selectedItemIds = sourceRecord["selectedItemIds"];
 	        this.deleteItemIds = sourceRecord["deleteItemIds"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 	export class RunConfig {
 	    sourceConfig: connection.ConnectionConfig;
@@ -851,15 +719,15 @@ export namespace schemaSync {
 	    selectedItemIds?: string[];
 	    confirmedDeleteItemIds?: string[];
 	    jobId?: string;
-	
+
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new RunConfig(source);
 	    }
-	
+
 	    constructor(source: CompatModelSource = {}) {
 	        const sourceRecord = parseModelSource(source);
-	        this.sourceConfig = this.convertValues(sourceRecord["sourceConfig"], connection.ConnectionConfig);
-	        this.targetConfig = this.convertValues(sourceRecord["targetConfig"], connection.ConnectionConfig);
+	        this.sourceConfig = convertCompatValues(sourceRecord["sourceConfig"], connection.ConnectionConfig) as connection.ConnectionConfig;
+	        this.targetConfig = convertCompatValues(sourceRecord["targetConfig"], connection.ConnectionConfig) as connection.ConnectionConfig;
 	        this.sourceDatabase = sourceRecord["sourceDatabase"];
 	        this.targetDatabase = sourceRecord["targetDatabase"];
 	        this.tables = sourceRecord["tables"];
@@ -867,23 +735,6 @@ export namespace schemaSync {
 	        this.confirmedDeleteItemIds = sourceRecord["confirmedDeleteItemIds"];
 	        this.jobId = sourceRecord["jobId"];
 	    }
-	
-		convertValues(a: any, classs: any, asMap: boolean = false): any {
-		    if (!a) {
-		        return a;
-		    }
-		    if (a.slice && a.map) {
-		        return (a as any[]).map(elem => this.convertValues(elem, classs));
-		    } else if ("object" === typeof a) {
-		        if (asMap) {
-		            for (const key of Object.keys(a)) {
-		                a[key] = new classs(a[key]);
-		            }
-		            return a;
-		        }
-		        return new classs(a);
-		    }
-		    return a;
-		}
+
 	}
 }
