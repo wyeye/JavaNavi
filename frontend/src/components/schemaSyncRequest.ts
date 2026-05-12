@@ -1,17 +1,8 @@
 import type { I18nKey } from '../i18n';
-import type { connection } from '../compat/models';
+import type { connection, schemaSync } from '../compat/models';
 
 type ConnectionConfigPayload = connection.ConnectionConfig;
-export type SchemaSyncRequestPayload = {
-  sourceConfig: ConnectionConfigPayload;
-  targetConfig: ConnectionConfigPayload;
-  sourceDatabase: string;
-  targetDatabase: string;
-  tables: string[];
-  selectedItemIds?: string[];
-  confirmedDeleteItemIds?: string[];
-  jobId?: string;
-};
+export type SchemaSyncRequestPayload = schemaSync.RunConfig;
 
 type SchemaSyncBaseParams = {
   sourceConfig: ConnectionConfigPayload;
@@ -50,13 +41,13 @@ export const buildSchemaSyncAnalyzeRequest = ({
   selectedTables,
   jobId,
 }: SchemaSyncBaseParams): SchemaSyncRequestPayload => ({
-  sourceConfig,
-  targetConfig,
-  sourceDatabase,
-  targetDatabase,
-  tables: selectedTables,
-  ...(jobId ? { jobId } : {}),
-});
+    sourceConfig,
+    targetConfig,
+    sourceDatabase,
+    targetDatabase,
+    tables: selectedTables,
+    ...(jobId ? { jobId } : {}),
+  } satisfies schemaSync.RunConfig);
 
 export const buildSchemaSyncPreviewRequest = ({
   sourceConfig,
@@ -67,14 +58,14 @@ export const buildSchemaSyncPreviewRequest = ({
   selectedItemIds,
   jobId,
 }: SchemaSyncPreviewParams): SchemaSyncRequestPayload => ({
-  sourceConfig,
-  targetConfig,
-  sourceDatabase,
-  targetDatabase,
-  tables: selectedTables,
-  ...(selectedItemIds ? { selectedItemIds } : {}),
-  ...(jobId ? { jobId } : {}),
-});
+    sourceConfig,
+    targetConfig,
+    sourceDatabase,
+    targetDatabase,
+    tables: selectedTables,
+    ...(selectedItemIds ? { selectedItemIds } : {}),
+    ...(jobId ? { jobId } : {}),
+  } satisfies schemaSync.RunConfig);
 
 export const buildSchemaSyncRunRequest = ({
   sourceConfig,
@@ -86,12 +77,12 @@ export const buildSchemaSyncRunRequest = ({
   confirmedDeleteItemIds,
   jobId,
 }: SchemaSyncRunParams): SchemaSyncRequestPayload => ({
-  sourceConfig,
-  targetConfig,
-  sourceDatabase,
-  targetDatabase,
-  tables: selectedTables,
-  selectedItemIds,
-  confirmedDeleteItemIds,
-  ...(jobId ? { jobId } : {}),
-});
+    sourceConfig,
+    targetConfig,
+    sourceDatabase,
+    targetDatabase,
+    tables: selectedTables,
+    selectedItemIds,
+    confirmedDeleteItemIds,
+    ...(jobId ? { jobId } : {}),
+  } satisfies schemaSync.RunConfig);

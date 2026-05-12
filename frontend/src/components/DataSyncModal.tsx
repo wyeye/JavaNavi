@@ -11,8 +11,8 @@ import { resolveDataSourceType } from '../utils/dataSourceCapabilities';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { buildDataSyncExecutionRiskSummary, buildSchemaSyncExecutionRiskSummary, type DataModificationRiskSummary } from '../utils/dataModificationRisk';
 import { formatLocalDateTimeLiteral, normalizeTemporalLiteralText } from './dataGrid/dataGridCopyInsert';
-import { buildDataSyncRequest, type SourceDatasetMode, validateDataSyncSelection } from './dataSyncRequest';
-import { buildSchemaSyncAnalyzeRequest, buildSchemaSyncPreviewRequest, buildSchemaSyncRunRequest, validateSchemaSyncSelection } from './schemaSyncRequest';
+import { buildDataSyncRequest, type DataSyncRequestPayload, type SourceDatasetMode, validateDataSyncSelection } from './dataSyncRequest';
+import { buildSchemaSyncAnalyzeRequest, buildSchemaSyncPreviewRequest, buildSchemaSyncRunRequest, type SchemaSyncRequestPayload, validateSchemaSyncSelection } from './schemaSyncRequest';
 import type { connection, schemaSync, sync } from '@compat/models';
 
 const { Title, Text } = Typography;
@@ -343,8 +343,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       })
   );
 
-  const dataSyncConfig = (config: ReturnType<typeof buildDataSyncRequest>): sync.SyncConfig => config as unknown as sync.SyncConfig;
-  const schemaSyncConfig = (config: ReturnType<typeof buildSchemaSyncRunRequest>): schemaSync.RunConfig => config as unknown as schemaSync.RunConfig;
+  const dataSyncConfig = (config: DataSyncRequestPayload): sync.SyncConfig => config;
+  const schemaSyncConfig = (config: SchemaSyncRequestPayload): schemaSync.RunConfig => config;
   const databaseNames = (rows: unknown): string[] => (
       Array.isArray(rows) ? rows as DatabaseRow[] : []
   )
