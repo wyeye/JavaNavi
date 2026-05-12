@@ -2,8 +2,8 @@ import React, { useState, useEffect, useMemo, useCallback, useDeferredValue } fr
 import { Input, Spin, Empty, Dropdown, message, Tooltip, Modal, Button } from 'antd';
 import { TableOutlined, SearchOutlined, ReloadOutlined, SortAscendingOutlined, DatabaseOutlined, ConsoleSqlOutlined, EditOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, ExportOutlined, AppstoreOutlined, UnorderedListOutlined, WarningOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
-import { DBQuery, DBShowCreateTable, ExportTable, DropTable, RenameTable } from '@compat/javanaviApp';
-import type { TabData } from '../types';
+import { ClearTables, DBQuery, DBShowCreateTable, ExportTable, DropTable, RenameTable, TruncateTables } from '@compat/javanaviApp';
+import type { ConnectionConfig, TabData } from '../types';
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { noAutoCapInputProps } from '../utils/inputAutoCap';
@@ -24,6 +24,9 @@ import {
 interface TableOverviewProps {
     tab: TabData;
 }
+
+type TableOverviewTabData = TabData & { schemaName?: string };
+type QueryRow = Record<string, unknown>;
 
 interface TableStatRow {
     name: string;
@@ -133,9 +136,13 @@ ORDER BY s.name, t.name`;
     }
 };
 
-const parseTableStats = (dialect: string, rows: Record<string, any>[]): TableStatRow[] => {
+const getErrorMessage = (error: unknown): string => (
+    error instanceof Error ? error.message : String(error)
+);
+
+const parseTableStats = (dialect: string, rows: QueryRow[]): TableStatRow[] => {
     return rows.map((row) => {
-        const get = (keys: string[]): any => {
+        const get = (keys: string[]): unknown => {
             for (const k of keys) {
                 for (const rk of Object.keys(row)) {
                     if (rk.toLowerCase() === k.toLowerCase() && row[rk] !== null && row[rk] !== undefined) return row[rk];
@@ -202,15 +209,15 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 useSSH: connection.config.useSSH || false,
                 ssh: connection.config.ssh || { host: '', port: 22, user: '', password: '', keyPath: '' },
             };
-            const sql = buildTableStatusSQL(metadataDialect, tab.dbName || '', (tab as any).schemaName);
-            const res = await DBQuery(buildRpcConnectionConfig(config) as any, tab.dbName || '', sql);
+            const sql = buildTableStatusSQL(metadataDialect, tab.dbName || '', (tab as TableOverviewTabData).schemaName);
+            const res = await DBQuery(buildRpcConnectionConfig(config), tab.dbName || '', sql);
             if (res.success && Array.isArray(res.data)) {
-                setTables(parseTableStats(metadataDialect, res.data));
+                setTables(parseTableStats(metadataDialect, res.data as QueryRow[]));
             } else {
                 message.error('获取表信息失败: ' + (res.message || '未知错误'));
             }
-        } catch (e: any) {
-            message.error('获取表信息失败: ' + (e?.message || String(e)));
+        } catch (e: unknown) {
+            message.error('获取表信息失败: ' + getErrorMessage(e));
         } finally {
             setLoading(false);
         }
@@ -267,7 +274,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         });
     }, [connection, tab.dbName, addTab, setActiveContext]);
 
-    const buildConfig = useCallback(() => {
+    const buildConfig = useCallback((): ConnectionConfig | null => {
         if (!connection) return null;
         return {
             ...connection.config,
@@ -282,7 +289,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const handleCopyStructure = useCallback(async (tableName: string) => {
         const config = buildConfig();
         if (!config) return;
-        const res = await DBShowCreateTable(buildRpcConnectionConfig(config) as any, tab.dbName || '', tableName);
+        const res = await DBShowCreateTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
         if (res.success) {
             navigator.clipboard.writeText(res.data as string);
             message.success('表结构已复制到剪贴板');
@@ -295,7 +302,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         const config = buildConfig();
         if (!config) return;
         const hide = message.loading(`正在导出 ${tableName} 为 ${format.toUpperCase()}...`, 0);
-        const res = await ExportTable(buildRpcConnectionConfig(config) as any, tab.dbName || '', tableName, format);
+        const res = await ExportTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName, format);
         hide();
         if (res.success) {
             message.success(exportSuccessMessage(res, language));
@@ -312,7 +319,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             content: `确定删除表 "${tableName}" 吗？该操作不可恢复。`,
             okButtonProps: { danger: true },
             onOk: async () => {
-                const res = await DropTable(buildRpcConnectionConfig(config) as any, tab.dbName || '', tableName);
+                const res = await DropTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
                 if (res.success) {
                     message.success('表删除成功');
                     loadData();
@@ -335,11 +342,10 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             cancelText: '取消',
             okButtonProps: { danger: true },
             onOk: async () => {
-                const app = (window as any).go.app.App;
-                const methodName = action === 'truncate' ? 'TruncateTables' : 'ClearTables';
+                const method = action === 'truncate' ? TruncateTables : ClearTables;
                 const hide = message.loading(`正在${progressLabel} ${tableName}...`, 0);
                 try {
-                    const res = await app[methodName](buildRpcConnectionConfig(config) as any, tab.dbName || '', [tableName]);
+                    const res = await method(buildRpcConnectionConfig(config), tab.dbName || '', [tableName]);
                     hide();
                     if (res.success) {
                         message.success(`${progressLabel}成功`);
@@ -348,9 +354,9 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                         message.error(`${progressLabel}失败: ${res.message}`);
                         return Promise.reject();
                     }
-                } catch (e: any) {
+                } catch (e: unknown) {
                     hide();
-                    message.error(`${progressLabel}失败: ${e?.message || String(e)}`);
+                    message.error(`${progressLabel}失败: ${getErrorMessage(e)}`);
                     return Promise.reject();
                 }
             },
@@ -377,7 +383,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 const trimmed = newName.trim();
                 if (!trimmed) { message.error('表名不能为空'); return Promise.reject(); }
                 if (trimmed === tableName) { message.warning('新旧表名相同'); return; }
-                const res = await RenameTable(buildRpcConnectionConfig(config) as any, tab.dbName || '', tableName, trimmed);
+                const res = await RenameTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName, trimmed);
                 if (res.success) {
                     message.success('表重命名成功');
                     loadData();
