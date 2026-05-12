@@ -2,13 +2,13 @@ import React from 'react';
 import { Button } from 'antd';
 import Editor from '@monaco-editor/react';
 
-export type DataGridFocusedCellInfo<TRecord = any> = {
+export type DataGridFocusedCellInfo<TRecord = Record<string, unknown>> = {
     record: TRecord;
     dataIndex: string;
     title: string;
 };
 
-export type DataGridPreviewPanelProps<TRecord = any> = {
+export type DataGridPreviewPanelProps<TRecord = Record<string, unknown>> = {
     visible: boolean;
     darkMode: boolean;
     focusedCellInfo: DataGridFocusedCellInfo<TRecord> | null;
