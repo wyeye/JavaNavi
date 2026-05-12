@@ -3,6 +3,7 @@ package com.javanavi.api;
 import com.javanavi.driver.DriverCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.DriverContracts;
 import com.javanavi.security.SecretRedactor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -37,103 +38,101 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/runtime-directory")
-    public ApiEnvelope<Map<String, Object>> configureRuntimeDirectory(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.configureRuntimeDirectory(stringValue(input, "path", "directory")));
+    public ApiEnvelope<Map<String, Object>> configureRuntimeDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
+        return ApiEnvelope.ok(driverCompatibilityService.configureRuntimeDirectory(input == null ? "" : input.value()));
     }
 
     @PostMapping("/download-directory/open")
-    public ApiEnvelope<Map<String, Object>> openDownloadDirectory(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.openDownloadDirectory(stringValue(input, "path", "directory")));
+    public ApiEnvelope<Map<String, Object>> openDownloadDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
+        return ApiEnvelope.ok(driverCompatibilityService.openDownloadDirectory(input == null ? "" : input.value()));
     }
 
     @PostMapping("/download-directory/resolve")
-    public ApiEnvelope<Map<String, Object>> resolveDownloadDirectory(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.resolveDownloadDirectory(stringValue(input, "path", "directory")));
+    public ApiEnvelope<Map<String, Object>> resolveDownloadDirectory(@RequestBody(required = false) DriverContracts.DirectoryRequest input) {
+        return ApiEnvelope.ok(driverCompatibilityService.resolveDownloadDirectory(input == null ? "" : input.value()));
     }
 
     @PostMapping("/repository/resolve")
-    public ApiEnvelope<Map<String, Object>> resolveRepositoryURL(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.resolveRepositoryURL(stringValue(input, "url", "repositoryURL", "repositoryUrl")));
+    public ApiEnvelope<Map<String, Object>> resolveRepositoryURL(@RequestBody(required = false) DriverContracts.RepositoryRequest input) {
+        return ApiEnvelope.ok(driverCompatibilityService.resolveRepositoryURL(input == null ? "" : input.value()));
     }
 
     @PostMapping("/repository/configure")
-    public ApiEnvelope<Map<String, Object>> configureRepositoryURL(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.configureRepositoryURL(stringValue(input, "url", "repositoryURL", "repositoryUrl")));
+    public ApiEnvelope<Map<String, Object>> configureRepositoryURL(@RequestBody(required = false) DriverContracts.RepositoryRequest input) {
+        return ApiEnvelope.ok(driverCompatibilityService.configureRepositoryURL(input == null ? "" : input.value()));
     }
 
     @PostMapping("/package-url/resolve")
-    public ApiEnvelope<Map<String, Object>> resolvePackageDownloadURL(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> resolvePackageDownloadURL(@RequestBody(required = false) DriverContracts.DriverRepositoryRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.resolvePackageDownloadURL(
-                stringValue(input, "driverType"),
-                stringValue(input, "url", "repositoryURL", "repositoryUrl")
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.url()
         ));
     }
 
     @PostMapping("/versions")
-    public ApiEnvelope<Map<String, Object>> versions(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> versions(@RequestBody(required = false) DriverContracts.DriverRepositoryRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.versionList(
-                stringValue(input, "driverType"),
-                stringValue(input, "url", "repositoryURL", "repositoryUrl")
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.url()
         ));
     }
 
     @PostMapping("/package-size")
-    public ApiEnvelope<Map<String, Object>> packageSize(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> packageSize(@RequestBody(required = false) DriverContracts.VersionRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.packageSize(
-                stringValue(input, "driverType"),
-                stringValue(input, "version")
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.version()
         ));
     }
 
     @PostMapping("/status")
-    public ApiEnvelope<Map<String, Object>> status(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> status(@RequestBody(required = false) DriverContracts.StatusRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.statusList(
-                stringValue(input, "downloadDir", "directory", "path"),
-                stringValue(input, "manifestURL", "manifestUrl", "repositoryURL", "repositoryUrl")
+                input == null ? "" : input.downloadDir(),
+                input == null ? "" : input.manifestURL()
         ));
     }
 
     @PostMapping("/custom-definitions")
-    public ApiEnvelope<Map<String, Object>> customDefinitions(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(driverCompatibilityService.customDefinitions(
-                stringValue(input, "downloadDir", "directory", "path")
-        ));
+    public ApiEnvelope<Map<String, Object>> customDefinitions(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
+        return ApiEnvelope.ok(driverCompatibilityService.customDefinitions(input == null ? "" : input.downloadDir()));
     }
 
     @PostMapping("/custom-definitions/validate")
-    public ApiEnvelope<Map<String, Object>> validateCustomDefinition(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> validateCustomDefinition(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.validateCustomDefinition(
-                stringValue(input, "driverType"),
-                stringValue(input, "downloadDir", "directory", "path")
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.downloadDir()
         ));
     }
 
     @PostMapping("/default-driver")
-    public ApiEnvelope<Map<String, Object>> configureDefaultDriver(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> configureDefaultDriver(@RequestBody(required = false) DriverContracts.DefaultDriverRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.configureDefaultDriver(
-                stringValue(input, "databaseType", "type"),
-                stringValue(input, "driverType", "defaultDriverType", "driver"),
-                stringValue(input, "downloadDir", "directory", "path")
+                input == null ? "" : input.databaseType(),
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.downloadDir()
         ));
     }
 
     @PostMapping("/download")
-    public ApiEnvelope<Map<String, Object>> download(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> download(@RequestBody(required = false) DriverContracts.DownloadRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.downloadPackage(
-                stringValue(input, "driverType"),
-                stringValue(input, "version"),
-                stringValue(input, "downloadURL", "downloadUrl", "url"),
-                stringValue(input, "downloadDir", "directory", "path")
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.version(),
+                input == null ? "" : input.downloadURL(),
+                input == null ? "" : input.downloadDir()
         ));
     }
 
     @PostMapping("/install-local")
-    public ApiEnvelope<Map<String, Object>> installLocal(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> installLocal(@RequestBody(required = false) DriverContracts.InstallLocalRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.installLocalPackage(
-                stringValue(input, "driverType"),
-                stringValue(input, "filePath", "packagePath", "path"),
-                stringValue(input, "downloadDir", "directory"),
-                stringValue(input, "version")
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.filePath(),
+                input == null ? "" : input.downloadDir(),
+                input == null ? "" : input.version()
         ));
     }
 
@@ -159,10 +158,10 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/remove")
-    public ApiEnvelope<Map<String, Object>> remove(@RequestBody(required = false) Map<String, Object> input) {
+    public ApiEnvelope<Map<String, Object>> remove(@RequestBody(required = false) DriverContracts.DriverTypeRequest input) {
         return ApiEnvelope.ok(driverCompatibilityService.removePackage(
-                stringValue(input, "driverType"),
-                stringValue(input, "downloadDir", "directory", "path")
+                input == null ? "" : input.driverType(),
+                input == null ? "" : input.downloadDir()
         ));
     }
 
@@ -176,18 +175,5 @@ public class DriverCompatibilityController {
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiEnvelope<Void> illegalState(IllegalStateException error) {
         return ApiEnvelope.failKey(messages, "drivers.state", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
-    }
-
-    private static String stringValue(Map<String, Object> input, String... keys) {
-        if (input == null) {
-            return "";
-        }
-        for (String key : keys) {
-            Object value = input.get(key);
-            if (value != null) {
-                return String.valueOf(value).trim();
-            }
-        }
-        return "";
     }
 }

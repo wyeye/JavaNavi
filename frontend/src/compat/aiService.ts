@@ -3,6 +3,7 @@
 
 import { localSessionHeaders } from './localSession';
 import { currentLanguageHeaderValue, getRuntimeLanguage, translateBackendFallback } from '../i18n';
+import type { AiChatSendResult, AiContextLevelValue, AiMessage, AiModelListResult, AiProviderConfig, AiProviderTestResult, AiSafetyLevelValue, AiSafetyResult, AiSessionPayload, AiSessionSummary, AiTool, ApiPayload } from './contracts';
 
 const API_BASE = '/api/v1';
 
@@ -11,7 +12,7 @@ function localizeAIBackendMessage(message: unknown, fallbackMessage = 'JavaNavi 
   return translateBackendFallback(getRuntimeLanguage(), raw);
 }
 
-async function getJson(path: string): Promise<any> {
+async function getJson<T = unknown>(path: string): Promise<ApiPayload<T>> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'GET',
     credentials: 'same-origin',
@@ -24,7 +25,7 @@ async function getJson(path: string): Promise<any> {
   return payload;
 }
 
-async function postJson(path: string, body: unknown): Promise<any> {
+async function postJson<T = unknown>(path: string, body: unknown): Promise<ApiPayload<T>> {
   const response = await fetch(`${API_BASE}${path}`, {
     method: 'POST',
     credentials: 'same-origin',
@@ -47,25 +48,38 @@ async function aiServiceHeaders(): Promise<Record<string, string>> {
   };
 }
 
-function dataOrThrow<T = any>(payload: any, fallbackMessage: string): T {
-  if (!payload || payload.success === false) {
-    throw new Error(localizeAIBackendMessage(payload?.error?.message || payload?.message, fallbackMessage));
+function dataOrThrow<T = unknown>(payload: ApiPayload<T | null> | null, fallbackMessage: string): T {
+  const envelope = payload as { success?: boolean; error?: { message?: string }; message?: string; data?: T } | null;
+  if (!envelope || envelope.success === false) {
+    throw new Error(localizeAIBackendMessage(envelope?.error?.message || envelope?.message, fallbackMessage));
   }
-  return (payload.data ?? payload) as T;
+  return (envelope.data ?? payload) as T;
+}
+
+function envelopeResult<T extends object>(payload: ApiPayload<T | null>, fallbackMessage: string): T & { success: boolean; error?: string } {
+  const envelope = payload as { success?: boolean; error?: { message?: string } | string; message?: string; data?: T | null };
+  const data = (envelope?.data && typeof envelope.data === 'object' ? envelope.data : {}) as T;
+  const rawError = envelope?.error;
+  const error = typeof rawError === 'string' ? rawError : rawError?.message || envelope?.message;
+  return {
+    ...data,
+    success: envelope?.success !== false,
+    ...(error ? { error: localizeAIBackendMessage(error, fallbackMessage) } : {}),
+  };
 }
 
 export async function AIChatCancel(arg1: string): Promise<void> {
   await postJson('/ai/chat/cancel', { sessionId: arg1 });
 }
 
-export async function AIChatSend(arg1: any[] = [], arg2: any[] = []): Promise<Record<string, any>> {
-  return dataOrThrow<Record<string, any>>(
+export async function AIChatSend(arg1: AiMessage[] = [], arg2: AiTool[] = []): Promise<AiChatSendResult> {
+  return envelopeResult<AiChatSendResult>(
     await postJson('/ai/chat/send', { messages: Array.isArray(arg1) ? arg1 : [], tools: Array.isArray(arg2) ? arg2 : [] }),
     'Failed to send JavaNavi AI chat request.',
   );
 }
 
-export async function AIChatStream(arg1: string, arg2: any[] = [], arg3: any[] = []): Promise<void> {
+export async function AIChatStream(arg1: string, arg2: AiMessage[] = [], arg3: AiTool[] = []): Promise<void> {
   await postJson('/ai/chat/stream', {
     sessionId: arg1,
     messages: Array.isArray(arg2) ? arg2 : [],
@@ -73,8 +87,8 @@ export async function AIChatStream(arg1: string, arg2: any[] = [], arg3: any[] =
   });
 }
 
-export async function AICheckSQL(arg1: string): Promise<any> {
-  return dataOrThrow<any>(await postJson('/ai/safety/check-sql', { sql: arg1 }), 'Failed to check SQL safety.');
+export async function AICheckSQL(arg1: string): Promise<AiSafetyResult> {
+  return dataOrThrow<AiSafetyResult>(await postJson('/ai/safety/check-sql', { sql: arg1 }), 'Failed to check SQL safety.');
 }
 
 export async function AIDeleteProvider(arg1: string): Promise<void> {
@@ -85,7 +99,7 @@ export async function AIDeleteSession(arg1: string): Promise<void> {
   await postJson('/ai/sessions/delete', { sessionId: arg1 });
 }
 
-export async function AIGetActiveProvider(): Promise<any> {
+export async function AIGetActiveProvider(): Promise<string> {
   return dataOrThrow<string>(await getJson('/ai/providers/active'), 'Failed to load active AI provider.');
 }
 
@@ -93,31 +107,31 @@ export async function AIGetBuiltinPrompts(): Promise<Record<string, string>> {
   return dataOrThrow<Record<string, string>>(await getJson('/ai/prompts/builtin'), 'Failed to load built-in AI prompts.');
 }
 
-export async function AIGetContextLevel(): Promise<any> {
-  return dataOrThrow<string>(await getJson('/ai/settings/context'), 'Failed to load AI context level.');
+export async function AIGetContextLevel(): Promise<AiContextLevelValue> {
+  return dataOrThrow<AiContextLevelValue>(await getJson('/ai/settings/context'), 'Failed to load AI context level.');
 }
 
-export async function AIGetProviders(): Promise<any[]> {
-  return dataOrThrow<any[]>(await getJson('/ai/providers'), 'Failed to load AI providers.');
+export async function AIGetProviders(): Promise<AiProviderConfig[]> {
+  return dataOrThrow<AiProviderConfig[]>(await getJson('/ai/providers'), 'Failed to load AI providers.');
 }
 
-export async function AIGetSafetyLevel(): Promise<any> {
-  return dataOrThrow<string>(await getJson('/ai/settings/safety'), 'Failed to load AI safety level.');
+export async function AIGetSafetyLevel(): Promise<AiSafetyLevelValue> {
+  return dataOrThrow<AiSafetyLevelValue>(await getJson('/ai/settings/safety'), 'Failed to load AI safety level.');
 }
 
-export async function AIGetSessions(): Promise<Array<{ id: string; title: string; updatedAt: number }>> {
-  return dataOrThrow<Array<{ id: string; title: string; updatedAt: number }>>(await getJson('/ai/sessions'), 'Failed to load AI sessions.');
+export async function AIGetSessions(): Promise<AiSessionSummary[]> {
+  return dataOrThrow<AiSessionSummary[]>(await getJson('/ai/sessions'), 'Failed to load AI sessions.');
 }
 
-export async function AIListModels(): Promise<Record<string, any>> {
-  return dataOrThrow<Record<string, any>>(await getJson('/ai/models'), 'Failed to load AI models.');
+export async function AIListModels(): Promise<AiModelListResult> {
+  return envelopeResult<AiModelListResult>(await getJson('/ai/models'), 'Failed to load AI models.');
 }
 
-export async function AILoadSession(arg1: string): Promise<Record<string, any>> {
-  return dataOrThrow<Record<string, any>>(await postJson('/ai/sessions/load', { sessionId: arg1 }), 'Failed to load AI session.');
+export async function AILoadSession(arg1: string): Promise<AiSessionPayload> {
+  return envelopeResult<AiSessionPayload>(await postJson('/ai/sessions/load', { sessionId: arg1 }), 'Failed to load AI session.');
 }
 
-export async function AISaveProvider(arg1: any): Promise<void> {
+export async function AISaveProvider(arg1: AiProviderConfig): Promise<void> {
   await postJson('/ai/providers/save', arg1 || {});
 }
 
@@ -137,6 +151,6 @@ export async function AISetSafetyLevel(arg1: string): Promise<void> {
   await postJson('/ai/settings/safety', { level: arg1 });
 }
 
-export async function AITestProvider(arg1: any): Promise<Record<string, any>> {
-  return dataOrThrow<Record<string, any>>(await postJson('/ai/providers/test', arg1 || {}), 'Failed to validate AI provider.');
+export async function AITestProvider(arg1: AiProviderConfig): Promise<AiProviderTestResult> {
+  return envelopeResult<AiProviderTestResult>(await postJson('/ai/providers/test', arg1 || {}), 'Failed to validate AI provider.');
 }

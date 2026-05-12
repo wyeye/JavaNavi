@@ -1,5 +1,6 @@
 import { resolveEffectiveSSLMode } from '../utils/sslMode';
 import { connection, sync, app, redis, schemaSync } from './models';
+import type { DataRow, RedisCursor, RedisHashFieldsInput, RedisListPushOptions } from './contracts';
 import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
 
@@ -510,7 +511,7 @@ export async function ExportConnectionsPackage(arg1:app.ConnectionExportOptions)
   return apiEnvelopeToQueryResult(payload, 'Connections package exported');
 }
 
-export async function ExportData(arg1:Array<Record<string, any>>,arg2:Array<string>,arg3:string,arg4:string): Promise<connection.QueryResult> {
+export async function ExportData(arg1:DataRow[],arg2:Array<string>,arg3:string,arg4:string): Promise<connection.QueryResult> {
   const payload = await postJson('/files/export/data', { rows: arg1 || [], columns: arg2 || [], defaultName: arg3, format: arg4 });
   return apiEnvelopeToQueryResult(payload, 'Data exported');
 }
@@ -704,7 +705,7 @@ export async function RedisConnect(arg1:connection.ConnectionConfig): Promise<co
   return apiEnvelopeToQueryResult(payload, 'Redis connection tested');
 }
 
-export async function RedisDeleteHashField(arg1:connection.ConnectionConfig,arg2:string,arg3:any): Promise<connection.QueryResult> {
+export async function RedisDeleteHashField(arg1:connection.ConnectionConfig,arg2:string,arg3:RedisHashFieldsInput): Promise<connection.QueryResult> {
   const payload = await postJson('/redis/hash/field/delete', { connection: toConnectionPayload(arg1), key: arg2, fields: arg3 });
   return apiEnvelopeToQueryResult(payload, 'Redis hash field deleted');
 }
@@ -746,9 +747,9 @@ export async function RedisKeyExists(arg1:connection.ConnectionConfig,arg2:strin
   return apiEnvelopeToQueryResult(payload, 'Redis key existence checked');
 }
 
-export async function RedisListPush(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {
-  const valuesArg = arg3 as any;
-  const payload = await postJson('/redis/list/push', { connection: toConnectionPayload(arg1), key: arg2, values: Array.isArray(valuesArg) ? valuesArg : valuesArg?.values, position: Array.isArray(valuesArg) ? 'right' : valuesArg?.position });
+export async function RedisListPush(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string> | RedisListPushOptions): Promise<connection.QueryResult> {
+  const valuesArg = arg3;
+  const payload = await postJson('/redis/list/push', { connection: toConnectionPayload(arg1), key: arg2, values: Array.isArray(valuesArg) ? valuesArg : valuesArg.values, position: Array.isArray(valuesArg) ? 'right' : valuesArg.position });
   return apiEnvelopeToQueryResult(payload, 'Redis list item added');
 }
 
@@ -762,7 +763,7 @@ export async function RedisRenameKey(arg1:connection.ConnectionConfig,arg2:strin
   return apiEnvelopeToQueryResult(payload, 'Redis key renamed');
 }
 
-export async function RedisScanKeys(arg1:connection.ConnectionConfig,arg2:string,arg3:any,arg4:number): Promise<connection.QueryResult> {
+export async function RedisScanKeys(arg1:connection.ConnectionConfig,arg2:string,arg3:RedisCursor,arg4:number): Promise<connection.QueryResult> {
   const payload = await postJson('/redis/keys/scan', { connection: toConnectionPayload(arg1), pattern: arg2, cursor: arg3, count: arg4 });
   return apiEnvelopeToQueryResult(payload, 'Redis keys scanned');
 }

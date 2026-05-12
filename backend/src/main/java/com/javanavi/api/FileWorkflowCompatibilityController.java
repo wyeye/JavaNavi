@@ -3,6 +3,7 @@ package com.javanavi.api;
 import com.javanavi.files.FileWorkflowCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.FileWorkflowContracts;
 import com.javanavi.security.SecretRedactor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
@@ -35,8 +36,8 @@ public class FileWorkflowCompatibilityController {
     }
 
     @PostMapping("/ssh-key/select")
-    public ApiEnvelope<Map<String, Object>> selectSshKeyFile(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.selectSshKeyFile(stringValue(input, "currentPath", "path")));
+    public ApiEnvelope<Map<String, Object>> selectSshKeyFile(@RequestBody(required = false) FileWorkflowContracts.SshKeySelectRequest input) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.selectSshKeyFile(input == null ? "" : input.value()));
     }
 
     @PostMapping(value = "/import/upload", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -49,52 +50,49 @@ public class FileWorkflowCompatibilityController {
     }
 
     @PostMapping("/import/preview")
-    public ApiEnvelope<Map<String, Object>> previewImportFile(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.previewImportFile(stringValue(input, "filePath", "path")));
+    public ApiEnvelope<Map<String, Object>> previewImportFile(@RequestBody(required = false) FileWorkflowContracts.ImportPreviewRequest input) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.previewImportFile(input == null ? "" : input.value()));
     }
 
     @PostMapping("/import/run")
-    public ApiEnvelope<Map<String, Object>> importDataWithProgress(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.importDataWithProgress(input));
+    public ApiEnvelope<Map<String, Object>> importDataWithProgress(@RequestBody(required = false) FileWorkflowContracts.ImportRunRequest input) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.importDataWithProgress(input == null ? Map.of() : input.toMap()));
     }
 
-    @SuppressWarnings("unchecked")
     @PostMapping("/export/data")
-    public ApiEnvelope<Map<String, Object>> exportData(@RequestBody(required = false) Map<String, Object> input) {
-        Object rows = input == null ? null : input.get("rows");
-        Object columns = input == null ? null : input.get("columns");
+    public ApiEnvelope<Map<String, Object>> exportData(@RequestBody(required = false) FileWorkflowContracts.ExportDataRequest input) {
         return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportData(
-                rows instanceof List<?> list ? (List<Map<String, Object>>) (List<?>) list : List.of(),
-                columns instanceof List<?> list ? list.stream().map(String::valueOf).toList() : List.of(),
-                stringValue(input, "defaultName", "name"),
-                stringValue(input, "format")
+                input == null || input.rows() == null ? List.of() : input.rows(),
+                input == null || input.columns() == null ? List.of() : input.columns(),
+                input == null ? "" : input.defaultName(),
+                input == null ? "" : input.format()
         ));
     }
 
     @PostMapping("/export/query")
-    public ApiEnvelope<Map<String, Object>> exportQuery(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportQuery(input));
+    public ApiEnvelope<Map<String, Object>> exportQuery(@RequestBody(required = false) FileWorkflowContracts.ExportQueryRequest input) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportQuery(input == null ? Map.of() : input.toMap()));
     }
 
     @PostMapping("/export/table")
-    public ApiEnvelope<Map<String, Object>> exportTable(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTable(input));
+    public ApiEnvelope<Map<String, Object>> exportTable(@RequestBody(required = false) FileWorkflowContracts.ExportTableRequest input) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTable(input == null ? Map.of() : input.toMap()));
     }
 
     @PostMapping("/export/tables-sql")
-    public ApiEnvelope<Map<String, Object>> exportTablesSql(@RequestBody(required = false) Map<String, Object> input) {
-        boolean includeData = input != null && Boolean.TRUE.equals(input.get("includeData"));
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input, true, includeData));
+    public ApiEnvelope<Map<String, Object>> exportTablesSql(@RequestBody(required = false) FileWorkflowContracts.ExportTablesSqlRequest input) {
+        boolean includeData = input != null && Boolean.TRUE.equals(input.includeData());
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input == null ? Map.of() : input.toMap(), true, includeData));
     }
 
     @PostMapping("/export/tables-data-sql")
-    public ApiEnvelope<Map<String, Object>> exportTablesDataSql(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input, false, true));
+    public ApiEnvelope<Map<String, Object>> exportTablesDataSql(@RequestBody(required = false) FileWorkflowContracts.ExportTablesSqlRequest input) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportTablesSql(input == null ? Map.of() : input.toMap(), false, true));
     }
 
     @PostMapping("/export/database-sql")
-    public ApiEnvelope<Map<String, Object>> exportDatabaseSql(@RequestBody(required = false) Map<String, Object> input) {
-        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportDatabaseSql(input));
+    public ApiEnvelope<Map<String, Object>> exportDatabaseSql(@RequestBody(required = false) FileWorkflowContracts.ExportTablesSqlRequest input) {
+        return ApiEnvelope.ok(fileWorkflowCompatibilityService.exportDatabaseSql(input == null ? Map.of() : input.toMap()));
     }
 
     @ExceptionHandler(IllegalArgumentException.class)
@@ -116,19 +114,6 @@ public class FileWorkflowCompatibilityController {
         for (String value : values) {
             if (value != null && !value.trim().isBlank()) {
                 return value.trim();
-            }
-        }
-        return "";
-    }
-
-    private static String stringValue(Map<String, Object> input, String... keys) {
-        if (input == null) {
-            return "";
-        }
-        for (String key : keys) {
-            Object value = input.get(key);
-            if (value != null) {
-                return String.valueOf(value).trim();
             }
         }
         return "";
