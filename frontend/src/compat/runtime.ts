@@ -4,11 +4,13 @@ export interface Position { x: number; y: number; }
 export interface Size { w: number; h: number; }
 export interface EnvironmentInfo { buildType: string; platform: string; arch: string; }
 
-type Handler = (...data: any[]) => void;
+type EventPayload = unknown;
+type Handler = (...data: EventPayload[]) => void;
 const listeners = new Map<string, Set<Handler>>();
 const EVENT_STREAM_URL = '/api/v1/events/stream';
 
 type EventBridgeState = 'idle' | 'connecting' | 'open' | 'error' | 'closed' | 'unavailable';
+type EventPayloadRecord = Record<string, unknown>;
 type CompatServerEvent = {
   id?: string;
   eventName?: string;
@@ -19,11 +21,15 @@ type CompatServerEvent = {
   phase?: string;
   message?: string;
   timestamp?: string;
-  payload?: any;
+  payload?: EventPayload;
 };
 
 let eventBridgeSource: EventSource | null = null;
 let eventBridgeState: EventBridgeState = 'idle';
+
+const isEventPayloadRecord = (value: EventPayload): value is EventPayloadRecord => (
+  typeof value === 'object' && value !== null && !Array.isArray(value)
+);
 
 function handleCompatServerEvent(rawData: string, lastEventId?: string): void {
   if (!rawData) return;
@@ -40,10 +46,10 @@ function handleCompatServerEvent(rawData: string, lastEventId?: string): void {
     : (typeof parsed.event === 'string' ? parsed.event : '');
   if (!eventName) return;
 
-  const payload = parsed.payload && typeof parsed.payload === 'object'
+  const payload: EventPayload = isEventPayloadRecord(parsed.payload)
     ? { ...parsed.payload }
     : parsed.payload ?? {};
-  if (payload && typeof payload === 'object') {
+  if (isEventPayloadRecord(payload)) {
     if (parsed.id && payload.eventId === undefined) payload.eventId = parsed.id;
     if (lastEventId && payload.lastEventId === undefined) payload.lastEventId = lastEventId;
     if (parsed.family && payload.family === undefined) payload.family = parsed.family;
@@ -95,16 +101,16 @@ export function EventBridgeState(): EventBridgeState {
   return eventBridgeState;
 }
 
-export function EventsEmit(eventName: string, ...data: any): void {
+export function EventsEmit(eventName: string, ...data: EventPayload[]): void {
   listeners.get(eventName)?.forEach((handler) => handler(...data));
 }
 
-export function EventsOnMultiple(eventName: string, callback: Handler, maxCallbacks: number): () => void {
+export function EventsOnMultiple<TPayload extends EventPayload[]>(eventName: string, callback: (...data: TPayload) => void, maxCallbacks: number): () => void {
   StartEventBridge();
   let calls = 0;
   const wrapped: Handler = (...data) => {
     calls += 1;
-    callback(...data);
+    callback(...(data as TPayload));
     if (maxCallbacks > -1 && calls >= maxCallbacks) EventsOff(eventName);
   };
   const set = listeners.get(eventName) ?? new Set<Handler>();
@@ -113,8 +119,8 @@ export function EventsOnMultiple(eventName: string, callback: Handler, maxCallba
   return () => set.delete(wrapped);
 }
 
-export function EventsOn(eventName: string, callback: Handler): () => void { return EventsOnMultiple(eventName, callback, -1); }
-export function EventsOnce(eventName: string, callback: Handler): () => void { return EventsOnMultiple(eventName, callback, 1); }
+export function EventsOn<TPayload extends EventPayload[]>(eventName: string, callback: (...data: TPayload) => void): () => void { return EventsOnMultiple(eventName, callback, -1); }
+export function EventsOnce<TPayload extends EventPayload[]>(eventName: string, callback: (...data: TPayload) => void): () => void { return EventsOnMultiple(eventName, callback, 1); }
 export function EventsOff(eventName: string, ...additionalEventNames: string[]): void {
   [eventName, ...additionalEventNames].forEach((name) => listeners.delete(name));
 }
@@ -160,4 +166,5 @@ export function WindowShow(): void {}
 export function WindowUnmaximise(): void {}
 export function WindowUnminimise(): void {}
 export function WindowSetBackgroundColour(R: number, G: number, B: number, A: number): void { void R; void G; void B; void A; }
-export async function ScreenGetAll(): Promise<any[]> { return [{ isCurrent: true, isPrimary: true, width: window.screen.width, height: window.screen.height }]; }
+export interface ScreenInfo { isCurrent: boolean; isPrimary: boolean; width: number; height: number; }
+export async function ScreenGetAll(): Promise<ScreenInfo[]> { return [{ isCurrent: true, isPrimary: true, width: window.screen.width, height: window.screen.height }]; }
