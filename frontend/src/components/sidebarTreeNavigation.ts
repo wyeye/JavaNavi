@@ -1,4 +1,6 @@
 import type React from 'react';
+import type { I18nKey, I18nParams } from '../i18n';
+import type { TabData } from '../types';
 type SidebarTreeKey = React.Key;
 
 type SidebarTreeNode = {
@@ -6,7 +8,7 @@ type SidebarTreeNode = {
     title?: unknown;
     type?: string;
     children?: SidebarTreeNode[];
-    dataRef?: Record<string, any>;
+    dataRef?: Record<string, unknown>;
 };
 
 type SidebarTableTarget = {
@@ -21,7 +23,7 @@ type SidebarTreePath = {
 };
 
 type LocateSidebarTableOptions = {
-    activeTab: any;
+    activeTab?: TabData;
     getTreeData: () => SidebarTreeNode[];
     loadDatabases: (node: SidebarTreeNode) => Promise<void>;
     loadTables: (node: SidebarTreeNode) => Promise<void>;
@@ -36,7 +38,7 @@ type LocateSidebarTableOptions = {
         warning: (content: string) => void;
         success: (content: string) => void;
     };
-    t: (key: any, params?: Record<string, string | number | boolean | null | undefined>) => string;
+    t: (key: I18nKey, params?: I18nParams) => string;
 };
 
 const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -44,7 +46,7 @@ const delay = (ms: number) => new Promise((resolve) => window.setTimeout(resolve
 const normalizeText = (value: unknown) => String(value ?? '').trim();
 const normalizeComparableName = (value: unknown) => normalizeText(value).toLowerCase();
 
-export const getActiveSidebarTableTarget = (tab: any): SidebarTableTarget | null => {
+export const getActiveSidebarTableTarget = (tab?: TabData): SidebarTableTarget | null => {
     if (!tab || (tab.type !== 'table' && tab.type !== 'design')) return null;
     const connectionId = normalizeText(tab.connectionId);
     const dbName = normalizeText(tab.dbName);
