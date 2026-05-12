@@ -53,13 +53,13 @@ public class DriverCompatibilityController {
     }
 
     @PostMapping("/repository/resolve")
-    public ApiEnvelope<Map<String, Object>> resolveRepositoryURL(@RequestBody(required = false) DriverContracts.RepositoryRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.resolveRepositoryURL(input == null ? "" : input.value()));
+    public ApiEnvelope<DriverContracts.DriverRepositoryResponse> resolveRepositoryURL(@RequestBody(required = false) DriverContracts.RepositoryRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverRepositoryResponse.from(driverCompatibilityService.resolveRepositoryURL(input == null ? "" : input.value())));
     }
 
     @PostMapping("/repository/configure")
-    public ApiEnvelope<Map<String, Object>> configureRepositoryURL(@RequestBody(required = false) DriverContracts.RepositoryRequest input) {
-        return ApiEnvelope.ok(driverCompatibilityService.configureRepositoryURL(input == null ? "" : input.value()));
+    public ApiEnvelope<DriverContracts.DriverRepositoryResponse> configureRepositoryURL(@RequestBody(required = false) DriverContracts.RepositoryRequest input) {
+        return ApiEnvelope.ok(DriverContracts.DriverRepositoryResponse.from(driverCompatibilityService.configureRepositoryURL(input == null ? "" : input.value())));
     }
 
     @PostMapping("/package-url/resolve")

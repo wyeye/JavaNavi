@@ -84,6 +84,34 @@ public final class DriverContracts {
         }
     }
 
+
+    public record DriverRepositoryResponse(
+            String url,
+            String repositoryUrl,
+            String defaultUrl,
+            String defaultRepositoryURL,
+            boolean webManaged,
+            String configuredRepositoryUrl,
+            boolean repositoryConfigured,
+            String defaultRepositoryUrl,
+            String updatedAt
+    ) {
+        public static DriverRepositoryResponse from(Map<String, Object> map) {
+            Map<String, Object> source = map == null ? Map.of() : map;
+            return new DriverRepositoryResponse(
+                    text(source.get("url")),
+                    text(source.get("repositoryUrl")),
+                    text(source.get("defaultUrl")),
+                    text(source.get("defaultRepositoryURL")),
+                    booleanValue(source.get("webManaged")),
+                    text(source.get("configuredRepositoryUrl")),
+                    booleanValue(source.get("repositoryConfigured")),
+                    text(source.get("defaultRepositoryUrl")),
+                    text(source.get("updatedAt"))
+            );
+        }
+    }
+
     public record NetworkCheckResponse(
             String name,
             String url,
