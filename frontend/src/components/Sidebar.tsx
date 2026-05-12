@@ -1420,9 +1420,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (!isExpanded) setAutoExpandParent(false);
   };
   
-  const handleCopyStructure = async (node: any) => {
-	      const { config, dbName, tableName } = node.dataRef;
-	      const res = await DBShowCreateTable(buildRpcConnectionConfig(config) as any, dbName, tableName);
+  const handleCopyStructure = async (node: TreeNode) => {
+      const { config, dbName, tableName } = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const res = await DBShowCreateTable(buildRpcConnectionConfig(config), dbName, tableName || '');
       if (res.success) {
           navigator.clipboard.writeText(res.data as string);
           message.success(t('sidebar.msg.schemaCopied'));
@@ -1431,10 +1431,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
-  const handleExport = async (node: any, format: string) => {
-      const { config, dbName, tableName } = node.dataRef;
-      const hide = message.loading(t('sidebar.msg.exportingTable', { name: tableName, format: format.toUpperCase() }), 0);
-      const res = await ExportTable(buildRpcConnectionConfig(config) as any, dbName, tableName, format);
+  const handleExport = async (node: TreeNode, format: string) => {
+      const { config, dbName, tableName } = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const hide = message.loading(t('sidebar.msg.exportingTable', { name: tableName || '', format: format.toUpperCase() }), 0);
+      const res = await ExportTable(buildRpcConnectionConfig(config), dbName, tableName || '', format);
       hide();
       if (res.success) {
           showExportSuccess(res);
@@ -1443,13 +1443,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
-  const normalizeConnConfig = (raw: any) => (
+  const normalizeConnConfig = (raw: SavedConnection['config']) => (
       buildRpcConnectionConfig(raw)
   );
 
-  const handleExportDatabaseSQL = async (node: any, includeData: boolean) => {
-      const conn = node.dataRef;
-      const dbName = conn.dbName || node.title;
+  const handleExportDatabaseSQL = async (node: TreeNode, includeData: boolean) => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const dbName = conn.dbName || String(node.title || '');
       const hide = message.loading(includeData ? t('sidebar.msg.backingUpDb', { name: dbName }) : t('sidebar.msg.exportingDbSchema', { name: dbName }), 0);
       try {
           const res = await ExportDatabaseSQL(normalizeConnConfig(conn.config), dbName, includeData);
@@ -1465,18 +1465,21 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
-  const handleExportTablesSQL = async (nodes: any[], includeData: boolean) => {
+  const handleExportTablesSQL = async (nodes: TreeNode[], includeData: boolean) => {
       if (!nodes || nodes.length === 0) return;
-      const first = nodes[0].dataRef;
+      const first = getSidebarDataRef<SidebarRuntimeNodeData>(nodes[0]);
       const dbName = first.dbName;
       const connId = first.id;
-      const allSame = nodes.every(n => n?.dataRef?.id === connId && n?.dataRef?.dbName === dbName);
+      const allSame = nodes.every((node) => {
+          const dataRef = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+          return dataRef.id === connId && dataRef.dbName === dbName;
+      });
       if (!allSame) {
           message.error(t('sidebar.msg.selectSameDb'));
           return;
       }
 
-      const tableNames = nodes.map(n => n.dataRef.tableName).filter(Boolean);
+      const tableNames = nodes.map((node) => getSidebarDataRef<SidebarRuntimeNodeData>(node).tableName).filter((name): name is string => Boolean(name));
       const hide = message.loading(includeData ? t('sidebar.msg.backingUpTables', { count: tableNames.length }) : t('sidebar.msg.exportingTableSchema', { count: tableNames.length }), 0);
       try {
           const res = await ExportTablesSQL(normalizeConnConfig(first.config), dbName, tableNames, includeData);
@@ -1544,8 +1547,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const res = await DBGetDatabases(buildRpcConnectionConfig(config));
       if (res.success) {
           const dbRows: SidebarDatabaseRow[] = Array.isArray(res.data) ? res.data as SidebarDatabaseRow[] : [];
-          let dbs = dbRows.map((row: any) => {
-              const dbName = row.Database || row.database;
+          let dbs = dbRows.map((row): SidebarAvailableDatabase => {
+              const dbName = String(row.Database || row.database || "").trim();
               return {
                   title: dbName,
                   key: `${conn.id}-${dbName}`,
@@ -1576,7 +1579,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       };
 
       const [res, viewResult] = await Promise.all([
-          DBGetSchemaObjects(buildRpcConnectionConfig(config) as any, dbName),
+          DBGetSchemaObjects(buildRpcConnectionConfig(config), dbName),
           loadViews(conn, dbName).catch(() => ({ views: [], supported: false })),
       ]);
 
@@ -1864,8 +1867,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const res = await DBGetDatabases(buildRpcConnectionConfig(config));
       if (res.success) {
           const dbRows: SidebarDatabaseRow[] = Array.isArray(res.data) ? res.data as SidebarDatabaseRow[] : [];
-          let dbs = dbRows.map((row: any) => {
-              const dbName = row.Database || row.database;
+          let dbs = dbRows.map((row): SidebarBatchDatabase => {
+              const dbName = String(row.Database || row.database || "").trim();
               return {
                   title: dbName,
                   key: `${conn.id}-${dbName}`,
