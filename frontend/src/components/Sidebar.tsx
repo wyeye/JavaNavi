@@ -1,5 +1,7 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Tree, message, Dropdown, MenuProps, Input, Button, Modal, Form, Badge, Checkbox, Space, Select, Popover, Tooltip, Progress } from 'antd';
+import { Tree, message, Dropdown, MenuProps, Input, Button, Modal, Form, Badge, Checkbox, Space, Select, Popover, Tooltip, Progress, type InputRef } from 'antd';
+import type RcTree from 'rc-tree';
+import type { EventDataNode } from 'rc-tree/lib/interface';
 	import {
 	  DatabaseOutlined,
 	  TableOutlined,
@@ -69,7 +71,7 @@ import {
   splitQualifiedName,
   type MetadataQueryResult,
   type MetadataQuerySpec,
-} from '../utils/sidebarMetadata';
+ } from '../utils/sidebarMetadata';
 import { resolveConnectionAccentColor, resolveConnectionIconType } from '../utils/connectionVisual';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
@@ -102,17 +104,39 @@ type SidebarExecutionResultData = { executedSQLs?: unknown; count?: unknown };
 type SidebarLargeFilePayload = { isLargeFile?: unknown; filePath?: unknown; fileSizeMB?: unknown };
 type SidebarQueryRecord = Record<string, unknown>;
 type SidebarLoadTreeNode = { key?: React.Key; dataRef?: object };
+type SidebarDataRef = Record<string, unknown>;
+type SidebarEventNode = EventDataNode<TreeNode>;
+type SidebarSelectInfo = {
+  selected: boolean;
+  node: SidebarEventNode;
+  selectedNodes: TreeNode[];
+};
+type SidebarDropInfo = {
+  node: SidebarEventNode;
+  dragNode: SidebarEventNode;
+  dropPosition: number;
+};
+type SidebarRightClickInfo = {
+  event: React.MouseEvent;
+  node: SidebarEventNode;
+};
 
 const getErrorMessage = (error: unknown): string => (
   error instanceof Error ? error.message : String(error)
 );
+
+const getSidebarDataRef = (node: { dataRef?: object } | null | undefined): SidebarDataRef => (
+  node?.dataRef && typeof node.dataRef === 'object' ? node.dataRef as SidebarDataRef : {}
+);
+
+const getSidebarNodeKeyText = (node: { key?: React.Key } | null | undefined): string => String(node?.key ?? '').trim();
 
 interface BatchObjectItem {
   title: string;
   key: string;
   objectName: string;
   objectType: BatchObjectType;
-  dataRef: any;
+  dataRef: SidebarDataRef;
 }
 
 const schemaObjectName = (row: SchemaObjectRow): string => (
@@ -249,12 +273,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const [searchValue, setSearchValue] = useState('');
   const [searchScopes, setSearchScopes] = useState<SearchScope[]>(['smart']);
   const [isSearchScopePopoverOpen, setIsSearchScopePopoverOpen] = useState(false);
-  const searchInputRef = useRef<any>(null);
+  const searchInputRef = useRef<InputRef>(null);
   const [expandedKeys, setExpandedKeys] = useState<React.Key[]>([]);
   const [autoExpandParent, setAutoExpandParent] = useState(true);
   const [loadedKeys, setLoadedKeys] = useState<React.Key[]>([]);
   const [selectedKeys, setSelectedKeys] = useState<React.Key[]>([]);
-  const selectedNodesRef = useRef<any[]>([]);
+  const selectedNodesRef = useRef<TreeNode[]>([]);
   const loadingNodesRef = useRef<Set<string>>(new Set());
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const externalSqlUploadInputRef = useRef<HTMLInputElement | null>(null);
@@ -264,7 +288,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   // Virtual Scroll State
   const [treeHeight, setTreeHeight] = useState(500);
   const treeContainerRef = useRef<HTMLDivElement>(null);
-  const treeRef = useRef<any>(null);
+  const treeRef = useRef<RcTree>(null);
 
   useEffect(() => {
       if (!treeContainerRef.current) return;
@@ -503,13 +527,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     };
   };
 
-  const getNodeDatabaseContext = (node: any): { connectionId: string; dbName: string; dbNodeKey: string } | null => {
+  const getNodeDatabaseContext = (node: TreeNode | SidebarEventNode | null | undefined): { connectionId: string; dbName: string; dbNodeKey: string } | null => {
     if (!node) return null;
+    const dataRef = getSidebarDataRef(node);
     if (node.type === 'database') {
       return {
-        connectionId: String(node?.dataRef?.id || '').trim(),
-        dbName: String(node?.dataRef?.dbName || '').trim(),
-        dbNodeKey: String(node.key || '').trim(),
+        connectionId: String(dataRef.id || '').trim(),
+        dbName: String(dataRef.dbName || '').trim(),
+        dbNodeKey: getSidebarNodeKeyText(node),
       };
     }
 
@@ -519,9 +544,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       || node.type === 'external-sql-file'
     ) {
       return {
-        connectionId: String(node?.dataRef?.connectionId || '').trim(),
-        dbName: String(node?.dataRef?.dbName || '').trim(),
-        dbNodeKey: String(node?.dataRef?.dbNodeKey || '').trim(),
+        connectionId: String(dataRef.connectionId || '').trim(),
+        dbName: String(dataRef.dbName || '').trim(),
+        dbNodeKey: String(dataRef.dbNodeKey || '').trim(),
       };
     }
 
@@ -1082,7 +1107,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	      }
   };
 
-  const onLoadData = async ({ key, children, dataRef, type }: any) => {
+  const onLoadData = async ({ key, children, dataRef, type }: SidebarEventNode) => {
     if (type === 'tag') return;
     if (children) return;
 
@@ -1133,8 +1158,11 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     }
   };
 
-  const openDesign = (node: any, initialTab: string, readOnly: boolean = false) => {
-      const { tableName, dbName, id } = node.dataRef;
+  const openDesign = (node: TreeNode | SidebarEventNode, initialTab: string, readOnly: boolean = false) => {
+      const dataRef = getSidebarDataRef(node);
+      const tableName = String(dataRef.tableName || '');
+      const dbName = String(dataRef.dbName || '');
+      const id = String(dataRef.id || '');
       addTab({
           id: `design-${id}-${dbName}-${tableName}`,
           title: readOnly ? t('sidebar.tree.tableStructure', { name: tableName }) : t('sidebar.tree.designTable', { name: tableName }),
@@ -1147,8 +1175,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const openNewTableDesign = (node: any) => {
-      const { dbName, id } = node.dataRef;
+  const openNewTableDesign = (node: TreeNode | SidebarEventNode) => {
+      const dataRef = getSidebarDataRef(node);
+      const dbName = String(dataRef.dbName || '');
+      const id = String(dataRef.id || '');
       addTab({
           id: `new-table-${id}-${dbName}-${Date.now()}`,
           title: t('sidebar.tree.newTable', { name: dbName }),
@@ -1161,7 +1191,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
-  const onSelect = (keys: React.Key[], info: any) => {
+  const onSelect = (keys: React.Key[], info: SidebarSelectInfo) => {
       setSelectedKeys(keys);
       selectedNodesRef.current = info.selectedNodes || [];
 
@@ -1171,23 +1201,24 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
       if (!info.selected) return;
 
-      const { type, dataRef, key, title } = info.node;
+      const { type, key } = info.node;
+      const dataRef = getSidebarDataRef(info.node);
 
       // Update active context
       if (type === 'connection') {
-          setActiveContext({ connectionId: key, dbName: '' });
+          setActiveContext({ connectionId: String(key), dbName: '' });
       } else if (type === 'database') {
-          setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
+          setActiveContext({ connectionId: String(dataRef.id || ''), dbName: String(dataRef.dbName || '') });
       } else if (type === 'table') {
-          setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
+          setActiveContext({ connectionId: String(dataRef.id || ''), dbName: String(dataRef.dbName || '') });
       } else if (type === 'view' || type === 'db-trigger' || type === 'routine') {
-          setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
+          setActiveContext({ connectionId: String(dataRef.id || ''), dbName: String(dataRef.dbName || '') });
       } else if (type === 'saved-query') {
-          setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
+          setActiveContext({ connectionId: String(dataRef.connectionId || ''), dbName: String(dataRef.dbName || '') });
       } else if (type === 'external-sql-root' || type === 'external-sql-folder' || type === 'external-sql-file') {
-          setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
+          setActiveContext({ connectionId: String(dataRef.connectionId || ''), dbName: String(dataRef.dbName || '') });
       } else if (type === 'redis-db') {
-          setActiveContext({ connectionId: dataRef.id, dbName: `db${dataRef.redisDB}` });
+          setActiveContext({ connectionId: String(dataRef.id || ''), dbName: `db${dataRef.redisDB}` });
       }
 
       if (type === 'folder-columns') openDesign(info.node, 'columns', false);
@@ -1197,7 +1228,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       else if (type === 'object-group' && dataRef?.groupKey === 'tables') {
           // 单击延迟打开表概览，双击时会取消此定时器
           if (clickTimerRef.current) clearTimeout(clickTimerRef.current);
-          const { id, dbName: gDbName, schemaName } = dataRef;
+          const id = String(dataRef.id || '');
+          const gDbName = String(dataRef.dbName || '');
+          const schemaName = String(dataRef.schemaName || '');
           clickTimerRef.current = setTimeout(() => {
               clickTimerRef.current = null;
               addTab({
@@ -1247,22 +1280,25 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           .catch(() => message.error(t('sidebar.msg.copyNameFailed')));
   };
 
-  const onDoubleClick = (e: any, node: any) => {
+  const onDoubleClick = (_event: React.MouseEvent | null, node: SidebarEventNode) => {
       // 双击时取消单击延迟动作（如表概览打开），让双击只触发展开/折叠
       if (clickTimerRef.current) {
           clearTimeout(clickTimerRef.current);
           clickTimerRef.current = null;
       }
-      const { type, dataRef, key: nodeKey } = node;
-      if (type === 'connection') setActiveContext({ connectionId: nodeKey, dbName: '' });
-      else if (type === 'database') setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
-      else if (type === 'table' || type === 'view' || type === 'db-trigger' || type === 'routine') setActiveContext({ connectionId: dataRef.id, dbName: dataRef.dbName });
-      else if (type === 'saved-query') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
-      else if (type === 'external-sql-root' || type === 'external-sql-folder' || type === 'external-sql-file') setActiveContext({ connectionId: dataRef.connectionId, dbName: dataRef.dbName });
-      else if (type === 'redis-db') setActiveContext({ connectionId: dataRef.id, dbName: `db${dataRef.redisDB}` });
+      const { type, key: nodeKey } = node;
+      const dataRef = getSidebarDataRef(node);
+      if (type === 'connection') setActiveContext({ connectionId: String(nodeKey), dbName: '' });
+      else if (type === 'database') setActiveContext({ connectionId: String(dataRef.id || ''), dbName: String(dataRef.dbName || '') });
+      else if (type === 'table' || type === 'view' || type === 'db-trigger' || type === 'routine') setActiveContext({ connectionId: String(dataRef.id || ''), dbName: String(dataRef.dbName || '') });
+      else if (type === 'saved-query') setActiveContext({ connectionId: String(dataRef.connectionId || ''), dbName: String(dataRef.dbName || '') });
+      else if (type === 'external-sql-root' || type === 'external-sql-folder' || type === 'external-sql-file') setActiveContext({ connectionId: String(dataRef.connectionId || ''), dbName: String(dataRef.dbName || '') });
+      else if (type === 'redis-db') setActiveContext({ connectionId: String(dataRef.id || ''), dbName: `db${dataRef.redisDB}` });
 
       if (node.type === 'table') {
-          const { tableName, dbName, id } = node.dataRef;
+          const tableName = String(dataRef.tableName || '');
+          const dbName = String(dataRef.dbName || '');
+          const id = String(dataRef.id || '');
           // 记录表访问
           recordTableAccess(id, dbName, tableName);
           addTab({
@@ -1275,7 +1311,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           });
           return;
       } else if (node.type === 'view') {
-          const { viewName, dbName, id } = node.dataRef;
+          const viewName = String(dataRef.viewName || '');
+          const dbName = String(dataRef.dbName || '');
+          const id = String(dataRef.id || '');
           addTab({
               id: node.key,
               title: viewName,
@@ -1286,22 +1324,23 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           });
           return;
       } else if (node.type === 'saved-query') {
-          const q = node.dataRef;
+          const q = dataRef;
           addTab({
-              id: q.id,
-              title: q.name,
+              id: String(q.id || ''),
+              title: String(q.name || ''),
               type: 'query',
-              connectionId: q.connectionId,
-              dbName: q.dbName,
-              query: q.sql,
-              savedQueryId: q.id,
+              connectionId: String(q.connectionId || ''),
+              dbName: String(q.dbName || ''),
+              query: String(q.sql || ''),
+              savedQueryId: String(q.id || ''),
           });
           return;
       } else if (node.type === 'external-sql-file') {
           void openExternalSQLFile(node);
           return;
       } else if (node.type === 'redis-db') {
-          const { id, redisDB } = node.dataRef;
+          const id = String(dataRef.id || '');
+          const redisDB = Number(dataRef.redisDB) || 0;
           addTab({
               id: `redis-keys-${id}-db${redisDB}`,
               title: `db${redisDB}`,
@@ -1311,7 +1350,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           });
           return;
       } else if (node.type === 'db-trigger') {
-          const { triggerName, dbName, id } = node.dataRef;
+          const triggerName = String(dataRef.triggerName || '');
+          const dbName = String(dataRef.dbName || '');
+          const id = String(dataRef.id || '');
           addTab({
               id: `trigger-${node.key}`,
               title: t('sidebar.tree.triggerDef', { name: triggerName }),
@@ -1322,7 +1363,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           });
           return;
       } else if (node.type === 'routine') {
-          const { routineName, routineType, dbName, id } = node.dataRef;
+          const routineName = String(dataRef.routineName || '');
+          const routineType = String(dataRef.routineType || '');
+          const dbName = String(dataRef.dbName || '');
+          const id = String(dataRef.id || '');
           const typeLabel = routineType === 'PROCEDURE' ? t('sidebar.tree.procedure') : t('sidebar.tree.function');
           addTab({
               id: `routine-def-${node.key}`,
@@ -1426,11 +1470,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (selectedNodesRef.current.length > 0) {
           const node = selectedNodesRef.current[0];
           if (node.type === 'database') {
-              connId = node.dataRef.id;
-              dbName = node.title;
+              connId = String(getSidebarDataRef(node).id || '');
+              dbName = String(node.title || '');
           } else if (node.type === 'table' || node.type === 'view') {
-              connId = node.dataRef.id;
-              dbName = node.dataRef.dbName;
+              const dataRef = getSidebarDataRef(node);
+              connId = String(dataRef.id || '');
+              dbName = String(dataRef.dbName || '');
           }
       }
 
@@ -1747,12 +1792,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
       if (selectedNodesRef.current.length > 0) {
           const node = selectedNodesRef.current[0];
-          if (node.type === 'connection' && node.dataRef?.config?.type !== 'redis') {
-              connId = node.key as string;
+          const dataRef = getSidebarDataRef(node);
+          const config = dataRef.config && typeof dataRef.config === 'object' ? dataRef.config as SidebarDataRef : {};
+          if (node.type === 'connection' && config.type !== 'redis') {
+              connId = String(node.key);
           } else if (node.type === 'database') {
-              connId = node.dataRef.id;
+              connId = String(dataRef.id || '');
           } else if (node.type === 'table') {
-              connId = node.dataRef.id;
+              connId = String(dataRef.id || '');
           }
       }
 
@@ -3709,7 +3756,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     return [];
   };
 
-  const titleRender = (node: any) => {
+  const titleRender = (node: TreeNode) => {
     let status: 'success' | 'error' | 'default' = 'default';
     if (node.type === 'connection' || node.type === 'database') {
         if (connectionStates[node.key] === 'success') status = 'success';
@@ -3721,13 +3768,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     ) : null;
 
     const displayTitle = String(node.title ?? '');
+    const dataRef = getSidebarDataRef(node);
     let hoverTitle = displayTitle;
     if (node.type === 'table' || node.type === 'view') {
-        const rawTableName = String(node?.dataRef?.tableName || node?.dataRef?.viewName || '').trim();
-        const tableComment = String(node?.dataRef?.comment || node?.dataRef?.tableComment || '').trim();
+        const rawTableName = String(dataRef.tableName || dataRef.viewName || '').trim();
+        const tableComment = String(dataRef.comment || dataRef.tableComment || '').trim();
         hoverTitle = buildTableHoverTitle({ tableName: rawTableName || displayTitle, comment: tableComment, tableNameLabel: t('table.hover.name'), commentLabel: t('table.hover.comment') });
     } else if (node.type === 'external-sql-folder' || node.type === 'external-sql-file') {
-        hoverTitle = String(node?.dataRef?.path || displayTitle);
+        hoverTitle = String(dataRef.path || displayTitle);
     }
 
     if (node.type === 'external-sql-root') {
@@ -3759,9 +3807,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     );
   };
 
-  const handleDrop = (info: any) => {
-      const dropKey = info.node.key;
-      const dragKey = info.dragNode.key;
+  const handleDrop = (info: SidebarDropInfo) => {
       const dropPos = info.node.pos.split('-');
       const dropPosition = info.dropPosition - Number(dropPos[dropPos.length - 1]);
 
@@ -3774,14 +3820,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           if (dropNode.type === 'tag' || dropNode.type === 'connection') {
               // Get current order
               const currentTagOrder = connectionTags.map(t => t.id);
-              const dragTagId = dragNode.dataRef.id;
+              const dragTagId = String(getSidebarDataRef(dragNode).id || '');
 
               // Filter out the dragging tag
               const newOrder = currentTagOrder.filter(id => id !== dragTagId);
 
               let insertIndex = newOrder.length;
               if (dropNode.type === 'tag') {
-                  const dropTagId = dropNode.dataRef.id;
+                  const dropTagId = String(getSidebarDataRef(dropNode).id || '');
                   const dropIndex = newOrder.indexOf(dropTagId);
 
                   if (dropPosition === -1) {
@@ -3803,29 +3849,29 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
       // Connection moving to tag (any drop position on a tag node counts as "into")
       if (dragNode.type === 'connection' && dropNode.type === 'tag') {
-          moveConnectionToTag(dragNode.key, dropNode.dataRef.id);
+          moveConnectionToTag(String(dragNode.key), String(getSidebarDataRef(dropNode).id || ''));
           return;
       }
 
       // Connection moving to another connection inside a tag
       if (dragNode.type === 'connection' && dropNode.type === 'connection') {
           // Find if drop target is under a tag
-          const targetTag = connectionTags.find(t => t.connectionIds.includes(dropNode.key));
+          const targetTag = connectionTags.find(t => t.connectionIds.includes(String(dropNode.key)));
           if (targetTag) {
-              moveConnectionToTag(dragNode.key, targetTag.id);
+              moveConnectionToTag(String(dragNode.key), targetTag.id);
               return;
           }
 
           // Drop target is NOT under a tag (ungrouped) -> move OUT of tag
-          const sourceTag = connectionTags.find(t => t.connectionIds.includes(dragNode.key));
+          const sourceTag = connectionTags.find(t => t.connectionIds.includes(String(dragNode.key)));
           if (sourceTag) {
-              moveConnectionToTag(dragNode.key, null);
+              moveConnectionToTag(String(dragNode.key), null);
               return;
           }
       }
   };
 
-  const onRightClick = ({ event, node }: any) => {
+  const onRightClick = ({ event, node }: SidebarRightClickInfo) => {
       const items = getNodeMenuItems(node);
       if (items && items.length > 0) {
           setContextMenu({
@@ -3934,14 +3980,17 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}
         >
             <div className="sidebar-tree-scroll-content">
-                <Tree
+                <Tree<TreeNode>
                     ref={treeRef}
                     showIcon
                     tabIndex={0}
                     onKeyDown={handleSidebarTreeKeyDown}
                     draggable={{
                         icon: false,
-                        nodeDraggable: (node: any) => node.type === 'connection' || node.type === 'tag'
+                        nodeDraggable: (node) => {
+                            const sidebarNode = node as TreeNode;
+                            return sidebarNode.type === 'connection' || sidebarNode.type === 'tag';
+                        }
                     }}
                     onDrop={handleDrop}
                     loadData={onLoadData}
