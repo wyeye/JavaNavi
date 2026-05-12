@@ -1,6 +1,7 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Dropdown, Form, Input, DatePicker, TimePicker } from 'antd';
-import type { MenuProps } from 'antd';
+import type { FormInstance, InputRef, MenuProps } from 'antd';
+import type { PickerMode, PickerRef } from 'rc-picker/lib/interface';
 import dayjs from 'dayjs';
 import { ConsoleSqlOutlined, CopyOutlined, ExportOutlined, FileTextOutlined } from '@ant-design/icons';
 import { useSortable } from '@dnd-kit/sortable';
@@ -10,6 +11,7 @@ import {
     getTemporalPickerType,
     parseToDayjs,
     resolveTemporalEditorSaveValue,
+    type TemporalPickerType,
 } from './dataGridTemporal';
 import {
     isCellValueEqualForDiff,
@@ -23,7 +25,7 @@ export const JAVANAVI_ROW_KEY = '__javanavi_row_key__';
 
 const INLINE_EDIT_MAX_CHARS = 2000;
 
-const shouldOpenModalEditor = (val: any): boolean => {
+const shouldOpenModalEditor = (val: unknown): boolean => {
     if (val === null || val === undefined) return false;
     if (typeof val === 'string') {
         if (val.length > INLINE_EDIT_MAX_CHARS || val.includes('\n')) return true;
@@ -39,7 +41,7 @@ const getCellFieldName = (record: DataGridItem, dataIndex: string) => {
     return [String(rowKey), dataIndex];
 };
 
-const setCellFieldValue = (form: any, fieldName: string | (string | number)[], value: any) => {
+const setCellFieldValue = (form: FormInstance | null, fieldName: string | (string | number)[], value: unknown) => {
     if (!form) return;
     if (Array.isArray(fieldName)) {
         const [rowKey, colKey] = fieldName;
@@ -49,8 +51,23 @@ const setCellFieldValue = (form: any, fieldName: string | (string | number)[], v
     form.setFieldsValue({ [fieldName]: value });
 };
 
+type ResizableTitleProps = React.ThHTMLAttributes<HTMLTableCellElement> & {
+  width?: number | string;
+  onResizeStart?: (event: React.MouseEvent<HTMLElement>) => void;
+  onResizeAutoFit?: (event: React.MouseEvent<HTMLElement>) => void;
+};
+
+const toDatePickerMode = (pickerType: TemporalPickerType): PickerMode | undefined => {
+  if (!pickerType || pickerType === 'datetime' || pickerType === 'time') return undefined;
+  return pickerType;
+};
+
+const removeCapturedWheelListener = (el: HTMLElement, handler: (event: WheelEvent) => void): void => {
+  el.removeEventListener('wheel', handler, true);
+};
+
 // --- Resizable Header (Native Implementation) ---
-export const ResizableTitle = React.forwardRef<HTMLTableCellElement, any>((props, ref) => {
+export const ResizableTitle = React.forwardRef<HTMLTableCellElement, ResizableTitleProps>((props, ref) => {
   const { onResizeStart, onResizeAutoFit, width, ...restProps } = props;
 
   const nextStyle = { ...(restProps.style || {}) } as React.CSSProperties;
@@ -181,7 +198,7 @@ export const SortableHeaderCell: React.FC<SortableHeaderCellProps> = React.memo(
             {...restProps} 
             {...attributes} 
             {...listeners}
-            onPointerDown={(e: any) => {
+            onPointerDown={(e: React.PointerEvent<HTMLTableCellElement>) => {
                 setIsPressed(true);
                 if (listeners?.onPointerDown) listeners.onPointerDown(e);
             }}
@@ -197,20 +214,20 @@ export const SortableHeaderCell: React.FC<SortableHeaderCellProps> = React.memo(
 });
 
 // --- Contexts ---
-export const EditableContext = React.createContext<any>(null);
+export const EditableContext = React.createContext<FormInstance | null>(null);
 export const CellContextMenuContext = React.createContext<{
     showMenu: (e: React.MouseEvent, record: DataGridItem, dataIndex: string, title: React.ReactNode) => void;
     handleBatchFillToSelected: (record: DataGridItem, dataIndex: string) => void;
 } | null>(null);
 export const DataContext = React.createContext<{
     selectedRowKeysRef: React.MutableRefObject<React.Key[]>;
-    displayDataRef: React.MutableRefObject<any[]>;
-    handleCopyInsert: (r: any) => void;
-    handleCopyUpdate: (r: any) => void;
-    handleCopyDelete: (r: any) => void;
-    handleCopyJson: (r: any) => void;
-    handleCopyCsv: (r: any) => void;
-    handleExportSelected: (format: string, r: any) => Promise<void>;
+    displayDataRef: React.MutableRefObject<DataGridItem[]>;
+    handleCopyInsert: (r: DataGridItem) => void;
+    handleCopyUpdate: (r: DataGridItem) => void;
+    handleCopyDelete: (r: DataGridItem) => void;
+    handleCopyJson: (r: DataGridItem) => void;
+    handleCopyCsv: (r: DataGridItem) => void;
+    handleExportSelected: (format: string, r: DataGridItem) => Promise<void>;
     copyToClipboard: (t: string) => void;
     tableName?: string;
     enableRowContextMenu: boolean;
@@ -219,11 +236,14 @@ export const DataContext = React.createContext<{
 
 
 export interface DataGridItem {
-  [key: string]: any;
+  [key: string]: unknown;
 }
 
+const isReactKey = (value: unknown): value is React.Key => (
+  typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint'
+);
 
-interface EditableCellProps {
+interface EditableCellProps extends Omit<React.HTMLAttributes<HTMLElement>, 'title' | 'children'> {
   title: React.ReactNode;
   editable: boolean;
   children: React.ReactNode;
@@ -232,8 +252,7 @@ interface EditableCellProps {
   handleSave: (record: DataGridItem) => void;
   focusCell?: (record: DataGridItem, dataIndex: string, title: React.ReactNode) => void;
   columnType?: string;
-  as?: any;
-  [key: string]: any;
+  as?: React.ElementType;
 }
 
 export const EditableCell: React.FC<EditableCellProps> = React.memo(({
@@ -246,10 +265,18 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   focusCell,
   columnType,
   as: Component = 'td',
+  onDoubleClick,
   ...restProps
 }) => {
   const [editing, setEditing] = useState(false);
-  const inputRef = useRef<any>(null);
+  type FocusableEditorRef = Pick<InputRef, 'focus' | 'blur'> | Pick<PickerRef, 'focus' | 'blur'>;
+  const inputRef = useRef<FocusableEditorRef | null>(null);
+  const bindInputRef = useCallback((node: InputRef | null) => {
+      inputRef.current = node;
+  }, []);
+  const bindPickerRef = useCallback((node: PickerRef | null) => {
+      inputRef.current = node;
+  }, []);
   const cellRef = useRef<HTMLElement>(null);
   const pickerOpenRef = useRef(false);
   const scrollLockRef = useRef<{ el: HTMLElement; handler: (e: WheelEvent) => void } | null>(null);
@@ -268,7 +295,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
           }
       } else if (scrollLockRef.current) {
           const { el, handler } = scrollLockRef.current;
-          el.removeEventListener('wheel', handler, { capture: true } as any);
+          removeCapturedWheelListener(el, handler);
           scrollLockRef.current = null;
       }
   }, []);
@@ -335,7 +362,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
         {isDateTimeField ? (
           pickerType === 'time' ? (
             <TimePicker
-              ref={inputRef}
+              ref={bindPickerRef}
               style={{ width: '100%' }}
               format={TEMPORAL_FORMATS[pickerType]}
               onChange={(value) => setTimeout(() => { void save(value); }, 0)}
@@ -345,7 +372,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
             />
           ) : pickerType === 'datetime' ? (
             <DatePicker
-              ref={inputRef}
+              ref={bindPickerRef}
               style={{ width: '100%' }}
               showTime
               showNow={false}
@@ -377,10 +404,10 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
             />
           ) : (
             <DatePicker
-              ref={inputRef}
+              ref={bindPickerRef}
               style={{ width: '100%' }}
               format={TEMPORAL_FORMATS[pickerType]}
-              picker={pickerType as any}
+              picker={toDatePickerMode(pickerType)}
               onChange={(value) => setTimeout(() => { void save(value); }, 0)}
               onOpenChange={lockTableScroll}
               onBlur={() => setTimeout(() => { void save(); }, 0)}
@@ -389,7 +416,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
           )
         ) : (
           <Input
-            ref={inputRef}
+            ref={bindInputRef}
             onPressEnter={() => { void save(); }}
             onBlur={() => { void save(); }}
             onFocus={(e) => {
@@ -446,14 +473,18 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
           {...restProps}
           data-row-key={record ? String(record?.[JAVANAVI_ROW_KEY]) : undefined}
           data-col-name={dataIndex || undefined}
-          onDoubleClick={editable ? handleDoubleClick : restProps?.onDoubleClick}
+          onDoubleClick={editable ? handleDoubleClick : onDoubleClick}
       >
           {childNode}
       </Component>
   );
 });
 
-export const ContextMenuRow = React.memo(({ children, record, ...props }: any) => {
+type ContextMenuRowProps = React.HTMLAttributes<HTMLTableRowElement> & {
+    record?: DataGridItem;
+};
+
+export const ContextMenuRow = React.memo(({ children, record, ...props }: ContextMenuRowProps) => {
     const context = useContext(DataContext);
     
     if (!record || !context) return <tr {...props}>{children}</tr>;
@@ -479,8 +510,11 @@ export const ContextMenuRow = React.memo(({ children, record, ...props }: any) =
     const getTargets = () => {
         const keys = selectedRowKeysRef.current;
         const recordKey = record?.[JAVANAVI_ROW_KEY];
-        if (recordKey !== undefined && keys.includes(recordKey)) {
-            return displayDataRef.current.filter(d => keys.includes(d?.[JAVANAVI_ROW_KEY]));
+        if (isReactKey(recordKey) && keys.includes(recordKey)) {
+            return displayDataRef.current.filter(d => {
+                const rowKey = d?.[JAVANAVI_ROW_KEY];
+                return isReactKey(rowKey) && keys.includes(rowKey);
+            });
         }
         return [record];
     };
@@ -511,7 +545,7 @@ export const ContextMenuRow = React.memo(({ children, record, ...props }: any) =
                 : [];
             const header = `| ${orderedCols.join(' | ')} |`;
             const separator = `| ${orderedCols.map(() => '---').join(' | ')} |`;
-            const rows = records.map((r: any) => {
+            const rows = records.map((r) => {
                 const values = orderedCols.map(c => {
                     const v = r[c];
                     if (v === null || v === undefined) return 'NULL';
