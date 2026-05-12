@@ -14,6 +14,7 @@ import { useStore } from '../store';
 import { SavedConnection } from '../types';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { RedisGetServerInfo } from '@compat/javanaviApp';
+import type { ValueType } from 'recharts/types/component/DefaultTooltipContent';
 
 const { Title, Text } = Typography;
 
@@ -36,6 +37,12 @@ interface MetricPoint {
 }
 
 const MAX_HISTORY_POINTS = 60; // Keep up to 60 data points
+
+const getErrorMessage = (error: unknown): string => (
+  error instanceof Error ? error.message : String(error)
+);
+
+const formatChartValue = (value: ValueType | undefined, unit: string): string => `${value ?? ''} ${unit}`;
 
 const RedisMonitor: React.FC<RedisMonitorProps> = ({ connectionId, redisDB }) => {
   const connections = useStore(state => state.connections);
@@ -121,9 +128,9 @@ const RedisMonitor: React.FC<RedisMonitorProps> = ({ connectionId, redisDB }) =>
 
       if (loading) setLoading(false);
 
-    } catch (err: any) {
+    } catch (err: unknown) {
       if (mountedRef.current) {
-        setError(err.message || 'Unknown error');
+        setError(getErrorMessage(err) || 'Unknown error');
         if (loading) setLoading(false);
       }
     }
@@ -295,7 +302,7 @@ const RedisMonitor: React.FC<RedisMonitorProps> = ({ connectionId, redisDB }) =>
                 <RechartsTooltip 
                   contentStyle={{ backgroundColor: cardBgColor, border: `1px solid ${chartGridColor}`, borderRadius: 6 }}
                   itemStyle={{ fontWeight: 600 }}
-                  formatter={(value: any) => [`${value} MB`]}
+                  formatter={(value) => [formatChartValue(value, 'MB')]}
                 />
                 <Legend verticalAlign="top" height={36}/>
                 <Line type="monotone" dataKey="memory" name="Used Memory" stroke="#eb2f96" strokeWidth={2} dot={false} isAnimationActive={false} />
@@ -322,7 +329,7 @@ const RedisMonitor: React.FC<RedisMonitorProps> = ({ connectionId, redisDB }) =>
                 <RechartsTooltip 
                   contentStyle={{ backgroundColor: cardBgColor, border: `1px solid ${chartGridColor}`, borderRadius: 6 }}
                   itemStyle={{ fontWeight: 600 }}
-                  formatter={(value: any) => [`${value} s`]}
+                  formatter={(value) => [formatChartValue(value, 's')]}
                 />
                 <Legend verticalAlign="top" height={36}/>
                 <Line type="monotone" dataKey="cpuSys" name="System" stroke="#cf1322" strokeWidth={2} dot={false} isAnimationActive={false} />
