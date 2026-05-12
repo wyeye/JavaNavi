@@ -99,6 +99,7 @@ type ListItemRow = RedisDisplayMeta & { index: number; value: string };
 type SetMemberRow = RedisDisplayMeta & { index: number; member: string };
 type ZSetMemberRow = Omit<RedisDisplayMeta, 'displayValue'> & { index: number; member: string; score: number; displayMember: string };
 type StreamRow = Omit<RedisDisplayMeta, 'displayValue'> & { index: number; id: string; rawFieldsText: string; displayFields: string };
+type RedisDataGuard<T> = (value: unknown) => value is T;
 
 const getErrorMessage = (error: unknown, fallback = '未知错误'): string => {
     if (error instanceof Error) {
@@ -114,7 +115,46 @@ const getErrorMessage = (error: unknown, fallback = '未知错误'): string => {
     return fallback;
 };
 
-const queryData = <T,>(res: QueryResult): T | undefined => res.data as T | undefined;
+const isRecord = (value: unknown): value is Record<string, unknown> => (
+    value !== null && typeof value === 'object' && !Array.isArray(value)
+);
+
+const isRedisKeyInfo = (value: unknown): value is RedisKeyInfo => (
+    isRecord(value)
+    && typeof value.key === 'string'
+    && typeof value.type === 'string'
+    && typeof value.ttl === 'number'
+);
+
+const isRedisScanData = (value: unknown): value is RedisScanData => (
+    isRecord(value)
+    && (!('keys' in value) || (Array.isArray(value.keys) && value.keys.every(isRedisKeyInfo)))
+    && (!('cursor' in value) || typeof value.cursor === 'string' || typeof value.cursor === 'number')
+);
+
+const isRedisValue = (value: unknown): value is RedisValue => (
+    isRecord(value)
+    && typeof value.type === 'string'
+    && typeof value.ttl === 'number'
+    && 'value' in value
+    && typeof value.length === 'number'
+);
+
+const isRedisDeletedResult = (value: unknown): value is RedisOperationDeletedResult => (
+    isRecord(value) && typeof value.deleted === 'number'
+);
+
+const isRedisKeyExistsData = (value: unknown): value is RedisKeyExistsData => (
+    isRecord(value) && (!('exists' in value) || typeof value.exists === 'boolean')
+);
+
+const isRedisStreamAddData = (value: unknown): value is RedisStreamAddData => (
+    isRecord(value) && (!('id' in value) || typeof value.id === 'string')
+);
+
+const queryData = <T,>(res: QueryResult, guard: RedisDataGuard<T>): T | undefined => (
+    guard(res.data) ? res.data : undefined
+);
 
 // 可拖拽分隔条组件 - 使用直接 DOM 操作避免卡顿
 const ResizableDivider: React.FC<{
@@ -380,7 +420,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 return;
             }
             if (res.success) {
-                const result = queryData<RedisScanData>(res);
+                const result = queryData(res, isRedisScanData);
                 const scannedKeys = Array.isArray(result?.keys) ? result.keys : [];
                 const nextCursor = normalizeRedisCursor(result?.cursor);
                 if (append) {
@@ -478,7 +518,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         try {
             const res = await RedisGetValue(buildRpcConnectionConfig(config), key);
             if (res.success) {
-                setKeyValue(queryData<RedisValue>(res) ?? null);
+                setKeyValue(queryData(res, isRedisValue) ?? null);
                 setSelectedKey(key);
             } else {
                 const messageText = String(res.message || '');
@@ -509,7 +549,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
         try {
             const res = await RedisDeleteKeys(buildRpcConnectionConfig(config), keysToDelete);
             if (res.success) {
-                message.success(`已删除 ${queryData<RedisOperationDeletedResult>(res)?.deleted ?? 0} 个 Key`);
+                message.success(`已删除 ${queryData(res, isRedisDeletedResult)?.deleted ?? 0} 个 Key`);
                 setKeys(prev => prev.filter(k => !keysToDelete.includes(k.key)));
                 if (selectedKey && keysToDelete.includes(selectedKey)) {
                     setSelectedKey(null);
@@ -615,7 +655,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 message.error('校验目标 Key 失败: ' + (existsRes?.message || '未知错误'));
                 return;
             }
-            if (queryData<RedisKeyExistsData>(existsRes)?.exists) {
+            if (queryData(existsRes, isRedisKeyExistsData)?.exists) {
                 message.error(`目标 Key 已存在: ${nextKey}`);
                 return;
             }
@@ -1688,7 +1728,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 try {
                     const res = await RedisStreamAdd(buildRpcConnectionConfig(config), selectedKey, fieldMap, id || '*');
                     if (res.success) {
-                        const newIDValue = queryData<RedisStreamAddData>(res)?.id;
+                        const newIDValue = queryData(res, isRedisStreamAddData)?.id;
                         const newID = newIDValue ? ` (${newIDValue})` : '';
                         message.success(`添加成功${newID}`);
                         loadKeyValue(selectedKey);
@@ -1707,7 +1747,7 @@ const RedisViewer: React.FC<RedisViewerProps> = ({ connectionId, redisDB }) => {
                 try {
                     const res = await RedisStreamDelete(buildRpcConnectionConfig(config), selectedKey, [id]);
                     if (res.success) {
-                        const deleted = Number(queryData<RedisOperationDeletedResult>(res)?.deleted ?? 0);
+                        const deleted = Number(queryData(res, isRedisDeletedResult)?.deleted ?? 0);
                         if (deleted > 0) {
                             message.success('删除成功');
                         } else {
