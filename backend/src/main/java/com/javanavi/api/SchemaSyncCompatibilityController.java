@@ -9,8 +9,6 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.util.Map;
-
 @RestController
 @RequestMapping("/api/v1/schema-sync")
 public class SchemaSyncCompatibilityController {
@@ -21,23 +19,29 @@ public class SchemaSyncCompatibilityController {
     }
 
     @PostMapping("/analyze")
-    public ApiEnvelope<Map<String, Object>> analyze(@RequestBody SchemaSyncRequestDto request) {
-        return ApiEnvelope.ok(schemaSyncCompatibilityService.analyze(request == null ? Map.of() : request.toCompatibilityMap()));
+    public ApiEnvelope<SchemaSyncRequestDto.SchemaSyncAnalyzeDto> analyze(@RequestBody SchemaSyncRequestDto request) {
+        return ApiEnvelope.ok(SchemaSyncRequestDto.SchemaSyncAnalyzeDto.from(
+                schemaSyncCompatibilityService.analyze(request == null ? java.util.Map.of() : request.toCompatibilityMap())
+        ));
     }
 
     @PostMapping("/preview")
-    public ApiEnvelope<Map<String, Object>> preview(@RequestBody SchemaSyncRequestDto request) {
-        return ApiEnvelope.ok(schemaSyncCompatibilityService.preview(request == null ? Map.of() : request.toCompatibilityMap()));
+    public ApiEnvelope<SchemaSyncRequestDto.SchemaSyncPreviewDto> preview(@RequestBody SchemaSyncRequestDto request) {
+        return ApiEnvelope.ok(SchemaSyncRequestDto.SchemaSyncPreviewDto.from(
+                schemaSyncCompatibilityService.preview(request == null ? java.util.Map.of() : request.toCompatibilityMap())
+        ));
     }
 
     @PostMapping("/run")
-    public ApiEnvelope<Map<String, Object>> run(@RequestBody SchemaSyncRequestDto request) {
-        return ApiEnvelope.ok(schemaSyncCompatibilityService.run(request == null ? Map.of() : request.toCompatibilityMap()));
+    public ApiEnvelope<SchemaSyncRequestDto.SchemaSyncResultDto> run(@RequestBody SchemaSyncRequestDto request) {
+        return ApiEnvelope.ok(SchemaSyncRequestDto.SchemaSyncResultDto.from(
+                schemaSyncCompatibilityService.run(request == null ? java.util.Map.of() : request.toCompatibilityMap())
+        ));
     }
 
     @PostMapping("/cancel")
-    public ApiEnvelope<Map<String, Object>> cancel(@RequestBody SyncCancelRequestDto request) {
+    public ApiEnvelope<SchemaSyncRequestDto.SchemaSyncCancelDto> cancel(@RequestBody SyncCancelRequestDto request) {
         String jobId = request == null || request.jobId() == null ? "" : request.jobId();
-        return ApiEnvelope.ok(schemaSyncCompatibilityService.cancel(jobId));
+        return ApiEnvelope.ok(SchemaSyncRequestDto.SchemaSyncCancelDto.from(schemaSyncCompatibilityService.cancel(jobId)));
     }
 }
