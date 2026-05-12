@@ -3,12 +3,13 @@ import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { useStore, loadAISessionsFromBackend, loadAISessionFromBackend } from '../store';
 import { EventsOn, EventsOff } from '@compat/runtime';
-import { DBGetDatabases, DBGetTables } from '@compat/javanaviApp';
+import { DBGetDatabases, DBGetTables, type QueryResult } from '@compat/javanaviApp';
 import type { OverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 import type {
     AIChatMessage,
     AIContextLevel,
     AIToolCall,
+    AIProviderConfig,
 } from '../types';
 import { DownOutlined } from '@ant-design/icons';
 import './AIChatPanel.css';
@@ -18,6 +19,7 @@ import { AIChatWelcome } from './ai/AIChatWelcome';
 import { AIMessageBubble } from './ai/AIMessageBubble';
 import { AIChatInput } from './ai/AIChatInput';
 import { AIHistoryDrawer } from './ai/AIHistoryDrawer';
+import type { AiMessage } from '@compat/contracts';
 import type { AIComposerNotice } from '../utils/aiComposerNotice';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { buildAIReadonlyPreviewSQL } from '../utils/aiSqlLimit';
@@ -41,6 +43,75 @@ interface AIChatPanelProps {
 }
 
 const genId = () => `msg-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+
+type UnknownRecord = Record<string, unknown>;
+type TableRow = { Table?: unknown; table?: unknown; tableName?: unknown };
+type DatabaseRow = { Database?: unknown; database?: unknown };
+type ColumnRow = UnknownRecord & {
+    Field?: unknown;
+    field?: unknown;
+    COLUMN_NAME?: unknown;
+    column_name?: unknown;
+    Name?: unknown;
+    name?: unknown;
+    Type?: unknown;
+    type?: unknown;
+    DATA_TYPE?: unknown;
+    data_type?: unknown;
+    Null?: unknown;
+    null?: unknown;
+    IS_NULLABLE?: unknown;
+    is_nullable?: unknown;
+    Nullable?: unknown;
+    nullable?: unknown;
+    Default?: unknown;
+    default?: unknown;
+    COLUMN_DEFAULT?: unknown;
+    column_default?: unknown;
+    DefaultValue?: unknown;
+    Comment?: unknown;
+    comment?: unknown;
+    COLUMN_COMMENT?: unknown;
+    column_comment?: unknown;
+    Description?: unknown;
+};
+type LocalToolArgs = {
+    connectionId?: string;
+    dbName?: string;
+    database?: string;
+    tableName?: string;
+    sql?: string;
+};
+type StreamBuffer = { thinking: string; content: string };
+
+const toRecord = (value: unknown): UnknownRecord => (
+    value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {}
+);
+
+const getErrorMessage = (error: unknown, fallback = '未知错误'): string => {
+    if (error instanceof Error) return error.message || fallback;
+    if (typeof error === 'string') return error || fallback;
+    const messageValue = toRecord(error).message;
+    if (typeof messageValue === 'string' && messageValue) return messageValue;
+    if (error === null || error === undefined) return fallback;
+    return String(error) || fallback;
+};
+
+const queryArrayData = <T,>(result: QueryResult): T[] => (
+    Array.isArray(result.data) ? result.data as T[] : []
+);
+
+const firstRecordValue = (row: unknown): unknown => {
+    const record = toRecord(row);
+    return Object.values(record)[0];
+};
+
+const toChatPayload = (message: AIChatMessage): AiMessage => {
+    const mapped: AiMessage = { role: message.role, content: message.content, images: message.images };
+    if (message.tool_calls) mapped.tool_calls = message.tool_calls;
+    if (message.tool_call_id) mapped.tool_call_id = message.tool_call_id;
+    return mapped;
+};
 
 export const getDynamicMaxContextChars = (modelName?: string) => {
     if (!modelName) return 258000; // 默认 258k (2026主流基线)
@@ -73,7 +144,7 @@ export const getDynamicMaxContextChars = (modelName?: string) => {
 };
 
 // 当超出指定字符上限时触发上下文自建压缩
-const compressContextIfNeeded = async (sid: string, messagesPayload: any[], maxLimit: number) => {
+const compressContextIfNeeded = async (sid: string, messagesPayload: AiMessage[], maxLimit: number) => {
     try {
         const chars = messagesPayload.reduce((sum, m) => sum + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0);
         if (chars < maxLimit) return null;
@@ -222,7 +293,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const [input, setInput] = useState('');
     const [draftImages, setDraftImages] = useState<string[]>([]);
     const [sending, setSending] = useState(false);
-    const [activeProvider, setActiveProvider] = useState<any>(null);
+    const [activeProvider, setActiveProvider] = useState<AIProviderConfig | null>(null);
     const [dynamicModels, setDynamicModels] = useState<string[]>([]);
     const [contextLevel, setContextLevel] = useState<AIContextLevel>('schema_only');
     const [showScrollBottom, setShowScrollBottom] = useState(false);
@@ -304,7 +375,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                     const conn = useStore.getState().connections.find(c => c.id === connectionId);
                     if (conn) {
                         import('@compat/javanaviApp').then(async ({ DBGetColumns, DBShowCreateTable }) => {
-                            const rpcConfig = buildRpcConnectionConfig(conn.config) as any;
+                            const rpcConfig = buildRpcConnectionConfig(conn.config);
                             const schemaResult = await resolveAITableSchemaToolResult({
                                 tableName,
                                 fetchDDL: () => DBShowCreateTable(rpcConfig, dbName, tableName),
@@ -373,7 +444,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 Service.AIGetActiveProvider?.(),
             ]);
             if (Array.isArray(provRes) && activeRes) {
-                const current = provRes.find((p: any) => p.id === activeRes);
+                const current = provRes.find((p) => p.id === activeRes);
                 setActiveProvider(current || null);
             }
         } catch (e) { console.warn('Failed to load active provider', e); }
@@ -449,10 +520,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 setDynamicModels([]);
                 setComposerNotice(buildModelFetchFailedNotice(result.error));
             }
-        } catch (e: any) {
+        } catch (e: unknown) {
             console.warn('Failed to fetch models', e);
             setDynamicModels([]);
-            setComposerNotice(buildModelFetchFailedNotice('获取模型列表失败：' + (e?.message || '未知错误')));
+            setComposerNotice(buildModelFetchFailedNotice('获取模型列表失败：' + getErrorMessage(e)));
         } finally {
             setLoadingModels(false);
         }
@@ -475,10 +546,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             if (detail?.prompt) {
                 setInput(detail.prompt);
                 setTimeout(() => {
-                    const el = textareaRef.current as any;
-                    if (el) {
-                        el.focus();
-                    }
+                    textareaRef.current?.focus();
                 }, 50);
             }
         };
@@ -492,7 +560,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         let isFirstCompletion = false;
 
         // 新增：利用 requestAnimationFrame 缓冲高频事件，避免 React 重绘阻塞导致感官吞吐变慢
-        const streamBuffer = { thinking: '', content: '' };
+        const streamBuffer: StreamBuffer = { thinking: '', content: '' };
         let flushPending = false;
 
         const flushStreamBuffer = () => {
@@ -501,7 +569,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             const existing = current?.find(m => m.id === assistantMsgId);
             if (!existing) return;
 
-            const updates: any = {};
+            const updates: Partial<AIChatMessage> = {};
             if (streamBuffer.thinking) {
                 updates.thinking = (existing.thinking || '') + streamBuffer.thinking;
                 updates.phase = 'thinking';
@@ -652,12 +720,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                             (async () => {
                                 try {
                                     const currentHistory = useStore.getState().aiChatHistory[sid] || [];
-                                    const messagesPayload = currentHistory.map(m => {
-                                        const mapped: any = { role: m.role, content: m.content, images: m.images };
-                                        if (m.tool_calls) mapped.tool_calls = m.tool_calls;
-                                        if (m.tool_call_id) mapped.tool_call_id = m.tool_call_id;
-                                        return mapped;
-                                    });
+                                    const messagesPayload = currentHistory.map(toChatPayload);
                                     const sysMessages = await buildSystemContextMessages();
                                     // 追加催促消息
                                     messagesPayload.push({ role: 'user', content: '请直接使用 function call 调用工具执行操作，不要只用文字描述计划。' });
@@ -793,8 +856,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 } else {
                     setSending(false);
                 }
-            } catch(e: any) {
-                const rawE = e?.message || String(e);
+            } catch(e: unknown) {
+                const rawE = getErrorMessage(e);
                 const cleanE = sanitizeErrorMsg(rawE);
                 addAIChatMessage(sid, {
                     id: genId(),
@@ -837,10 +900,10 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             let availableTables: string[] = [];
             if (contextLevel === 'full' && conn) {
                 try {
-                    const tableResult = await DBGetTables(buildRpcConnectionConfig(conn.config) as any, targetDbName);
+                    const tableResult = await DBGetTables(buildRpcConnectionConfig(conn.config), targetDbName);
                     if (tableResult?.success && Array.isArray(tableResult.data)) {
-                        availableTables = tableResult.data
-                            .map((row: any) => String(row?.Table || row?.table || row?.tableName || Object.values(row || {})[0] || '').trim())
+                        availableTables = queryArrayData<TableRow>(tableResult)
+                            .map((row) => String(row?.Table || row?.table || row?.tableName || firstRecordValue(row) || '').trim())
                             .filter(Boolean)
                             .slice(0, 200);
                     }
@@ -941,7 +1004,7 @@ SELECT * FROM users WHERE status = 1;
                             id: c.id,
                             name: c.name,
                             type: c.config?.type,
-                            host: (c.config as any)?.host || (c.config as any)?.addr || ''
+                            host: c.config?.host || ''
                         }));
                         resStr = JSON.stringify(conns);
                         success = true;
@@ -950,17 +1013,17 @@ SELECT * FROM users WHERE status = 1;
                         const conn = useStore.getState().connections.find(c => c.id === args.connectionId);
                         if (conn) {
                             try {
-                                const dbRes = await DBGetDatabases(buildRpcConnectionConfig(conn.config) as any);
+                                const dbRes = await DBGetDatabases(buildRpcConnectionConfig(conn.config));
                                 if (dbRes?.success && Array.isArray(dbRes.data)) {
-                                    let dNames = dbRes.data.map((r: any) => r.Database || r.database || Object.values(r)[0]);
+                                    let dNames = queryArrayData<DatabaseRow>(dbRes).map((r) => r.Database || r.database || firstRecordValue(r));
                                     if (dNames.length > 50) dNames = [...dNames.slice(0, 50), '...(截断)'];
                                     resStr = JSON.stringify(dNames);
                                     success = true;
                                 } else {
                                     resStr = dbRes?.message || 'Failed to fetch DBs';
                                 }
-                            } catch (e: any) {
-                                resStr = `获取数据库列表失败: ${e?.message || e}`;
+                            } catch (e: unknown) {
+                                resStr = `获取数据库列表失败: ${getErrorMessage(e)}`;
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -971,9 +1034,9 @@ SELECT * FROM users WHERE status = 1;
                             try {
                                 const rawDbName = args.dbName || args.database;
                                 const safeDbName = rawDbName ? String(rawDbName).trim() : '';
-                                const tbRes = await DBGetTables(buildRpcConnectionConfig(conn.config) as any, safeDbName);
+                                const tbRes = await DBGetTables(buildRpcConnectionConfig(conn.config), safeDbName);
                                 if (tbRes?.success && Array.isArray(tbRes.data)) {
-                                    let tNames = tbRes.data.map((r: any) => r.Table || r.table || Object.values(r)[0] as string);
+                                    let tNames = queryArrayData<TableRow>(tbRes).map((r) => String(r.Table || r.table || firstRecordValue(r) || ''));
                                     if (tNames.length > 150) tNames = [...tNames.slice(0, 150), '...(截断)'];
                                     resStr = JSON.stringify(tNames);
                                     success = true;
@@ -984,8 +1047,8 @@ SELECT * FROM users WHERE status = 1;
                                         tables: tNames.filter((t: string) => t !== '...(截断)')
                                     });
                                 } else { resStr = tbRes?.message || 'Failed to fetch Tables'; }
-                            } catch (e: any) {
-                                resStr = `获取表列表失败: ${e?.message || e}`;
+                            } catch (e: unknown) {
+                                resStr = `获取表列表失败: ${getErrorMessage(e)}`;
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -997,10 +1060,10 @@ SELECT * FROM users WHERE status = 1;
                                 const safeDbName = args.dbName ? String(args.dbName).trim() : '';
                                 const safeTable = args.tableName ? String(args.tableName).trim() : '';
                                 const { DBGetColumns } = await import('@compat/javanaviApp');
-                                const colRes = await DBGetColumns(buildRpcConnectionConfig(conn.config) as any, safeDbName, safeTable);
+                                const colRes = await DBGetColumns(buildRpcConnectionConfig(conn.config), safeDbName, safeTable);
                                 if (colRes?.success && Array.isArray(colRes.data)) {
                                     // 只保留关键字段信息，减少 token 占用
-                                    const cols = colRes.data.map((c: any) => {
+                                    const cols = queryArrayData<ColumnRow>(colRes).map((c) => {
                                         const keys = Object.keys(c);
                                         return {
                                             field: c.Field || c.field || c.COLUMN_NAME || c.column_name || c.Name || c.name || (keys.length > 0 ? c[keys[0]] : ''),
@@ -1011,12 +1074,12 @@ SELECT * FROM users WHERE status = 1;
                                         };
                                     });
                                     // ⚠️ 在工具返回结果中直接注入强制警告，确保模型使用精确字段名
-                                    const fieldNames = cols.map((c: any) => c.field).join(', ');
+                                    const fieldNames = cols.map((c) => c.field).join(', ');
                                     resStr = `⚠️ 以下为 ${safeTable} 表的真实字段列表。生成 SQL 时只能使用这些 field 值作为列名，必须原样使用，禁止修改、缩写或自行拼凑字段名。\n可用字段：${fieldNames}\n详细信息：${JSON.stringify(cols)}`;
                                     success = true;
                                 } else { resStr = colRes?.message || 'Failed to fetch columns'; }
-                            } catch (e: any) {
-                                resStr = `获取字段列表失败: ${e?.message || e}`;
+                            } catch (e: unknown) {
+                                resStr = `获取字段列表失败: ${getErrorMessage(e)}`;
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1028,7 +1091,7 @@ SELECT * FROM users WHERE status = 1;
                                 const safeDbName = args.dbName ? String(args.dbName).trim() : '';
                                 const safeTable = args.tableName ? String(args.tableName).trim() : '';
                                 const { DBShowCreateTable, DBGetColumns } = await import('@compat/javanaviApp');
-                                const rpcConfig = buildRpcConnectionConfig(conn.config) as any;
+                                const rpcConfig = buildRpcConnectionConfig(conn.config);
                                 const toolResult = await resolveAITableSchemaToolResult({
                                     tableName: safeTable,
                                     fetchDDL: () => DBShowCreateTable(rpcConfig, safeDbName, safeTable),
@@ -1036,8 +1099,8 @@ SELECT * FROM users WHERE status = 1;
                                 });
                                 resStr = toolResult.content;
                                 success = toolResult.success;
-                            } catch (e: any) {
-                                resStr = `获取建表语句失败: ${e?.message || e}`;
+                            } catch (e: unknown) {
+                                resStr = `获取建表语句失败: ${getErrorMessage(e)}`;
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1059,15 +1122,15 @@ SELECT * FROM users WHERE status = 1;
                                 }
                                 const { DBQuery } = await import('@compat/javanaviApp');
                                 const finalSql = buildAIReadonlyPreviewSQL(conn.config?.type || '', safeSql, 50, conn.config?.driver || '');
-                                const qRes = await DBQuery(buildRpcConnectionConfig(conn.config) as any, safeDbName, finalSql);
+                                const qRes = await DBQuery(buildRpcConnectionConfig(conn.config), safeDbName, finalSql);
                                 if (qRes?.success) {
                                     const rows = Array.isArray(qRes.data) ? qRes.data : [];
                                     const limitedRows = rows.slice(0, 50);
                                     resStr = JSON.stringify({ rowCount: rows.length, data: limitedRows });
                                     success = true;
                                 } else { resStr = qRes?.message || 'SQL 执行失败'; }
-                            } catch (e: any) {
-                                resStr = `SQL 执行异常: ${e?.message || e}`;
+                            } catch (e: unknown) {
+                                resStr = `SQL 执行异常: ${getErrorMessage(e)}`;
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1075,8 +1138,8 @@ SELECT * FROM users WHERE status = 1;
                     default:
                         resStr = `Unknown function: ${tc.function.name}`;
                 }
-            } catch (e: any) {
-                resStr = e.message;
+            } catch (e: unknown) {
+                resStr = getErrorMessage(e);
             }
 
             const toolResultMsg: AIChatMessage = {
@@ -1142,12 +1205,7 @@ SELECT * FROM users WHERE status = 1;
             setSending(true);
             const currentHistory = useStore.getState().aiChatHistory[sid] || [];
             // 过滤掉 connecting 占位消息，不发给模型
-            const messagesPayload = currentHistory.filter(m => m.phase !== 'connecting').map(m => {
-                const mapped: any = { role: m.role, content: m.content, images: m.images };
-                if (m.tool_calls) mapped.tool_calls = m.tool_calls;
-                if (m.tool_call_id) mapped.tool_call_id = m.tool_call_id;
-                return mapped;
-            });
+            const messagesPayload = currentHistory.filter(m => m.phase !== 'connecting').map(toChatPayload);
             const sysMessages = await buildSystemContextMessages();
 
             let finalMessagesPayload = messagesPayload;
@@ -1240,12 +1298,7 @@ SELECT * FROM users WHERE status = 1;
         // 【过渡状态 2】上下文已组装完成，即将接入模型
         updateAIChatMessage(sid, connectingMsg.id, { content: '模型接入中' });
 
-        const chatMessages = [...messages, userMsg].map(m => {
-            const mapped: any = { role: m.role, content: m.content, images: m.images };
-            if (m.tool_calls) mapped.tool_calls = m.tool_calls;
-            if (m.tool_call_id) mapped.tool_call_id = m.tool_call_id;
-            return mapped;
-        });
+        const chatMessages = [...messages, userMsg].map(toChatPayload);
 
         let finalMessagesPayload = chatMessages;
         const dynamicMaxLimit = getDynamicMaxContextChars(activeProvider?.model);
@@ -1300,8 +1353,8 @@ SELECT * FROM users WHERE status = 1;
                 });
                 setSending(false);
             }
-        } catch (e: any) {
-            const rawE2 = e?.message || String(e);
+        } catch (e: unknown) {
+            const rawE2 = getErrorMessage(e);
             const cleanE2 = sanitizeErrorMsg(rawE2);
             addAIChatMessage(sid, {
                 id: genId(),
