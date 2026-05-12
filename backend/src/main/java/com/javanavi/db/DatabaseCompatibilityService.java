@@ -11,6 +11,7 @@ import com.javanavi.model.ColumnDefinitionWithTableDto;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.ConnectionPoolStatusDto;
 import com.javanavi.model.ConnectionTestResultDto;
+import com.javanavi.model.DatabaseOperationResultDto;
 import com.javanavi.model.ForeignKeyDefinitionDto;
 import com.javanavi.model.IndexDefinitionDto;
 import com.javanavi.model.QueryRequestDto;
@@ -286,48 +287,48 @@ public class DatabaseCompatibilityService {
         return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> applyChangesOnConnection(connection, config, requestedDatabase, tableName, changes)));
     }
 
-    public Map<String, Object> clearTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames, boolean truncate) {
+    public DatabaseOperationResultDto clearTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames, boolean truncate) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> clearTablesOnConnection(connection, config, requestedDatabase, tableNames, truncate)));
     }
 
-    public Map<String, Object> createDatabase(ConnectionConfigDto config, String databaseName) {
+    public DatabaseOperationResultDto createDatabase(ConnectionConfigDto config, String databaseName) {
         return withRedactedSqlErrors(() -> {
             ConnectionConfigDto runConfig = databaseDdlConnectionConfig(config, "create-database", databaseName);
             return withConnection(runConfig, connection -> executeDatabaseDdl(connection, config, "create-database", databaseName, null, null));
         });
     }
 
-    public Map<String, Object> dropDatabase(ConnectionConfigDto config, String databaseName) {
+    public DatabaseOperationResultDto dropDatabase(ConnectionConfigDto config, String databaseName) {
         return withRedactedSqlErrors(() -> {
             ConnectionConfigDto runConfig = databaseDdlConnectionConfig(config, "drop-database", databaseName);
             return withConnection(runConfig, connection -> executeDatabaseDdl(connection, config, "drop-database", databaseName, null, null));
         });
     }
 
-    public Map<String, Object> renameDatabase(ConnectionConfigDto config, String oldName, String newName) {
+    public DatabaseOperationResultDto renameDatabase(ConnectionConfigDto config, String oldName, String newName) {
         return withRedactedSqlErrors(() -> {
             ConnectionConfigDto runConfig = databaseDdlConnectionConfig(config, "rename-database", oldName);
             return withConnection(runConfig, connection -> executeDatabaseDdl(connection, config, "rename-database", oldName, newName, null));
         });
     }
 
-    public Map<String, Object> dropTable(ConnectionConfigDto config, String requestedDatabase, String tableName) {
+    public DatabaseOperationResultDto dropTable(ConnectionConfigDto config, String requestedDatabase, String tableName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "drop-table", tableName, null, requestedDatabase)));
     }
 
-    public Map<String, Object> dropView(ConnectionConfigDto config, String requestedDatabase, String viewName) {
+    public DatabaseOperationResultDto dropView(ConnectionConfigDto config, String requestedDatabase, String viewName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "drop-view", viewName, null, requestedDatabase)));
     }
 
-    public Map<String, Object> dropFunction(ConnectionConfigDto config, String requestedDatabase, String functionName) {
+    public DatabaseOperationResultDto dropFunction(ConnectionConfigDto config, String requestedDatabase, String functionName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "drop-function", functionName, null, requestedDatabase)));
     }
 
-    public Map<String, Object> renameTable(ConnectionConfigDto config, String requestedDatabase, String tableName, String newName) {
+    public DatabaseOperationResultDto renameTable(ConnectionConfigDto config, String requestedDatabase, String tableName, String newName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "rename-table", tableName, newName, requestedDatabase)));
     }
 
-    public Map<String, Object> renameView(ConnectionConfigDto config, String requestedDatabase, String viewName, String newName) {
+    public DatabaseOperationResultDto renameView(ConnectionConfigDto config, String requestedDatabase, String viewName, String newName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "rename-view", viewName, newName, requestedDatabase)));
     }
 
@@ -828,7 +829,7 @@ public class DatabaseCompatibilityService {
         return databases;
     }
 
-    private Map<String, Object> clearTablesOnConnection(
+    private DatabaseOperationResultDto clearTablesOnConnection(
             Connection connection,
             ConnectionConfigDto config,
             String requestedDatabase,
@@ -862,16 +863,10 @@ public class DatabaseCompatibilityService {
         } finally {
             connection.setAutoCommit(previousAutoCommit);
         }
-        return Map.of(
-                "count", names.size(),
-                "affectedRows", affected,
-                "tables", names,
-                "executedSQLs", executed,
-                "operation", truncate ? "truncate" : "clear"
-        );
+        return new DatabaseOperationResultDto(truncate ? "truncate" : "clear", names.size(), affected, names, executed);
     }
 
-    private Map<String, Object> executeDatabaseDdl(
+    private DatabaseOperationResultDto executeDatabaseDdl(
             Connection connection,
             ConnectionConfigDto config,
             String operation,
@@ -883,11 +878,7 @@ public class DatabaseCompatibilityService {
         String sql = ddlSql(driver, config, operation, name, newName, requestedDatabase);
         try (Statement statement = connection.createStatement()) {
             int affectedRows = Math.max(statement.executeUpdate(sql), 0);
-            return Map.of(
-                    "operation", operation,
-                    "executedSQLs", List.of(sql),
-                    "affectedRows", affectedRows
-            );
+            return new DatabaseOperationResultDto(operation, 1, affectedRows, List.of(), List.of(sql));
         }
     }
 

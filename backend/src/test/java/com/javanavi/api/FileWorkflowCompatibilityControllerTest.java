@@ -11,6 +11,8 @@ import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.files.FileWorkflowCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.ConnectionConfigDto;
+import com.javanavi.model.DatabaseOperationResultDto;
 import com.javanavi.model.FileWorkflowContracts;
 import com.javanavi.security.LocalSessionService;
 import org.junit.jupiter.api.Test;
@@ -22,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -49,6 +53,25 @@ class FileWorkflowCompatibilityControllerTest {
                 .hasParent(tempDir.resolve("imports"));
     }
 
+    @Test
+    void ddlClearTablesReturnsTypedOperationResult() throws Exception {
+        DatabaseCompatibilityService database = databaseCompatibilityService();
+        try (java.sql.Connection connection = dataSource().getConnection();
+             java.sql.Statement statement = connection.createStatement()) {
+            statement.execute("create table if not exists clear_target(id int)");
+            statement.execute("delete from clear_target");
+            statement.execute("insert into clear_target(id) values (1)");
+        }
+
+        DatabaseOperationResultDto result = database.clearTables(demoConfig(), "", List.of("clear_target"), false);
+
+        assertThat(result.operation()).isEqualTo("clear");
+        assertThat(result.count()).isEqualTo(1);
+        assertThat(result.affectedRows()).isEqualTo(1);
+        assertThat(result.tables()).containsExactly("clear_target");
+        assertThat(result.executedSQLs()).hasSize(1);
+    }
+
     private FileWorkflowCompatibilityService service() {
         I18nMessages messages = new I18nMessages();
         return new FileWorkflowCompatibilityService(
@@ -69,13 +92,21 @@ class FileWorkflowCompatibilityControllerTest {
     }
 
     private static DatabaseCompatibilityService databaseCompatibilityService() {
+        return new DatabaseCompatibilityService(new DemoDatabaseService(new JdbcTemplate(dataSource()), new I18nMessages()), new JdbcConnectionFactory());
+    }
+
+    private static DriverManagerDataSource dataSource() {
         DriverManagerDataSource dataSource = new DriverManagerDataSource(
                 "jdbc:h2:mem:javanavi-file-controller-test;MODE=PostgreSQL;DATABASE_TO_UPPER=false;DB_CLOSE_DELAY=-1",
                 "sa",
                 ""
         );
         dataSource.setDriverClassName("org.h2.Driver");
-        return new DatabaseCompatibilityService(new DemoDatabaseService(new JdbcTemplate(dataSource), new I18nMessages()), new JdbcConnectionFactory());
+        return dataSource;
+    }
+
+    private static ConnectionConfigDto demoConfig() {
+        return new ConnectionConfigDto("demo", "Demo", "demo", "", null, "", "", "", Map.of(), null);
     }
 
     private record MinimalMultipartFile(String originalFilename, byte[] bytes) implements MultipartFile {

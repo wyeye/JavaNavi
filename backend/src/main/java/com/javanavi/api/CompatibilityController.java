@@ -13,10 +13,13 @@ import com.javanavi.model.ConnectionCloseRequestDto;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.ConnectionPoolStatusDto;
 import com.javanavi.model.ConnectionTestResultDto;
+import com.javanavi.model.ConnectionCloseResultDto;
 import com.javanavi.model.DatabaseOperationRequestDto;
+import com.javanavi.model.DatabaseOperationResultDto;
 import com.javanavi.model.ForeignKeyDefinitionDto;
 import com.javanavi.model.IndexDefinitionDto;
 import com.javanavi.model.QueryCancelRequestDto;
+import com.javanavi.model.QueryCancelResultDto;
 import com.javanavi.model.QueryRequestDto;
 import com.javanavi.model.QueryResultDto;
 import com.javanavi.model.ResultSetDataDto;
@@ -97,9 +100,9 @@ public class CompatibilityController {
     }
 
     @PostMapping("/connections/close")
-    public ApiEnvelope<Map<String, Object>> closeConnection(@Valid @RequestBody ConnectionCloseRequestDto request) {
+    public ApiEnvelope<ConnectionCloseResultDto> closeConnection(@Valid @RequestBody ConnectionCloseRequestDto request) {
         boolean closed = databaseCompatibilityService.closeConnectionPool(request.connectionId());
-        return ApiEnvelope.ok(Map.of("connectionId", request.connectionId(), "closed", closed));
+        return ApiEnvelope.ok(new ConnectionCloseResultDto(request.connectionId(), closed));
     }
 
     @GetMapping("/connections/pools")
@@ -170,12 +173,12 @@ public class CompatibilityController {
     }
 
     @PostMapping("/query/cancel")
-    public ApiEnvelope<Map<String, Object>> cancelQuery(@Valid @RequestBody QueryCancelRequestDto request) {
+    public ApiEnvelope<QueryCancelResultDto> cancelQuery(@Valid @RequestBody QueryCancelRequestDto request) {
         boolean cancelled = databaseCompatibilityService.cancelQuery(request.queryId());
         if (!cancelled) {
             return ApiEnvelope.failKey(messages, "query.notRunning");
         }
-        return ApiEnvelope.ok(Map.of("queryId", request.queryId(), "cancelled", true));
+        return ApiEnvelope.ok(new QueryCancelResultDto(request.queryId(), true));
     }
 
     @PostMapping("/apply-changes")
@@ -189,52 +192,52 @@ public class CompatibilityController {
     }
 
     @PostMapping("/ddl/clear-tables")
-    public ApiEnvelope<Map<String, Object>> clearTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> clearTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.clearTables(request.connection(), request.database(), request.tables(), false));
     }
 
     @PostMapping("/ddl/truncate-tables")
-    public ApiEnvelope<Map<String, Object>> truncateTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> truncateTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.clearTables(request.connection(), request.database(), request.tables(), true));
     }
 
     @PostMapping("/ddl/create-database")
-    public ApiEnvelope<Map<String, Object>> createDatabase(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> createDatabase(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.createDatabase(request.connection(), request.name()));
     }
 
     @PostMapping("/ddl/drop-database")
-    public ApiEnvelope<Map<String, Object>> dropDatabase(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> dropDatabase(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.dropDatabase(request.connection(), request.name()));
     }
 
     @PostMapping("/ddl/rename-database")
-    public ApiEnvelope<Map<String, Object>> renameDatabase(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> renameDatabase(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.renameDatabase(request.connection(), request.name(), request.newName()));
     }
 
     @PostMapping("/ddl/drop-table")
-    public ApiEnvelope<Map<String, Object>> dropTable(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> dropTable(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.dropTable(request.connection(), request.database(), request.name()));
     }
 
     @PostMapping("/ddl/drop-view")
-    public ApiEnvelope<Map<String, Object>> dropView(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> dropView(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.dropView(request.connection(), request.database(), request.name()));
     }
 
     @PostMapping("/ddl/drop-function")
-    public ApiEnvelope<Map<String, Object>> dropFunction(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> dropFunction(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.dropFunction(request.connection(), request.database(), request.name()));
     }
 
     @PostMapping("/ddl/rename-table")
-    public ApiEnvelope<Map<String, Object>> renameTable(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> renameTable(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.renameTable(request.connection(), request.database(), request.name(), request.newName()));
     }
 
     @PostMapping("/ddl/rename-view")
-    public ApiEnvelope<Map<String, Object>> renameView(@Valid @RequestBody DatabaseOperationRequestDto request) {
+    public ApiEnvelope<DatabaseOperationResultDto> renameView(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.renameView(request.connection(), request.database(), request.name(), request.newName()));
     }
 
