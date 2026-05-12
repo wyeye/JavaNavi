@@ -42,6 +42,20 @@ public class JdbcConnectionPoolRegistry {
 
     public Connection openConnection(ConnectionConfigDto config) throws SQLException {
         jdbcConnectionFactory.prepareDriver(config);
+        if (config != null && config.sshEnabled()) {
+            ConnectionNetworkTunnelService.TunnelLease tunnelLease = jdbcConnectionFactory.networkTunnelService().openSshTunnel(config);
+            try {
+                ConnectionConfigDto effective = config.withEndpoint("127.0.0.1", tunnelLease.localPort());
+                return TunnelBoundConnection.wrap(jdbcConnectionFactory.openRawConnection(effective), tunnelLease);
+            } catch (SQLException | RuntimeException error) {
+                tunnelLease.close();
+                if (error instanceof SQLException sqlException) {
+                    throw connectionFailure(config, sqlException);
+                }
+                throw error;
+            }
+        }
+        jdbcConnectionFactory.networkTunnelService().rejectUnsupported(config);
         ManagedPool pool = poolFor(config);
         try {
             return pool.openConnection();
@@ -53,6 +67,7 @@ public class JdbcConnectionPoolRegistry {
 
     public ConnectionPoolStatusDto openPool(ConnectionConfigDto config) throws SQLException {
         jdbcConnectionFactory.prepareDriver(config);
+        jdbcConnectionFactory.networkTunnelService().rejectUnsupported(config);
         ManagedPool pool = poolFor(config);
         boolean discardInvalidPool = false;
         try (Connection connection = pool.openConnection()) {
@@ -128,7 +143,11 @@ public class JdbcConnectionPoolRegistry {
         applyDriverTimeoutProperties(config, driverProperties, connectionTimeoutMs);
 
         HikariConfig hikari = new HikariConfig();
-        hikari.setDataSource(jdbcConnectionFactory.dataSource(config, driverProperties));
+        if (config != null && config.sshEnabled()) {
+            hikari.setDataSource(new SshTunnelJdbcDataSource(jdbcConnectionFactory, config, driverProperties));
+        } else {
+            hikari.setDataSource(jdbcConnectionFactory.dataSource(config, driverProperties));
+        }
         hikari.setMaximumPoolSize(maxPoolSize);
         hikari.setMinimumIdle(minimumIdle);
         hikari.setConnectionTimeout(connectionTimeoutMs);
@@ -169,6 +188,10 @@ public class JdbcConnectionPoolRegistry {
         value.append(String.valueOf(config == null ? null : config.port())).append('\n');
         value.append(nullToEmpty(config == null ? null : config.username())).append('\n');
         value.append(nullToEmpty(config == null ? null : config.password())).append('\n');
+        value.append(nullToEmpty(config == null || config.ssh() == null ? null : config.ssh().host())).append('\n');
+        value.append(nullToEmpty(config == null || config.ssh() == null ? null : config.ssh().user())).append('\n');
+        value.append(nullToEmpty(config == null || config.ssh() == null ? null : config.ssh().keyPath())).append('\n');
+        value.append(String.valueOf(config == null || config.ssh() == null ? null : config.ssh().port())).append('\n');
         value.append(String.valueOf(config == null ? null : config.timeout())).append('\n');
         value.append(nullToEmpty(config == null ? null : config.driver())).append('\n');
         value.append(nullToEmpty(config == null ? null : config.sslMode())).append('\n');

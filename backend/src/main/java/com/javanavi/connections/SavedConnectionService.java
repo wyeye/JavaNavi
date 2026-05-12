@@ -238,6 +238,15 @@ public class SavedConnectionService {
         Optional<String> password = config.password() == null || config.password().isBlank()
                 ? secretStore.get(secretKey(sanitizedId, "primaryPassword"))
                 : Optional.empty();
+        Optional<String> sshPassword = config.effectiveSsh() != null && isBlankString(config.effectiveSsh().password())
+                ? secretStore.get(secretKey(sanitizedId, "sshPassword"))
+                : Optional.empty();
+        Optional<String> proxyPassword = config.proxy() != null && isBlankString(config.proxy().password())
+                ? secretStore.get(secretKey(sanitizedId, "proxyPassword"))
+                : Optional.empty();
+        Optional<String> httpTunnelPassword = config.httpTunnel() != null && isBlankString(config.httpTunnel().password())
+                ? secretStore.get(secretKey(sanitizedId, "httpTunnelPassword"))
+                : Optional.empty();
         Optional<String> mongoReplicaPassword = config.mongoReplicaPassword() == null || config.mongoReplicaPassword().isBlank()
                 ? secretStore.get(secretKey(sanitizedId, "mongoReplicaPassword"))
                 : Optional.empty();
@@ -247,9 +256,18 @@ public class SavedConnectionService {
         Optional<String> dsn = config.dsn() == null || config.dsn().isBlank()
                 ? secretStore.get(secretKey(sanitizedId, "opaqueDSN"))
                 : Optional.empty();
-        if (password.isEmpty() && mongoReplicaPassword.isEmpty() && uri.isEmpty() && dsn.isEmpty()) {
+        if (password.isEmpty()
+                && sshPassword.isEmpty()
+                && proxyPassword.isEmpty()
+                && httpTunnelPassword.isEmpty()
+                && mongoReplicaPassword.isEmpty()
+                && uri.isEmpty()
+                && dsn.isEmpty()) {
             return config;
         }
+        ConnectionConfigDto.NetworkCredentialConfigDto ssh = config.effectiveSsh();
+        ConnectionConfigDto.NetworkProxyConfigDto proxy = config.proxy();
+        ConnectionConfigDto.NetworkHttpTunnelConfigDto httpTunnel = config.httpTunnel();
         return new ConnectionConfigDto(
                 config.id(),
                 config.name(),
@@ -264,6 +282,19 @@ public class SavedConnectionService {
                 config.timeout(),
                 config.useSSL(),
                 config.sslMode(),
+                config.useSSH(),
+                sshPassword.map(value -> new ConnectionConfigDto.NetworkCredentialConfigDto(
+                        ssh.host(), ssh.port(), ssh.user(), value, ssh.keyPath()
+                )).orElse(config.ssh()),
+                config.sshConfig(),
+                config.useProxy(),
+                proxyPassword.map(value -> new ConnectionConfigDto.NetworkProxyConfigDto(
+                        proxy.type(), proxy.host(), proxy.port(), proxy.user(), value
+                )).orElse(proxy),
+                config.useHttpTunnel(),
+                httpTunnelPassword.map(value -> new ConnectionConfigDto.NetworkHttpTunnelConfigDto(
+                        httpTunnel.host(), httpTunnel.port(), httpTunnel.user(), value
+                )).orElse(httpTunnel),
                 uri.orElse(config.uri()),
                 dsn.orElse(config.dsn()),
                 config.hosts(),

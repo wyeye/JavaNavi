@@ -40,7 +40,7 @@ import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 	import { SavedConnection, ExternalSQLTreeEntry, type TabData } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, isJavaNaviDesktopRuntime, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
   import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
@@ -246,7 +246,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const loadingNodesRef = useRef<Set<string>>(new Set());
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const externalSqlUploadInputRef = useRef<HTMLInputElement | null>(null);
+  const openSqlUploadInputRef = useRef<HTMLInputElement | null>(null);
   const pendingExternalSqlUploadRef = useRef<{ connectionId: string; dbName: string; dbNodeKey: string; directoryPath: string } | null>(null);
+  const pendingOpenSqlContextRef = useRef<{ connectionId: string; dbName?: string } | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, items: MenuProps['items'] } | null>(null);
   
   // Virtual Scroll State
@@ -1849,35 +1851,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   const handleRunSQLFile = async (node: any) => {
-      const res = await OpenSQLFile();
-      if (res.success) {
-          const data = res.data;
-          // 大文件：后端返回文件路径，走流式执行
-          if (data && typeof data === 'object' && data.isLargeFile) {
-              const connId = node.type === 'connection' ? node.key : node.dataRef?.id;
-              const dbName = node.dataRef?.dbName || '';
-              const conn = connections.find(c => c.id === connId);
-              if (!conn) {
-                  message.error(t('sidebar.msg.connConfigNotFound'));
-                  return;
-              }
-              startSQLFileExecution(conn.config, dbName, data.filePath, data.fileSizeMB);
-              return;
-          }
-          // 小文件：加载到编辑器
-          const sqlContent = data;
-          const { dbName, id } = node.dataRef;
-          addTab({
-              id: `query-${Date.now()}`,
-              title: t('sidebar.menu.runExternalSql'),
-              type: 'query',
-              connectionId: node.type === 'connection' ? node.key : node.dataRef.id,
-              dbName: dbName,
-              query: sqlContent
-          });
-      } else if (!isCancelledMessage(res.message)) {
-          message.error(t('sidebar.msg.readFileFailed', { message: res.message }));
+      const connectionId = String(node.type === 'connection' ? node.key : node.dataRef?.id || '').trim();
+      const dbName = String(node.type === 'database' ? node.title : node.dataRef?.dbName || '').trim() || undefined;
+      if (!connectionId) {
+          message.warning(t('sidebar.msg.selectConnOrDb'));
+          return;
       }
+      await openSQLFileForContext({ connectionId, dbName });
   };
 
   const handleOpenSQLFileFromToolbar = async () => {
@@ -1886,31 +1866,60 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           message.warning(t('sidebar.msg.selectConnOrDb'));
           return;
       }
-      const res = await OpenSQLFile();
-      if (res.success) {
-          const data = res.data;
-          // 大文件：后端流式执行
-          if (data && typeof data === 'object' && data.isLargeFile) {
-              const conn = connections.find(c => c.id === ctx.connectionId);
-              if (!conn) {
-                  message.error(t('sidebar.msg.connConfigNotFound'));
+      await openSQLFileForContext({ connectionId: ctx.connectionId, dbName: ctx.dbName || undefined });
+  };
+
+  const openSQLFileForContext = async (context: { connectionId: string; dbName?: string }) => {
+      if (isJavaNaviDesktopRuntime()) {
+          const res = await OpenSQLFile();
+          if (res.success) {
+              const data = res.data;
+              if (data && typeof data === 'object' && (data as any).isLargeFile) {
+                  const conn = connections.find(c => c.id === context.connectionId);
+                  if (!conn) {
+                      message.error(t('sidebar.msg.connConfigNotFound'));
+                      return;
+                  }
+                  startSQLFileExecution(conn.config, context.dbName || '', (data as any).filePath || (data as any).path, (data as any).fileSizeMB || '');
                   return;
               }
-              startSQLFileExecution(conn.config, ctx.dbName || '', data.filePath, data.fileSizeMB);
-              return;
+              const payload = data && typeof data === 'object' ? data as Record<string, any> : {};
+              addTab({
+                  id: `query-${Date.now()}`,
+                  title: String(payload.name || t('sidebar.menu.runExternalSql')),
+                  type: 'query',
+                  connectionId: context.connectionId,
+                  dbName: context.dbName,
+                  query: String(payload.content ?? data ?? '')
+              });
+          } else if (!isCancelledMessage(res.message)) {
+              message.error(t('sidebar.msg.readFileFailed', { message: res.message }));
           }
-          // 小文件
-          addTab({
-              id: `query-${Date.now()}`,
-              title: t('sidebar.menu.runExternalSql'),
-              type: 'query',
-              connectionId: ctx.connectionId,
-              dbName: ctx.dbName || undefined,
-              query: data
-          });
-      } else if (!isCancelledMessage(res.message)) {
-          message.error(t('sidebar.msg.readFileFailed', { message: res.message }));
+          return;
       }
+      pendingOpenSqlContextRef.current = context;
+      openSqlUploadInputRef.current?.click();
+  };
+
+  const handleOpenSQLUploadSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
+      const context = pendingOpenSqlContextRef.current;
+      const file = event.target.files?.[0];
+      event.target.value = '';
+      pendingOpenSqlContextRef.current = null;
+      if (!context || !file) return;
+      if (!file.name.toLowerCase().endsWith('.sql')) {
+          message.error(t('sidebar.msg.readSqlFailed', { message: '请选择 .sql 文件' }));
+          return;
+      }
+      const text = await file.text();
+      addTab({
+          id: `query-${Date.now()}`,
+          title: file.name || t('sidebar.menu.runExternalSql'),
+          type: 'query',
+          connectionId: context.connectionId,
+          dbName: context.dbName,
+          query: text
+      });
   };
 
   // SQL 文件流式执行状态
@@ -3968,6 +3977,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             accept=".sql"
             style={{ display: 'none' }}
             onChange={handleExternalSQLFileSelected}
+        />
+        <input
+            ref={openSqlUploadInputRef}
+            type="file"
+            accept=".sql"
+            style={{ display: 'none' }}
+            onChange={handleOpenSQLUploadSelected}
         />
 
         {contextMenu && (

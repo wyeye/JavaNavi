@@ -67,6 +67,16 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(Map.of("logged", true));
     }
 
+    @PostMapping("/local-file/select")
+    public ApiEnvelope<Map<String, Object>> selectLocalFile(@RequestBody(required = false) Map<String, Object> input) {
+        return ApiEnvelope.ok(appCompatibilityService.selectLocalFile(input));
+    }
+
+    @PostMapping("/local-file/read")
+    public ApiEnvelope<Object> readLocalFile(@RequestBody Map<String, Object> input) {
+        return ApiEnvelope.ok(appCompatibilityService.readLocalFile(stringValue(input, "path", "filePath")));
+    }
+
     @PostMapping("/sql-directory/select")
     public ApiEnvelope<Map<String, Object>> selectSqlDirectory(@RequestBody Map<String, Object> input) {
         String currentPath = stringValue(input, "path", "currentPath", "directory");
