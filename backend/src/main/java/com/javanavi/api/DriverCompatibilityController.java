@@ -33,8 +33,8 @@ public class DriverCompatibilityController {
     }
 
     @GetMapping("/network-status")
-    public ApiEnvelope<Map<String, Object>> networkStatus() {
-        return ApiEnvelope.ok(driverCompatibilityService.networkStatus());
+    public ApiEnvelope<DriverContracts.NetworkStatusResponse> networkStatus() {
+        return ApiEnvelope.ok(DriverContracts.NetworkStatusResponse.from(driverCompatibilityService.networkStatus()));
     }
 
     @PostMapping("/runtime-directory")
