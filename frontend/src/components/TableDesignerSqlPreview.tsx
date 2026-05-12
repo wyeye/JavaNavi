@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef } from 'react';
-import Editor, { type BeforeMount, type OnMount } from '@monaco-editor/react';
+import Editor, { type BeforeMount, type Monaco, type OnMount } from '@monaco-editor/react';
+import type { editor as MonacoEditor } from 'monaco-editor';
 import { useStore } from '../store';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
 
@@ -149,8 +150,8 @@ const TableDesignerSqlPreview: React.FC<TableDesignerSqlPreviewProps> = ({
   const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
   const resolveLabel = useCallback((kind: SqlChangeHighlightKind) => t(SQL_CHANGE_LABEL_KEYS[kind]), [t]);
   const decorationIdsRef = useRef<string[]>([]);
-  const editorRef = useRef<any>(null);
-  const monacoRef = useRef<any>(null);
+  const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const monacoRef = useRef<Monaco | null>(null);
   const changeHighlights = useMemo(() => resolveSqlChangeHighlights(sql, resolveLabel), [resolveLabel, sql]);
 
   const applyChangeDecorations = useCallback(() => {
