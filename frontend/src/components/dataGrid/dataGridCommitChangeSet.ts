@@ -1,13 +1,21 @@
+import React from 'react';
 import { resolveRowLocatorValues, type EditRowLocator } from '../../utils/rowLocator';
 import { JAVANAVI_ROW_KEY } from './dataGridCells';
 import { isCellValueEqualForDiff } from './dataGridValue';
 
-export type NormalizeCommitCellValue = (columnName: string, value: any, mode: 'insert' | 'update') => any;
+type DataGridCommitRow = Record<string, unknown>;
+
+export type NormalizeCommitCellValue = (columnName: string, value: unknown, mode: 'insert' | 'update') => unknown;
+
+export type DataGridCommitUpdate = {
+    keys: DataGridCommitRow;
+    values: DataGridCommitRow;
+};
 
 export type DataGridCommitChangeSet = {
-    inserts: any[];
-    updates: any[];
-    deletes: any[];
+    inserts: DataGridCommitRow[];
+    updates: DataGridCommitUpdate[];
+    deletes: DataGridCommitRow[];
 };
 
 export const buildDataGridCommitChangeSet = ({
@@ -20,21 +28,21 @@ export const buildDataGridCommitChangeSet = ({
     rowKeyToString,
     normalizeCommitCellValue,
 }: {
-    addedRows: any[];
-    modifiedRows: Record<string, any>;
+    addedRows: DataGridCommitRow[];
+    modifiedRows: Record<string, DataGridCommitRow>;
     deletedRowKeys: Set<string>;
-    data: any[];
+    data: DataGridCommitRow[];
     editLocator?: EditRowLocator;
     columnNames: string[];
-    rowKeyToString: (key: any) => string;
+    rowKeyToString: (key: React.Key) => string;
     normalizeCommitCellValue: NormalizeCommitCellValue;
 }): { ok: true; changes: DataGridCommitChangeSet } | { ok: false; error: string } => {
     if (!editLocator || editLocator.readOnly || editLocator.strategy === 'none') {
         return { ok: false, error: editLocator?.reason || '当前结果没有可用的安全行定位方式，无法提交修改。' };
     }
 
-    const normalizeValues = (values: Record<string, any>, mode: 'insert' | 'update') => {
-        const normalizedValues: Record<string, any> = {};
+    const normalizeValues = (values: DataGridCommitRow, mode: 'insert' | 'update') => {
+        const normalizedValues: DataGridCommitRow = {};
         Object.entries(values).forEach(([col, val]) => {
             if (col === JAVANAVI_ROW_KEY) return;
             const normalizedVal = normalizeCommitCellValue(col, val, mode);
@@ -45,32 +53,32 @@ export const buildDataGridCommitChangeSet = ({
         return normalizedValues;
     };
 
-    const originalRowsByKey = new Map<string, any>();
+    const originalRowsByKey = new Map<string, DataGridCommitRow>();
     data.forEach((row) => {
         const key = row?.[JAVANAVI_ROW_KEY];
         if (key === undefined || key === null) return;
-        originalRowsByKey.set(rowKeyToString(key), row);
+        originalRowsByKey.set(rowKeyToString(key as React.Key), row);
     });
 
     const writeColumnSet = new Set(columnNames.map((column) => String(column || '').trim()).filter(Boolean));
     editLocator.valueColumns.forEach((column) => writeColumnSet.delete(String(column || '').trim()));
     editLocator.columns.forEach((column) => writeColumnSet.delete(String(column || '').trim()));
 
-    const filterWritableValues = (values: Record<string, any>) => {
-        const filtered: Record<string, any> = {};
+    const filterWritableValues = (values: DataGridCommitRow) => {
+        const filtered: DataGridCommitRow = {};
         Object.entries(values).forEach(([column, value]) => {
             if (writeColumnSet.has(column)) filtered[column] = value;
         });
         return filtered;
     };
 
-    const inserts: any[] = [];
-    const updates: any[] = [];
-    const deletes: any[] = [];
+    const inserts: DataGridCommitRow[] = [];
+    const updates: DataGridCommitUpdate[] = [];
+    const deletes: DataGridCommitRow[] = [];
 
     addedRows.forEach(row => {
         const key = row?.[JAVANAVI_ROW_KEY];
-        if (key !== undefined && key !== null && deletedRowKeys.has(rowKeyToString(key))) return;
+        if (key !== undefined && key !== null && deletedRowKeys.has(rowKeyToString(key as React.Key))) return;
         const insertValues = filterWritableValues(normalizeValues(row, 'insert'));
         if (Object.keys(insertValues).length === 0) {
             return { ok: false, error: '新增行没有可写字段，无法提交修改。' };
@@ -93,14 +101,14 @@ export const buildDataGridCommitChangeSet = ({
         const locatorValues = resolveRowLocatorValues(editLocator, originalRow);
         if (!locatorValues.ok) return { ok: false, error: locatorValues.error };
 
-        const hasRowKey = Object.prototype.hasOwnProperty.call(newRow as any, JAVANAVI_ROW_KEY);
-        let values: Record<string, any> = {};
+        const hasRowKey = Object.prototype.hasOwnProperty.call(newRow, JAVANAVI_ROW_KEY);
+        let values: DataGridCommitRow = {};
         if (!hasRowKey) {
-            values = { ...(newRow as any) };
+            values = { ...newRow };
         } else {
             columnNames.forEach((col) => {
-                const nextVal = (newRow as any)?.[col];
-                const prevVal = (originalRow as any)?.[col];
+                const nextVal = newRow?.[col];
+                const prevVal = originalRow?.[col];
                 if (!isCellValueEqualForDiff(prevVal, nextVal)) values[col] = nextVal;
             });
         }
