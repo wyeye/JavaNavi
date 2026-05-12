@@ -2,6 +2,7 @@ package com.javanavi.api;
 
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.LocalSessionDto;
 import com.javanavi.security.LocalSessionService;
 import com.javanavi.security.SecretStore;
 import com.javanavi.security.SecretStoreStatus;
@@ -15,7 +16,6 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.time.Duration;
-import java.util.Map;
 
 @RestController
 @RequestMapping("/api/v1")
@@ -35,7 +35,7 @@ public class SecurityController {
     }
 
     @GetMapping("/session")
-    public ResponseEntity<ApiEnvelope<Map<String, Object>>> session(HttpServletRequest request) {
+    public ResponseEntity<ApiEnvelope<LocalSessionDto>> session(HttpServletRequest request) {
         LocalSessionService.IssuedSession issuedSession = localSessionService.sessionForToken(sessionCookieValue(request))
                 .orElseGet(localSessionService::issueSession);
         ResponseCookie cookie = ResponseCookie.from(properties.getSessionCookie(), issuedSession.token())
@@ -45,13 +45,14 @@ public class SecurityController {
                 .maxAge(Duration.ofHours(12))
                 .build();
         SecretStoreStatus secretStoreStatus = secretStore.status();
-        Map<String, Object> body = Map.of(
-                "tokenFingerprint", issuedSession.tokenFingerprint(),
-                "sessionId", issuedSession.sessionId(),
-                "headerName", properties.getSessionHeader(),
-                "cookieName", properties.getSessionCookie(),
-                "localSessionRequired", properties.isLocalSessionRequired(),
-                "secretStore", secretStoreStatus
+        LocalSessionDto body = new LocalSessionDto(
+                issuedSession.token(),
+                issuedSession.tokenFingerprint(),
+                issuedSession.sessionId(),
+                properties.getSessionHeader(),
+                properties.getSessionCookie(),
+                properties.isLocalSessionRequired(),
+                secretStoreStatus
         );
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE, cookie.toString())
