@@ -108,7 +108,9 @@ type SidebarQueryRecord = Record<string, unknown>;
 type SidebarRoutineType = 'FUNCTION' | 'PROCEDURE';
 type SidebarLoadTreeNode = { key?: React.Key; dataRef?: object };
 type SidebarDataRef = Record<string, unknown>;
-type SidebarNodeData = SavedConnection & {
+type SidebarSavedQueryData = SidebarDataRef & { id: string; name: string; sql: string; connectionId: string; dbName: string };
+type SidebarTagData = SidebarDataRef & ConnectionTag;
+type SidebarNodeData = SidebarDataRef & SavedConnection & {
   dbName?: string;
   tableName?: string;
   viewName?: string;
@@ -2989,13 +2991,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       return filterSidebarTree(treeData, keyword, searchScopes);
   }, [searchValue, searchScopes, treeData]);
 
-  const getNodeMenuItems = (node: any): MenuProps['items'] => {
-    const conn = node.dataRef;
-    const isRedis = conn?.config?.type === 'redis';
+  const getNodeMenuItems = (node: SidebarEventNode): MenuProps['items'] => {
+    const nodeData = getSidebarDataRef<SidebarNodeData>(node);
+    const isRedis = nodeData.config?.type === 'redis';
 
     // 表分组节点的右键菜单
-    if (node.type === 'object-group' && node.dataRef?.groupKey === 'tables') {
-        const groupData = node.dataRef; // { ...conn, dbName, groupKey }
+    if (node.type === 'object-group' && nodeData.groupKey === 'tables') {
+        const groupData = getSidebarDataRef<SidebarRuntimeNodeData>(node);
         const sortPreferenceKey = `${groupData.id}-${groupData.dbName}`;
         const currentSort = tableSortPreference[sortPreferenceKey] || 'name';
 
@@ -3030,7 +3032,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     }
 
     // 视图分组节点的右键菜单
-    if (node.type === 'object-group' && node.dataRef?.groupKey === 'views') {
+    if (node.type === 'object-group' && nodeData.groupKey === 'views') {
         return [
             {
                 key: 'create-view',
@@ -3042,8 +3044,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     }
 
     // 函数分组节点的右键菜单
-    if (node.type === 'object-group' && node.dataRef?.groupKey === 'routines') {
-        const dialect = getMetadataDialect(node.dataRef as SavedConnection);
+    if (node.type === 'object-group' && nodeData.groupKey === 'routines') {
+        const dialect = getMetadataDialect(nodeData);
         const routineMenu: MenuProps['items'] = [
             {
                 key: 'create-function',
@@ -3071,7 +3073,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 label: t('sidebar.menu.editTag'),
                 icon: <EditOutlined />,
                 onClick: () => {
-                    createTagForm.setFieldsValue({ name: node.title, connectionIds: node.dataRef.connectionIds });
+                    const tag = getSidebarDataRef<SidebarTagData>(node);
+                    createTagForm.setFieldsValue({ name: node.title, connectionIds: tag.connectionIds });
                     setRenameViewTarget(node);
                     setIsCreateTagModalOpen(true);
                 }
@@ -3087,7 +3090,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                         title: t('sidebar.modal.confirmDelete'),
                         content: t('sidebar.modal.deleteTagContent', { name: node.title }),
                         onOk: () => {
-                            removeConnectionTag(node.dataRef.id);
+                            removeConnectionTag(getSidebarDataRef<SidebarTagData>(node).id);
                         }
                     });
                 }
@@ -3150,14 +3153,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                     label: t('sidebar.menu.editConnection'),
                     icon: <EditOutlined />,
                     onClick: () => {
-                        if (onEditConnection) onEditConnection(node.dataRef);
+                        if (onEditConnection) onEditConnection(getSidebarDataRef<SidebarDataRef & SavedConnection>(node));
                     }
                 },
                 {
                     key: 'copy-connection',
                     label: t('sidebar.menu.copyConnection'),
                     icon: <CopyOutlined />,
-                    onClick: () => handleDuplicateConnection(node.dataRef as SavedConnection)
+                    onClick: () => handleDuplicateConnection(getSidebarDataRef<SidebarDataRef & SavedConnection>(node))
                 },
                 {
                     key: 'disconnect',
@@ -3216,7 +3219,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             key: `move-to-tag-${tag.id}`,
             label: tag.name,
             icon: <FolderOutlined />,
-            onClick: () => moveConnectionToTag(node.key, tag.id)
+            onClick: () => moveConnectionToTag(getSidebarNodeKeyText(node), tag.id)
         }));
         if (connectionTags.length > 0) {
             tagSubMenuItems.push({ type: 'divider' });
@@ -3224,7 +3227,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         tagSubMenuItems.push({
             key: 'move-to-ungrouped',
             label: t('sidebar.menu.removeFromTag'),
-            onClick: () => moveConnectionToTag(node.key, null)
+            onClick: () => moveConnectionToTag(getSidebarNodeKeyText(node), null)
         });
 
         // Regular database connection menu
@@ -3282,14 +3285,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                  label: t('sidebar.menu.editConnection'),
                  icon: <EditOutlined />,
                  onClick: () => {
-                     if (onEditConnection) onEditConnection(node.dataRef);
+                     if (onEditConnection) onEditConnection(getSidebarDataRef<SidebarDataRef & SavedConnection>(node));
                  }
              },
              {
                  key: 'copy-connection',
                  label: t('sidebar.menu.copyConnection'),
                  icon: <CopyOutlined />,
-                 onClick: () => handleDuplicateConnection(node.dataRef as SavedConnection)
+                 onClick: () => handleDuplicateConnection(getSidebarDataRef<SidebarDataRef & SavedConnection>(node))
              },
              {
                  key: 'move-to-tag',
@@ -3359,7 +3362,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         ];
     } else if (node.type === 'redis-db') {
         // Redis database menu
-        const { id, redisDB } = node.dataRef;
+        const { id, redisDB } = getSidebarDataRef<SidebarNodeData>(node);
         return [
             {
                 key: 'open-keys',
@@ -3418,7 +3421,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                icon: <EditOutlined />,
                onClick: () => {
                    setRenameDbTarget(node);
-                   renameDbForm.setFieldsValue({ newName: node.dataRef?.dbName || '' });
+                   renameDbForm.setFieldsValue({ newName: nodeData.dbName || '' });
                    setIsRenameDbModalOpen(true);
                }
            },
@@ -3460,8 +3463,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                label: t('sidebar.menu.closeDatabase'),
                icon: <DisconnectOutlined />,
                onClick: () => {
-                   const dbConnId = String(node.dataRef?.id || '');
-                   const dbName = String(node.dataRef?.dbName || node.title || '').trim();
+                   const dbConnId = String(nodeData.id || '');
+                   const dbName = String(nodeData.dbName || node.title || '').trim();
                    loadingNodesRef.current.delete(`tables-${dbConnId}-${dbName}`);
                    setConnectionStates(prev => {
                        const next = { ...prev };
@@ -3486,8 +3489,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                        id: `query-${Date.now()}`,
                        title: t('sidebar.tree.newQueryInDb', { name: node.title }),
                        type: 'query',
-                       connectionId: node.dataRef.id,
-                       dbName: node.title,
+                       connectionId: nodeData.id,
+                       dbName: nodeData.dbName || String(node.title || ''),
                        query: ''
                    });
                }
@@ -3529,8 +3532,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                         id: `query-${Date.now()}`,
                         title: t('sidebar.tree.newQueryTab'),
                         type: 'query',
-                        connectionId: node.dataRef.id,
-                        dbName: node.dataRef.dbName,
+                        connectionId: nodeData.id,
+                        dbName: nodeData.dbName,
                         query: ''
                     });
                 }
@@ -3542,7 +3545,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 icon: <EditOutlined />,
                 onClick: () => {
                     setRenameViewTarget(node);
-                    renameViewForm.setFieldsValue({ newName: extractObjectName(node.dataRef?.viewName || node.title) });
+                    renameViewForm.setFieldsValue({ newName: extractObjectName(nodeData.viewName || String(node.title || '')) });
                     setIsRenameViewModalOpen(true);
                 }
             },
@@ -3562,7 +3565,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             },
         ];
     } else if (node.type === 'routine') {
-        const routineType = node.dataRef?.routineType || 'FUNCTION';
+        const routineType = nodeData.routineType || 'FUNCTION';
         const typeLabel = routineType === 'PROCEDURE' ? t('sidebar.tree.procedure') : t('sidebar.tree.function');
         return [
             {
@@ -3600,14 +3603,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 label: t('sidebar.menu.newQuery'),
                 icon: <ConsoleSqlOutlined />,
                 onClick: () => {
-                   const tableName = String(node.dataRef?.tableName || '').trim();
-                   const queryTemplate = buildTableSelectQuery(getMetadataDialect(node.dataRef as SavedConnection), tableName);
+                   const tableName = String(nodeData.tableName || '').trim();
+                   const queryTemplate = buildTableSelectQuery(getMetadataDialect(nodeData), tableName);
                    addTab({
                        id: `query-${Date.now()}`,
                        title: t('sidebar.tree.newQueryTab'),
                        type: 'query',
-                       connectionId: node.dataRef.id,
-                       dbName: node.dataRef.dbName,
+                       connectionId: nodeData.id,
+                       dbName: nodeData.dbName,
                        query: queryTemplate
                    });
                 }
@@ -3637,7 +3640,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 icon: <EditOutlined />,
                 onClick: () => {
                     setRenameTableTarget(node);
-                    renameTableForm.setFieldsValue({ newName: extractObjectName(node.dataRef?.tableName || node.title) });
+                    renameTableForm.setFieldsValue({ newName: extractObjectName(nodeData.tableName || String(node.title || '')) });
                     setIsRenameTableModalOpen(true);
                 }
             },
@@ -3646,7 +3649,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 label: t('sidebar.menu.dangerOps'),
                 icon: <WarningOutlined />,
                 children: [
-                    ...(supportsTableTruncateAction(node.dataRef?.config?.type, node.dataRef?.config?.driver) ? [{
+                    ...(supportsTableTruncateAction(nodeData.config?.type, nodeData.config?.driver) ? [{
                         key: 'truncate-table',
                         label: t('sidebar.menu.truncateTable'),
                         danger: true,
@@ -3687,7 +3690,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
     // 已存查询节点的右键菜单
     if (node.type === 'saved-query') {
-        const q = node.dataRef;
+        const q = getSidebarDataRef<SidebarSavedQueryData>(node);
         return [
             {
                 key: 'open-query',
