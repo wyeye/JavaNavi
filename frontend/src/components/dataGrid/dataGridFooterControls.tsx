@@ -1,10 +1,13 @@
 import React from 'react';
 import { Button, Input, Pagination, Popover, Select, Segmented, Tooltip } from 'antd';
+import type { InputProps } from 'antd';
 import { EditOutlined, FileTextOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
 import { resolvePaginationTotalForControl } from '../../utils/dataGridPagination';
 import type { DataGridFindNavigationDirection, DataGridFindSummary } from '../../utils/dataGridFind';
 
 export type DataGridViewMode = 'table' | 'json' | 'text';
+
+type NoAutoCapInputProps = Pick<InputProps, 'autoCorrect' | 'spellCheck'>;
 
 export type DataGridPaginationState = {
     current: number;
@@ -29,7 +32,7 @@ export type DataGridFooterControlsProps = {
     pageFindMatchesLength: number;
     activePageFindPosition: number;
     pageFindSummary: DataGridFindSummary;
-    noAutoCapInputProps: Record<string, any>;
+    noAutoCapInputProps: NoAutoCapInputProps;
     pagination?: DataGridPaginationState;
     paginationSummaryText: string;
     paginationPageText: string;
