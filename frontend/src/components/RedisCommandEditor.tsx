@@ -4,15 +4,25 @@ import { PlayCircleOutlined, ClearOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import Editor, { OnMount } from '@monaco-editor/react';
+import type { editor, Position } from 'monaco-editor';
+import { RedisExecuteCommand } from '@compat/javanaviApp';
 
 interface RedisCommandEditorProps {
     connectionId: string;
     redisDB: number;
 }
 
+type RedisCommandResultValue = string | number | boolean | null | RedisCommandResultValue[] | { [key: string]: RedisCommandResultValue | undefined };
+
+declare global {
+    interface Window {
+        __redisCompletionRegistered?: boolean;
+    }
+}
+
 interface CommandResult {
     command: string;
-    result: any;
+    result: RedisCommandResultValue;
     error?: string;
     timestamp: number;
     durationMs: number;
@@ -92,7 +102,7 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
     const containerRef = useRef<HTMLDivElement>(null);
     const resultsEndRef = useRef<HTMLDivElement>(null);
     
-    const editorRef = useRef<any>(null);
+    const editorRef = useRef<editor.IStandaloneCodeEditor | null>(null);
 
     const getConfig = useCallback(() => {
         if (!connection) return null;
@@ -113,8 +123,8 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
             () => handleExecute()
         );
 
-        if (!(window as any).__redisCompletionRegistered) {
-            (window as any).__redisCompletionRegistered = true;
+        if (!window.__redisCompletionRegistered) {
+            window.__redisCompletionRegistered = true;
             
             const redisCommands = [
                 "APPEND", "AUTH", "BGREWRITEAOF", "BGSAVE", "BITCOUNT", "BITFIELD", "BITOP", 
@@ -149,7 +159,7 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
             ];
             
             monaco.languages.registerCompletionItemProvider('redis', {
-                provideCompletionItems: (model: any, position: any) => {
+                provideCompletionItems: (model: editor.ITextModel, position: Position) => {
                     const word = model.getWordUntilPosition(position);
                     const range = {
                         startLineNumber: position.lineNumber,
@@ -202,7 +212,7 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
         for (const cmd of commands) {
             const start = Date.now();
             try {
-                const res = await (window as any).go.app.App.RedisExecuteCommand(buildRpcConnectionConfig(config), cmd);
+                const res = await RedisExecuteCommand(buildRpcConnectionConfig(config), cmd);
                 newResults.push({
                     command: cmd,
                     result: res.success ? res.data : null,
@@ -210,11 +220,11 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
                     timestamp: Date.now(),
                     durationMs: Date.now() - start
                 });
-            } catch (e: any) {
+            } catch (e: unknown) {
                 newResults.push({
                     command: cmd,
                     result: null,
-                    error: e?.message || String(e),
+                    error: e instanceof Error ? e.message : String(e),
                     timestamp: Date.now(),
                     durationMs: Date.now() - start
                 });
@@ -236,7 +246,7 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
         setResults([]);
     };
 
-    const formatResult = (result: any): React.ReactNode => {
+    const formatResult = (result: RedisCommandResultValue): React.ReactNode => {
         if (result === null || result === undefined) {
             return <span style={{ color: '#569cd6' }}>(nil)</span>;
         }
