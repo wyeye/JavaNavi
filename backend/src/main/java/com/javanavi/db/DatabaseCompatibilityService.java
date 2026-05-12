@@ -1928,8 +1928,8 @@ public class DatabaseCompatibilityService {
         if (config == null) {
             return null;
         }
-        if (config.proxyEnabled() || config.httpTunnelEnabled()) {
-            return "Proxy / HTTP Tunnel runtime is not supported yet. Disable Proxy / HTTP Tunnel or use SSH tunnel.";
+        if (isMongo(config) && (config.proxyEnabled() || config.httpTunnelEnabled())) {
+            return "Proxy / HTTP Tunnel runtime is currently available for JDBC connections only.";
         }
         if (isMongo(config) && config.sshEnabled()) {
             return "SSH tunnel runtime is currently available for JDBC connections only.";

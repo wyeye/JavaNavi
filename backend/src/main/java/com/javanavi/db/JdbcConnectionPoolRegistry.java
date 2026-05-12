@@ -196,6 +196,9 @@ public class JdbcConnectionPoolRegistry {
         value.append(nullToEmpty(config == null ? null : config.driver())).append('\n');
         value.append(nullToEmpty(config == null ? null : config.sslMode())).append('\n');
         value.append(String.valueOf(config == null ? null : config.useSSL())).append('\n');
+        value.append(nullToEmpty(config == null ? null : config.sslCertPath())).append('\n');
+        value.append(nullToEmpty(config == null ? null : config.sslKeyPath())).append('\n');
+        appendNetworkFingerprint(value, config);
         if (config != null && config.options() != null) {
             config.options().entrySet().stream()
                     .filter(entry -> includeInFingerprint(entry.getKey()))
@@ -203,6 +206,29 @@ public class JdbcConnectionPoolRegistry {
                     .forEach(entry -> value.append(entry.getKey()).append('=').append(entry.getValue()).append('\n'));
         }
         return sha256Hex(value.toString());
+    }
+
+    private static void appendNetworkFingerprint(StringBuilder value, ConnectionConfigDto config) {
+        if (config == null) {
+            return;
+        }
+        value.append("useProxy=").append(config.useProxy()).append('\n');
+        ConnectionConfigDto.NetworkProxyConfigDto proxy = config.proxy();
+        if (proxy != null) {
+            value.append("proxy.type=").append(nullToEmpty(proxy.type())).append('\n');
+            value.append("proxy.host=").append(nullToEmpty(proxy.host())).append('\n');
+            value.append("proxy.port=").append(proxy.port()).append('\n');
+            value.append("proxy.user=").append(nullToEmpty(proxy.user())).append('\n');
+            value.append("proxy.password=").append(nullToEmpty(proxy.password())).append('\n');
+        }
+        value.append("useHttpTunnel=").append(config.useHttpTunnel()).append('\n');
+        ConnectionConfigDto.NetworkHttpTunnelConfigDto httpTunnel = config.httpTunnel();
+        if (httpTunnel != null) {
+            value.append("httpTunnel.host=").append(nullToEmpty(httpTunnel.host())).append('\n');
+            value.append("httpTunnel.port=").append(httpTunnel.port()).append('\n');
+            value.append("httpTunnel.user=").append(nullToEmpty(httpTunnel.user())).append('\n');
+            value.append("httpTunnel.password=").append(nullToEmpty(httpTunnel.password())).append('\n');
+        }
     }
 
     private void discardFailedPool(ManagedPool pool) {

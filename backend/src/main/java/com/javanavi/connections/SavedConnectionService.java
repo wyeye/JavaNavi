@@ -282,6 +282,8 @@ public class SavedConnectionService {
                 config.timeout(),
                 config.useSSL(),
                 config.sslMode(),
+                config.sslCertPath(),
+                config.sslKeyPath(),
                 config.useSSH(),
                 sshPassword.map(value -> new ConnectionConfigDto.NetworkCredentialConfigDto(
                         ssh.host(), ssh.port(), ssh.user(), value, ssh.keyPath()

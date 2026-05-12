@@ -26,6 +26,8 @@ final class CompatibilityRequestMaps {
         putIfNotNull(map, "timeout", config.timeout());
         putIfNotNull(map, "useSSL", config.useSSL());
         putIfNotNull(map, "sslMode", config.sslMode());
+        putIfNotNull(map, "sslCertPath", config.sslCertPath());
+        putIfNotNull(map, "sslKeyPath", config.sslKeyPath());
         putIfNotNull(map, "uri", config.uri());
         putIfNotNull(map, "dsn", config.dsn());
         putIfNotNull(map, "hosts", config.hosts());

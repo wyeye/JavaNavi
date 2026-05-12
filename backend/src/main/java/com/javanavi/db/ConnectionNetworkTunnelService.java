@@ -9,14 +9,14 @@ import org.springframework.stereotype.Component;
 
 import java.io.IOException;
 import java.net.ServerSocket;
+import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 import java.util.Locale;
 import java.util.Properties;
 import java.util.function.Function;
 
 @Component
 class ConnectionNetworkTunnelService {
-    private static final String UNSUPPORTED_PROXY_MESSAGE = "Proxy / HTTP Tunnel runtime is not supported yet. Disable Proxy / HTTP Tunnel or use SSH tunnel.";
-
     <T> T withJdbcNetwork(ConnectionConfigDto config, Function<ConnectionConfigDto, T> action) {
         if (config == null) {
             return action.apply(null);
@@ -69,9 +69,58 @@ class ConnectionNetworkTunnelService {
     }
 
     void rejectUnsupported(ConnectionConfigDto config) {
-        if (Boolean.TRUE.equals(config.useProxy()) || Boolean.TRUE.equals(config.useHttpTunnel()) || config.proxyEnabled() || config.httpTunnelEnabled()) {
-            throw new IllegalArgumentException(UNSUPPORTED_PROXY_MESSAGE);
+        validateJdbcNetwork(config);
+    }
+
+    static void validateJdbcNetwork(ConnectionConfigDto config) {
+        jdbcProxyEndpoint(config);
+    }
+
+    static JdbcProxyEndpoint jdbcProxyEndpoint(ConnectionConfigDto config) {
+        if (config == null) {
+            return null;
         }
+        boolean proxyRequested = Boolean.TRUE.equals(config.useProxy()) || config.proxyEnabled();
+        boolean httpTunnelRequested = Boolean.TRUE.equals(config.useHttpTunnel()) || config.httpTunnelEnabled();
+        if (config.sshEnabled() && (proxyRequested || httpTunnelRequested)) {
+            throw new IllegalArgumentException("SSH tunnel and Proxy / HTTP Tunnel are mutually exclusive.");
+        }
+        if (proxyRequested && httpTunnelRequested) {
+            throw new IllegalArgumentException("Proxy and HTTP Tunnel are mutually exclusive.");
+        }
+        if (proxyRequested) {
+            ConnectionConfigDto.NetworkProxyConfigDto proxy = config.proxy();
+            if (proxy == null) {
+                throw new IllegalArgumentException("Proxy config is required.");
+            }
+            String type = normalizeProxyType(proxy.type());
+            String host = requireText(proxy.host(), "Proxy host");
+            int port = validPort(proxy.port(), defaultProxyPort(type), "Proxy port");
+            return new JdbcProxyEndpoint(type, host, port, text(proxy.user()), text(proxy.password()));
+        }
+        if (httpTunnelRequested) {
+            ConnectionConfigDto.NetworkHttpTunnelConfigDto tunnel = config.httpTunnel();
+            if (tunnel == null) {
+                throw new IllegalArgumentException("HTTP Tunnel config is required.");
+            }
+            String host = requireText(tunnel.host(), "HTTP Tunnel host");
+            int port = validPort(tunnel.port(), 8080, "HTTP Tunnel port");
+            return new JdbcProxyEndpoint("http-connect", host, port, text(tunnel.user()), text(tunnel.password()));
+        }
+        return null;
+    }
+
+    private static String normalizeProxyType(String value) {
+        String type = value == null ? "socks5" : value.toLowerCase(Locale.ROOT).replace("_", "-").trim();
+        return switch (type) {
+            case "", "socks", "socks5" -> "socks5";
+            case "http", "http-connect", "https" -> "http";
+            default -> throw new IllegalArgumentException("Proxy type must be socks5 or http.");
+        };
+    }
+
+    private static int defaultProxyPort(String type) {
+        return "http".equals(type) || "http-connect".equals(type) ? 8080 : 1080;
     }
 
     private static int freeLocalPort() {
@@ -119,6 +168,17 @@ class ConnectionNetworkTunnelService {
 
     private static String text(String value) {
         return value == null || value.trim().isBlank() ? null : value.trim();
+    }
+
+    record JdbcProxyEndpoint(String type, String host, int port, String user, String password) {
+        String encoded() {
+            String value = type + "\n" + host + "\n" + port + "\n" + nullToEmpty(user) + "\n" + nullToEmpty(password);
+            return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+        }
+
+        private static String nullToEmpty(String value) {
+            return value == null ? "" : value;
+        }
     }
 
     static final class TunnelLease implements AutoCloseable {

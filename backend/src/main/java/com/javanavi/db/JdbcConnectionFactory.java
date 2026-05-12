@@ -153,11 +153,11 @@ public class JdbcConnectionFactory {
         String database = sanitizePathSegment(config.database());
         return switch (driver) {
             case "mysql" -> "jdbc:mysql://" + host + ":" + port + "/" + database
-                    + "?useUnicode=true&characterEncoding=utf8&useSSL=false&allowPublicKeyRetrieval=true";
+                    + mysqlUrlQuery(config);
             case "postgresql" -> "jdbc:postgresql://" + host + ":" + port + "/" + database;
             case "oracle" -> "jdbc:oracle:thin:@//" + host + ":" + port + "/" + requireText(database, "database");
             case "sqlserver" -> "jdbc:sqlserver://" + host + ":" + port + ";databaseName=" + database
-                    + ";encrypt=false;trustServerCertificate=true";
+                    + sqlServerSecurityUrlParameters(config);
             case "dameng" -> "jdbc:dm://" + host + ":" + port;
             case "tdengine" -> "jdbc:TAOS-RS://" + host + ":" + port + "/" + database;
             case "clickhouse" -> "jdbc:clickhouse://" + host + ":" + port + "/" + database;
@@ -351,13 +351,156 @@ public class JdbcConnectionFactory {
     }
 
     private void applyDriverSpecificConnectionProperties(ConnectionConfigDto config, Properties properties) {
+        ConnectionNetworkTunnelService.validateJdbcNetwork(config);
         String driver = normalizeDriver(config);
+        String logicalDriver = normalizeDriver(logicalDriverType(config));
+        applySslProperties(config, driver, properties);
+        applyJdbcProxyProperties(config, driver, logicalDriver, properties);
         if ("dameng".equals(driver)) {
             String schema = damengSchema(config);
             if (schema != null && !schema.isBlank()) {
                 putIfAbsentIgnoreCase(properties, "schema", schema);
             }
         }
+    }
+
+    private static String mysqlUrlQuery(ConnectionConfigDto config) {
+        String sslParameter = sslEnabled(config) ? "" : "&useSSL=false";
+        return "?useUnicode=true&characterEncoding=utf8" + sslParameter + "&allowPublicKeyRetrieval=true";
+    }
+
+    private static String sqlServerSecurityUrlParameters(ConnectionConfigDto config) {
+        if (!sslEnabled(config)) {
+            return ";encrypt=false;trustServerCertificate=true";
+        }
+        return switch (normalizedSslMode(config)) {
+            case "skip-verify", "preferred" -> ";encrypt=true;trustServerCertificate=true";
+            default -> ";encrypt=true;trustServerCertificate=false";
+        };
+    }
+
+    private static void applySslProperties(ConnectionConfigDto config, String driver, Properties properties) {
+        if (!sslEnabled(config)) {
+            return;
+        }
+        String mode = normalizedSslMode(config);
+        String certPath = firstText(config == null ? null : config.sslCertPath(), option(config, "sslCertPath"), option(config, "sslCertificate"), option(config, "sslFilesPath"));
+        String keyPath = firstText(config == null ? null : config.sslKeyPath(), option(config, "sslKeyPath"), option(config, "sslKey"));
+        String rootCertPath = firstText(option(config, "sslRootCertPath"), option(config, "sslRootCert"), option(config, "sslrootcert"));
+        switch (driver) {
+            case "mysql" -> applyMySqlSslProperties(mode, properties);
+            case "postgresql" -> applyPostgresSslProperties(mode, certPath, keyPath, rootCertPath, properties);
+            case "clickhouse" -> applyClickHouseSslProperties(mode, certPath, keyPath, rootCertPath, properties);
+            case "dameng" -> applyDamengSslProperties(mode, certPath, keyPath, properties);
+            default -> {
+                // SQL Server SSL is encoded in the JDBC URL. Other JDBC drivers may use caller-provided options.
+            }
+        }
+    }
+
+    private static void applyMySqlSslProperties(String mode, Properties properties) {
+        putIfAbsentIgnoreCase(properties, "useSSL", "true");
+        putIfAbsentIgnoreCase(properties, "requireSSL", "true");
+        String driverMode = switch (mode) {
+            case "skip-verify", "preferred" -> "REQUIRED";
+            default -> "VERIFY_IDENTITY";
+        };
+        putIfAbsentIgnoreCase(properties, "sslMode", driverMode);
+        if ("skip-verify".equals(mode) || "preferred".equals(mode)) {
+            putIfAbsentIgnoreCase(properties, "verifyServerCertificate", "false");
+        }
+    }
+
+    private static void applyPostgresSslProperties(String mode, String certPath, String keyPath, String rootCertPath, Properties properties) {
+        String driverMode = switch (mode) {
+            case "preferred" -> "prefer";
+            case "skip-verify" -> "require";
+            default -> "verify-full";
+        };
+        putIfAbsentIgnoreCase(properties, "sslmode", driverMode);
+        if ("skip-verify".equals(mode)) {
+            putIfAbsentIgnoreCase(properties, "sslfactory", "org.postgresql.ssl.NonValidatingFactory");
+        }
+        putIfText(properties, "sslcert", certPath);
+        putIfText(properties, "sslkey", keyPath);
+        putIfText(properties, "sslrootcert", rootCertPath);
+    }
+
+    private static void applyClickHouseSslProperties(String mode, String certPath, String keyPath, String rootCertPath, Properties properties) {
+        putIfAbsentIgnoreCase(properties, "ssl", "true");
+        putIfAbsentIgnoreCase(properties, "sslmode", "skip-verify".equals(mode) || "preferred".equals(mode) ? "none" : "strict");
+        putIfText(properties, "sslcert", certPath);
+        putIfText(properties, "sslkey", keyPath);
+        putIfText(properties, "sslrootcert", rootCertPath);
+    }
+
+    private static void applyDamengSslProperties(String mode, String certPath, String keyPath, Properties properties) {
+        putIfAbsentIgnoreCase(properties, "sslMode", mode);
+        putIfText(properties, "sslFilesPath", certPath);
+        putIfText(properties, "sslKeyPath", keyPath);
+    }
+
+    private static void applyJdbcProxyProperties(ConnectionConfigDto config, String driver, String logicalDriver, Properties properties) {
+        ConnectionNetworkTunnelService.JdbcProxyEndpoint endpoint = ConnectionNetworkTunnelService.jdbcProxyEndpoint(config);
+        if (endpoint == null) {
+            return;
+        }
+        if ("clickhouse".equals(driver) || "clickhouse".equals(logicalDriver)) {
+            putIfAbsentIgnoreCase(properties, "proxy_type", clickHouseProxyType(endpoint.type()));
+            putIfAbsentIgnoreCase(properties, "proxy_host", endpoint.host());
+            putIfAbsentIgnoreCase(properties, "proxy_port", String.valueOf(endpoint.port()));
+            putIfText(properties, "proxy_username", endpoint.user());
+            putIfText(properties, "proxy_password", endpoint.password());
+            return;
+        }
+        if ("mysql".equals(driver)) {
+            if ("socks5".equalsIgnoreCase(endpoint.type())) {
+                putIfAbsentIgnoreCase(properties, "socketFactory", "com.mysql.cj.protocol.SocksProxySocketFactory");
+                putIfAbsentIgnoreCase(properties, "socksProxyHost", endpoint.host());
+                putIfAbsentIgnoreCase(properties, "socksProxyPort", String.valueOf(endpoint.port()));
+                putIfAbsentIgnoreCase(properties, "socksProxyRemoteDns", "true");
+            } else {
+                throw new IllegalArgumentException("HTTP CONNECT proxy is not supported for MySQL JDBC runtime. Use SOCKS5 proxy or SSH tunnel.");
+            }
+        } else if ("sqlserver".equals(driver) || "sqlserver".equals(logicalDriver)) {
+            putIfAbsentIgnoreCase(properties, "socketFactoryClass", ProxySocketFactory.class.getName());
+            putIfAbsentIgnoreCase(properties, "socketFactoryConstructorArg", endpoint.encoded());
+        } else {
+            putIfAbsentIgnoreCase(properties, "socketFactory", ProxySocketFactory.class.getName());
+            putIfAbsentIgnoreCase(properties, "socketFactoryArg", endpoint.encoded());
+        }
+        if ("custom".equals(driver)) {
+            putIfAbsentIgnoreCase(properties, "socketFactoryClass", ProxySocketFactory.class.getName());
+            putIfAbsentIgnoreCase(properties, "socketFactoryConstructorArg", endpoint.encoded());
+        }
+        putIfAbsentIgnoreCase(properties, "javanavi.proxy.type", endpoint.type());
+        putIfAbsentIgnoreCase(properties, "javanavi.proxy.host", endpoint.host());
+        putIfAbsentIgnoreCase(properties, "javanavi.proxy.port", String.valueOf(endpoint.port()));
+        putIfText(properties, "javanavi.proxy.user", endpoint.user());
+        putIfText(properties, "javanavi.proxy.password", endpoint.password());
+    }
+
+    private static String clickHouseProxyType(String type) {
+        return "socks5".equalsIgnoreCase(type) ? "SOCKS" : "HTTP";
+    }
+
+    private static boolean sslEnabled(ConnectionConfigDto config) {
+        return Boolean.TRUE.equals(config == null ? null : config.useSSL()) && !"disable".equals(normalizedSslMode(config));
+    }
+
+    private static String normalizedSslMode(ConnectionConfigDto config) {
+        String mode = firstText(config == null ? null : config.sslMode(), option(config, "sslMode"));
+        if (mode == null) {
+            return "required";
+        }
+        String normalized = mode.toLowerCase(Locale.ROOT).replace("_", "-").trim();
+        return switch (normalized) {
+            case "required", "require", "verify-full", "verify-ca", "true", "1", "yes", "on" -> "required";
+            case "skip-verify", "skipverify", "insecure", "insecure-skip-verify" -> "skip-verify";
+            case "preferred", "prefer", "compat", "compatibility" -> "preferred";
+            case "disable", "disabled", "false", "0", "no", "off", "none" -> "disable";
+            default -> "required";
+        };
     }
 
     private static String damengSchema(ConnectionConfigDto config) {
@@ -396,6 +539,12 @@ public class JdbcConnectionFactory {
             }
         }
         properties.setProperty(key, value);
+    }
+
+    private static void putIfText(Properties properties, String key, String value) {
+        if (value != null && !value.isBlank()) {
+            putIfAbsentIgnoreCase(properties, key, value.trim());
+        }
     }
 
     private static int defaultPort(String driverType, String normalizedDriver) {
