@@ -11,6 +11,7 @@ import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.files.FileWorkflowCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
+import com.javanavi.model.FileWorkflowContracts;
 import com.javanavi.security.LocalSessionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -21,7 +22,6 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
@@ -34,14 +34,17 @@ class FileWorkflowCompatibilityControllerTest {
         FileWorkflowCompatibilityController controller = new FileWorkflowCompatibilityController(service(), new I18nMessages());
         MultipartFile file = new MinimalMultipartFile("rows.csv", "id,name\n1,JavaNavi\n".getBytes());
 
-        ApiEnvelope<Map<String, Object>> envelope = controller.uploadImportFile("demo_table", null, file);
+        ApiEnvelope<FileWorkflowContracts.ImportSelectionResponse> envelope = controller.uploadImportFile("demo_table", null, file);
 
         assertThat(envelope.success()).isTrue();
         assertThat(envelope.data())
-                .containsEntry("browserUploadRequired", false)
-                .containsEntry("table", "demo_table")
-                .containsEntry("totalRows", 1);
-        assertThat(Path.of(String.valueOf(envelope.data().get("filePath"))))
+                .extracting(
+                        FileWorkflowContracts.ImportSelectionResponse::browserUploadRequired,
+                        FileWorkflowContracts.ImportSelectionResponse::table,
+                        FileWorkflowContracts.ImportSelectionResponse::totalRows
+                )
+                .containsExactly(false, "demo_table", 1);
+        assertThat(Path.of(envelope.data().filePath()))
                 .exists()
                 .hasParent(tempDir.resolve("imports"));
     }
