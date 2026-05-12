@@ -2,11 +2,13 @@ import type { IndexDefinition } from '../../types';
 import { escapeLiteral, quoteIdentPart, quoteQualifiedIdent } from '../../utils/sql';
 import { isOracleLikeDialect } from '../../utils/sqlDialect';
 
+type CopySqlRecord = Record<string, unknown>;
+
 type BuildCopyInsertSQLParams = {
   dbType: string;
   tableName?: string;
   orderedCols: string[];
-  record: Record<string, any>;
+  record: CopySqlRecord;
   columnTypesByLowerName?: Record<string, string>;
 };
 
@@ -127,9 +129,9 @@ const getColumnType = (columnTypesByLowerName: Record<string, string>, columnNam
 );
 
 const getRecordValue = (
-  record: Record<string, any>,
+  record: CopySqlRecord,
   columnName: string,
-): { exists: boolean; value: any } => {
+): { exists: boolean; value: unknown } => {
   if (Object.prototype.hasOwnProperty.call(record || {}, columnName)) {
     return { exists: true, value: record?.[columnName] };
   }
@@ -155,7 +157,7 @@ const normalizeColumnList = (columns: string[] | undefined): string[] => {
   return result;
 };
 
-const toNormalizedLiteralText = (value: any, columnType?: string): string => {
+const toNormalizedLiteralText = (value: unknown, columnType?: string): string => {
   if (typeof value === 'string') {
     return normalizeTemporalLiteralText(value, columnType, true);
   }
@@ -165,7 +167,7 @@ const toNormalizedLiteralText = (value: any, columnType?: string): string => {
   return String(value);
 };
 
-const formatOracleTemporalLiteral = (value: any, columnType?: string): string | null => {
+const formatOracleTemporalLiteral = (value: unknown, columnType?: string): string | null => {
   if (!isTemporalColumnType(columnType)) {
     return null;
   }
@@ -185,7 +187,7 @@ const formatOracleTemporalLiteral = (value: any, columnType?: string): string | 
   return `TO_DATE('${escaped}', 'YYYY-MM-DD HH24:MI:SS')`;
 };
 
-const formatCopySqlLiteral = (value: any, columnType?: string, dbType = ''): string => {
+const formatCopySqlLiteral = (value: unknown, columnType?: string, dbType = ''): string => {
   if (value === null || value === undefined) {
     return 'NULL';
   }
@@ -217,7 +219,7 @@ const buildWhereClauseForColumns = ({
 }: {
   dbType: string;
   columns: string[];
-  record: Record<string, any>;
+  record: CopySqlRecord;
   columnTypesByLowerName: Record<string, string>;
   requireNonNullValues: boolean;
 }): string | null => {
