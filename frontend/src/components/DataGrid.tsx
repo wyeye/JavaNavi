@@ -1,8 +1,9 @@
 // cspell:ignore anticon sqls uuidv uuidv4 hscroll
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import { Table, message, Input, Button, MenuProps, Form, Modal, Checkbox, Tooltip, DatePicker, TimePicker } from 'antd';
+import type { ModalFunc } from 'antd/es/modal/confirm';
 import dayjs from 'dayjs';
-import type { SortOrder, ColumnType } from 'antd/es/table/interface';
+import type { FilterValue, SorterResult, SortOrder, TablePaginationConfig, ColumnType } from 'antd/es/table/interface';
 import { ExportOutlined, CopyOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import { 
@@ -21,6 +22,7 @@ import {
     arrayMove 
 } from '@dnd-kit/sortable';
 import { UploadImportFile, ExportTable, ExportData, ExportQuery, ApplyChanges, DBShowCreateTable } from '@compat/javanaviApp';
+import { connection } from '@compat/models';
 import ImportPreviewModal from './ImportPreviewModal';
 import { useStore } from '../store';
 import { v4 as generateUuid } from 'uuid';
@@ -67,6 +69,7 @@ import {
     isPlainObject,
     normalizeValueForJsonView,
     looksLikeJsonText,
+    type DataGridJsonValue,
     normalizeDateTimeString,
     toEditableText,
     toFormText,
@@ -95,6 +98,7 @@ import {
     EditableContext,
     JAVANAVI_ROW_KEY,
     SortableHeaderCell,
+    type DataGridItem,
 } from './dataGrid/dataGridCells';
 import { DataGridToolbar } from './dataGrid/dataGridToolbar';
 import { DataGridFilterPanel } from './dataGrid/dataGridFilterPanel';
@@ -147,12 +151,66 @@ import {
 } from './dataGrid/dataGridScrollSync';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
-interface Item {
-  [key: string]: any;
-}
+type Item = DataGridItem;
+type DataGridRecord = Record<string, unknown>;
+type DataGridRecordPatchMap = Record<string, DataGridRecord>;
+type DataGridColumn = ColumnType<Item> & { editable?: boolean };
+type DataGridCellProps = React.HTMLAttributes<HTMLElement> & {
+  record?: Item;
+  editable?: boolean;
+  dataIndex?: React.Key | readonly React.Key[];
+  title?: React.ReactNode;
+  handleSave?: (record: Item) => void;
+  focusCell?: (record: Item, dataIndex: string, title: React.ReactNode) => void;
+  columnType?: string;
+  [dataAttribute: `data-${string}`]: string | undefined;
+};
+type DataGridTableComponents = {
+  body?: { cell?: typeof EditableCell; row?: typeof ContextMenuRow };
+  header: { cell: typeof SortableHeaderCell };
+};
+
+const getErrorMessage = (error: unknown): string => (
+  error instanceof Error ? error.message : String(error)
+);
+
+const isPrimitiveReactTitle = (title: React.ReactNode): title is string | number => (
+  typeof title === 'string' || typeof title === 'number'
+);
+
+const resolveCellTitleText = (title: React.ReactNode, fallback: string): string => (
+  isPrimitiveReactTitle(title) ? String(title) : String(fallback)
+);
+
+const isRenderedCell = (value: React.ReactNode | { props?: unknown; children?: React.ReactNode }): value is { children?: React.ReactNode } => (
+  !!value && typeof value === 'object' && !React.isValidElement(value) && Object.prototype.hasOwnProperty.call(value, 'props')
+);
+
+const renderableCellContent = (value: ReturnType<NonNullable<ColumnType<Item>['render']>>): React.ReactNode => (
+  isRenderedCell(value) ? value.children : value
+);
+
+const isReactKeyValue = (value: unknown): value is React.Key => (
+  typeof value === 'string' || typeof value === 'number' || typeof value === 'bigint'
+);
+
+const isPresentReactKeyValue = (value: unknown): value is React.Key => (
+  value !== undefined && value !== null && isReactKeyValue(value)
+);
+
+const rowKeyStringOrNull = (value: unknown, stringify: (key: React.Key) => string): string | null => (
+  isPresentReactKeyValue(value) ? stringify(value) : null
+);
+
+const toJsonViewRows = (rows: Item[]): DataGridJsonValue[] => rows
+  .map((row) => {
+    const { [JAVANAVI_ROW_KEY]: _rowKey, ...rest } = row || {};
+    return normalizeValueForJsonView(rest);
+  })
+  .filter((row): row is DataGridJsonValue => row !== undefined);
 
 interface DataGridProps {
-    data: any[];
+    data: Item[];
     columnNames: string[];
     loading: boolean;
     tableName?: string;
@@ -457,7 +515,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const dataPanelOriginalRef = useRef('');
   const [rowEditorOpen, setRowEditorOpen] = useState(false);
   const [rowEditorRowKey, setRowEditorRowKey] = useState<string>('');
-  const rowEditorBaseRawRef = useRef<Record<string, any>>({});
+  const rowEditorBaseRawRef = useRef<DataGridRecord>({});
   const rowEditorDisplayRef = useRef<Record<string, string>>({});
   const rowEditorNullColsRef = useRef<Set<string>>(new Set());
   const [rowEditorForm] = Form.useForm();
@@ -483,8 +541,8 @@ const DataGrid: React.FC<DataGridProps> = ({
   // 批量编辑模式状态
   const [cellEditMode, setCellEditMode] = useState(false);
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
-  const [copiedCellPatch, setCopiedCellPatch] = useState<{ sourceRowKey: string; values: Record<string, any> } | null>(null);
-  const [copiedRowsForPaste, setCopiedRowsForPaste] = useState<Array<Record<string, any>>>([]);
+  const [copiedCellPatch, setCopiedCellPatch] = useState<{ sourceRowKey: string; values: DataGridRecord } | null>(null);
+  const [copiedRowsForPaste, setCopiedRowsForPaste] = useState<DataGridRecord[]>([]);
   const [batchEditModalOpen, setBatchEditModalOpen] = useState(false);
   const [batchEditValue, setBatchEditValue] = useState('');
   const [batchEditSetNull, setBatchEditSetNull] = useState(false);
@@ -517,11 +575,11 @@ const DataGrid: React.FC<DataGridProps> = ({
       if (cellContextMenu.visible) {
         setCellContextMenu(prev => ({ ...prev, visible: false }));
       }
-      // Remove focus from any focused cell when clicking outside the table
+      // Remove focus from focused cells when clicking outside the table
       const target = e.target as HTMLElement;
       const tableContainer = containerRef.current;
       if (tableContainer && !tableContainer.contains(target)) {
-        // Remove focus from any input elements in the table
+        // Remove focus from input elements in the table
         const focusedElement = document.activeElement as HTMLElement;
         if (focusedElement && focusedElement.tagName === 'INPUT' && tableContainer.contains(focusedElement)) {
           focusedElement.blur();
@@ -535,7 +593,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const showCellContextMenu = useCallback((e: React.MouseEvent, record: Item, dataIndex: string, title: React.ReactNode) => {
     e.preventDefault();
     e.stopPropagation();
-    const titleText = typeof (title as any) === 'string' ? (title as string) : (typeof (title as any) === 'number' ? String(title) : String(dataIndex));
+    const titleText = resolveCellTitleText(title, dataIndex);
     const position = resolveDataGridCellContextMenuPosition(e);
     setCellContextMenu({
       visible: true,
@@ -549,7 +607,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, []);
 
   // Helper to export specific data
-  const exportData = async (rows: any[], format: string) => {
+  const exportData = async (rows: Item[], format: string) => {
       const hide = message.loading(`正在导出 ${rows.length} 条数据...`, 0);
       try {
           const cleanRows = rows.map(({ [JAVANAVI_ROW_KEY]: _rowKey, ...rest }) => rest);
@@ -560,8 +618,8 @@ const DataGrid: React.FC<DataGridProps> = ({
           } else if (res.message !== "已取消") {
               void message.error("导出失败: " + res.message);
           }
-      } catch (e: any) {
-          void message.error("导出失败: " + (e?.message || String(e)));
+      } catch (e: unknown) {
+          void message.error("导出失败: " + (getErrorMessage(e)));
       } finally {
           hide();
       }
@@ -695,7 +753,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [columnMetaMap, exportScope, columnNames]);
 
   const normalizeCommitCellValue = useCallback(
-      (columnName: string, value: any, mode: 'insert' | 'update') => {
+      (columnName: string, value: unknown, mode: 'insert' | 'update') => {
           if (value === undefined) return undefined;
           const normalizedName = String(columnName || '').trim();
           const meta = columnMetaMap[normalizedName] || columnMetaMapByLowerName[normalizedName.toLowerCase()];
@@ -790,8 +848,8 @@ const DataGrid: React.FC<DataGridProps> = ({
           const obj = JSON.parse(dataPanelValue);
           setDataPanelValue(JSON.stringify(obj, null, 2));
           dataPanelDirtyRef.current = true;
-      } catch (e: any) {
-          void message.error('JSON 格式无效：' + (e?.message || String(e)));
+      } catch (e: unknown) {
+          void message.error('JSON 格式无效：' + (getErrorMessage(e)));
       }
   }, [dataPanelIsJson, dataPanelValue]);
 
@@ -803,7 +861,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       const raw = record?.[dataIndex];
       const text = toEditableText(raw);
       const isJson = looksLikeJsonText(text);
-      const titleText = typeof (title as any) === 'string' ? (title as string) : (typeof (title as any) === 'number' ? String(title) : String(dataIndex));
+      const titleText = resolveCellTitleText(title, dataIndex);
 
       setCellEditorMeta({ record, dataIndex, title: titleText });
       setCellEditorValue(text);
@@ -923,8 +981,8 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [recalculateTableMetrics]);
 
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
-  const [addedRows, setAddedRows] = useState<any[]>([]);
-  const [modifiedRows, setModifiedRows] = useState<Record<string, any>>({});
+  const [addedRows, setAddedRows] = useState<Item[]>([]);
+  const [modifiedRows, setModifiedRows] = useState<DataGridRecordPatchMap>({});
   const [deletedRowKeys, setDeletedRowKeys] = useState<Set<string>>(new Set());
 
   // P6 性能优化：使用 ref 缓存首列名，避免 displayColumnNames 变化导致级联更新
@@ -986,7 +1044,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [showFilter]);
 
   const selectedRowKeysRef = useRef(selectedRowKeys);
-  const displayDataRef = useRef<any[]>([]);
+  const displayDataRef = useRef<Item[]>([]);
 
   useEffect(() => { selectedRowKeysRef.current = selectedRowKeys; }, [selectedRowKeys]);
 
@@ -1061,21 +1119,21 @@ const DataGrid: React.FC<DataGridProps> = ({
 
     const fillValue = batchEditSetNull ? null : batchEditValue;
 
-    const addedRowMap = new Map<string, any>();
+    const addedRowMap = new Map<string, Item>();
     addedRows.forEach((r) => {
       const k = r?.[JAVANAVI_ROW_KEY];
-      if (k === undefined) return;
+      if (!isPresentReactKeyValue(k)) return;
       addedRowMap.set(rowKeyStr(k), r);
     });
 
-    const baseRowMap = new Map<string, any>();
+    const baseRowMap = new Map<string, Item>();
     displayDataRef.current.forEach((r) => {
       const k = r?.[JAVANAVI_ROW_KEY];
-      if (k === undefined) return;
+      if (!isPresentReactKeyValue(k)) return;
       baseRowMap.set(rowKeyStr(k), r);
     });
 
-    const patchesByRow = new Map<string, Record<string, any>>();
+    const patchesByRow = new Map<string, DataGridRecord>();
     let updatedCount = 0;
 
     cellsToFill.forEach((cellKey) => {
@@ -1085,15 +1143,15 @@ const DataGrid: React.FC<DataGridProps> = ({
 
       const existing = modifiedRows[rowKey];
       const baseRow = baseRowMap.get(rowKey);
-      let currentVal: any;
+      let currentVal: unknown;
 
       const addedRow = addedRowMap.get(rowKey);
       if (addedRow) {
         currentVal = addedRow?.[colName];
-      } else if (existing && Object.prototype.hasOwnProperty.call(existing as any, JAVANAVI_ROW_KEY)) {
-        currentVal = (existing as any)?.[colName];
-      } else if (existing && Object.prototype.hasOwnProperty.call(existing as any, colName)) {
-        currentVal = (existing as any)?.[colName];
+      } else if (existing && Object.prototype.hasOwnProperty.call(existing, JAVANAVI_ROW_KEY)) {
+        currentVal = existing?.[colName];
+      } else if (existing && Object.prototype.hasOwnProperty.call(existing, colName)) {
+        currentVal = existing?.[colName];
       } else {
         currentVal = baseRow?.[colName];
       }
@@ -1115,20 +1173,20 @@ const DataGrid: React.FC<DataGridProps> = ({
     // 仅做一次状态提交，避免大量 setState 循环
     setAddedRows(prev => prev.map(r => {
       const k = r?.[JAVANAVI_ROW_KEY];
-      if (k === undefined) return r;
+      if (!isPresentReactKeyValue(k)) return r;
       const patch = patchesByRow.get(rowKeyStr(k));
       if (!patch) return r;
       return { ...r, ...patch };
     }));
 
     setModifiedRows(prev => {
-      let next: Record<string, any> | null = null;
+      let next: DataGridRecordPatchMap | null = null;
 
       patchesByRow.forEach((patch, keyStr) => {
         if (addedRowMap.has(keyStr)) return;
 
         const existing = prev[keyStr];
-        const merged = existing ? { ...(existing as any), ...patch } : patch;
+        const merged = existing ? { ...existing, ...patch } : patch;
         if (!next) next = { ...prev };
         next[keyStr] = merged;
       });
@@ -1410,23 +1468,23 @@ const DataGrid: React.FC<DataGridProps> = ({
 
     const sourceBaseRow = displayDataRef.current.find((row) => {
       const key = row?.[JAVANAVI_ROW_KEY];
-      return key !== undefined && key !== null && rowKeyStr(key) === sourceRowKey;
+      return rowKeyStringOrNull(key, rowKeyStr) === sourceRowKey;
     });
     const sourceAddedRow = addedRows.find((row) => {
       const key = row?.[JAVANAVI_ROW_KEY];
-      return key !== undefined && key !== null && rowKeyStr(key) === sourceRowKey;
+      return rowKeyStringOrNull(key, rowKeyStr) === sourceRowKey;
     });
     const sourceModified = modifiedRows[sourceRowKey];
 
-    const values: Record<string, any> = {};
+    const values: DataGridRecord = {};
     selectedColumnNames.forEach((colName) => {
       if (sourceAddedRow) {
         values[colName] = sourceAddedRow[colName];
         return;
       }
 
-      if (sourceModified && Object.prototype.hasOwnProperty.call(sourceModified as any, colName)) {
-        values[colName] = (sourceModified as any)[colName];
+      if (sourceModified && Object.prototype.hasOwnProperty.call(sourceModified, colName)) {
+        values[colName] = sourceModified[colName];
         return;
       }
 
@@ -1460,38 +1518,38 @@ const DataGrid: React.FC<DataGridProps> = ({
       return;
     }
 
-    const addedRowMap = new Map<string, any>();
+    const addedRowMap = new Map<string, Item>();
     addedRows.forEach((row) => {
       const key = row?.[JAVANAVI_ROW_KEY];
-      if (key === undefined || key === null) return;
+      if (!isPresentReactKeyValue(key)) return;
       addedRowMap.set(rowKeyStr(key), row);
     });
 
-    const baseRowMap = new Map<string, any>();
+    const baseRowMap = new Map<string, Item>();
     displayDataRef.current.forEach((row) => {
       const key = row?.[JAVANAVI_ROW_KEY];
-      if (key === undefined || key === null) return;
+      if (!isPresentReactKeyValue(key)) return;
       baseRowMap.set(rowKeyStr(key), row);
     });
 
-    const patchesByRow = new Map<string, Record<string, any>>();
+    const patchesByRow = new Map<string, DataGridRecord>();
     let updatedCellCount = 0;
 
     targetKeySet.forEach((targetRowKey) => {
-      const patch: Record<string, any> = {};
+      const patch: DataGridRecord = {};
       const existing = modifiedRows[targetRowKey];
       const addedRow = addedRowMap.get(targetRowKey);
       const baseRow = baseRowMap.get(targetRowKey);
 
       Object.entries(copiedCellPatch.values).forEach(([colName, nextValue]) => {
-        let currentValue: any;
+        let currentValue: unknown;
 
         if (addedRow) {
           currentValue = addedRow[colName];
-        } else if (existing && Object.prototype.hasOwnProperty.call(existing as any, JAVANAVI_ROW_KEY)) {
-          currentValue = (existing as any)[colName];
-        } else if (existing && Object.prototype.hasOwnProperty.call(existing as any, colName)) {
-          currentValue = (existing as any)[colName];
+        } else if (existing && Object.prototype.hasOwnProperty.call(existing, JAVANAVI_ROW_KEY)) {
+          currentValue = existing[colName];
+        } else if (existing && Object.prototype.hasOwnProperty.call(existing, colName)) {
+          currentValue = existing[colName];
         } else {
           currentValue = baseRow?.[colName];
         }
@@ -1513,19 +1571,19 @@ const DataGrid: React.FC<DataGridProps> = ({
 
     setAddedRows(prev => prev.map((row) => {
       const key = row?.[JAVANAVI_ROW_KEY];
-      if (key === undefined || key === null) return row;
+      if (!isPresentReactKeyValue(key)) return row;
       const patch = patchesByRow.get(rowKeyStr(key));
       if (!patch) return row;
       return { ...row, ...patch };
     }));
 
     setModifiedRows(prev => {
-      let next: Record<string, any> | null = null;
+      let next: DataGridRecordPatchMap | null = null;
 
       patchesByRow.forEach((patch, keyStr) => {
         if (addedRowMap.has(keyStr)) return;
         const existing = prev[keyStr];
-        const merged = existing ? { ...(existing as any), ...patch } : patch;
+        const merged = existing ? { ...existing, ...patch } : patch;
         if (!next) next = { ...prev };
         next[keyStr] = merged;
       });
@@ -1560,7 +1618,7 @@ const DataGrid: React.FC<DataGridProps> = ({
     const addedKeySet = new Set<string>();
     addedRows.forEach((r) => {
       const k = r?.[JAVANAVI_ROW_KEY];
-      if (k === undefined) return;
+      if (!isPresentReactKeyValue(k)) return;
       addedKeySet.add(rowKeyStr(k));
     });
 
@@ -1570,20 +1628,20 @@ const DataGrid: React.FC<DataGridProps> = ({
 
     setAddedRows(prev => prev.map(r => {
       const k = r?.[JAVANAVI_ROW_KEY];
-      if (k === undefined) return r;
+      if (!isPresentReactKeyValue(k)) return r;
       const keyStr = rowKeyStr(k);
       if (!targetKeyStrSet.has(keyStr)) return r;
       return { ...r, [dataIndex]: sourceValue };
     }));
 
     setModifiedRows(prev => {
-      let next: Record<string, any> | null = null;
+      let next: DataGridRecordPatchMap | null = null;
 
       targetKeyStrSet.forEach((keyStr) => {
         if (addedKeySet.has(keyStr)) return;
         const existing = prev[keyStr];
         const patch = { [dataIndex]: sourceValue };
-        const merged = existing ? { ...(existing as any), ...patch } : patch;
+        const merged = existing ? { ...existing, ...patch } : patch;
         if (!next) next = { ...prev };
         next[keyStr] = merged;
       });
@@ -1598,7 +1656,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const displayData = useMemo(() => {
       return [...data, ...addedRows].filter(item => {
           const k = item?.[JAVANAVI_ROW_KEY];
-          return k === undefined ? true : !deletedRowKeys.has(rowKeyStr(k));
+          return !isPresentReactKeyValue(k) ? true : !deletedRowKeys.has(rowKeyStr(k));
       });
   }, [data, addedRows, deletedRowKeys]);
 
@@ -1610,7 +1668,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       const next = new Set<string>();
       addedRows.forEach((row) => {
           const key = row?.[JAVANAVI_ROW_KEY];
-          if (key === undefined || key === null) return;
+          if (!isPresentReactKeyValue(key)) return;
           next.add(rowKeyStr(key));
       });
       return next;
@@ -1619,14 +1677,14 @@ const DataGrid: React.FC<DataGridProps> = ({
   const modifiedRowKeySet = useMemo(() => new Set(Object.keys(modifiedRows)), [modifiedRows]);
   const rowClassName = useCallback((record: Item) => {
       const k = record?.[JAVANAVI_ROW_KEY];
-      if (k === undefined || k === null) return '';
+      if (!isPresentReactKeyValue(k)) return '';
       const keyStr = rowKeyStr(k);
       if (addedRowKeySet.has(keyStr)) return 'row-added';
       if (modifiedRowKeySet.has(keyStr) || deletedRowKeys.has(keyStr)) return 'row-modified';
       return '';
   }, [addedRowKeySet, modifiedRowKeySet, deletedRowKeys, rowKeyStr]);
 
-  const handleTableChange = useCallback((_pag: any, _filtersArg: any, sorter: any) => {
+  const handleTableChange = useCallback((_pag: TablePaginationConfig, _filtersArg: Record<string, FilterValue | null>, sorter: SorterResult<Item> | SorterResult<Item>[]) => {
       if (isResizingRef.current) return; // Block sort if resizing
       const next = resolveGridSortInfoFromTableSorter({ sorter });
       setSortInfo(next);
@@ -1812,9 +1870,9 @@ const DataGrid: React.FC<DataGridProps> = ({
       }, 100);
   }, [handleResizeMove, persistTableColumnWidth]);
 
-  const handleCellSave = useCallback((row: any) => {
+  const handleCellSave = useCallback((row: Item) => {
       const rowKey = row?.[JAVANAVI_ROW_KEY];
-      if (rowKey === undefined) return;
+      if (!isPresentReactKeyValue(rowKey)) return;
       const isAdded = addedRows.some(r => r?.[JAVANAVI_ROW_KEY] === rowKey);
       if (isAdded) {
           setAddedRows(prev => prev.map(r => r?.[JAVANAVI_ROW_KEY] === rowKey ? { ...r, ...row } : r));
@@ -1822,7 +1880,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           // 查找原始行数据，对比是否真正有值变更
           const originalRow = data.find(r => r?.[JAVANAVI_ROW_KEY] === rowKey);
           if (originalRow) {
-              const changedFields: Record<string, any> = {};
+              const changedFields: DataGridRecord = {};
               for (const col of Object.keys(row)) {
                   if (col === JAVANAVI_ROW_KEY) continue;
                   if (!isCellValueEqualForDiff(originalRow[col], row[col])) {
@@ -1853,7 +1911,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           void message.info('数据未变更');
           return;
       }
-      const nextRow: any = { ...focusedCellInfo.record, [focusedCellInfo.dataIndex]: dataPanelValue };
+      const nextRow: Item = { ...focusedCellInfo.record, [focusedCellInfo.dataIndex]: dataPanelValue };
       handleCellSave(nextRow);
       dataPanelOriginalRef.current = dataPanelValue;
       dataPanelDirtyRef.current = false;
@@ -1874,7 +1932,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           closeCellEditor();
           return;
       }
-      const nextRow: any = { ...cellEditorMeta.record, [cellEditorMeta.dataIndex]: cellEditorValue };
+      const nextRow: Item = { ...cellEditorMeta.record, [cellEditorMeta.dataIndex]: cellEditorValue };
       handleCellSave(nextRow);
       closeCellEditor();
   }, [cellEditorMeta, cellEditorValue, handleCellSave, closeCellEditor]);
@@ -1884,8 +1942,8 @@ const DataGrid: React.FC<DataGridProps> = ({
       try {
           const obj = JSON.parse(cellEditorValue);
           setCellEditorValue(JSON.stringify(obj, null, 2));
-      } catch (e: any) {
-          void message.error("JSON 格式无效：" + (e?.message || String(e)));
+      } catch (e: unknown) {
+          void message.error("JSON 格式无效：" + (getErrorMessage(e)));
       }
   }, [cellEditorIsJson, cellEditorValue]);
 
@@ -1900,7 +1958,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const mergedDisplayData = useMemo(() => {
       return displayData.map(row => {
           const k = row?.[JAVANAVI_ROW_KEY];
-          if (k !== undefined && modifiedRows[rowKeyStr(k)]) {
+          if (isPresentReactKeyValue(k) && modifiedRows[rowKeyStr(k)]) {
               return { ...row, ...modifiedRows[rowKeyStr(k)] };
           }
           return row;
@@ -1953,11 +2011,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
   const jsonViewText = useMemo(() => {
       if (viewMode !== 'json') return '';
-      const cleanRows = mergedDisplayData.map((row) => {
-          const { [JAVANAVI_ROW_KEY]: _rowKey, ...rest } = row || {};
-          return normalizeValueForJsonView(rest);
-      });
-      return JSON.stringify(cleanRows, null, 2);
+      return JSON.stringify(toJsonViewRows(mergedDisplayData), null, 2);
   }, [viewMode, mergedDisplayData]);
 
   const textViewRows = useMemo(() => {
@@ -1974,7 +2028,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       return textViewRows[textRecordIndex] || null;
   }, [viewMode, textViewRows, textRecordIndex]);
 
-  const formatTextViewValue = useCallback((val: any): string => {
+  const formatTextViewValue = useCallback((val: unknown): string => {
       if (val === null) return 'NULL';
       if (val === undefined) return '';
       if (typeof val === 'string') return normalizeDateTimeString(val);
@@ -2003,25 +2057,25 @@ const DataGrid: React.FC<DataGridProps> = ({
           void message.info('请先定位到要编辑的记录');
           return;
       }
-      const displayRow = mergedDisplayData.find(r => rowKeyStr(r?.[JAVANAVI_ROW_KEY]) === keyStr);
+      const displayRow = mergedDisplayData.find(r => rowKeyStringOrNull(r?.[JAVANAVI_ROW_KEY], rowKeyStr) === keyStr);
       if (!displayRow) {
           void message.error('未找到目标行，请刷新后重试');
           return;
       }
 
       const baseRow =
-          data.find(r => rowKeyStr(r?.[JAVANAVI_ROW_KEY]) === keyStr) ||
-          addedRows.find(r => rowKeyStr(r?.[JAVANAVI_ROW_KEY]) === keyStr) ||
+          data.find(r => rowKeyStringOrNull(r?.[JAVANAVI_ROW_KEY], rowKeyStr) === keyStr) ||
+          addedRows.find(r => rowKeyStringOrNull(r?.[JAVANAVI_ROW_KEY], rowKeyStr) === keyStr) ||
           displayRow;
 
-      const baseRawMap: Record<string, any> = {};
+      const baseRawMap: DataGridRecord = {};
       const displayMap: Record<string, string> = {};
-      const formMap: Record<string, any> = {};
+      const formMap: DataGridRecord = {};
       const nullCols = new Set<string>();
 
       columnNames.forEach((col) => {
-          const baseVal = (baseRow as any)?.[col];
-          const displayVal = (displayRow as any)?.[col];
+          const baseVal = baseRow?.[col];
+          const displayVal = displayRow?.[col];
           baseRawMap[col] = baseVal;
           displayMap[col] = toFormText(displayVal);
           // 日期时间类型: 将字符串值转为 dayjs 对象供 DatePicker 使用
@@ -2053,7 +2107,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           void message.info('当前记录不可编辑');
           return;
       }
-      openRowEditorByKey(rowKeyStr(rowKey));
+      if (isPresentReactKeyValue(rowKey)) openRowEditorByKey(rowKeyStr(rowKey));
   }, [canModifyData, mergedDisplayData, textRecordIndex, rowKeyStr, openRowEditorByKey]);
 
   const openJsonEditor = useCallback(() => {
@@ -2088,7 +2142,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       if (nextMode === 'text') {
           const selectedKey = selectedRowKeys[0];
           if (selectedKey !== undefined) {
-              const idx = mergedDisplayData.findIndex((row) => rowKeyStr(row?.[JAVANAVI_ROW_KEY]) === rowKeyStr(selectedKey));
+              const idx = mergedDisplayData.findIndex((row) => rowKeyStringOrNull(row?.[JAVANAVI_ROW_KEY], rowKeyStr) === rowKeyStr(selectedKey));
               if (idx >= 0) {
                   setTextRecordIndex(idx);
               }
@@ -2102,7 +2156,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       if (!canModifyData) return;
       const rowKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
       if (rowKey === undefined || rowKey === null) return;
-      openRowEditorByKey(rowKeyStr(rowKey));
+      if (isPresentReactKeyValue(rowKey)) openRowEditorByKey(rowKeyStr(rowKey));
       setCellContextMenu(prev => ({ ...prev, visible: false }));
   }, [canModifyData, cellContextMenu.record, openRowEditorByKey, rowKeyStr]);
 
@@ -2110,18 +2164,18 @@ const DataGrid: React.FC<DataGridProps> = ({
       try {
           const parsed = JSON.parse(jsonEditorValue);
           setJsonEditorValue(JSON.stringify(parsed, null, 2));
-      } catch (e: any) {
-          void message.error("JSON 格式无效：" + (e?.message || String(e)));
+      } catch (e: unknown) {
+          void message.error("JSON 格式无效：" + (getErrorMessage(e)));
       }
   }, [jsonEditorValue]);
 
   const applyJsonEditor = useCallback(() => {
       if (!canModifyData) return;
-      let parsed: any;
+      let parsed: unknown;
       try {
           parsed = JSON.parse(jsonEditorValue);
-      } catch (e: any) {
-          void message.error("JSON 解析失败：" + (e?.message || String(e)));
+      } catch (e: unknown) {
+          void message.error("JSON 解析失败：" + (getErrorMessage(e)));
           return;
       }
 
@@ -2137,19 +2191,19 @@ const DataGrid: React.FC<DataGridProps> = ({
       const addedKeySet = new Set<string>();
       addedRows.forEach((r) => {
           const key = r?.[JAVANAVI_ROW_KEY];
-          if (key === undefined) return;
+          if (!isPresentReactKeyValue(key)) return;
           addedKeySet.add(rowKeyStr(key));
       });
 
-      const originalMap = new Map<string, any>();
+      const originalMap = new Map<string, Item>();
       data.forEach((r) => {
           const key = r?.[JAVANAVI_ROW_KEY];
-          if (key === undefined) return;
+          if (!isPresentReactKeyValue(key)) return;
           originalMap.set(rowKeyStr(key), r);
       });
 
-      const addedPatchMap = new Map<string, Record<string, any>>();
-      const updatePatchMap = new Map<string, Record<string, any>>();
+      const addedPatchMap = new Map<string, DataGridRecord>();
+      const updatePatchMap = new Map<string, DataGridRecord>();
 
       for (let idx = 0; idx < parsed.length; idx += 1) {
           const nextItem = parsed[idx];
@@ -2164,12 +2218,16 @@ const DataGrid: React.FC<DataGridProps> = ({
               void message.error(`第 ${idx + 1} 条记录缺少行标识，无法应用`);
               return;
           }
+          if (!isPresentReactKeyValue(rowKey)) {
+              void message.error(`第 ${idx + 1} 条记录缺少行标识，无法应用`);
+              return;
+          }
           const keyStr = rowKeyStr(rowKey);
-          const normalizedNext: Record<string, any> = {};
+          const normalizedNext: DataGridRecord = {};
           let hasAnyVisibleChange = false;
           columnNames.forEach((col) => {
-              const currentVal = (currentRow as any)?.[col];
-              const editedVal = Object.prototype.hasOwnProperty.call(nextItem, col) ? (nextItem as any)[col] : currentVal;
+              const currentVal = currentRow?.[col];
+              const editedVal = Object.prototype.hasOwnProperty.call(nextItem, col) ? nextItem[col] : currentVal;
               if (!isJsonViewValueEqual(currentVal, editedVal)) hasAnyVisibleChange = true;
               normalizedNext[col] = coerceJsonEditorValueForStorage(currentVal, editedVal);
           });
@@ -2185,9 +2243,9 @@ const DataGrid: React.FC<DataGridProps> = ({
 
           const originalRow = originalMap.get(keyStr);
           if (!originalRow) continue;
-          const patch: Record<string, any> = {};
+          const patch: DataGridRecord = {};
           columnNames.forEach((col) => {
-              const prevVal = (originalRow as any)?.[col];
+              const prevVal = originalRow?.[col];
               const nextVal = normalizedNext[col];
               if (!isCellValueEqualForDiff(prevVal, nextVal)) patch[col] = nextVal;
           });
@@ -2196,7 +2254,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
       setAddedRows((prev) => prev.map((row) => {
           const key = row?.[JAVANAVI_ROW_KEY];
-          if (key === undefined) return row;
+          if (!isPresentReactKeyValue(key)) return row;
           const patch = addedPatchMap.get(rowKeyStr(key));
           if (!patch) return row;
           return { ...row, ...patch };
@@ -2231,10 +2289,10 @@ const DataGrid: React.FC<DataGridProps> = ({
       if (!keyStr) return;
       const values = rowEditorForm.getFieldsValue(true) || {};
 
-      const isAdded = addedRows.some(r => rowKeyStr(r?.[JAVANAVI_ROW_KEY]) === keyStr);
+      const isAdded = addedRows.some(r => rowKeyStringOrNull(r?.[JAVANAVI_ROW_KEY], rowKeyStr) === keyStr);
       if (isAdded) {
           // 日期时间类型: 将 dayjs 对象转回格式化字符串
-          const convertedValues: Record<string, any> = {};
+          const convertedValues: DataGridRecord = {};
           Object.entries(values).forEach(([col, val]) => {
               if (val && dayjs.isDayjs(val)) {
                   const colMeta = columnMetaMap[col] || columnMetaMapByLowerName[col.toLowerCase()];
@@ -2244,13 +2302,13 @@ const DataGrid: React.FC<DataGridProps> = ({
                   convertedValues[col] = val;
               }
           });
-          setAddedRows(prev => prev.map(r => rowKeyStr(r?.[JAVANAVI_ROW_KEY]) === keyStr ? { ...r, ...convertedValues } : r));
+          setAddedRows(prev => prev.map(r => rowKeyStringOrNull(r?.[JAVANAVI_ROW_KEY], rowKeyStr) === keyStr ? { ...r, ...convertedValues } : r));
           closeRowEditor();
           return;
       }
 
       const baseRawMap = rowEditorBaseRawRef.current || {};
-      const patch: Record<string, any> = {};
+      const patch: DataGridRecord = {};
       columnNames.forEach((col) => {
           let nextVal = values[col];
           // 日期时间类型: 将 dayjs 对象转回格式化字符串
@@ -2277,7 +2335,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const enableVirtual = viewMode === 'table';
   const enableInlineEditableCell = canModifyData;
 
-  const columns: (ColumnType<any> & { editable?: boolean })[] = useMemo(() => {
+  const columns: DataGridColumn[] = useMemo(() => {
       return displayColumnNames.map(key => ({
           title: renderColumnTitle(key),
           dataIndex: key,
@@ -2290,7 +2348,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           sorter: onSort ? { multiple: displayColumnNames.indexOf(key) + 1 } : false,
           sortOrder: (sortInfo.find(s => s.columnKey === key && s.enabled !== false)?.order || null) as SortOrder | undefined,
           editable: canModifyData, // Only editable if table name known and not readonly
-          render: (text: any) => (
+          render: (text: unknown) => (
               <div className="data-grid-cell-content" style={CELL_ELLIPSIS_STYLE}>
                   {renderCellDisplayValue(text, normalizedPageFindText)}
               </div>
@@ -2301,7 +2359,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               if (hasDataGridFindRenderVersionChanged(record, prevRecord)) return true;
               return !isCellValueEqualForRender(record?.[key], prevRecord?.[key]);
           },
-          onHeaderCell: (column: any) => ({
+          onHeaderCell: (column: DataGridColumn) => ({
               id: key,
               width: column.width,
               className: 'javanavi-sortable-header-cell',
@@ -2332,14 +2390,14 @@ const DataGrid: React.FC<DataGridProps> = ({
       }));
   }, [displayColumnNames, columnWidths, sortInfo, handleResizeStart, handleResizeAutoFit, canModifyData, onSort, renderColumnTitle, dataTableColumnWidthMode, normalizedPageFindText, showColumnHeaderContextMenu]);
 
-  const mergedColumns = useMemo(() => columns.map((col): ColumnType<any> => {
+  const mergedColumns = useMemo(() => columns.map((col): ColumnType<Item> => {
       const dataIndex = String(col.dataIndex);
       // 即使不可编辑，也需要通过 onCell/render 绑定右键菜单
       return {
           ...col,
           onCell: (record: Item) => {
               const rowKey = record?.[JAVANAVI_ROW_KEY];
-              const cellProps: any = {
+              const cellProps: DataGridCellProps = {
                   'data-row-key': rowKey === undefined || rowKey === null ? undefined : String(rowKey),
                   'data-col-name': dataIndex,
               };
@@ -2354,7 +2412,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                   // 可编辑模式（非虚拟）：传递给 EditableCell 的 props
                   cellProps.record = record;
                   cellProps.editable = col.editable;
-                  cellProps.dataIndex = col.dataIndex;
+                  cellProps.dataIndex = dataIndex;
                   cellProps.title = dataIndex;
                   cellProps.handleSave = handleCellSave;
                   cellProps.focusCell = openCellEditor;
@@ -2377,8 +2435,8 @@ const DataGrid: React.FC<DataGridProps> = ({
               }
               return cellProps;
           },
-          render: (text: any, record: Item, index: number) => {
-              const originalRenderContent = col.render ? (col.render as any)(text, record, index) : text;
+          render: (text: unknown, record: Item, index: number) => {
+              const originalRenderContent = renderableCellContent(col.render ? col.render(text, record, index) : renderCellDisplayValue(text, normalizedPageFindText));
               if (enableVirtual && enableInlineEditableCell) {
                   return (
                       <EditableCell
@@ -2427,7 +2485,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
   const handleAddRow = useCallback(() => {
       const newKey = `new-${Date.now()}`;
-      const newRow: any = { [JAVANAVI_ROW_KEY]: newKey };
+      const newRow: Item = { [JAVANAVI_ROW_KEY]: newKey };
       writableColumnNames.forEach(col => {
           newRow[col] = '';
       });
@@ -2442,7 +2500,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       }
 
       const copiedRows = buildCopiedRowsForPaste({
-          rows: mergedDisplayData as Array<Record<string, any>>,
+          rows: mergedDisplayData,
           selectedRowKeys,
           columnNames,
           rowKeyField: JAVANAVI_ROW_KEY,
@@ -2581,7 +2639,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       setCommitLoading(true);
       try {
           const startTime = Date.now();
-          const res = await ApplyChanges(buildRpcConnectionConfig(config) as any, dbName || '', tableName, { inserts, updates, deletes, locatorStrategy: effectiveEditLocator?.strategy } as any);
+          const res = await ApplyChanges(buildRpcConnectionConfig(config), dbName || '', tableName, new connection.ChangeSet({ inserts, updates, deletes, locatorStrategy: effectiveEditLocator?.strategy }));
           const duration = Date.now() - startTime;
 
           // Construct a pseudo-SQL representation for the log
@@ -2637,16 +2695,16 @@ const DataGrid: React.FC<DataGridProps> = ({
       setDdlLoading(true);
       setDdlText('');
       try {
-          const res = await DBShowCreateTable(buildRpcConnectionConfig(currentConnConfig) as any, dbName || '', tableName);
+          const res = await DBShowCreateTable(buildRpcConnectionConfig(currentConnConfig), dbName || '', tableName);
           if (requestSeq !== ddlRequestSeqRef.current) return;
           if (res.success) {
               setDdlText(String(res.data ?? ''));
               return;
           }
           void message.error(res.message || '获取 DDL 失败');
-      } catch (error: any) {
+      } catch (error: unknown) {
           if (requestSeq !== ddlRequestSeqRef.current) return;
-          void message.error(error?.message || '获取 DDL 失败');
+          void message.error(getErrorMessage(error) || '获取 DDL 失败');
       } finally {
           if (requestSeq === ddlRequestSeqRef.current) {
               setDdlLoading(false);
@@ -2681,7 +2739,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
       const text = buildSelectedCellClipboardText({
           selectedCells: parsed,
-          rows: mergedDisplayData as Array<Record<string, any>>,
+          rows: mergedDisplayData,
           columnOrder: displayColumnNames,
           rowKeyField: JAVANAVI_ROW_KEY,
       });
@@ -2717,12 +2775,15 @@ const DataGrid: React.FC<DataGridProps> = ({
       return () => window.removeEventListener('keydown', onKeyDown);
   }, [cellEditMode, selectedCells, handleCopySelectedCellsToClipboard]);
   
-  const getTargets = useCallback((clickedRecord: any) => {
+  const getTargets = useCallback((clickedRecord: Item) => {
       const selKeys = selectedRowKeysRef.current;
       const currentData = displayDataRef.current;
       const clickedKey = clickedRecord?.[JAVANAVI_ROW_KEY];
-      if (clickedKey !== undefined && selKeys.includes(clickedKey)) {
-          return currentData.filter(d => selKeys.includes(d?.[JAVANAVI_ROW_KEY]));
+      if (isPresentReactKeyValue(clickedKey) && selKeys.includes(clickedKey)) {
+          return currentData.filter(d => {
+              const rowKey = d?.[JAVANAVI_ROW_KEY];
+              return isPresentReactKeyValue(rowKey) && selKeys.includes(rowKey);
+          });
       }
       return [clickedRecord];
   }, []);
@@ -2732,7 +2793,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       [effectiveEditLocator, writableColumnNames, columnNames],
   );
 
-  const buildCopySqlBatchText = useCallback((mode: 'insert' | 'update' | 'delete', record: any): string | null => {
+  const buildCopySqlBatchText = useCallback((mode: 'insert' | 'update' | 'delete', record: Item): string | null => {
       if (!supportsCopyInsert) {
           void message.warning("当前数据源不支持复制 SQL，请使用 JSON/CSV/Markdown 复制。");
           return null;
@@ -2740,7 +2801,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       const records = getTargets(record);
       const orderedCols = copySqlColumnNames.filter(c => c !== JAVANAVI_ROW_KEY);
       if (mode === 'insert') {
-          return records.map((row: any) => buildCopyInsertSQL({
+          return records.map((row) => buildCopyInsertSQL({
               dbType,
               tableName,
               orderedCols,
@@ -2749,7 +2810,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           })).join('\n\n');
       }
 
-      const sqlResults = records.map((row: any) => (
+      const sqlResults = records.map((row) => (
           mode === 'update'
               ? buildCopyUpdateSQL({
                   dbType,
@@ -2796,13 +2857,13 @@ const DataGrid: React.FC<DataGridProps> = ({
       allTableColumnNames,
   ]);
 
-  const handleCopyInsert = useCallback((record: any) => {
+  const handleCopyInsert = useCallback((record: Item) => {
       const batchText = buildCopySqlBatchText('insert', record);
       if (!batchText) return;
       copyToClipboard(batchText);
   }, [buildCopySqlBatchText, copyToClipboard]);
 
-  const handleCopyUpdate = useCallback((record: any) => {
+  const handleCopyUpdate = useCallback((record: Item) => {
       if (effectiveEditLocator?.strategy === 'rowid') {
           void message.warning('ROWID 定位仅用于安全提交事务，复制 UPDATE SQL 请使用主键或唯一索引定位。');
           return;
@@ -2812,7 +2873,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       copyToClipboard(batchText);
   }, [effectiveEditLocator, buildCopySqlBatchText, copyToClipboard]);
 
-  const handleCopyDelete = useCallback((record: any) => {
+  const handleCopyDelete = useCallback((record: Item) => {
       if (effectiveEditLocator?.strategy === 'rowid') {
           void message.warning('ROWID 定位仅用于安全提交事务，复制 DELETE SQL 请使用主键或唯一索引定位。');
           return;
@@ -2822,21 +2883,21 @@ const DataGrid: React.FC<DataGridProps> = ({
       copyToClipboard(batchText);
   }, [effectiveEditLocator, buildCopySqlBatchText, copyToClipboard]);
 
-  const handleCopyJson = useCallback((record: any) => {
+  const handleCopyJson = useCallback((record: Item) => {
       const records = getTargets(record);
-      const cleanRecords = records.map((r: any) => {
+      const cleanRecords = records.map((r) => {
           const { [JAVANAVI_ROW_KEY]: _rowKey, ...rest } = r;
           return rest;
       });
       copyToClipboard(JSON.stringify(cleanRecords, null, 2));
   }, [getTargets, copyToClipboard]);
 
-  const handleCopyCsv = useCallback((record: any) => {
+  const handleCopyCsv = useCallback((record: Item) => {
       const records = getTargets(record);
       // 使用 columnNames 保持表定义的字段顺序
       const orderedCols = columnNames.filter(c => c !== JAVANAVI_ROW_KEY);
       const header = orderedCols.map(c => `"${c}"`).join(',');
-      const lines = records.map((r: any) => {
+      const lines = records.map((r) => {
           const values = orderedCols.map(c => {
               const v = r[c];
               if (v === null || v === undefined) return 'NULL';
@@ -2868,20 +2929,20 @@ const DataGrid: React.FC<DataGridProps> = ({
       if (!config) return;
       const hide = message.loading(`正在导出...`, 0);
       try {
-          const res = await ExportQuery(buildRpcConnectionConfig(config) as any, dbName || '', sql, defaultName || 'export', format);
+          const res = await ExportQuery(buildRpcConnectionConfig(config), dbName || '', sql, defaultName || 'export', format);
           if (res.success) {
               showExportSuccess(res);
           } else if (res.message !== "已取消") {
               void message.error("导出失败: " + res.message);
           }
-      } catch (e: any) {
-          void message.error("导出失败: " + (e?.message || String(e)));
+      } catch (e: unknown) {
+          void message.error("导出失败: " + (getErrorMessage(e)));
       } finally {
           hide();
       }
   }, [buildConnConfig, dbName, showExportSuccess]);
 
-  const buildPkWhereSql = useCallback((rows: any[], dbType: string) => {
+  const buildPkWhereSql = useCallback((rows: Item[], dbType: string) => {
       if (!tableName || pkColumns.length === 0) return '';
       const targets = (rows || []).filter(Boolean);
       if (targets.length === 0) return '';
@@ -2920,7 +2981,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [tableName, pagination, filterConditions, quickWhereCondition, sortInfo, pkColumns]);
 
   // Context Menu Export
-  const handleExportSelected = useCallback(async (format: string, record: any) => {
+  const handleExportSelected = useCallback(async (format: string, record: Item) => {
       const records = getTargets(record);
       if (isQueryResultExport) {
           await exportData(records, format);
@@ -2984,7 +3045,10 @@ const DataGrid: React.FC<DataGridProps> = ({
       
       // 1. Export Selected
       if (selectedRowKeys.length > 0) {
-          const selectedRows = displayData.filter(d => selectedRowKeys.includes(d?.[JAVANAVI_ROW_KEY]));
+          const selectedRows = displayData.filter(d => {
+              const rowKey = d?.[JAVANAVI_ROW_KEY];
+              return isPresentReactKeyValue(rowKey) && selectedRowKeys.includes(rowKey);
+          });
           await handleExportSelected(format, selectedRows[0]);
           return;
       }
@@ -3002,7 +3066,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
       // 2. Prompt for Current vs All
       // Using a custom modal content with buttons to handle 3 states
-      let instance: any;
+      let instance: ReturnType<ModalFunc>;
       const handleAll = async () => {
           instance.destroy();
           if (!tableName) return;
@@ -3010,14 +3074,14 @@ const DataGrid: React.FC<DataGridProps> = ({
           if (!config) return;
           const hide = message.loading(`正在导出全部数据...`, 0);
           try {
-              const res = await ExportTable(buildRpcConnectionConfig(config) as any, dbName || '', tableName, format);
+              const res = await ExportTable(buildRpcConnectionConfig(config), dbName || '', tableName, format);
               if (res.success) {
                   showExportSuccess(res);
               } else if (res.message !== "已取消") {
                   void message.error("导出失败: " + res.message);
               }
-          } catch (e: any) {
-              void message.error("导出失败: " + (e?.message || String(e)));
+          } catch (e: unknown) {
+              void message.error("导出失败: " + (getErrorMessage(e)));
           } finally {
               hide();
           }
@@ -3118,15 +3182,15 @@ const DataGrid: React.FC<DataGridProps> = ({
           if (!file) return;
           const hide = message.loading(`正在上传导入文件...`, 0);
           try {
-              const res = await UploadImportFile(buildRpcConnectionConfig(config) as any, dbName || '', tableName, file);
+              const res = await UploadImportFile(buildRpcConnectionConfig(config), dbName || '', tableName, file);
               if (res.success && res.data && res.data.filePath) {
                   setImportFilePath(res.data.filePath);
                   setImportPreviewVisible(true);
               } else if (res.message !== "已取消") {
                   void message.error("上传文件失败: " + res.message);
               }
-          } catch (e: any) {
-              void message.error("上传文件失败: " + (e?.message || String(e)));
+          } catch (e: unknown) {
+              void message.error("上传文件失败: " + (getErrorMessage(e)));
           } finally {
               hide();
           }
@@ -3367,9 +3431,9 @@ const DataGrid: React.FC<DataGridProps> = ({
       columnWidth: selectionColumnWidth,
   }), [selectedRowKeys, selectionColumnWidth]);
 
-  const rowPropsFactory = useCallback((record: any) => ({ record } as any), []);
+  const rowPropsFactory = useCallback((record: Item): React.HTMLAttributes<HTMLElement> => ({ record } as React.HTMLAttributes<HTMLElement>), []);
 
-  const totalWidth = columns.reduce((sum: number, col: any) => sum + (Number(col.width) || defaultColumnWidth), 0) + selectionColumnWidth;
+  const totalWidth = columns.reduce((sum, col) => sum + (Number(col.width) || defaultColumnWidth), 0) + selectionColumnWidth;
   const useContextMenuRow = false;
   const tableScrollX = useMemo(() => {
       // rc-table 在 scroll.x 小于容器宽度时会把实际列宽按视口补齐。
@@ -3384,7 +3448,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const horizontalScrollWidth = Math.max(externalScrollbarMinWidth, tableScrollX);
   const tableScrollConfig = useMemo(() => ({ x: tableScrollX, y: tableHeight }), [tableScrollX, tableHeight]);
   const tableComponents = useMemo(() => {
-      const body: Record<string, any> = {};
+      const body: NonNullable<DataGridTableComponents['body']> = {};
       if (enableInlineEditableCell) {
           body.cell = EditableCell;
       }
@@ -3415,7 +3479,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
       const targetRow = mergedDisplayData[match.rowIndex] || mergedDisplayData.find((row) => {
           const rowKey = row?.[JAVANAVI_ROW_KEY];
-          return rowKey !== undefined && rowKey !== null && rowKeyStr(rowKey) === match.rowKey;
+          return rowKeyStringOrNull(rowKey, rowKeyStr) === match.rowKey;
       });
       if (targetRow && dataPanelOpenRef.current) {
           updateFocusedCell(targetRow, match.columnName);
@@ -3952,7 +4016,7 @@ const DataGrid: React.FC<DataGridProps> = ({
             handleImport={handleImport}
             exportMenu={exportMenu}
             darkMode={darkMode}
-            getAiSampleData={() => mergedDisplayData.slice(0, 10)}
+            getAiSampleData={() => toJsonViewRows(mergedDisplayData.slice(0, 10))}
             getStoreState={() => useStore.getState()}
             prefersManualTotalCount={prefersManualTotalCount}
             totalCountLoading={pagination?.totalCountLoading}
@@ -4054,7 +4118,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                                                     <DatePicker
                                                         style={{ flex: 1, width: '100%' }}
                                                         format={TEMPORAL_FORMATS[rowPickerType]}
-                                                        picker={rowPickerType as any}
+                                                        picker={rowPickerType}
                                                         placeholder={placeholder}
                                                         needConfirm={false}
                                                     />
