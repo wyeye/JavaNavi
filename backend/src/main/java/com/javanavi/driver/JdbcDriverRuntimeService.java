@@ -14,9 +14,12 @@ import java.io.StringReader;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.UnknownHostException;
 import java.net.http.HttpClient;
+import java.net.http.HttpConnectTimeoutException;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.net.http.HttpTimeoutException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
@@ -129,12 +132,15 @@ public class JdbcDriverRuntimeService {
         DriverPackageDefinition definition = requireDefinition(driverType);
         Artifact primary = definition.primaryArtifact();
         String repository = repositoryFromDownloadInput(repositoryURL, primary);
-        List<String> versions = mavenVersions(repository, primary);
+        MavenVersionLookup versionLookup = mavenVersions(repository, primary);
+        List<String> versions = versionLookup.versions();
         if (!versions.contains(definition.version())) {
             versions = new ArrayList<>(versions);
             versions.add(0, definition.version());
         }
-        boolean metadataBacked = versions.size() > 1;
+        boolean metadataBacked = versionLookup.metadataBacked();
+        boolean versionListLimited = !metadataBacked || versions.size() > MAX_MAVEN_VERSION_OPTIONS;
+        String metadataError = versionLookup.error();
         List<Map<String, Object>> options = versions.stream()
                 .limit(MAX_MAVEN_VERSION_OPTIONS)
                 .map(version -> {
@@ -158,6 +164,14 @@ public class JdbcDriverRuntimeService {
                 "repositoryUrl", repository,
                 "versions", options,
                 "javaStatus", "downloadable",
+                "metadataBacked", metadataBacked,
+                "versionListLimited", versionListLimited,
+                "metadataUrl", versionLookup.metadataURL(),
+                "metadataURL", versionLookup.metadataURL(),
+                "metadataError", metadataError,
+                "message", metadataBacked
+                        ? ""
+                        : messages.message("drivers.versionMetadataUnavailable", "reason", metadataError),
                 "dryRun", true
         );
     }
@@ -812,7 +826,7 @@ public class JdbcDriverRuntimeService {
         return false;
     }
 
-    private List<String> mavenVersions(String repositoryURL, Artifact primaryArtifact) {
+    private MavenVersionLookup mavenVersions(String repositoryURL, Artifact primaryArtifact) {
         String metadataURL = sanitizeRepositoryURL(repositoryURL)
                 + "/" + primaryArtifact.groupId().replace('.', '/')
                 + "/" + primaryArtifact.artifactId()
@@ -824,7 +838,11 @@ public class JdbcDriverRuntimeService {
                     .build();
             HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                return List.of(primaryArtifact.version());
+                return MavenVersionLookup.fallback(
+                        primaryArtifact.version(),
+                        metadataURL,
+                        messages.message("drivers.httpStatus", "status", response.statusCode())
+                );
             }
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
             factory.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -840,10 +858,50 @@ public class JdbcDriverRuntimeService {
                     versions.add(version);
                 }
             }
-            return versions.isEmpty() ? List.of(primaryArtifact.version()) : versions;
-        } catch (Exception ignored) {
-            return List.of(primaryArtifact.version());
+            if (versions.isEmpty()) {
+                return MavenVersionLookup.fallback(
+                        primaryArtifact.version(),
+                        metadataURL,
+                        messages.message("drivers.emptyVersionMetadata")
+                );
+            }
+            return new MavenVersionLookup(List.copyOf(versions), true, metadataURL, "");
+        } catch (InterruptedException error) {
+            Thread.currentThread().interrupt();
+            return MavenVersionLookup.fallback(primaryArtifact.version(), metadataURL, messages.message("drivers.requestInterrupted"));
+        } catch (Exception error) {
+            return MavenVersionLookup.fallback(primaryArtifact.version(), metadataURL, normalizeRepositoryError(error));
         }
+    }
+
+    private String normalizeRepositoryError(Exception error) {
+        Throwable current = error;
+        while (current != null) {
+            if (current instanceof IllegalArgumentException) {
+                return messages.message("drivers.invalidRepositoryUrl");
+            }
+            if (current instanceof HttpConnectTimeoutException) {
+                return messages.message("drivers.connectionTimedOut");
+            }
+            if (current instanceof HttpTimeoutException) {
+                return messages.message("drivers.readTimedOut");
+            }
+            if (current instanceof UnknownHostException) {
+                return messages.message("drivers.dnsLookupFailed");
+            }
+            if (current instanceof javax.net.ssl.SSLHandshakeException) {
+                return messages.message("drivers.tlsHandshakeFailed");
+            }
+            if (current instanceof java.net.ConnectException) {
+                return messages.message("drivers.connectionRefused");
+            }
+            if (current instanceof java.net.NoRouteToHostException) {
+                return messages.message("drivers.noRouteToHost");
+            }
+            current = current.getCause();
+        }
+        String message = text(error.getMessage());
+        return message.isBlank() ? error.getClass().getSimpleName() : message;
     }
 
     private Optional<Long> remoteContentLength(String repositoryURL, Artifact artifact) {
@@ -1363,6 +1421,25 @@ public class JdbcDriverRuntimeService {
 
     private static Artifact artifact(String groupId, String artifactId, String version, String sha256, long sizeBytes) {
         return new Artifact(groupId, artifactId, version, sha256, sizeBytes);
+    }
+
+    private record MavenVersionLookup(
+            List<String> versions,
+            boolean metadataBacked,
+            String metadataURL,
+            String error
+    ) {
+        private MavenVersionLookup {
+            versions = List.copyOf(versions);
+            metadataURL = text(metadataURL);
+            error = text(error);
+        }
+
+        private static MavenVersionLookup fallback(String version, String metadataURL, String error) {
+            String fallbackVersion = text(version);
+            List<String> versions = fallbackVersion.isBlank() ? List.of() : List.of(fallbackVersion);
+            return new MavenVersionLookup(versions, false, metadataURL, error);
+        }
     }
 
     private record DriverPackageDefinition(
