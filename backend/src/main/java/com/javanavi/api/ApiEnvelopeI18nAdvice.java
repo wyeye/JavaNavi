@@ -1,6 +1,7 @@
 package com.javanavi.api;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.ApiError;
@@ -83,7 +84,7 @@ public class ApiEnvelopeI18nAdvice implements ResponseBodyAdvice<Object> {
             }
             Map<String, Object> copy = new LinkedHashMap<>();
             for (RecordComponent component : value.getClass().getRecordComponents()) {
-                String key = component.getName();
+                String key = jsonPropertyName(component);
                 Object rawValue = recordComponentValue(value, component);
                 if (rawValue instanceof String text && LOCALIZED_VALUE_KEYS.contains(key)) {
                     copy.put(key, messages.localizeFallback(text));
@@ -94,6 +95,18 @@ public class ApiEnvelopeI18nAdvice implements ResponseBodyAdvice<Object> {
             return copy;
         }
         return value;
+    }
+
+    private static String jsonPropertyName(RecordComponent component) {
+        JsonProperty property = component.getAnnotation(JsonProperty.class);
+        if (property != null && !property.value().isBlank()) {
+            return property.value();
+        }
+        JsonProperty accessorProperty = component.getAccessor().getAnnotation(JsonProperty.class);
+        if (accessorProperty != null && !accessorProperty.value().isBlank()) {
+            return accessorProperty.value();
+        }
+        return component.getName();
     }
 
     private static Method jsonValueMethod(Class<?> valueType) {
