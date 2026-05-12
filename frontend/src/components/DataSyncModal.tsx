@@ -544,7 +544,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       setLoading(false);
   };
 
-  const updateTableOption = (table: string, key: keyof TableOps, value: any) => {
+  const updateTableOption = (table: string, key: keyof TableOps, value: TableOpsValue) => {
       setTableOptions(prev => ({
           ...prev,
           [table]: { ...(prev[table] || { insert: true, update: true, delete: false }), [key]: value }
@@ -785,7 +785,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       });
 
       try {
-          const res = await DataSyncAnalyze(config as any);
+          const res = await DataSyncAnalyze(dataSyncConfig(config));
           if (res.success) {
               const tables = ((res.data as { tables?: TableDiffSummary[] })?.tables || []) as TableDiffSummary[];
               setDiffTables(tables);
@@ -838,7 +838,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       });
 
       try {
-          const res = await DataSyncPreview(config as any, table, 200);
+          const res = await DataSyncPreview(dataSyncConfig(config), table, 200);
           if (res.success) {
               setPreviewData(res.data as DataPreviewData);
           } else {
@@ -911,7 +911,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
       });
 
       try {
-          const res = await DataSync(config as any);
+          const res = await DataSync(dataSyncConfig(config));
           if (res?.cancelled) {
               setSyncResult(res as SyncExecutionResult);
               setSyncLogs(syncLogsFromResult(res.logs, 'warn'));
@@ -1044,8 +1044,8 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
   const isMigrationWorkflow = workflowType === 'migration';
   const sourceConn = useMemo(() => connections.find(c => c.id === sourceConnId), [connections, sourceConnId]);
   const targetConn = useMemo(() => connections.find(c => c.id === targetConnId), [connections, targetConnId]);
-  const sourceType = resolveDataSourceType(sourceConn?.config as any);
-  const targetType = resolveDataSourceType(targetConn?.config as any);
+  const sourceType = resolveDataSourceType(sourceConn?.config);
+  const targetType = resolveDataSourceType(targetConn?.config);
   const sourceIsRelational = !sourceConn || RELATIONAL_SYNC_TYPES.has(sourceType);
   const targetIsRelational = !targetConn || RELATIONAL_SYNC_TYPES.has(targetType);
   const selectedConnectionsAreRelational = sourceIsRelational && targetIsRelational;
@@ -1457,10 +1457,10 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                           }
                           style={{ marginBottom: 12 }}
                       />
-                      <Table
+                      <Table<TableDiffSummary>
                           size="small"
                           pagination={false}
-                          rowKey={(r: any) => r.table}
+                          rowKey={(r) => r.table}
                           dataSource={diffTables.filter(t => {
                               const ins = Number(t.inserts || 0);
                               const upd = Number(t.updates || 0);
@@ -1481,7 +1481,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   title: '目标表',
                                   key: 'targetTableExists',
                                   width: 90,
-                                  render: (_: any, r: any) => r.targetTableExists ? '已存在' : '不存在'
+                                  render: (_: unknown, r: TableDiffSummary) => r.targetTableExists ? '已存在' : '不存在'
                               },
                               {
                                   title: '计划',
@@ -1489,13 +1489,13 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   key: 'plannedAction',
                                   width: 220,
                                   ellipsis: true,
-                                  render: (v: any) => String(v || '')
+                                  render: (v: unknown) => String(v || '')
                               },
                               {
                                   title: '插入',
                                   key: 'inserts',
                                   width: 90,
-                                  render: (_: any, r: any) => {
+                                  render: (_: unknown, r: TableDiffSummary) => {
                                       const ops = tableOptions[r.table] || { insert: true, update: true, delete: false };
                                       const disabled = !r.canSync || analyzing || Number(r.inserts || 0) === 0;
                                       return (
@@ -1509,7 +1509,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   title: '更新',
                                   key: 'updates',
                                   width: 90,
-                                  render: (_: any, r: any) => {
+                                  render: (_: unknown, r: TableDiffSummary) => {
                                       const ops = tableOptions[r.table] || { insert: true, update: true, delete: false };
                                       const disabled = !r.canSync || analyzing || Number(r.updates || 0) === 0;
                                       return (
@@ -1523,7 +1523,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   title: '删除',
                                   key: 'deletes',
                                   width: 90,
-                                  render: (_: any, r: any) => {
+                                  render: (_: unknown, r: TableDiffSummary) => {
                                       const ops = tableOptions[r.table] || { insert: true, update: true, delete: false };
                                       const disabled = !r.canSync || analyzing || Number(r.deletes || 0) === 0;
                                       return (
@@ -1533,12 +1533,12 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                       );
                                   }
                               },
-                              { title: '相同', dataIndex: 'same', key: 'same', width: 70, render: (v: any) => Number(v || 0) },
+                              { title: '相同', dataIndex: 'same', key: 'same', width: 70, render: (v: unknown) => Number(v || 0) },
                               {
                                   title: '风险',
                                   key: 'warnings',
                                   width: 220,
-                                  render: (_: any, r: any) => {
+                                  render: (_: unknown, r: TableDiffSummary) => {
                                       const warns = [...(Array.isArray(r.warnings) ? r.warnings : []), ...(Array.isArray(r.unsupportedObjects) ? r.unsupportedObjects : [])];
                                       if (warns.length === 0) return '-';
                                       return (
@@ -1553,7 +1553,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   title: '预览',
                                   key: 'preview',
                                   width: 80,
-                                  render: (_: any, r: any) => {
+                                  render: (_: unknown, r: TableDiffSummary) => {
                                       const can = !!r.canSync;
                                       const hasDiff = Number(r.inserts || 0) + Number(r.updates || 0) + Number(r.deletes || 0) > 0;
                                       const hasSchemaDiff = Number(r.schemaDiffCount || 0) > 0;
@@ -1596,10 +1596,10 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                           }
                           style={{ marginBottom: 12 }}
                       />
-                      <Table
+                      <Table<SchemaDiffRow>
                           size="small"
                           pagination={false}
-                          rowKey={(r: any) => `${r.table}-${r.id}`}
+                          rowKey={(r) => `${r.table}-${r.id}`}
                           dataSource={schemaDiffTables.flatMap((table) => (table.items || []).map((item) => ({ ...item, table: table.table, targetTableExists: table.targetTableExists })))}
                           columns={[
                               { title: '表名', dataIndex: 'table', key: 'table', width: 160, ellipsis: true },
@@ -1609,7 +1609,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   title: '变更',
                                   key: 'changeType',
                                   width: 100,
-                                  render: (_: any, r: SchemaDiffItem) => (
+                                  render: (_: unknown, r: SchemaDiffRow) => (
                                       <Tag color={r.changeType === 'DROP' ? 'red' : (r.changeType === 'ALTER' ? 'gold' : 'blue')}>{r.changeType}</Tag>
                                   ),
                               },
@@ -1618,7 +1618,7 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   title: '执行',
                                   key: 'selected',
                                   width: 90,
-                                  render: (_: any, r: SchemaDiffItem) => (
+                                  render: (_: unknown, r: SchemaDiffRow) => (
                                       <Checkbox
                                           checked={schemaSelectedItemIds.includes(r.id)}
                                           disabled={!r.supported || analyzing}
@@ -1630,13 +1630,13 @@ const DataSyncModal: React.FC<{ open: boolean; onClose: () => void }> = ({ open,
                                   title: '状态',
                                   key: 'supported',
                                   width: 180,
-                                  render: (_: any, r: SchemaDiffItem) => r.supported ? '可执行' : (r.unsupportedReason || '不可执行'),
+                                  render: (_: unknown, r: SchemaDiffRow) => r.supported ? '可执行' : (r.unsupportedReason || '不可执行'),
                               },
                               {
                                   title: '预览',
                                   key: 'preview',
                                   width: 80,
-                                  render: (_: any, r: SchemaDiffItem & { table: string }) => (
+                                  render: (_: unknown, r: SchemaDiffRow) => (
                                       <Button size="small" onClick={() => openSchemaPreview(r.table)}>
                                           查看
                                       </Button>
