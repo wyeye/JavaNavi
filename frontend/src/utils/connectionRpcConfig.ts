@@ -5,16 +5,24 @@ export type RpcConnectionConfig = connection.ConnectionConfig & { id?: string };
 export type RpcConnectionConfigOverrides = ConnectionConfigInput & {
   queryTimeout?: number;
 };
-type ConnectionConfigInput = {
+type UnknownRecord = Record<string, unknown>;
+
+type NestedConnectionConfigInput = UnknownRecord | connection.SSHConfig | connection.ProxyConfig | connection.HTTPTunnelConfig;
+
+type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ssh' | 'proxy' | 'httpTunnel'>> & {
   id?: string;
-  ssh?: Record<string, any>;
-  proxy?: Record<string, any>;
-  httpTunnel?: Record<string, any>;
-  [key: string]: any;
+  ssh?: NestedConnectionConfigInput;
+  proxy?: NestedConnectionConfigInput;
+  httpTunnel?: NestedConnectionConfigInput;
+  mongoSRV?: boolean;
+  mongoReplicaSet?: string;
+  queryTimeout?: number;
 };
-type SSHConfigInput = Record<string, any>;
-type ProxyConfigInput = Record<string, any>;
-type HttpTunnelConfigInput = Record<string, any>;
+
+type ConnectionConfigInput = ConnectionConfigKnownFields | (UnknownRecord & ConnectionConfigKnownFields);
+type SSHConfigInput = Partial<connection.SSHConfig> | UnknownRecord;
+type ProxyConfigInput = Partial<connection.ProxyConfig> | UnknownRecord;
+type HttpTunnelConfigInput = Partial<connection.HTTPTunnelConfig> | UnknownRecord;
 
 const isInternalOptionKey = (key: string): boolean => {
   const normalized = key.replace(/[-_\s]/g, '').toLowerCase();
