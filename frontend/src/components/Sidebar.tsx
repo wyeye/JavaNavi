@@ -290,6 +290,18 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       padding: 12,
       background: overlayTheme.sectionBg,
   }), [overlayTheme]);
+  const batchTableModalBodyStyle = useMemo(() => ({
+      paddingTop: 8,
+      maxHeight: 'calc(100vh - 220px)',
+      display: 'flex' as const,
+      flexDirection: 'column' as const,
+      overflow: 'hidden' as const,
+  }), []);
+  const batchTableObjectListStyle = useMemo(() => ({
+      ...modalScrollSectionStyle,
+      minHeight: 160,
+      flex: '1 1 auto',
+  }), [modalScrollSectionStyle]);
   const modalHintTextStyle = useMemo(() => ({
       color: overlayTheme.mutedText,
       fontSize: 12,
@@ -4258,7 +4270,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             onCancel={() => setIsBatchModalOpen(false)}
             width={720}
             centered
-            styles={{ content: modalPanelStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 10 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 12 } }}
+            styles={{ content: modalPanelStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 10 }, body: batchTableModalBodyStyle, footer: { background: 'transparent', borderTop: 'none', paddingTop: 12 } }}
             footer={
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                     <Button key="cancel" onClick={() => setIsBatchModalOpen(false)}>
@@ -4405,7 +4417,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                             </span>
                         </Space>
                     </div>
-                    <div style={modalScrollSectionStyle}>
+                    <div style={batchTableObjectListStyle}>
                         <Checkbox.Group
                             value={checkedTableKeys}
                             onChange={(values) => setCheckedTableKeys(values as string[])}
