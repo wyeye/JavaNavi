@@ -171,6 +171,14 @@ public class I18nMessages {
         put("sync.sqlPreview", "SQL result-set sync preview.", "SQL 结果集同步预览");
         put("sync.jdbcDiffDone", "JDBC table-to-table diff analysis completed.", "JDBC 表到表差异分析完成");
         put("sync.jdbcPreview", "JDBC table-to-table sync preview.", "JDBC 表到表同步预览");
+        put("schemaSync.analysisCompleted", "Schema sync analysis completed.", "结构同步分析完成。");
+        put("schemaSync.noChanges", "No structure changes detected.", "未检测到结构变更。");
+        put("schemaSync.changesDetected", "Structure changes detected.", "检测到结构变更。");
+        put("schemaSync.previewLoaded", "Schema sync preview loaded.", "结构同步预览已加载。");
+        put("schemaSync.previewSummary", "Schema diff preview", "结构差异预览");
+        put("schemaSync.runCompleted", "Structure sync completed.", "结构同步完成。");
+        put("schemaSync.deleteConfirmRequired", "Delete confirmation is required before executing structure sync.", "执行结构同步前需要确认删除类变更。");
+        put("schemaSync.failed", "Structure sync failed.", "结构同步失败。");
         put("files.selectOnlyExport", "Only SELECT/WITH query export is supported.", "仅支持 SELECT/WITH 查询导出");
         put("files.safeTableRequired", "Table name is required and may contain only safe identifier characters.", "表名不能为空，且只能包含安全标识符字符。");
         put("files.revealExportDisabled", "Automatic export file reveal is disabled in this environment. Copy the file path manually: {path}", "自动定位导出文件已被当前环境禁用，请手动复制文件路径：{path}");
@@ -338,6 +346,22 @@ public class I18nMessages {
                 Map.entry("SQL 结果集同步预览", "sync.sqlPreview"),
                 Map.entry("JDBC 表到表差异分析完成", "sync.jdbcDiffDone"),
                 Map.entry("JDBC 表到表同步预览", "sync.jdbcPreview"),
+                Map.entry("Schema sync analysis completed.", "schemaSync.analysisCompleted"),
+                Map.entry("No structure changes detected.", "schemaSync.noChanges"),
+                Map.entry("Structure changes detected.", "schemaSync.changesDetected"),
+                Map.entry("Schema sync preview loaded.", "schemaSync.previewLoaded"),
+                Map.entry("Schema diff preview", "schemaSync.previewSummary"),
+                Map.entry("Structure sync completed.", "schemaSync.runCompleted"),
+                Map.entry("Delete confirmation is required before executing structure sync.", "schemaSync.deleteConfirmRequired"),
+                Map.entry("Structure sync failed.", "schemaSync.failed"),
+                Map.entry("结构同步分析完成。", "schemaSync.analysisCompleted"),
+                Map.entry("未检测到结构变更。", "schemaSync.noChanges"),
+                Map.entry("检测到结构变更。", "schemaSync.changesDetected"),
+                Map.entry("结构同步预览已加载。", "schemaSync.previewLoaded"),
+                Map.entry("结构差异预览", "schemaSync.previewSummary"),
+                Map.entry("结构同步完成。", "schemaSync.runCompleted"),
+                Map.entry("执行结构同步前需要确认删除类变更。", "schemaSync.deleteConfirmRequired"),
+                Map.entry("结构同步失败。", "schemaSync.failed"),
                 Map.entry("仅支持 SELECT/WITH 查询导出", "files.selectOnlyExport"),
                 Map.entry("表名不能为空，且只能包含安全标识符字符。", "files.safeTableRequired"),
                 Map.entry("自动定位导出文件已被当前环境禁用，请手动复制文件路径：", "files.revealExportDisabled"),

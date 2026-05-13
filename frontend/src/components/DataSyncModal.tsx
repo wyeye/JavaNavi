@@ -1125,6 +1125,23 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
       flex: '0 0 auto',
   }), [darkMode]);
 
+  const modalTitle = syncDomain === 'schema'
+      ? t('schemaSync.modal.title')
+      : (isMigrationWorkflow ? t('dataSync.modal.migrationTitle') : t('dataSync.modal.syncTitle'));
+  const modalDescription = syncDomain === 'schema'
+      ? t('schemaSync.modal.description')
+      : (isMigrationWorkflow ? t('dataSync.modal.migrationDescription') : t('dataSync.modal.syncDescription'));
+  const heroTitle = syncDomain === 'schema'
+      ? '结构同步'
+      : (isMigrationWorkflow ? '跨数据源迁移' : '数据同步');
+  const heroDescription = syncDomain === 'schema'
+      ? '先对比已选表的字段、索引和外键，再按差异项选择执行。'
+      : isMigrationWorkflow
+      ? '适合把源表迁移到另一套数据库，可按策略自动建表、导入数据并补建可兼容索引。'
+      : '比较目标表现状，执行同步并确认结果。';
+  const workflowBadgeText = syncDomain === 'schema' ? '结构模式' : (isMigrationWorkflow ? '迁移模式' : '同步模式');
+  const workflowBadgeIcon = isMigrationWorkflow ? <RocketOutlined /> : <SwapOutlined />;
+
   const renderModalTitle = (title: string, description: string) => (
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
           <div style={{
@@ -1137,7 +1154,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
               color: darkMode ? '#ffd666' : token.colorPrimary,
               flexShrink: 0,
           }}>
-              {isMigrationWorkflow ? <RocketOutlined /> : <SwapOutlined />}
+              {workflowBadgeIcon}
           </div>
           <div style={{ minWidth: 0 }}>
               <div style={{ fontSize: 16, fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>{title}</div>
@@ -1149,7 +1166,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
   return (
     <>
     <Modal
-        title={renderModalTitle(isMigrationWorkflow ? t('dataSync.modal.migrationTitle') : t('dataSync.modal.syncTitle'), isMigrationWorkflow ? t('dataSync.modal.migrationDescription') : t('dataSync.modal.syncDescription'))}
+        title={renderModalTitle(modalTitle, modalDescription)}
         open={open}
         onCancel={() => {
             if (syncing) {
@@ -1183,18 +1200,14 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
           <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
               <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 18, fontWeight: 700, color: darkMode ? '#f8fafc' : '#0f172a' }}>
-                      {syncDomain === 'schema' ? t('schemaSync.tab.label') : (isMigrationWorkflow ? '跨数据源迁移' : '数据同步')}
+                      {heroTitle}
                   </div>
                   <div style={{ marginTop: 6, fontSize: 13, lineHeight: 1.7, color: darkMode ? 'rgba(255,255,255,0.62)' : 'rgba(15,23,42,0.62)' }}>
-                      {syncDomain === 'schema'
-                          ? '适合对已勾选表先做结构比对，再按项选择执行字段、索引和外键变更。'
-                          : isMigrationWorkflow
-                          ? '适合把源表迁移到另一套数据库，可按策略自动建表、导入数据并补建可兼容索引。'
-                          : '适合目标表已存在的场景，先做差异分析，再按勾选执行插入、更新或删除。'}
+                      {heroDescription}
                   </div>
               </div>
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  <span style={badgeStyle}>{isMigrationWorkflow ? <RocketOutlined /> : <SwapOutlined />} {isMigrationWorkflow ? '迁移模式' : '同步模式'}</span>
+                  <span style={badgeStyle}>{workflowBadgeIcon} {workflowBadgeText}</span>
                   <span style={badgeStyle}><DatabaseOutlined /> {sourceConnId ? '已选源连接' : '待选源连接'}</span>
                   <span style={badgeStyle}><TableOutlined /> {selectedTables.length || 0} 张表</span>
               </div>
@@ -1255,11 +1268,12 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                   </Card>
               </div>
 
-              <Card
-                  title={isMigrationWorkflow ? '迁移选项' : '同步选项'}
-                  style={{ ...shellCardStyle, marginTop: 18 }}
-                  styles={{ header: { borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,23,42,0.06)', fontWeight: 700 }, body: { padding: 18 } }}
-              >
+              {syncDomain === 'data' && (
+                  <Card
+                      title={isMigrationWorkflow ? '迁移选项' : '同步选项'}
+                      style={{ ...shellCardStyle, marginTop: 18 }}
+                      styles={{ header: { borderBottom: darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(15,23,42,0.06)', fontWeight: 700 }, body: { padding: 18 } }}
+                  >
                   <div style={{ ...quietPanelStyle, marginBottom: 14 }}>
                       <Text style={{ color: darkMode ? 'rgba(255,255,255,0.72)' : 'rgba(15,23,42,0.68)', lineHeight: 1.7 }}>
                           先明确当前要做的是“已有目标表同步”还是“跨库迁移”，页面会按功能类型自动给出更安全的默认策略。
@@ -1305,11 +1319,10 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                       <Form.Item label={isMigrationWorkflow ? '迁移内容' : '同步内容'}>
                           <Select value={syncContent} onChange={setSyncContent}>
                               <Option value="data">仅同步数据</Option>
-                              <Option value="schema" disabled={isSourceQueryMode || syncDomain === 'schema'}>仅同步结构</Option>
-                              <Option value="both" disabled={isSourceQueryMode || syncDomain === 'schema'}>同步结构 + 数据</Option>
+                              <Option value="schema" disabled={isSourceQueryMode}>仅同步结构</Option>
+                              <Option value="both" disabled={isSourceQueryMode}>同步结构 + 数据</Option>
                           </Select>
                       </Form.Item>
-                      {syncDomain === 'data' && (
                       <Form.Item label={isMigrationWorkflow ? '迁移模式' : '同步模式'}>
                           <Select value={syncMode} onChange={setSyncMode} disabled={syncContent === 'schema'}>
                               <Option value="insert_update">增量同步（对比差异，按插入/更新/删除勾选执行）</Option>
@@ -1317,7 +1330,6 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                               <Option value="full_overwrite">全量覆盖（清空目标表后插入）</Option>
                           </Select>
                       </Form.Item>
-                      )}
                       <Form.Item label={isMigrationWorkflow ? '目标表处理策略' : '目标表要求'}>
                           <Select value={targetTableStrategy} onChange={setTargetTableStrategy} disabled={!isMigrationWorkflow || isSourceQueryMode}>
                               <Option value="existing_only">仅使用已有目标表</Option>
@@ -1359,7 +1371,8 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                           />
                       )}
                   </Form>
-              </Card>
+                  </Card>
+              )}
           </div>
       )}
 

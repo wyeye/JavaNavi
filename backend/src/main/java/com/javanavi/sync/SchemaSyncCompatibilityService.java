@@ -69,8 +69,8 @@ public class SchemaSyncCompatibilityService {
             List<TablePlan> plans = analyzePlans(request);
             return orderedMap(
                     "success", true,
-                    "message", "Schema sync analysis completed.",
-                    "tables", plans.stream().map(TablePlan::toTableMap).toList(),
+                    "message", messages.message("schemaSync.analysisCompleted"),
+                    "tables", plans.stream().map(plan -> plan.toTableMap(messages)).toList(),
                     "tableCount", plans.size(),
                     "dryRun", true,
                     "logs", List.of("Schema sync analysis completed for " + plans.size() + " table(s).")
@@ -99,9 +99,9 @@ public class SchemaSyncCompatibilityService {
                     : plan.selectedStatements(request.selectedItemIds());
             return orderedMap(
                     "success", true,
-                    "message", "Schema sync preview loaded.",
+                    "message", messages.message("schemaSync.previewLoaded"),
                     "table", plan.tableName(),
-                    "schemaSummary", "Schema diff preview",
+                    "schemaSummary", messages.message("schemaSync.previewSummary"),
                     "schemaStatements", plan.selectedStatements(selected),
                     "items", plan.items().stream().map(DiffItem::toMap).toList(),
                     "selectedItemIds", selected,
@@ -139,7 +139,7 @@ public class SchemaSyncCompatibilityService {
             if (!request.confirmedDeleteItemIds().containsAll(selectedDeletes)) {
                 return orderedMap(
                         "success", false,
-                        "message", "Delete confirmation is required before executing structure sync.",
+                        "message", messages.message("schemaSync.deleteConfirmRequired"),
                         "missingDeleteConfirmItemIds", selectedDeletes.stream()
                                 .filter(id -> !request.confirmedDeleteItemIds().contains(id))
                                 .toList()
@@ -178,7 +178,7 @@ public class SchemaSyncCompatibilityService {
             publishSyncProgress(request.jobId(), totalTables, totalTables, plans.isEmpty() ? "" : plans.get(plans.size() - 1).tableName(), messages.message("events.complete"));
             return orderedMap(
                     "success", true,
-                    "message", "Structure sync completed.",
+                    "message", messages.message("schemaSync.runCompleted"),
                     "tablesSynced", plans.size(),
                     "itemsExecuted", executed,
                     "itemsSkipped", skipped,
@@ -797,7 +797,7 @@ public class SchemaSyncCompatibilityService {
         return orderedMap(
                 "success", false,
                 "jobId", jobId,
-                "message", text(message).isBlank() ? "Structure sync failed." : message,
+                "message", text(message).isBlank() ? messages.message("schemaSync.failed") : message,
                 "logs", List.of()
         );
     }
@@ -951,14 +951,14 @@ public class SchemaSyncCompatibilityService {
     }
 
     private record TablePlan(String tableName, boolean sourceExists, boolean targetExists, List<DiffItem> items, List<String> warnings) {
-        Map<String, Object> toTableMap() {
+        Map<String, Object> toTableMap(I18nMessages messages) {
             return orderedMap(
                     "table", tableName,
                     "sourceExists", sourceExists,
                     "targetTableExists", targetExists,
                     "canSync", true,
                     "schemaDiffCount", items.size(),
-                    "message", items.isEmpty() ? "No structure changes detected." : "Structure changes detected.",
+                    "message", items.isEmpty() ? messages.message("schemaSync.noChanges") : messages.message("schemaSync.changesDetected"),
                     "warnings", collectWarnings(),
                     "items", items.stream().map(DiffItem::toMap).toList(),
                     "selectedItemIds", defaultSelectedIds(),
