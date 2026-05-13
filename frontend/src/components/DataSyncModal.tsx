@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Modal, Form, Select, Input, Button, message, Steps, Transfer, Card, Alert, Divider, Typography, Progress, Checkbox, Table, Drawer, Tabs, theme as antdTheme, Tag } from 'antd';
+import { Modal, Form, Select, Input, Button, message, Steps, Transfer, Card, Alert, Divider, Typography, Progress, Checkbox, Table, Drawer, Tabs, theme as antdTheme, Tag, Collapse } from 'antd';
 import { DatabaseOutlined, RocketOutlined, SwapOutlined, TableOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
 import { translate, type I18nKey } from '../i18n';
@@ -318,6 +318,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewTable, setPreviewTable] = useState<string>('');
   const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewActiveTab, setPreviewActiveTab] = useState<string>('insert');
   const [previewData, setPreviewData] = useState<DataPreviewData | null>(null);
   const [schemaPreviewData, setSchemaPreviewData] = useState<SchemaPreviewData | null>(null);
 
@@ -420,6 +421,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
         setPreviewOpen(false);
         setPreviewTable('');
         setPreviewLoading(false);
+        setPreviewActiveTab('insert');
         setPreviewData(null);
         setSchemaPreviewData(null);
         setSyncResult(null);
@@ -510,7 +512,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
 	  }
   };
 
-  const nextToTables = async () => {
+  const nextToTables = async (advance = true) => {
       if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
       if (!sourceDb) return message.error(t('dataSync.error.selectSourceDatabase'));
       if (!targetDb) return message.error(t('dataSync.error.selectTargetDatabase'));
@@ -535,7 +537,9 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                       }
                       return existing;
                   });
-	              setCurrentStep(1);
+                  if (advance) {
+                      setCurrentStep(1);
+                  }
 	          } else {
                   message.error(res.message);
               }
@@ -623,6 +627,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
               const defaultSelected = tables.flatMap((table) => Array.isArray(table.selectedItemIds) ? table.selectedItemIds : []);
               setSchemaDiffTables(tables);
               setSchemaSelectedItemIds(defaultSelected);
+              setCurrentStep(1);
               message.success(t('schemaSync.diff.analysisComplete'));
           } else {
               message.error(res.message || t('schemaSync.diff.analysisFailed'));
@@ -642,6 +647,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
 
       setPreviewOpen(true);
       setPreviewTable(table);
+      setPreviewActiveTab('schema');
       setPreviewLoading(true);
       setPreviewData(null);
       setSchemaPreviewData(null);
@@ -751,6 +757,9 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
   };
 
   const analyzeDiff = async () => {
+      if (allTables.length === 0) {
+          await nextToTables(false);
+      }
       const selectionError = validateDataSyncSelection({ sourceDatasetMode, selectedTables, sourceQuery, syncContent });
       if (selectionError) return message.error(t(selectionError));
       if (!sourceConnId || !targetConnId) return message.error(t('dataSync.error.selectConnectionsFirst'));
@@ -802,6 +811,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                   };
               });
               setTableOptions(init);
+              setCurrentStep(1);
               message.success(t('dataSync.diff.analysisComplete'));
           } else {
               message.error(res.message || t('dataSync.diff.analysisFailed'));
@@ -814,13 +824,14 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
       setAnalyzing(false);
   };
 
-  const openPreview = async (table: string) => {
+  const openPreview = async (table: string, activeTab: string = 'insert') => {
       if (!table) return;
       const sConn = connections.find(c => c.id === sourceConnId)!;
       const tConn = connections.find(c => c.id === targetConnId)!;
 
       setPreviewOpen(true);
       setPreviewTable(table);
+      setPreviewActiveTab(activeTab);
       setPreviewLoading(true);
       setPreviewData(null);
 
@@ -1040,6 +1051,48 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
       return Array.from(new Set(items));
   }, [syncDomain, diffTables, schemaDiffTables]);
 
+
+  const renderRiskWarningSummary = () => {
+      if (analysisWarnings.length === 0) return null;
+      return (
+          <Collapse
+              size="small"
+              style={{ marginBottom: 12 }}
+              items={[{
+                  key: 'risk-summary',
+                  label: `预检概要：发现 ${analysisWarnings.length} 项风险或降级项`,
+                  children: (
+                      <div>
+                          <ul style={{ margin: 0, paddingLeft: 18 }}>
+                              {analysisWarnings.slice(0, 2).map((item) => <li key={item}>{item}</li>)}
+                              {analysisWarnings.length > 2 && <li>还有 {analysisWarnings.length - 2} 项</li>}
+                          </ul>
+                          <Button
+                              size="small"
+                              style={{ marginTop: 8 }}
+                              onClick={() => {
+                                  Modal.info({
+                                      title: '预检详情',
+                                      width: 760,
+                                      content: (
+                                          <div style={{ maxHeight: 520, overflow: 'auto' }}>
+                                              <ul style={{ margin: 0, paddingLeft: 18 }}>
+                                                  {analysisWarnings.map((item) => <li key={item}>{item}</li>)}
+                                              </ul>
+                                          </div>
+                                      ),
+                                  });
+                              }}
+                          >
+                              查看详情
+                          </Button>
+                      </div>
+                  ),
+              }]}
+          />
+      );
+  };
+
   const isSourceQueryMode = sourceDatasetMode === 'query';
   const isMigrationWorkflow = workflowType === 'migration';
   const sourceConn = useMemo(() => connections.find(c => c.id === sourceConnId), [connections, sourceConnId]);
@@ -1049,6 +1102,14 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
   const sourceIsRelational = !sourceConn || RELATIONAL_SYNC_TYPES.has(sourceType);
   const targetIsRelational = !targetConn || RELATIONAL_SYNC_TYPES.has(targetType);
   const selectedConnectionsAreRelational = sourceIsRelational && targetIsRelational;
+  const canCompareDiff = selectedConnectionsAreRelational
+      && !!sourceConnId
+      && !!targetConnId
+      && !!sourceDb
+      && !!targetDb
+      && selectedTables.length > 0
+      && !analyzing
+      && (!isSourceQueryMode || !!sourceQuery.trim());
   const currentPreviewData: DataPreviewData = previewData ?? {};
   const currentSchemaPreviewData: SchemaPreviewData = schemaPreviewData ?? {};
 
@@ -1214,8 +1275,8 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
           </div>
       </div>
       <Steps current={currentStep} style={{ marginBottom: 24 }}>
-        <Step title="配置源与目标" />
         <Step title="选择表" />
+        <Step title="对比差异" />
         <Step title="执行结果" />
       </Steps>
       </div>
@@ -1377,7 +1438,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
       )}
 
       {/* STEP 2: TABLES */}
-      {currentStep === 1 && (
+      {(currentStep === 0 || currentStep === 1) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               <div style={quietPanelStyle}>
                   {!isSourceQueryMode && (
@@ -1432,23 +1493,10 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                   )}
               </div>
 
-              {syncDomain === 'data' && diffTables.length > 0 && (
+              {currentStep === 1 && syncDomain === 'data' && diffTables.length > 0 && (
                   <div style={quietPanelStyle}>
                       <Divider orientation="left" style={{ marginTop: 0 }}>对比结果</Divider>
-                      {analysisWarnings.length > 0 && (
-                          <Alert
-                              type="warning"
-                              showIcon
-                              message="预检发现风险或降级项，请在执行前确认"
-                              description={
-                                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                      {analysisWarnings.slice(0, 8).map((item) => <li key={item}>{item}</li>)}
-                                      {analysisWarnings.length > 8 && <li>还有 {analysisWarnings.length - 8} 项未展开</li>}
-                                  </ul>
-                              }
-                              style={{ marginBottom: 12 }}
-                          />
-                      )}
+                      {renderRiskWarningSummary()}
                       <Alert
                           type={currentExecutionRiskSummary.level === 'high' ? 'warning' : 'info'}
                           showIcon
@@ -1555,15 +1603,16 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                               {
                                   title: '预览',
                                   key: 'preview',
-                                  width: 80,
+                                  width: 150,
                                   render: (_: unknown, r: TableDiffSummary) => {
                                       const can = !!r.canSync;
                                       const hasDiff = Number(r.inserts || 0) + Number(r.updates || 0) + Number(r.deletes || 0) > 0;
                                       const hasSchemaDiff = Number(r.schemaDiffCount || 0) > 0;
                                       return (
-                                          <Button size="small" disabled={!can || !(hasDiff || hasSchemaDiff) || analyzing} onClick={() => openPreview(r.table)}>
-                                              查看
-                                          </Button>
+                                          <div style={{ display: 'flex', gap: 6 }}>
+                                              <Button size="small" disabled={!can || !(hasDiff || hasSchemaDiff) || analyzing} onClick={() => openPreview(r.table)}>查看</Button>
+                                              <Button size="small" disabled={!can || !(hasDiff || hasSchemaDiff) || analyzing} onClick={() => openPreview(r.table, 'sql')}>SQL预览</Button>
+                                          </div>
                                       );
                                   }
                               }
@@ -1571,23 +1620,10 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                       />
                   </div>
               )}
-              {syncDomain === 'schema' && schemaDiffTables.length > 0 && (
+              {currentStep === 1 && syncDomain === 'schema' && schemaDiffTables.length > 0 && (
                   <div style={quietPanelStyle}>
                       <Divider orientation="left" style={{ marginTop: 0 }}>结构差异</Divider>
-                      {analysisWarnings.length > 0 && (
-                          <Alert
-                              type="warning"
-                              showIcon
-                              message="预检发现风险或降级项，请在执行前确认"
-                              description={
-                                  <ul style={{ margin: 0, paddingLeft: 18 }}>
-                                      {analysisWarnings.slice(0, 8).map((item) => <li key={item}>{item}</li>)}
-                                      {analysisWarnings.length > 8 && <li>还有 {analysisWarnings.length - 8} 项未展开</li>}
-                                  </ul>
-                              }
-                              style={{ marginBottom: 12 }}
-                          />
-                      )}
+                      {renderRiskWarningSummary()}
                       <Alert
                           type={currentExecutionRiskSummary.level === 'high' ? 'warning' : 'info'}
                           showIcon
@@ -1638,7 +1674,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                               {
                                   title: '预览',
                                   key: 'preview',
-                                  width: 80,
+                                  width: 150,
                                   render: (_: unknown, r: SchemaDiffRow) => (
                                       <Button size="small" onClick={() => openSchemaPreview(r.table)}>
                                           查看
@@ -1706,7 +1742,14 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
 
       <div style={modalFooterBarStyle}>
           {currentStep === 0 && (
-              <Button type="primary" onClick={nextToTables} loading={loading}>下一步</Button>
+              <Button
+                  type="primary"
+                  onClick={allTables.length === 0 ? () => nextToTables(false) : (syncDomain === 'schema' ? analyzeSchemaDiff : analyzeDiff)}
+                  loading={loading}
+                  disabled={!selectedConnectionsAreRelational || !sourceConnId || !targetConnId || !sourceDb || !targetDb || (allTables.length > 0 && !canCompareDiff)}
+              >
+                  {allTables.length === 0 ? '加载表' : '对比差异'}
+              </Button>
           )}
 	          {currentStep === 1 && (
 	              <>
@@ -1714,7 +1757,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
 	                <Button
                         onClick={syncDomain === 'schema' ? analyzeSchemaDiff : analyzeDiff}
                         loading={loading}
-                        disabled={!selectedConnectionsAreRelational || selectedTables.length === 0 || analyzing || (isSourceQueryMode && !sourceQuery.trim()) || (syncDomain === 'data' && syncContent === 'schema')}
+                        disabled={!canCompareDiff || (syncDomain === 'data' && syncContent === 'schema')}
                         style={{ marginRight: 8 }}
                     >
 	                    对比差异
@@ -1723,9 +1766,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
 	                    type="primary"
 	                    onClick={syncDomain === 'schema' ? runSchemaSync : runSync}
                         loading={loading}
-                        disabled={!selectedConnectionsAreRelational
-                            || selectedTables.length === 0
-                            || (isSourceQueryMode && !sourceQuery.trim())
+                        disabled={!canCompareDiff
                             || (syncDomain === 'schema' ? schemaDiffTables.length === 0 : (syncContent !== 'schema' && diffTables.length === 0))}
                     >
                         {syncDomain === 'schema' ? '开始结构同步' : '开始同步'}
@@ -1743,15 +1784,16 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
       </div>
     </Modal>
     <Drawer
-        title={`差异预览：${previewTable}`}
+        title={previewTable ? `差异预览：${previewTable}` : '差异预览'}
         styles={{ body: { background: darkMode ? 'rgba(9,13,20,0.98)' : '#f8fafc' } }}
         open={previewOpen}
-        onClose={() => { setPreviewOpen(false); setPreviewTable(''); setPreviewData(null); setSchemaPreviewData(null); }}
+        onClose={() => { setPreviewOpen(false); setPreviewTable(''); setPreviewActiveTab('insert'); setPreviewData(null); setSchemaPreviewData(null); }}
         width={900}
     >
         {previewLoading && <Alert type="info" showIcon message="正在加载差异预览…" />}
         {!previewLoading && (syncDomain === 'schema' ? currentSchemaPreviewData : currentPreviewData) && (
             <div>
+                <div style={{ marginBottom: 12, fontWeight: 600 }}>表名：{previewTable}</div>
                 <Alert
                     type="info"
                     showIcon
@@ -1777,6 +1819,8 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                 )}
                 <Divider />
                 <Tabs
+                    activeKey={previewActiveTab}
+                    onChange={setPreviewActiveTab}
                     items={[
                         ...(previewHasSchemaStatements ? (() => {
                             const schemaStatements = syncDomain === 'schema'
