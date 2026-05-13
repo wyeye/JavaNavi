@@ -68,18 +68,82 @@ fn select_local_file_with_platform_dialog(
     kind: &str,
     current_path: Option<&str>,
 ) -> Result<Option<PathBuf>, String> {
-    use std::os::windows::ffi::OsStrExt;
-    use windows_sys::Win32::Foundation::{HRESULT_FROM_WIN32, HWND, ERROR_CANCELLED};
+    use windows_sys::core::{GUID, HRESULT, IUnknown_Vtbl, PCWSTR, PWSTR};
+    use windows_sys::Win32::Foundation::{ERROR_CANCELLED, HWND};
     use windows_sys::Win32::System::Com::{
         CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
         COINIT_APARTMENTTHREADED,
     };
+    use windows_sys::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
     use windows_sys::Win32::UI::Shell::{
-        IFileDialog, IFileDialog_GetResult, IFileDialog_SetDefaultExtension, IFileDialog_SetFileTypes,
-        IFileDialog_SetFolder, IFileDialog_SetTitle, IFileDialog_Show, IFileOpenDialog,
-        IShellItem, IShellItem_GetDisplayName, SHCreateItemFromParsingName, SIGDN_FILESYSPATH,
-        CLSID_FileOpenDialog, COMDLG_FILTERSPEC,
+        FileOpenDialog, SHCreateItemFromParsingName, SIGDN, SIGDN_FILESYSPATH,
     };
+
+    const IID_IFILE_OPEN_DIALOG: GUID =
+        GUID::from_u128(0xd57c7288_d4ad_4768_be02_9d969532d960);
+    const IID_ISHELL_ITEM: GUID = GUID::from_u128(0x43826d1e_e718_42ee_bc55_a1e261c37bfe);
+
+    #[repr(C)]
+    struct IModalWindowVtbl {
+        base: IUnknown_Vtbl,
+        show: unsafe extern "system" fn(*mut core::ffi::c_void, HWND) -> HRESULT,
+    }
+
+    #[repr(C)]
+    struct IFileDialogVtbl {
+        base: IModalWindowVtbl,
+        set_file_types: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            u32,
+            *const COMDLG_FILTERSPEC,
+        ) -> HRESULT,
+        set_file_type_index: usize,
+        get_file_type_index: usize,
+        advise: usize,
+        unadvise: usize,
+        set_options: usize,
+        get_options: usize,
+        set_default_folder: usize,
+        set_folder:
+            unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> HRESULT,
+        get_folder: usize,
+        get_current_selection: usize,
+        set_file_name: usize,
+        get_file_name: usize,
+        set_title: unsafe extern "system" fn(*mut core::ffi::c_void, PCWSTR) -> HRESULT,
+        set_ok_button_label: usize,
+        set_file_name_label: usize,
+        get_result: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            *mut *mut core::ffi::c_void,
+        ) -> HRESULT,
+        add_place: usize,
+        set_default_extension: unsafe extern "system" fn(*mut core::ffi::c_void, PCWSTR) -> HRESULT,
+        close: usize,
+        set_client_guid: usize,
+        clear_client_data: usize,
+        set_filter: usize,
+    }
+
+    #[repr(C)]
+    struct IShellItemVtbl {
+        base: IUnknown_Vtbl,
+        bind_to_handler: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            *mut core::ffi::c_void,
+            *const GUID,
+            *const GUID,
+            *mut *mut core::ffi::c_void,
+        ) -> HRESULT,
+        get_parent: usize,
+        get_display_name: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            SIGDN,
+            *mut PWSTR,
+        ) -> HRESULT,
+        get_attributes: usize,
+        compare: usize,
+    }
 
     struct ComGuard;
     impl Drop for ComGuard {
@@ -89,29 +153,33 @@ fn select_local_file_with_platform_dialog(
     }
 
     unsafe {
-        let hr = CoInitializeEx(std::ptr::null_mut(), COINIT_APARTMENTTHREADED);
-        if hr < 0 {
-            return Err(format!("Unable to initialize Windows file dialog: 0x{hr:08x}"));
+        let hr = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        if failed(hr) {
+            return Err(format_hresult("Unable to initialize Windows file dialog", hr));
         }
         let _guard = ComGuard;
         let mut dialog: *mut core::ffi::c_void = std::ptr::null_mut();
         let hr = CoCreateInstance(
-            &CLSID_FileOpenDialog,
+            &FileOpenDialog,
             std::ptr::null_mut(),
             CLSCTX_INPROC_SERVER,
-            &IFileOpenDialog::IID,
+            &IID_IFILE_OPEN_DIALOG,
             &mut dialog,
         );
-        if hr < 0 || dialog.is_null() {
-            return Err(format!("Unable to create Windows file dialog: 0x{hr:08x}"));
+        if failed(hr) || dialog.is_null() {
+            return Err(format_hresult("Unable to create Windows file dialog", hr));
         }
-        let dialog = dialog as *mut IFileDialog;
+        let dialog_vtbl = *(dialog as *mut *mut IFileDialogVtbl);
         let title = wide_null(match kind {
             "ssh-key" => "Select SSH private key",
             "sql" => "Open SQL file",
             _ => "Select file",
         });
-        IFileDialog_SetTitle(dialog, title.as_ptr());
+        let hr = ((*dialog_vtbl).set_title)(dialog, title.as_ptr());
+        if failed(hr) {
+            release_unknown(dialog);
+            return Err(format_hresult("Unable to configure Windows file dialog", hr));
+        }
 
         if kind == "sql" {
             let sql_name = wide_null("SQL files");
@@ -128,41 +196,56 @@ fn select_local_file_with_platform_dialog(
                     pszSpec: all_spec.as_ptr(),
                 },
             ];
-            IFileDialog_SetFileTypes(dialog, filters.len() as u32, filters.as_ptr());
+            let hr = ((*dialog_vtbl).set_file_types)(dialog, filters.len() as u32, filters.as_ptr());
+            if failed(hr) {
+                release_unknown(dialog);
+                return Err(format_hresult("Unable to configure Windows file filters", hr));
+            }
             let extension = wide_null("sql");
-            IFileDialog_SetDefaultExtension(dialog, extension.as_ptr());
+            let hr = ((*dialog_vtbl).set_default_extension)(dialog, extension.as_ptr());
+            if failed(hr) {
+                release_unknown(dialog);
+                return Err(format_hresult("Unable to configure Windows file filters", hr));
+            }
         }
 
         if let Some(folder) = current_folder(current_path) {
             let folder_wide = wide_null(&folder.to_string_lossy());
-            let mut shell_item: *mut IShellItem = std::ptr::null_mut();
-            if SHCreateItemFromParsingName(
+            let mut shell_item: *mut core::ffi::c_void = std::ptr::null_mut();
+            let hr = SHCreateItemFromParsingName(
                 folder_wide.as_ptr(),
                 std::ptr::null_mut(),
-                &IShellItem::IID,
-                &mut shell_item as *mut _ as *mut _,
-            ) >= 0
-            {
-                IFileDialog_SetFolder(dialog, shell_item);
+                &IID_ISHELL_ITEM,
+                &mut shell_item,
+            );
+            if !failed(hr) && !shell_item.is_null() {
+                let _ = ((*dialog_vtbl).set_folder)(dialog, shell_item);
+                release_unknown(shell_item);
             }
         }
 
-        let hr = IFileDialog_Show(dialog, HWND(0));
-        if hr == HRESULT_FROM_WIN32(ERROR_CANCELLED) {
+        let hr = ((*dialog_vtbl).base.show)(dialog, std::ptr::null_mut());
+        if hr == hresult_from_win32(ERROR_CANCELLED) {
+            release_unknown(dialog);
             return Ok(None);
         }
-        if hr < 0 {
-            return Err(format!("Windows file dialog failed: 0x{hr:08x}"));
+        if failed(hr) {
+            release_unknown(dialog);
+            return Err(format_hresult("Windows file dialog failed", hr));
         }
-        let mut item: *mut IShellItem = std::ptr::null_mut();
-        let hr = IFileDialog_GetResult(dialog, &mut item);
-        if hr < 0 || item.is_null() {
-            return Err(format!("Unable to read selected file: 0x{hr:08x}"));
+        let mut item: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hr = ((*dialog_vtbl).get_result)(dialog, &mut item);
+        if failed(hr) || item.is_null() {
+            release_unknown(dialog);
+            return Err(format_hresult("Unable to read selected file", hr));
         }
-        let mut raw_path = std::ptr::null_mut();
-        let hr = IShellItem_GetDisplayName(item, SIGDN_FILESYSPATH, &mut raw_path);
-        if hr < 0 || raw_path.is_null() {
-            return Err(format!("Unable to read selected file path: 0x{hr:08x}"));
+        let item_vtbl = *(item as *mut *mut IShellItemVtbl);
+        let mut raw_path: PWSTR = std::ptr::null_mut();
+        let hr = ((*item_vtbl).get_display_name)(item, SIGDN_FILESYSPATH, &mut raw_path);
+        if failed(hr) || raw_path.is_null() {
+            release_unknown(item);
+            release_unknown(dialog);
+            return Err(format_hresult("Unable to read selected file path", hr));
         }
         let mut len = 0usize;
         while *raw_path.add(len) != 0 {
@@ -170,13 +253,44 @@ fn select_local_file_with_platform_dialog(
         }
         let value = String::from_utf16_lossy(std::slice::from_raw_parts(raw_path, len));
         CoTaskMemFree(raw_path as *const core::ffi::c_void);
+        release_unknown(item);
+        release_unknown(dialog);
         Ok(Some(PathBuf::from(value)))
     }
 }
 
 #[cfg(target_os = "windows")]
+fn failed(hr: windows_sys::core::HRESULT) -> bool {
+    hr < 0
+}
+
+#[cfg(target_os = "windows")]
+fn hresult_from_win32(
+    error: windows_sys::Win32::Foundation::WIN32_ERROR,
+) -> windows_sys::core::HRESULT {
+    if error <= 0 {
+        error as i32
+    } else {
+        ((error & 0x0000_ffff) | 0x8007_0000) as i32
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn format_hresult(context: &str, hr: windows_sys::core::HRESULT) -> String {
+    format!("{context}: 0x{:08x}", hr as u32)
+}
+
+#[cfg(target_os = "windows")]
+unsafe fn release_unknown(value: *mut core::ffi::c_void) {
+    if !value.is_null() {
+        let vtbl = *(value as *mut *mut windows_sys::core::IUnknown_Vtbl);
+        ((*vtbl).Release)(value);
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn wide_null(value: &str) -> Vec<u16> {
-    std::ffi::OsStr::new(value).encode_wide().chain(std::iter::once(0)).collect()
+    value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 #[cfg(target_os = "macos")]
