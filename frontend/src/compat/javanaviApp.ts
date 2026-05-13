@@ -179,6 +179,8 @@ function toConnectionPayload(config: unknown = {}): ConnectionPayload {
     mongoReplicaPassword: stringField(config, 'mongoReplicaPassword'),
     useSSL,
     sslMode: resolveEffectiveSSLMode(stringField(config, 'sslMode'), useSSL === true),
+    sslCertPath: stringField(config, 'sslCertPath'),
+    sslKeyPath: stringField(config, 'sslKeyPath'),
     useSSH: booleanField(config, 'useSSH'),
     ssh: fieldValue(config, 'ssh'),
     useProxy: booleanField(config, 'useProxy'),
