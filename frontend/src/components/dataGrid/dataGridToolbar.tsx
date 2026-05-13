@@ -48,6 +48,7 @@ export type DataGridToolbarProps = {
     handleCommit: () => void;
     changeCount: number;
     changeSummaryText?: string;
+    pendingChangesLabel: string;
     riskLevel?: 'low' | 'medium' | 'high';
     onRollback: () => void;
     canImport: boolean;
@@ -153,7 +154,7 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => (
 	                   <Button icon={<SaveOutlined />} type="primary" disabled={!props.hasChanges || props.commitLoading} loading={props.commitLoading} onClick={props.handleCommit}>提交事务 ({props.changeCount})</Button>
                        {props.hasChanges && (
                            <span style={{ fontSize: '12px', color: props.riskLevel === 'high' ? '#cf1322' : '#888' }}>
-                               待提交：{props.changeSummaryText || `${props.changeCount} 项变更`}
+                               {props.pendingChangesLabel}{props.changeSummaryText || `${props.changeCount} 项变更`}
                            </span>
                        )}
 	                   {props.hasChanges && (<Button icon={<UndoOutlined />} onClick={() => {

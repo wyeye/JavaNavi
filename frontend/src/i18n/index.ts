@@ -300,6 +300,8 @@ export const enUS = {
   'schemaSync.run.deleteConfirmContent': 'Selected changes contain delete operations. Confirm that these structure deletions can be executed.',
   'schemaSync.run.success': 'Structure sync completed.',
   'schemaSync.run.failed': 'Structure sync failed.',
+  'dataGrid.commit.pendingLabel': 'Pending:',
+  'dataGrid.commit.pendingRows': 'Pending: INSERT {insertCount} rows, UPDATE {updateCount} rows, DELETE {deleteCount} rows',
 
   'generic.fallback.renderError.title': 'Render error',
   'generic.fallback.renderError.description': 'The data grid failed to render, possibly because of the data format.',
@@ -1428,6 +1430,8 @@ const zhOverrides = {
   'schemaSync.run.deleteConfirmContent': '本次勾选包含删除类结构变更，请确认允许执行这些删除操作。',
   'schemaSync.run.success': '结构同步完成。',
   'schemaSync.run.failed': '结构同步失败。',
+  'dataGrid.commit.pendingLabel': '待提交：',
+  'dataGrid.commit.pendingRows': '待提交：新增 {insertCount} 行，更新 {updateCount} 行，删除 {deleteCount} 行',
   'generic.fallback.renderError.title': '渲染错误',
   'generic.fallback.renderError.description': '数据表格渲染失败，可能是数据格式异常。',
   'generic.fallback.retry': '重试',

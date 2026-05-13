@@ -149,6 +149,7 @@ import {
     readVirtualHorizontalOffset,
     resolveHorizontalWheelDelta,
 } from './dataGrid/dataGridScrollSync';
+import { translate } from '../i18n';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 type Item = DataGridItem;
@@ -2570,12 +2571,14 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [copiedRowsForPaste, columnNames]);
 
   const pendingChangeSummary = useMemo(() => buildDataGridModificationRiskSummary({
+      language,
       tableName,
       dbName,
       inserts: addedRows,
       updates: Object.values(modifiedRows),
       deletes: Array.from(deletedRowKeys),
-  }), [addedRows, modifiedRows, deletedRowKeys, tableName, dbName]);
+  }), [addedRows, modifiedRows, deletedRowKeys, tableName, dbName, language]);
+  const pendingChangesLabel = useMemo(() => translate(language, 'dataGrid.commit.pendingLabel'), [language]);
 
   const handleDeleteSelected = () => {
       const selectedCount = selectedRowKeys.length;
@@ -2629,6 +2632,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       }
 
       const summary = buildDataGridModificationRiskSummary({
+          language,
           tableName,
           dbName,
           inserts,
@@ -4035,6 +4039,7 @@ const DataGrid: React.FC<DataGridProps> = ({
             handleCommit={handleCommit}
             changeCount={addedRows.length + Object.keys(modifiedRows).length + deletedRowKeys.size}
             changeSummaryText={pendingChangeSummary.shortText}
+            pendingChangesLabel={pendingChangesLabel}
             riskLevel={pendingChangeSummary.level}
             onRollback={() => {
                 setAddedRows([]);
