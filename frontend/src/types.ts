@@ -152,6 +152,7 @@ export interface TabData {
   connectionId: string;
   dbName?: string;
   tableName?: string;
+  tableComment?: string;
   query?: string;
   filePath?: string;
   initialTab?: string;

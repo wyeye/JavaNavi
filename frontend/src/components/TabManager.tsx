@@ -11,6 +11,7 @@ import { translate, type I18nKey } from '../i18n';
 import type { TabData } from '../types';
 import { buildTabDisplayTitle } from '../utils/tabDisplay';
 import { resolveConnectionAccentColor } from '../utils/connectionVisual';
+import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 
 const DataViewer = lazy(() => import('./DataViewer'));
 const QueryEditor = lazy(() => import('./QueryEditor'));
@@ -39,12 +40,14 @@ const TabWorkspaceFallback: React.FC<{ language: import('../i18n').AppLanguage }
 
 type SortableTabLabelProps = {
   displayTitle: string;
+  hoverTitle: string;
   menuItems: MenuProps['items'];
   accentColor?: string;
 };
 
 const SortableTabLabel: React.FC<SortableTabLabelProps> = ({
   displayTitle,
+  hoverTitle,
   menuItems,
   accentColor,
 }) => {
@@ -57,7 +60,7 @@ const SortableTabLabel: React.FC<SortableTabLabelProps> = ({
       <span
         className={`tab-dnd-label${accentColor ? ' has-connection-accent' : ''}`}
         onContextMenu={(e) => e.preventDefault()}
-        title={displayTitle}
+        title={hoverTitle}
         style={labelStyle}
       >
         {accentColor ? <span className="tab-connection-accent" aria-hidden="true" /> : null}
@@ -98,6 +101,22 @@ const DraggableTabNode: React.FC<DraggableTabNodeProps> = ({ node }) => {
     ...attributes,
     ...listeners,
     className: `${node.props.className || ''} tab-dnd-node${isDragging ? ' is-dragging' : ''}`,
+  });
+};
+
+const buildTabHoverTitle = (
+  tab: TabData,
+  displayTitle: string,
+  t: (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => string,
+): string => {
+  if (tab.type !== 'table' && tab.type !== 'design') {
+    return displayTitle;
+  }
+  return buildTableHoverTitle({
+    tableName: displayTitle,
+    comment: tab.tableComment,
+    tableNameLabel: t('table.hover.name'),
+    commentLabel: t('table.hover.comment'),
   });
 };
 
@@ -219,6 +238,7 @@ const TabManager: React.FC = () => {
   const items = useMemo(() => tabs.map((tab, index) => {
     const connection = connections.find((conn) => conn.id === tab.connectionId);
     const displayTitle = buildTabDisplayTitle(tab, connection, language);
+    const hoverTitle = buildTabHoverTitle(tab, displayTitle, t);
     const accentColor = connection ? resolveConnectionAccentColor(connection) : undefined;
     const tabIsActive = tab.id === activeTabId;
     let content: React.ReactNode = null;
@@ -274,6 +294,7 @@ const TabManager: React.FC = () => {
       label: (
         <SortableTabLabel
           displayTitle={displayTitle}
+          hoverTitle={hoverTitle}
           menuItems={menuItems}
           accentColor={accentColor}
         />
