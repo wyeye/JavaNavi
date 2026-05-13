@@ -2,6 +2,7 @@ package com.javanavi.api;
 
 import com.javanavi.ai.AiCompatibilityService;
 import com.javanavi.db.DatabaseCompatibilityService;
+import com.javanavi.db.ConnectionNetworkTunnelService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.ApplyChangesRequestDto;
@@ -64,15 +65,18 @@ public class CompatibilityController {
     private static final String AI_TOOL_REQUEST_SOURCE = "ai-tool";
 
     private final DatabaseCompatibilityService databaseCompatibilityService;
+    private final ConnectionNetworkTunnelService connectionNetworkTunnelService;
     private final AiCompatibilityService aiCompatibilityService;
     private final I18nMessages messages;
 
     public CompatibilityController(
             DatabaseCompatibilityService databaseCompatibilityService,
+            ConnectionNetworkTunnelService connectionNetworkTunnelService,
             AiCompatibilityService aiCompatibilityService,
             I18nMessages messages
     ) {
         this.databaseCompatibilityService = databaseCompatibilityService;
+        this.connectionNetworkTunnelService = connectionNetworkTunnelService;
         this.aiCompatibilityService = aiCompatibilityService;
         this.messages = messages;
     }
@@ -103,6 +107,21 @@ public class CompatibilityController {
             return ApiEnvelope.failKey(messages, "connection.unsupportedDriver", "message", result.message());
         }
         return ApiEnvelope.ok(result);
+    }
+
+    @PostMapping("/ssh/test")
+    public ApiEnvelope<ConnectionTestResultDto> testSshConnection(@Valid @RequestBody ConnectionConfigDto config) {
+        try {
+            connectionNetworkTunnelService.testSshConnection(config);
+            return ApiEnvelope.ok(new ConnectionTestResultDto(
+                    config == null ? null : config.id(),
+                    "ssh",
+                    true,
+                    messages.message("common.connectionSucceeded")
+            ));
+        } catch (IllegalArgumentException error) {
+            return ApiEnvelope.failKey(messages, "connection.unsupportedDriver", "message", error.getMessage());
+        }
     }
 
     @PostMapping("/connections/open")

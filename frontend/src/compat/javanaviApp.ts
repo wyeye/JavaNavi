@@ -1029,6 +1029,11 @@ export async function TestConnection(arg1: connection.ConnectionConfig): Promise
   return apiEnvelopeToQueryResult(payload, 'Connection test completed');
 }
 
+export async function TestSSHConnection(arg1: connection.ConnectionConfig): Promise<connection.QueryResult> {
+  const payload = await postJson('/ssh/test', toConnectionPayload(arg1));
+  return apiEnvelopeToQueryResult(payload, 'SSH connection test completed');
+}
+
 export async function TruncateTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {
   const payload = await postJson('/ddl/truncate-tables', { connection: toConnectionPayload(arg1), database: arg2, tables: arg3 });
   return apiEnvelopeToQueryResult(payload, 'Tables truncated');

@@ -97,6 +97,7 @@ import {
   GetDriverStatusList,
   MongoDiscoverMembers,
   TestConnection,
+  TestSSHConnection,
   RedisConnect,
   SelectSSHKeyFile,
   SaveConnection,
@@ -1165,6 +1166,56 @@ const ConnectionModal: React.FC<{
     if (!file) return;
     form.setFieldValue("sshKeyPath", file.name);
     message.info("Web 模式已记录私钥文件名；桌面壳可选择本机绝对路径");
+  };
+
+  const handleTestSSHConnection = async () => {
+    if (loading) {
+      return;
+    }
+    try {
+      const values = form.getFieldsValue(true) as ConnectionFormValues;
+      const sshConfig = {
+        type: String(values.type || dbType || "mysql"),
+        host: String(values.host || "localhost"),
+        port: Number(values.port || getDefaultPortByType(String(values.type || dbType || "mysql"))),
+        user: String(values.user || ""),
+        password: String(values.password || ""),
+        database: String(values.database || ""),
+        timeout: Number(values.timeout || 30),
+        useSSH: true,
+        ssh: {
+          host: String(values.sshHost || ""),
+          port: Number(values.sshPort || 22),
+          user: String(values.sshUser || ""),
+          password: String(values.sshPassword || ""),
+          keyPath: String(values.sshKeyPath || ""),
+        },
+      } as ConnectionConfig;
+      if (!sshConfig.ssh?.host || !sshConfig.ssh?.user) {
+        message.error("请先填写 SSH 主机和用户");
+        return;
+      }
+      setLoading(true);
+      const timeoutSecondsRaw = Number(values.timeout);
+      const timeoutSeconds =
+        Number.isFinite(timeoutSecondsRaw) && timeoutSecondsRaw > 0
+          ? Math.min(timeoutSecondsRaw, MAX_TIMEOUT_SECONDS)
+          : 30;
+      const res = await withClientTimeout(
+        TestSSHConnection(buildRpcConnectionConfig(sshConfig)),
+        (timeoutSeconds + 5) * 1000,
+        `SSH 测试超时（>${timeoutSeconds} 秒），请检查主机、端口、用户和认证配置`,
+      );
+      if (res.success) {
+        message.success("SSH 连接成功");
+      } else {
+        message.error(`SSH 连接失败：${getErrorMessage(res.message, "未知错误")}`);
+      }
+    } catch (e: unknown) {
+      message.error(`SSH 连接失败：${getErrorMessage(e, "未知错误")}`);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSelectDatabaseFile = async () => {
@@ -4164,6 +4215,12 @@ const ConnectionModal: React.FC<{
                               loading={selectingSSHKey}
                             >
                               浏览...
+                            </Button>
+                            <Button
+                              onClick={handleTestSSHConnection}
+                              loading={loading}
+                            >
+                              测试SSH
                             </Button>
                           </Space.Compact>
                         </Form.Item>

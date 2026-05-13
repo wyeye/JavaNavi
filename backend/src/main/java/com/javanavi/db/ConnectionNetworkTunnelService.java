@@ -5,6 +5,8 @@ import com.javanavi.security.SecretRedactor;
 import com.jcraft.jsch.JSch;
 import com.jcraft.jsch.JSchException;
 import com.jcraft.jsch.Session;
+import com.jcraft.jsch.UIKeyboardInteractive;
+import com.jcraft.jsch.UserInfo;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
@@ -16,7 +18,7 @@ import java.util.Properties;
 import java.util.function.Function;
 
 @Component
-class ConnectionNetworkTunnelService {
+public class ConnectionNetworkTunnelService {
     <T> T withJdbcNetwork(ConnectionConfigDto config, Function<ConnectionConfigDto, T> action) {
         if (config == null) {
             return action.apply(null);
@@ -27,6 +29,29 @@ class ConnectionNetworkTunnelService {
         }
         try (TunnelLease tunnelLease = openSshTunnel(config)) {
             return action.apply(config.withEndpoint("127.0.0.1", tunnelLease.localPort()));
+        }
+    }
+
+
+    public boolean testSshConnection(ConnectionConfigDto config) {
+        ConnectionConfigDto.NetworkCredentialConfigDto ssh = config == null ? null : config.effectiveSsh();
+        if (ssh == null) {
+            throw new IllegalArgumentException("SSH tunnel config is required.");
+        }
+        String sshHost = requireText(ssh.host(), "SSH host");
+        String sshUser = requireText(ssh.user(), "SSH user");
+        int sshPort = validPort(ssh.port(), 22, "SSH port");
+        try {
+            Session session = openSession(sshHost, sshPort, sshUser, ssh, config);
+            try {
+                return session.isConnected();
+            } finally {
+                if (session.isConnected()) {
+                    session.disconnect();
+                }
+            }
+        } catch (JSchException error) {
+            throw new IllegalArgumentException("SSH connection failed: " + SecretRedactor.redact(error.getMessage()), error);
         }
     }
 
@@ -42,30 +67,39 @@ class ConnectionNetworkTunnelService {
         int targetPort = validPort(config.port(), defaultDatabasePort(config), "database port");
         int localPort = freeLocalPort();
         try {
-            JSch jsch = new JSch();
-            String keyPath = text(ssh.keyPath());
-            if (keyPath != null) {
-                String password = text(ssh.password());
-                if (password == null) {
-                    jsch.addIdentity(keyPath);
-                } else {
-                    jsch.addIdentity(keyPath, password);
-                }
-            }
-            Session session = jsch.getSession(sshUser, sshHost, sshPort);
-            String password = text(ssh.password());
-            if (password != null && keyPath == null) {
-                session.setPassword(password);
-            }
-            Properties properties = new Properties();
-            properties.setProperty("StrictHostKeyChecking", "no");
-            session.setConfig(properties);
-            session.connect(Math.max(5_000, timeoutMillis(config)));
+            Session session = openSession(sshHost, sshPort, sshUser, ssh, config);
             int assignedPort = session.setPortForwardingL("127.0.0.1", localPort, targetHost, targetPort);
             return new TunnelLease(session, assignedPort);
         } catch (JSchException error) {
             throw new IllegalArgumentException("SSH tunnel failed: " + SecretRedactor.redact(error.getMessage()), error);
         }
+    }
+
+
+    private static Session openSession(String sshHost, int sshPort, String sshUser, ConnectionConfigDto.NetworkCredentialConfigDto ssh, ConnectionConfigDto config) throws JSchException {
+        JSch jsch = new JSch();
+        String keyPath = text(ssh.keyPath());
+        String password = credential(ssh.password());
+        if (keyPath != null) {
+            if (password == null) {
+                jsch.addIdentity(keyPath);
+            } else {
+                jsch.addIdentity(keyPath, password);
+            }
+        }
+        Session session = jsch.getSession(sshUser, sshHost, sshPort);
+        if (password != null) {
+            session.setPassword(password);
+            session.setUserInfo(new PasswordUserInfo(password));
+        }
+        Properties properties = new Properties();
+        properties.setProperty("StrictHostKeyChecking", "no");
+        if (keyPath == null && password != null) {
+            properties.setProperty("PreferredAuthentications", "password,keyboard-interactive,publickey");
+        }
+        session.setConfig(properties);
+        session.connect(Math.max(5_000, timeoutMillis(config)));
+        return session;
     }
 
     void rejectUnsupported(ConnectionConfigDto config) {
@@ -184,6 +218,10 @@ class ConnectionNetworkTunnelService {
         return value == null || value.trim().isBlank() ? null : value.trim();
     }
 
+    private static String credential(String value) {
+        return value == null || value.isEmpty() ? null : value;
+    }
+
     record JdbcProxyEndpoint(String type, String host, int port, String user, String password) {
         String encoded() {
             String value = type + "\n" + host + "\n" + port + "\n" + nullToEmpty(user) + "\n" + nullToEmpty(password);
@@ -192,6 +230,49 @@ class ConnectionNetworkTunnelService {
 
         private static String nullToEmpty(String value) {
             return value == null ? "" : value;
+        }
+    }
+
+    private record PasswordUserInfo(String password) implements UserInfo, UIKeyboardInteractive {
+        @Override
+        public String getPassphrase() {
+            return null;
+        }
+
+        @Override
+        public String getPassword() {
+            return password;
+        }
+
+        @Override
+        public boolean promptPassword(String message) {
+            return password != null;
+        }
+
+        @Override
+        public boolean promptPassphrase(String message) {
+            return false;
+        }
+
+        @Override
+        public boolean promptYesNo(String message) {
+            return true;
+        }
+
+        @Override
+        public void showMessage(String message) {
+        }
+
+        @Override
+        public String[] promptKeyboardInteractive(String destination, String name, String instruction, String[] prompt, boolean[] echo) {
+            if (password == null || prompt == null) {
+                return null;
+            }
+            String[] responses = new String[prompt.length];
+            for (int i = 0; i < responses.length; i++) {
+                responses[i] = password;
+            }
+            return responses;
         }
     }
 

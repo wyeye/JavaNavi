@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.api.CompatibilityController;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.db.DatabaseCompatibilityService;
+import com.javanavi.db.ConnectionNetworkTunnelService;
 import com.javanavi.db.DemoDatabaseService;
 import com.javanavi.db.JdbcConnectionFactory;
 import com.javanavi.events.CompatEventPublisher;
@@ -366,6 +367,7 @@ class AiCompatibilityServiceTest {
         aiService.setSafetyLevel("readwrite");
         CompatibilityController controller = new CompatibilityController(
                 demoDatabaseCompatibilityService(),
+                new ConnectionNetworkTunnelService(),
                 aiService,
                 new I18nMessages()
         );
