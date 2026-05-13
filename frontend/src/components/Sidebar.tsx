@@ -1212,6 +1212,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const tableName = String(dataRef.tableName || '');
       const dbName = String(dataRef.dbName || '');
       const id = String(dataRef.id || '');
+      const tableComment = String(dataRef.comment || dataRef.tableComment || '').trim();
       addTab({
           id: `design-${id}-${dbName}-${tableName}`,
           title: readOnly ? t('sidebar.tree.tableStructure', { name: tableName }) : t('sidebar.tree.designTable', { name: tableName }),
@@ -1219,6 +1220,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           connectionId: id,
           dbName: dbName,
           tableName: tableName,
+          tableComment: tableComment,
           initialTab: initialTab,
           readOnly: readOnly
       });
@@ -1348,6 +1350,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           const tableName = String(dataRef.tableName || '');
           const dbName = String(dataRef.dbName || '');
           const id = String(dataRef.id || '');
+          const tableComment = String(dataRef.comment || dataRef.tableComment || '').trim();
           // 记录表访问
           recordTableAccess(id, dbName, tableName);
           addTab({
@@ -1357,6 +1360,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               connectionId: id,
               dbName,
               tableName,
+              tableComment: tableComment,
           });
           return;
       } else if (node.type === 'view') {

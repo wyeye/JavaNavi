@@ -246,8 +246,9 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
 
     const visibleTables = visibleOverview.visibleRows;
 
-    const openTable = useCallback((tableName: string) => {
+    const openTable = useCallback((table: TableStatRow) => {
         if (!connection) return;
+        const tableName = table.name;
         setActiveContext({ connectionId: connection.id, dbName: tab.dbName || '' });
         addTab({
             id: `${connection.id}-${tab.dbName}-${tableName}`,
@@ -256,11 +257,13 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             connectionId: connection.id,
             dbName: tab.dbName,
             tableName,
+            tableComment: table.comment,
         });
     }, [connection, tab.dbName, addTab, setActiveContext]);
 
-    const openDesign = useCallback((tableName: string) => {
+    const openDesign = useCallback((table: TableStatRow) => {
         if (!connection) return;
+        const tableName = table.name;
         setActiveContext({ connectionId: connection.id, dbName: tab.dbName || '' });
         addTab({
             id: `design-${connection.id}-${tab.dbName}-${tableName}`,
@@ -269,6 +272,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             connectionId: connection.id,
             dbName: tab.dbName,
             tableName,
+            tableComment: table.comment,
             initialTab: 'columns',
             readOnly: false,
         });
@@ -552,7 +556,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                             });
                                         }},
                                         { type: 'divider' },
-                                        { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(t.name) },
+                                        { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(t) },
                                         { key: 'copy-structure', label: '复制表结构', icon: <CopyOutlined />, onClick: () => handleCopyStructure(t.name) },
                                         { key: 'backup-table', label: '备份表 (SQL)', icon: <SaveOutlined />, onClick: () => handleExport(t.name, 'sql') },
                                         { key: 'rename-table', label: '重命名表', icon: <EditOutlined />, onClick: () => handleRenameTable(t.name) },
@@ -573,7 +577,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                 }}
                             >
                                 <div
-                                    onDoubleClick={() => openTable(t.name)}
+                                    onDoubleClick={() => openTable(t)}
                                     style={{
                                         background: cardBg,
                                         border: `1px solid ${cardBorder}`,
@@ -638,7 +642,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                                 });
                                             }},
                                             { type: 'divider' },
-                                            { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(t.name) },
+                                            { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(t) },
                                             { key: 'copy-structure', label: '复制表结构', icon: <CopyOutlined />, onClick: () => handleCopyStructure(t.name) },
                                             { key: 'backup-table', label: '备份表 (SQL)', icon: <SaveOutlined />, onClick: () => handleExport(t.name, 'sql') },
                                             { key: 'rename-table', label: '重命名表', icon: <EditOutlined />, onClick: () => handleRenameTable(t.name) },
@@ -659,7 +663,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                     }}
                                 >
                                     <div
-                                        onDoubleClick={() => openTable(t.name)}
+                                        onDoubleClick={() => openTable(t)}
                                         style={{
                                             position: 'relative',
                                             overflow: 'hidden',
