@@ -165,6 +165,7 @@ type DataGridCellProps = React.HTMLAttributes<HTMLElement> & {
   handleSave?: (record: Item) => void;
   focusCell?: (record: Item, dataIndex: string, title: React.ReactNode) => void;
   columnType?: string;
+  className?: string;
   [dataAttribute: `data-${string}`]: string | undefined;
 };
 type DataGridTableComponents = {
@@ -1946,6 +1947,59 @@ const DataGrid: React.FC<DataGridProps> = ({
     handleCellSave({ ...cellContextMenu.record, [cellContextMenu.dataIndex]: null });
     setCellContextMenu(prev => ({ ...prev, visible: false }));
   }, [cellContextMenu, handleCellSave]);
+
+  const canRollbackCellChange = useMemo(() => {
+      const rowKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
+      if (!isPresentReactKeyValue(rowKey) || !cellContextMenu.dataIndex) return false;
+      const keyStr = rowKeyStr(rowKey);
+      return !!modifiedRows[keyStr] && Object.prototype.hasOwnProperty.call(modifiedRows[keyStr], cellContextMenu.dataIndex);
+  }, [cellContextMenu.dataIndex, cellContextMenu.record, modifiedRows, rowKeyStr]);
+
+  const canRollbackRowChange = useMemo(() => {
+      const rowKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
+      if (!isPresentReactKeyValue(rowKey)) return false;
+      const keyStr = rowKeyStr(rowKey);
+      return addedRowKeySet.has(keyStr) || deletedRowKeys.has(keyStr) || !!modifiedRows[keyStr];
+  }, [addedRowKeySet, cellContextMenu.record, deletedRowKeys, modifiedRows, rowKeyStr]);
+
+  const handleRollbackCellChange = useCallback(() => {
+      const rowKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
+      const columnName = cellContextMenu.dataIndex;
+      if (!isPresentReactKeyValue(rowKey) || !columnName) return;
+      const keyStr = rowKeyStr(rowKey);
+      setModifiedRows((prev) => {
+          const current = prev[keyStr];
+          if (!current || !Object.prototype.hasOwnProperty.call(current, columnName)) return prev;
+          const nextPatch = { ...current };
+          delete nextPatch[columnName];
+          const next = { ...prev };
+          if (Object.keys(nextPatch).length === 0) delete next[keyStr];
+          else next[keyStr] = nextPatch;
+          return next;
+      });
+      void message.success('已回滚此字段');
+  }, [cellContextMenu.dataIndex, cellContextMenu.record, rowKeyStr]);
+
+  const handleRollbackRowChange = useCallback(() => {
+      const rowKey = cellContextMenu.record?.[JAVANAVI_ROW_KEY];
+      if (!isPresentReactKeyValue(rowKey)) return;
+      const keyStr = rowKeyStr(rowKey);
+      setAddedRows((prev) => prev.filter((row) => rowKeyStringOrNull(row?.[JAVANAVI_ROW_KEY], rowKeyStr) !== keyStr));
+      setDeletedRowKeys((prev) => {
+          if (!prev.has(keyStr)) return prev;
+          const next = new Set(prev);
+          next.delete(keyStr);
+          return next;
+      });
+      setModifiedRows((prev) => {
+          if (!(keyStr in prev)) return prev;
+          const next = { ...prev };
+          delete next[keyStr];
+          return next;
+      });
+      setSelectedRowKeys((prev) => prev.filter((key) => rowKeyStr(key) !== keyStr));
+      void message.success('已回滚此行');
+  }, [cellContextMenu.record, rowKeyStr]);
 
   const handleCellEditorSave = useCallback(() => {
       if (!cellEditorMeta) return;
@@ -4420,6 +4474,10 @@ const DataGrid: React.FC<DataGridProps> = ({
             copyToClipboard={copyToClipboard}
             onClose={closeCellContextMenu}
             onCellSetNull={handleCellSetNull}
+            canRollbackCellChange={canRollbackCellChange}
+            rollbackCellChange={handleRollbackCellChange}
+            canRollbackRowChange={canRollbackRowChange}
+            rollbackRowChange={handleRollbackRowChange}
             onOpenContextMenuRowEditor={handleOpenContextMenuRowEditor}
             onBatchFillToSelected={handleBatchFillToSelected}
             onPasteCopiedColumnsToSelectedRows={handlePasteCopiedColumnsToSelectedRows}

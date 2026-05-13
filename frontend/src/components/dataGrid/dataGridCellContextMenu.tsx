@@ -1,6 +1,6 @@
 import React from 'react';
 import { createPortal } from 'react-dom';
-import { EditOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
+import { EditOutlined, UndoOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
 import { JAVANAVI_ROW_KEY } from './dataGridCells';
 
 type DataGridContextRecord = Record<string, unknown>;
@@ -62,6 +62,10 @@ type DataGridCellContextMenuProps<TRecord = DataGridContextRecord> = {
     copyToClipboard: (text: string) => void;
     onClose: () => void;
     onCellSetNull: () => void;
+    canRollbackCellChange: boolean;
+    rollbackCellChange: () => void;
+    canRollbackRowChange: boolean;
+    rollbackRowChange: () => void;
     onOpenContextMenuRowEditor: () => void;
     onBatchFillToSelected: (record: TRecord, dataIndex: string) => void;
     onPasteCopiedColumnsToSelectedRows: (fallbackRowKey?: React.Key) => void;
@@ -86,6 +90,10 @@ export const DataGridCellContextMenu = <TRecord extends DataGridContextRecord,>(
     copyToClipboard,
     onClose,
     onCellSetNull,
+    canRollbackCellChange,
+    rollbackCellChange,
+    canRollbackRowChange,
+    rollbackRowChange,
     onOpenContextMenuRowEditor,
     onBatchFillToSelected,
     onPasteCopiedColumnsToSelectedRows,
@@ -134,6 +142,8 @@ export const DataGridCellContextMenu = <TRecord extends DataGridContextRecord,>(
             {canModifyData && (
                 <>
                     {renderAction('设置为 NULL', onCellSetNull)}
+                    {renderAction('回滚此字段', rollbackCellChange, { icon: <UndoOutlined style={{ marginRight: 8 }} />, disabled: !canRollbackCellChange })}
+                    {renderAction('回滚此行', rollbackRowChange, { icon: <UndoOutlined style={{ marginRight: 8 }} />, disabled: !canRollbackRowChange })}
                     {renderAction('编辑本行', onOpenContextMenuRowEditor, { icon: <EditOutlined style={{ marginRight: 8 }} /> })}
                     {renderAction(`填充到选中行 (${selectedRowKeysLength})`, () => {
                         if (menuState.record) onBatchFillToSelected(menuState.record, menuState.dataIndex);
