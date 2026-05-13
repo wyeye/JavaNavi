@@ -2,6 +2,7 @@ import { resolveEffectiveSSLMode } from '../utils/sslMode';
 import { connection, sync, app, redis, schemaSync } from './models';
 import type { ApiPayload, DataRow, RedisCursor, RedisHashFieldsInput, RedisListPushOptions, UnknownRecord } from './contracts';
 import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
+import { resolveSelectedSqlFilePath } from './sqlFileSelection';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
 
 export type QueryResult = connection.QueryResult;
@@ -763,7 +764,7 @@ export async function OpenSQLFile(): Promise<connection.QueryResult> {
   const selected = await SelectLocalFile('sql');
   if (!selected.success) return selected;
   const selectedData = recordValue(selected.data);
-  const selectedPath = firstNonEmptyText(selectedData.path, selectedData.filePath, selected.data);
+  const selectedPath = resolveSelectedSqlFilePath(selectedData);
   if (!selectedPath) {
     return apiEnvelopeToQueryResult({ success: false, error: { message: 'SQL file selection was cancelled.' }, data: null }, 'SQL file opened');
   }

@@ -1986,14 +1986,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       await openSQLFileForContext({ connectionId, dbName });
   };
 
-  const handleOpenSQLFileFromToolbar = async () => {
-      const ctx = useStore.getState().activeContext;
-      if (!ctx?.connectionId) {
-          message.warning(t('sidebar.msg.selectConnOrDb'));
-          return;
-      }
-      await openSQLFileForContext({ connectionId: ctx.connectionId, dbName: ctx.dbName || undefined });
-  };
 
   const openSQLFileForContext = async (context: { connectionId: string; dbName?: string }) => {
       if (isJavaNaviDesktopRuntime()) {
@@ -3311,7 +3303,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
              {
                  key: 'open-sql-file',
                  label: t('sidebar.menu.runExternalSql'),
-                 icon: <FileAddOutlined />,
+                 icon: <ConsoleSqlOutlined />,
                  onClick: () => handleRunSQLFile(node)
              },
              { type: 'divider' },
@@ -3533,7 +3525,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
              {
                  key: 'run-sql',
                  label: t('sidebar.menu.runExternalSql'),
-                 icon: <FileAddOutlined />,
+                 icon: <ConsoleSqlOutlined />,
                  onClick: () => handleRunSQLFile(node)
              }
        ];
@@ -4087,9 +4079,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             </Tooltip>
             <Tooltip title={t('sidebar.tooltip.batchDbs')}>
                 <Button size="small" type="text" icon={<DatabaseOutlined />} onClick={() => openBatchDatabaseModal()} style={{ color: darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)' }} />
-            </Tooltip>
-            <Tooltip title={t('sidebar.tooltip.runExternalSql')}>
-                <Button size="small" type="text" icon={<FileAddOutlined />} onClick={handleOpenSQLFileFromToolbar} style={{ color: darkMode ? 'rgba(255,255,255,0.65)' : 'rgba(0,0,0,0.65)' }} />
             </Tooltip>
         </div>
 
