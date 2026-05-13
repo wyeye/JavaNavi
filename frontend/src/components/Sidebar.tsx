@@ -1312,6 +1312,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       });
   };
 
+  const handleCopySidebarNodeName = (copyName: string) => {
+      void navigator.clipboard.writeText(copyName)
+          .then(() => message.success(t('sidebar.msg.copyNameSuccess', { name: copyName })))
+          .catch(() => message.error(t('sidebar.msg.copyNameFailed')));
+  };
+
   const handleSidebarTreeKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
       const isCopy = (event.ctrlKey || event.metaKey)
           && !event.altKey
@@ -1326,9 +1332,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (!copyName) return;
 
       event.preventDefault();
-      void navigator.clipboard.writeText(copyName)
-          .then(() => message.success(t('sidebar.msg.copyNameSuccess', { name: copyName })))
-          .catch(() => message.error(t('sidebar.msg.copyNameFailed')));
+      void handleCopySidebarNodeName(copyName);
   };
 
   const onDoubleClick = (_event: React.MouseEvent | null, node: SidebarEventNode) => {
@@ -3974,8 +3978,21 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
   const onRightClick = ({ event, node }: SidebarRightClickInfo) => {
-      const items = getNodeMenuItems(node);
-      if (items && items.length > 0) {
+      const nodeItems = getNodeMenuItems(node) || [];
+      const copyableNodeName = resolveCopyableSidebarNodeName(node);
+      const copyNameMenuItem: NonNullable<MenuProps['items']>[number] | null = copyableNodeName
+          ? {
+              key: 'copy-name',
+              label: t('sidebar.menu.copyName'),
+              icon: <CopyOutlined />,
+              onClick: () => handleCopySidebarNodeName(copyableNodeName)
+          }
+          : null;
+      const copyNameDivider: NonNullable<MenuProps['items']>[number] = { type: 'divider' };
+      const items = copyNameMenuItem && nodeItems.length === 0
+          ? [copyNameMenuItem]
+          : copyNameMenuItem ? [copyNameMenuItem, copyNameDivider, ...nodeItems] : nodeItems;
+      if (items.length > 0) {
           setContextMenu({
               x: event.clientX,
               y: event.clientY,
