@@ -149,6 +149,7 @@ import {
     readVirtualHorizontalOffset,
     resolveHorizontalWheelDelta,
 } from './dataGrid/dataGridScrollSync';
+import { translate } from '../i18n';
 export { JAVANAVI_ROW_KEY } from './dataGrid/dataGridCells';
 
 type Item = DataGridItem;
@@ -1676,6 +1677,27 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [addedRows, rowKeyStr]);
 
   const modifiedRowKeySet = useMemo(() => new Set(Object.keys(modifiedRows)), [modifiedRows]);
+  const dirtyCellKeySet = useMemo(() => {
+      const originalRowsByKey = new Map<string, Item>();
+      data.forEach((row) => {
+          const key = row?.[JAVANAVI_ROW_KEY];
+          if (!isPresentReactKeyValue(key)) return;
+          originalRowsByKey.set(rowKeyStr(key), row);
+      });
+
+      const writableColumns = new Set(columnNames);
+      const next = new Set<string>();
+      Object.entries(modifiedRows).forEach(([keyStr, patch]) => {
+          if (!patch || typeof patch !== 'object') return;
+          const originalRow = originalRowsByKey.get(keyStr);
+          Object.entries(patch).forEach(([columnName, value]) => {
+              if (columnName === JAVANAVI_ROW_KEY || !writableColumns.has(columnName)) return;
+              if (originalRow && isCellValueEqualForDiff(originalRow[columnName], value)) return;
+              next.add(makeCellKey(keyStr, columnName));
+          });
+      });
+      return next;
+  }, [columnNames, data, modifiedRows, rowKeyStr]);
   const rowClassName = useCallback((record: Item) => {
       const k = record?.[JAVANAVI_ROW_KEY];
       if (!isPresentReactKeyValue(k)) return '';
@@ -2398,10 +2420,16 @@ const DataGrid: React.FC<DataGridProps> = ({
           ...col,
           onCell: (record: Item) => {
               const rowKey = record?.[JAVANAVI_ROW_KEY];
+              const keyStr = isPresentReactKeyValue(rowKey) ? rowKeyStr(rowKey) : '';
+              const isDirtyCell = keyStr ? dirtyCellKeySet.has(makeCellKey(keyStr, dataIndex)) : false;
               const cellProps: DataGridCellProps = {
                   'data-row-key': rowKey === undefined || rowKey === null ? undefined : String(rowKey),
                   'data-col-name': dataIndex,
               };
+              if (isDirtyCell) {
+                  cellProps.className = 'data-grid-cell-dirty';
+                  cellProps['data-cell-dirty'] = 'true';
+              }
               // 数据预览面板：单击单元格时更新聚焦信息
               cellProps.onClick = () => {
                   if (dataPanelOpenRef.current) {
@@ -2474,7 +2502,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               return originalRenderContent;
           }
       };
-  }), [columns, enableInlineEditableCell, enableVirtual, handleCellSave, openCellEditor, handleVirtualCellActivate, showCellContextMenu, columnMetaMap, columnMetaMapByLowerName]);
+  }), [columns, dirtyCellKeySet, enableInlineEditableCell, enableVirtual, handleCellSave, openCellEditor, handleVirtualCellActivate, rowKeyStr, showCellContextMenu, columnMetaMap, columnMetaMapByLowerName]);
 
   const writableColumnNames = useMemo(() => {
       const locatorColumns = new Set<string>([
@@ -2543,12 +2571,14 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, [copiedRowsForPaste, columnNames]);
 
   const pendingChangeSummary = useMemo(() => buildDataGridModificationRiskSummary({
+      language,
       tableName,
       dbName,
       inserts: addedRows,
       updates: Object.values(modifiedRows),
       deletes: Array.from(deletedRowKeys),
-  }), [addedRows, modifiedRows, deletedRowKeys, tableName, dbName]);
+  }), [addedRows, modifiedRows, deletedRowKeys, tableName, dbName, language]);
+  const pendingChangesLabel = useMemo(() => translate(language, 'dataGrid.commit.pendingLabel'), [language]);
 
   const handleDeleteSelected = () => {
       const selectedCount = selectedRowKeys.length;
@@ -2602,6 +2632,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       }
 
       const summary = buildDataGridModificationRiskSummary({
+          language,
           tableName,
           dbName,
           inserts,
@@ -4008,6 +4039,7 @@ const DataGrid: React.FC<DataGridProps> = ({
             handleCommit={handleCommit}
             changeCount={addedRows.length + Object.keys(modifiedRows).length + deletedRowKeys.size}
             changeSummaryText={pendingChangeSummary.shortText}
+            pendingChangesLabel={pendingChangesLabel}
             riskLevel={pendingChangeSummary.level}
             onRollback={() => {
                 setAddedRows([]);

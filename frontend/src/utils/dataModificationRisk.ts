@@ -1,4 +1,5 @@
 export type DataModificationRiskLevel = 'low' | 'medium' | 'high';
+export type DataModificationRiskLanguage = 'en' | 'zh';
 
 export type DataModificationRiskSummary = {
   level: DataModificationRiskLevel;
@@ -8,6 +9,7 @@ export type DataModificationRiskSummary = {
 };
 
 type DataGridModificationRiskInput = {
+  language?: DataModificationRiskLanguage;
   tableName?: string;
   dbName?: string;
   inserts?: unknown[];
@@ -87,7 +89,20 @@ const riskLevelFromDeletes = (deleteCount: number, structuralDeleteCount = 0): D
   return 'medium';
 };
 
+const buildDataGridPendingRowsText = (
+  language: DataModificationRiskLanguage,
+  insertCount: number,
+  updateCount: number,
+  deleteCount: number,
+): string => {
+  if (language === 'zh') {
+    return `待提交：新增 ${insertCount} 行，更新 ${updateCount} 行，删除 ${deleteCount} 行`;
+  }
+  return `Pending: INSERT ${insertCount} rows, UPDATE ${updateCount} rows, DELETE ${deleteCount} rows`;
+};
+
 export const buildDataGridModificationRiskSummary = ({
+  language = 'en',
   tableName,
   dbName,
   inserts = [],
@@ -101,7 +116,7 @@ export const buildDataGridModificationRiskSummary = ({
   const target = compactJoin([dbName ? `库 ${dbName}` : '', tableName ? `表 ${tableName}` : '']);
   const lines = [
     `目标：${target || '当前表'}`,
-    `待提交：INSERT ${insertCount} rows，UPDATE ${updateCount} rows，DELETE ${deleteCount} rows`,
+    buildDataGridPendingRowsText(language, insertCount, updateCount, deleteCount),
     deleteCount > 0 ? '包含删除行操作，请确认已了解影响范围。' : '本次不包含删除行操作。',
   ];
   return {

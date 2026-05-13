@@ -255,10 +255,21 @@ export const buildDataGridCssText = ({
                 .${gridId} .row-added > .ant-table-cell { background-color: ${rowAddedBg} !important; color: ${darkMode ? '#e6fffb' : 'inherit'}; }
                 .${gridId} .row-modified td,
                 .${gridId} .row-modified > .ant-table-cell { background-color: ${rowModBg} !important; color: ${darkMode ? '#e6f7ff' : 'inherit'}; }
+                .${gridId} .ant-table-tbody > tr > td.data-grid-cell-dirty,
+                .${gridId} .ant-table-tbody .ant-table-row > .ant-table-cell.data-grid-cell-dirty,
+                .${gridId} .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell.data-grid-cell-dirty {
+                    background-color: ${darkMode ? 'rgba(250, 173, 20, 0.24)' : 'rgba(255, 251, 230, 0.98)'} !important;
+                    box-shadow: inset 0 0 0 2px ${darkMode ? 'rgba(255, 214, 102, 0.74)' : 'rgba(250, 173, 20, 0.78)'} !important;
+                }
                 .${gridId} .ant-table-tbody > tr.row-added:hover > td,
                 .${gridId} .ant-table-tbody .ant-table-row.row-added:hover > .ant-table-cell { background-color: ${rowAddedHover} !important; }
                 .${gridId} .ant-table-tbody > tr.row-modified:hover > td,
                 .${gridId} .ant-table-tbody .ant-table-row.row-modified:hover > .ant-table-cell { background-color: ${rowModHover} !important; }
+                .${gridId} .ant-table-tbody > tr.row-modified:hover > td.data-grid-cell-dirty,
+                .${gridId} .ant-table-tbody .ant-table-row.row-modified:hover > .ant-table-cell.data-grid-cell-dirty,
+                .${gridId} .ant-table-tbody-virtual-holder .ant-table-row:hover > .ant-table-cell.data-grid-cell-dirty {
+                    background-color: ${darkMode ? 'rgba(250, 173, 20, 0.32)' : 'rgba(255, 247, 204, 0.98)'} !important;
+                }
                 .${gridId} .ant-table-tbody > tr > td[data-col-name],
                 .${gridId} .ant-table-tbody .ant-table-row > .ant-table-cell[data-col-name],
                 .${gridId} .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-col-name] {
