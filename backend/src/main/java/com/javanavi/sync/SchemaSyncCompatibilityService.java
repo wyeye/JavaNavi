@@ -735,8 +735,9 @@ public class SchemaSyncCompatibilityService {
     private static TableSummaryDto matchTable(List<TableSummaryDto> tables, String tableName) {
         String normalized = normalizeTableName(tableName);
         for (TableSummaryDto table : tables) {
-            String candidate = normalizeTableName(qualifiedTableName(table));
-            if (Objects.equals(candidate, normalized)) {
+            String bareCandidate = normalizeTableName(table.tableName());
+            String qualifiedCandidate = normalizeTableName(qualifiedTableName(table));
+            if (Objects.equals(bareCandidate, normalized) || Objects.equals(qualifiedCandidate, normalized)) {
                 return table;
             }
         }
