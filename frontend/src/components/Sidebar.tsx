@@ -1947,6 +1947,8 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
   };
 
+  const areAllBatchDatabasesChecked = batchDatabases.length > 0 && batchDatabases.every(db => checkedDbKeys.includes(db.key));
+
   const handleInvertSelectionDb = () => {
       const allKeys = batchDatabases.map(db => db.key);
       const newChecked = allKeys.filter(k => !checkedDbKeys.includes(k));
@@ -4505,15 +4507,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                         <Space>
                             <Button
                                 size="small"
-                                onClick={() => handleCheckAllDb(true)}
+                                onClick={() => handleCheckAllDb(!areAllBatchDatabasesChecked)}
                             >
-                                {t('common.selectAll')}
-                            </Button>
-                            <Button
-                                size="small"
-                                onClick={() => handleCheckAllDb(false)}
-                            >
-                                {t('common.deselectAll')}
+                                {areAllBatchDatabasesChecked ? t('common.deselectAll') : t('common.selectAll')}
                             </Button>
                             <Button
                                 size="small"
