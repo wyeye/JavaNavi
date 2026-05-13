@@ -640,14 +640,14 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
       setAnalyzing(false);
   };
 
-  const openSchemaPreview = async (table: string) => {
+  const openSchemaPreview = async (table: string, activeTab: string = 'schema') => {
       if (!table) return;
       const sConn = connections.find(c => c.id === sourceConnId)!;
       const tConn = connections.find(c => c.id === targetConnId)!;
 
       setPreviewOpen(true);
       setPreviewTable(table);
-      setPreviewActiveTab('schema');
+      setPreviewActiveTab(activeTab);
       setPreviewLoading(true);
       setPreviewData(null);
       setSchemaPreviewData(null);
@@ -1013,6 +1013,18 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
           : Number(previewData?.totalInserts || 0) + Number(previewData?.totalUpdates || 0) + Number(previewData?.totalDeletes || 0) > 0,
       [syncDomain, previewData],
   );
+  const previewTabKeys = useMemo(() => {
+      const keys: string[] = [];
+      if (previewHasSchemaStatements) {
+          keys.push('schema');
+      }
+      if (previewHasDataDiff) {
+          keys.push('insert', 'update', 'delete');
+      }
+      keys.push('sql');
+      return keys;
+  }, [previewHasSchemaStatements, previewHasDataDiff]);
+  const resolvedPreviewActiveTab = previewTabKeys.includes(previewActiveTab) ? previewActiveTab : previewTabKeys[0];
 
   const dataExecutionRiskSummary = useMemo(() => buildDataSyncExecutionRiskSummary({
       syncMode,
@@ -1676,9 +1688,10 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                                   key: 'preview',
                                   width: 150,
                                   render: (_: unknown, r: SchemaDiffRow) => (
-                                      <Button size="small" onClick={() => openSchemaPreview(r.table)}>
-                                          查看
-                                      </Button>
+                                      <div style={{ display: 'flex', gap: 6 }}>
+                                          <Button size="small" disabled={analyzing} onClick={() => openSchemaPreview(r.table)}>查看</Button>
+                                          <Button size="small" disabled={analyzing} onClick={() => openSchemaPreview(r.table, 'sql')}>SQL预览</Button>
+                                      </div>
                                   ),
                               },
                           ]}
@@ -1819,7 +1832,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                 )}
                 <Divider />
                 <Tabs
-                    activeKey={previewActiveTab}
+                    activeKey={resolvedPreviewActiveTab}
                     onChange={setPreviewActiveTab}
                     items={[
                         ...(previewHasSchemaStatements ? (() => {
