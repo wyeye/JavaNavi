@@ -556,29 +556,53 @@ public class DataSyncCompatibilityService {
         for (String table : request.tables()) {
             throwIfCancelled(request.jobId());
             TablePreparation preparation = previewTargetTablePreparation(request, table);
-            SourceQueryContext context = loadTableSyncContextPaged(request, table, true, true);
-            SourceQueryDiff diff = sourceQueryDiff(context);
-            inserted += diff.inserts().size();
-            updated += diff.updates().size();
-            deleted += diff.deletes().size();
-            tableSummaries.add(orderedMap(
-                    "table", context.table(),
-                    "pkColumn", context.pkColumn(),
-                    "canSync", true,
-                    "inserts", diff.inserts().size(),
-                    "updates", diff.updates().size(),
-                    "deletes", diff.deletes().size(),
-                    "same", diff.same(),
-                    "schemaDiffCount", preparation.schemaDiffCount(),
-                    "message", messages.message("sync.jdbcDiffDone"),
-                    "hasSchema", preparation.schemaDiffCount() > 0,
-                    "targetTableExists", preparation.targetTableExists(),
-                    "plannedAction", preparation.plannedAction(),
-                    "warnings", preparation.warnings(),
-                    "unsupportedObjects", List.of(),
-                    "indexesToCreate", preparation.indexesToCreate(),
-                    "indexesSkipped", preparation.indexesSkipped()
-            ));
+            try {
+                SourceQueryContext context = loadTableSyncContextPaged(request, table, true, true);
+                SourceQueryDiff diff = sourceQueryDiff(context);
+                inserted += diff.inserts().size();
+                updated += diff.updates().size();
+                deleted += diff.deletes().size();
+                tableSummaries.add(orderedMap(
+                        "table", context.table(),
+                        "pkColumn", context.pkColumn(),
+                        "canSync", true,
+                        "inserts", diff.inserts().size(),
+                        "updates", diff.updates().size(),
+                        "deletes", diff.deletes().size(),
+                        "same", diff.same(),
+                        "schemaDiffCount", preparation.schemaDiffCount(),
+                        "message", messages.message("sync.jdbcDiffDone"),
+                        "hasSchema", preparation.schemaDiffCount() > 0,
+                        "targetTableExists", preparation.targetTableExists(),
+                        "plannedAction", preparation.plannedAction(),
+                        "warnings", preparation.warnings(),
+                        "unsupportedObjects", List.of(),
+                        "indexesToCreate", preparation.indexesToCreate(),
+                        "indexesSkipped", preparation.indexesSkipped()
+                ));
+            } catch (DataSyncCancelledException cancelled) {
+                throw cancelled;
+            } catch (RuntimeException error) {
+                String errorMessage = tableErrorMessage(error);
+                tableSummaries.add(orderedMap(
+                        "table", table,
+                        "pkColumn", "",
+                        "canSync", false,
+                        "inserts", 0,
+                        "updates", 0,
+                        "deletes", 0,
+                        "same", 0,
+                        "schemaDiffCount", preparation.schemaDiffCount(),
+                        "message", errorMessage,
+                        "hasSchema", preparation.schemaDiffCount() > 0,
+                        "targetTableExists", preparation.targetTableExists(),
+                        "plannedAction", preparation.plannedAction(),
+                        "warnings", preparation.warnings(),
+                        "unsupportedObjects", List.of(errorMessage),
+                        "indexesToCreate", preparation.indexesToCreate(),
+                        "indexesSkipped", preparation.indexesSkipped()
+                ));
+            }
         }
         return orderedMap(
                 "success", true,
@@ -594,6 +618,11 @@ public class DataSyncCompatibilityService {
                 "jdbcBacked", true,
                 "tableSyncBacked", true
         );
+    }
+
+    private static String tableErrorMessage(RuntimeException error) {
+        String message = text(error == null ? null : error.getMessage());
+        return message.isBlank() ? "Table diff analysis failed." : message;
     }
 
     private Map<String, Object> previewJdbcTableSync(SyncRequest request, String table, int limit) {
