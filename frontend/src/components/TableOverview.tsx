@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
-import { Input, Spin, Empty, Dropdown, message, Tooltip, Modal, Button } from 'antd';
+import { Input, Spin, Empty, Dropdown, message, Tooltip, Modal, Button, Checkbox, Radio, Space } from 'antd';
+import type { MenuProps } from 'antd';
 import { TableOutlined, SearchOutlined, ReloadOutlined, SortAscendingOutlined, DatabaseOutlined, ConsoleSqlOutlined, EditOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, ExportOutlined, AppstoreOutlined, UnorderedListOutlined, WarningOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
-import { ClearTables, DBQuery, DBShowCreateTable, ExportTable, DropTable, RenameTable, TruncateTables } from '@compat/javanaviApp';
+import { ClearTables, CopyTables, DBQuery, DBShowCreateTable, ExportTable, DropTable, RenameTable, TruncateTables } from '@compat/javanaviApp';
 import type { ConnectionConfig, TabData } from '../types';
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
@@ -11,6 +12,7 @@ import { getTableDataDangerActionMeta, supportsTableTruncateAction, type TableDa
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
+import { isEditableElement } from '../utils/shortcuts';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
 import {
     TABLE_OVERVIEW_RENDER_BATCH_SIZE,
@@ -42,6 +44,7 @@ interface TableStatRow {
 type SortField = TableOverviewSortField;
 type SortOrder = TableOverviewSortOrder;
 type ViewMode = 'card' | 'list';
+type CopyTableMode = 'structure' | 'structureData';
 
 const formatSize = (bytes: number): string => {
     if (!bytes || bytes <= 0) return '—';
@@ -175,6 +178,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const connections = useStore(state => state.connections);
     const theme = useStore(state => state.theme);
     const addTab = useStore(state => state.addTab);
+    const activeTabId = useStore(state => state.activeTabId);
     const setActiveContext = useStore(state => state.setActiveContext);
     const language = useStore(state => state.language);
     const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
@@ -187,6 +191,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
     const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [visibleTableLimit, setVisibleTableLimit] = useState(TABLE_OVERVIEW_RENDER_BATCH_SIZE);
+    const [selectedTableNames, setSelectedTableNames] = useState<string[]>([]);
+    const [copyModalOpen, setCopyModalOpen] = useState(false);
+    const [copyTableMode, setCopyTableMode] = useState<CopyTableMode>('structure');
+    const [copyTablePrefix, setCopyTablePrefix] = useState('');
+    const [copyTableSuffix, setCopyTableSuffix] = useState('_copy');
     const deferredSearchText = useDeferredValue(searchText);
     const isSearchPending = searchText !== deferredSearchText;
 
@@ -245,6 +254,20 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     ), [sortedFiltered, visibleTableLimit]);
 
     const visibleTables = visibleOverview.visibleRows;
+    const selectedTableSet = useMemo(() => new Set(selectedTableNames), [selectedTableNames]);
+    const selectedTableCount = selectedTableNames.length;
+    const filteredTableNames = useMemo(() => sortedFiltered.map(table => table.name), [sortedFiltered]);
+    const allFilteredTablesSelected = filteredTableNames.length > 0 && filteredTableNames.every(name => selectedTableSet.has(name));
+    const visibleTableNames = useMemo(() => visibleTables.map(table => table.name), [visibleTables]);
+    const visibleSelectedCount = useMemo(
+        () => visibleTableNames.filter(name => selectedTableSet.has(name)).length,
+        [selectedTableSet, visibleTableNames]
+    );
+
+    useEffect(() => {
+        const existingNames = new Set(tables.map(table => table.name));
+        setSelectedTableNames(prev => prev.filter(name => existingNames.has(name)));
+    }, [tables]);
 
     const openTable = useCallback((table: TableStatRow) => {
         if (!connection) return;
@@ -398,6 +421,155 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         });
     }, [buildConfig, tab.dbName, loadData]);
 
+    const toggleSelectedTable = useCallback((tableName: string, checked: boolean) => {
+        setSelectedTableNames(prev => {
+            const next = new Set(prev);
+            if (checked) {
+                next.add(tableName);
+            } else {
+                next.delete(tableName);
+            }
+            return Array.from(next);
+        });
+    }, []);
+
+    const rowSelection = useMemo(() => ({
+        selectedRowKeys: selectedTableNames,
+        onChange: (keys: React.Key[]) => setSelectedTableNames(keys.map(String)),
+    }), [selectedTableNames]);
+
+    const selectVisibleTables = useCallback((checked: boolean) => {
+        setSelectedTableNames(prev => {
+            const next = new Set(prev);
+            visibleTableNames.forEach((name) => {
+                if (checked) {
+                    next.add(name);
+                } else {
+                    next.delete(name);
+                }
+            });
+            return Array.from(next);
+        });
+    }, [visibleTableNames]);
+
+    const handleTableOverviewSelectAll = useCallback((event: Pick<KeyboardEvent | React.KeyboardEvent<HTMLDivElement>, 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'key' | 'target' | 'preventDefault'>) => {
+        if (copyModalOpen) {
+            return;
+        }
+        if (!(event.ctrlKey || event.metaKey) || event.altKey || event.shiftKey || event.key.toLowerCase() !== 'a') {
+            return;
+        }
+        if (isEditableElement(event.target)) {
+            return;
+        }
+        event.preventDefault();
+        setSelectedTableNames(allFilteredTablesSelected ? [] : filteredTableNames);
+    }, [allFilteredTablesSelected, copyModalOpen, filteredTableNames]);
+
+    const handleTableOverviewKeyDown = useCallback((event: React.KeyboardEvent<HTMLDivElement>) => {
+        handleTableOverviewSelectAll(event);
+    }, [handleTableOverviewSelectAll]);
+
+    useEffect(() => {
+        if (activeTabId !== tab.id) {
+            return;
+        }
+        const onKeyDown = (event: KeyboardEvent) => handleTableOverviewSelectAll(event);
+        window.addEventListener('keydown', onKeyDown);
+        return () => window.removeEventListener('keydown', onKeyDown);
+    }, [activeTabId, handleTableOverviewSelectAll, tab.id]);
+
+    const openCopyTablesModal = useCallback((tableNames?: string[]) => {
+        const names = tableNames && tableNames.length > 0 ? tableNames : rowSelection.selectedRowKeys.map(String);
+        if (names.length === 0) {
+            message.warning('请选择要复制的表');
+            return;
+        }
+        setSelectedTableNames(names);
+        setCopyTableMode('structure');
+        setCopyTablePrefix('');
+        setCopyTableSuffix('_copy');
+        setCopyModalOpen(true);
+    }, [rowSelection.selectedRowKeys]);
+
+    const handleCopyTables = useCallback(async () => {
+        const config = buildConfig();
+        const targetSuffix = copyTableSuffix.trim();
+        const targetPrefix = copyTablePrefix.trim();
+        if (!config) return;
+        if (selectedTableNames.length === 0) {
+            message.warning('请选择要复制的表');
+            return Promise.reject();
+        }
+        if (!targetPrefix && !targetSuffix) {
+            message.error('目标表前缀或后缀至少填写一个');
+            return Promise.reject();
+        }
+        const hide = message.loading(`正在复制 ${selectedTableNames.length} 张表...`, 0);
+        try {
+            const res = await CopyTables(
+                buildRpcConnectionConfig(config),
+                tab.dbName || '',
+                selectedTableNames,
+                targetPrefix,
+                targetSuffix,
+                copyTableMode === 'structureData'
+            );
+            hide();
+            if (res.success) {
+                message.success(`已复制 ${selectedTableNames.length} 张表`);
+                setCopyModalOpen(false);
+                setSelectedTableNames([]);
+                await loadData();
+                return;
+            }
+            message.error('复制表失败: ' + res.message);
+            return Promise.reject();
+        } catch (e: unknown) {
+            hide();
+            message.error('复制表失败: ' + getErrorMessage(e));
+            return Promise.reject();
+        }
+    }, [buildConfig, copyTableMode, copyTablePrefix, copyTableSuffix, loadData, selectedTableNames, tab.dbName]);
+
+    const openNewQueryForTable = useCallback((tableName: string) => {
+        setActiveContext({ connectionId: tab.connectionId, dbName: tab.dbName || '' });
+        addTab({
+            id: `query-${Date.now()}`,
+            title: '新建查询',
+            type: 'query',
+            connectionId: tab.connectionId,
+            dbName: tab.dbName,
+            query: buildTableSelectQuery(metadataDialect, tableName),
+        });
+    }, [addTab, metadataDialect, setActiveContext, tab.connectionId, tab.dbName]);
+
+    const allowTruncate = supportsTableTruncateAction(connection?.config?.type || '', connection?.config?.driver);
+
+    const buildTableMenuItems = useCallback((table: TableStatRow): MenuProps['items'] => [
+        { key: 'new-query', label: '新建查询', icon: <ConsoleSqlOutlined />, onClick: () => openNewQueryForTable(table.name) },
+        { type: 'divider' },
+        { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(table) },
+        { key: 'copy-table', label: '复制表', icon: <CopyOutlined />, onClick: () => openCopyTablesModal([table.name]) },
+        { key: 'copy-structure', label: '复制表结构到剪贴板', icon: <CopyOutlined />, onClick: () => handleCopyStructure(table.name) },
+        { key: 'backup-table', label: '备份表 (SQL)', icon: <SaveOutlined />, onClick: () => handleExport(table.name, 'sql') },
+        { key: 'rename-table', label: '重命名表', icon: <EditOutlined />, onClick: () => handleRenameTable(table.name) },
+        { key: 'danger-zone', label: '危险操作', icon: <WarningOutlined />, children: [
+            ...(allowTruncate ? [{ key: 'truncate-table', label: '截断表', danger: true, onClick: () => handleTableDataDangerAction(table.name, 'truncate') }] : []),
+            { key: 'clear-table', label: '清空表', danger: true, onClick: () => handleTableDataDangerAction(table.name, 'clear') },
+            { key: 'drop-table', label: '删除表', icon: <DeleteOutlined />, danger: true, onClick: () => handleDeleteTable(table.name) }
+        ]},
+        { type: 'divider' },
+        { key: 'export', label: '导出表数据', icon: <ExportOutlined />, children: [
+            { key: 'export-csv', label: '导出 CSV', onClick: () => handleExport(table.name, 'csv') },
+            { key: 'export-xlsx', label: '导出 Excel (XLSX)', onClick: () => handleExport(table.name, 'xlsx') },
+            { key: 'export-json', label: '导出 JSON', onClick: () => handleExport(table.name, 'json') },
+            { key: 'export-md', label: '导出 Markdown', onClick: () => handleExport(table.name, 'md') },
+            { key: 'export-html', label: '导出 HTML', onClick: () => handleExport(table.name, 'html') },
+        ]},
+    ], [allowTruncate, handleCopyStructure, handleDeleteTable, handleExport, handleRenameTable, handleTableDataDangerAction, openCopyTablesModal, openDesign, openNewQueryForTable]);
+
+
     // --- Theme ---
     const cardBg = darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
     const cardHoverBg = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
@@ -428,7 +600,6 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const maxCombinedSize = useMemo(() => sortedFiltered.reduce((max, table) => {
         return Math.max(max, table.dataSize + table.indexSize);
     }, 0), [sortedFiltered]);
-    const allowTruncate = supportsTableTruncateAction(connection?.config?.type || '', connection?.config?.driver);
     const renderTableHoverTitle = useCallback((table: TableStatRow) => (
         <span style={{ whiteSpace: 'pre-line' }}>
             {buildTableHoverTitle({
@@ -449,7 +620,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     }
 
     return (
-        <div style={{ display: 'flex', flexDirection: 'column', height: '100%', background: containerBg, overflow: 'hidden' }}>
+        <div
+            tabIndex={0}
+            onKeyDown={handleTableOverviewKeyDown}
+            style={{ display: 'flex', flexDirection: 'column', height: '100%', background: containerBg, overflow: 'hidden', outline: 'none' }}
+        >
             {/* Toolbar */}
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', flexShrink: 0 }}>
                 <DatabaseOutlined style={{ fontSize: 16, color: accentColor }} />
@@ -457,6 +632,20 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 <span style={{ fontSize: 12, color: textMuted }}>
                     {tables.length} 张表 · {formatRows(totalRows)} 行 · {formatSize(totalSize)}
                 </span>
+                {sortedFiltered.length > 0 && (
+                    <Checkbox
+                        indeterminate={visibleSelectedCount > 0 && visibleSelectedCount < visibleTableNames.length}
+                        checked={visibleTableNames.length > 0 && visibleSelectedCount === visibleTableNames.length}
+                        onChange={e => selectVisibleTables(e.target.checked)}
+                    >
+                        选择当前列表
+                    </Checkbox>
+                )}
+                {selectedTableCount > 0 && (
+                    <Button size="small" icon={<CopyOutlined />} onClick={() => openCopyTablesModal()}>
+                        复制表 ({selectedTableCount})
+                    </Button>
+                )}
                 <div style={{ flex: 1 }} />
                 <Input
                     {...noAutoCapInputProps}
@@ -543,37 +732,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                 key={t.name}
                                 trigger={['contextMenu']}
                                 menu={{
-                                    items: [
-                                        { key: 'new-query', label: '新建查询', icon: <ConsoleSqlOutlined />, onClick: () => {
-                                            setActiveContext({ connectionId: tab.connectionId, dbName: tab.dbName || '' });
-                                            addTab({
-                                                id: `query-${Date.now()}`,
-                                                title: '新建查询',
-                                                type: 'query',
-                                                connectionId: tab.connectionId,
-                                                dbName: tab.dbName,
-                                                query: buildTableSelectQuery(metadataDialect, t.name),
-                                            });
-                                        }},
-                                        { type: 'divider' },
-                                        { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(t) },
-                                        { key: 'copy-structure', label: '复制表结构', icon: <CopyOutlined />, onClick: () => handleCopyStructure(t.name) },
-                                        { key: 'backup-table', label: '备份表 (SQL)', icon: <SaveOutlined />, onClick: () => handleExport(t.name, 'sql') },
-                                        { key: 'rename-table', label: '重命名表', icon: <EditOutlined />, onClick: () => handleRenameTable(t.name) },
-                                        { key: 'danger-zone', label: '危险操作', icon: <WarningOutlined />, children: [
-                                            ...(allowTruncate ? [{ key: 'truncate-table', label: '截断表', danger: true, onClick: () => handleTableDataDangerAction(t.name, 'truncate') }] : []),
-                                            { key: 'clear-table', label: '清空表', danger: true, onClick: () => handleTableDataDangerAction(t.name, 'clear') },
-                                            { key: 'drop-table', label: '删除表', icon: <DeleteOutlined />, danger: true, onClick: () => handleDeleteTable(t.name) }
-                                        ]},
-                                        { type: 'divider' },
-                                        { key: 'export', label: '导出表数据', icon: <ExportOutlined />, children: [
-                                            { key: 'export-csv', label: '导出 CSV', onClick: () => handleExport(t.name, 'csv') },
-                                            { key: 'export-xlsx', label: '导出 Excel (XLSX)', onClick: () => handleExport(t.name, 'xlsx') },
-                                            { key: 'export-json', label: '导出 JSON', onClick: () => handleExport(t.name, 'json') },
-                                            { key: 'export-md', label: '导出 Markdown', onClick: () => handleExport(t.name, 'md') },
-                                            { key: 'export-html', label: '导出 HTML', onClick: () => handleExport(t.name, 'html') },
-                                        ]},
-                                    ],
+                                    items: buildTableMenuItems(t),
                                 }}
                             >
                                 <div
@@ -591,6 +750,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                     onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = cardBg; (e.currentTarget as HTMLDivElement).style.borderColor = cardBorder; }}
                                 >
                                     <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                                        <Checkbox
+                                            checked={selectedTableSet.has(t.name)}
+                                            onChange={e => toggleSelectedTable(t.name, e.target.checked)}
+                                            onClick={e => e.stopPropagation()}
+                                        />
                                         <TableOutlined style={{ fontSize: 14, color: accentColor }} />
                                         <Tooltip title={renderTableHoverTitle(t)} mouseEnterDelay={0.4}>
                                             <span style={{ fontSize: 13, fontWeight: 600, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'block' }}>
@@ -629,37 +793,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                     key={t.name}
                                     trigger={['contextMenu']}
                                     menu={{
-                                        items: [
-                                            { key: 'new-query', label: '新建查询', icon: <ConsoleSqlOutlined />, onClick: () => {
-                                                setActiveContext({ connectionId: tab.connectionId, dbName: tab.dbName || '' });
-                                                addTab({
-                                                    id: `query-${Date.now()}`,
-                                                    title: '新建查询',
-                                                    type: 'query',
-                                                    connectionId: tab.connectionId,
-                                                    dbName: tab.dbName,
-                                                    query: buildTableSelectQuery(metadataDialect, t.name),
-                                                });
-                                            }},
-                                            { type: 'divider' },
-                                            { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(t) },
-                                            { key: 'copy-structure', label: '复制表结构', icon: <CopyOutlined />, onClick: () => handleCopyStructure(t.name) },
-                                            { key: 'backup-table', label: '备份表 (SQL)', icon: <SaveOutlined />, onClick: () => handleExport(t.name, 'sql') },
-                                            { key: 'rename-table', label: '重命名表', icon: <EditOutlined />, onClick: () => handleRenameTable(t.name) },
-                                            { key: 'danger-zone', label: '危险操作', icon: <WarningOutlined />, children: [
-                                                ...(allowTruncate ? [{ key: 'truncate-table', label: '截断表', danger: true, onClick: () => handleTableDataDangerAction(t.name, 'truncate') }] : []),
-                                                { key: 'clear-table', label: '清空表', danger: true, onClick: () => handleTableDataDangerAction(t.name, 'clear') },
-                                                { key: 'drop-table', label: '删除表', icon: <DeleteOutlined />, danger: true, onClick: () => handleDeleteTable(t.name) }
-                                            ]},
-                                            { type: 'divider' },
-                                            { key: 'export', label: '导出表数据', icon: <ExportOutlined />, children: [
-                                                { key: 'export-csv', label: '导出 CSV', onClick: () => handleExport(t.name, 'csv') },
-                                                { key: 'export-xlsx', label: '导出 Excel (XLSX)', onClick: () => handleExport(t.name, 'xlsx') },
-                                                { key: 'export-json', label: '导出 JSON', onClick: () => handleExport(t.name, 'json') },
-                                                { key: 'export-md', label: '导出 Markdown', onClick: () => handleExport(t.name, 'md') },
-                                                { key: 'export-html', label: '导出 HTML', onClick: () => handleExport(t.name, 'html') },
-                                            ]},
-                                        ],
+                                        items: buildTableMenuItems(t),
                                     }}
                                 >
                                     <div
@@ -702,6 +836,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                         >
                                             <div style={{ minWidth: 0, flex: '1 1 320px' }}>
                                                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
+                                                    <Checkbox
+                                                        checked={selectedTableSet.has(t.name)}
+                                                        onChange={e => toggleSelectedTable(t.name, e.target.checked)}
+                                                        onClick={e => e.stopPropagation()}
+                                                    />
                                                     <TableOutlined style={{ fontSize: 13, color: accentColor, flexShrink: 0 }} />
                                                     <Tooltip title={renderTableHoverTitle(t)} mouseEnterDelay={0.4}>
                                                         <span style={{ color: textPrimary, fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -767,6 +906,36 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                     </div>
                 )}
             </div>
+            <Modal
+                title={`复制表（${selectedTableCount}）`}
+                open={copyModalOpen}
+                okText="复制"
+                cancelText="取消"
+                onOk={handleCopyTables}
+                onCancel={() => setCopyModalOpen(false)}
+            >
+                <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                    <div style={{ color: textSecondary, fontSize: 12 }}>
+                        目标表名 = 前缀 + 原表名 + 后缀
+                    </div>
+                    <Input
+                        {...noAutoCapInputProps}
+                        value={copyTablePrefix}
+                        onChange={e => setCopyTablePrefix(e.target.value)}
+                        placeholder="目标表名前缀，可留空"
+                    />
+                    <Input
+                        {...noAutoCapInputProps}
+                        value={copyTableSuffix}
+                        onChange={e => setCopyTableSuffix(e.target.value)}
+                        placeholder="目标表名后缀，例如 _copy"
+                    />
+                    <Radio.Group value={copyTableMode} onChange={e => setCopyTableMode(e.target.value)}>
+                        <Radio value="structure">仅复制结构</Radio>
+                        <Radio value="structureData">复制结构与数据</Radio>
+                    </Radio.Group>
+                </Space>
+            </Modal>
         </div>
     );
 };

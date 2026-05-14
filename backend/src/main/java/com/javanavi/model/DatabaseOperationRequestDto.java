@@ -11,6 +11,8 @@ public record DatabaseOperationRequestDto(
         String name,
         String newName,
         List<String> tables,
-        Boolean includeData
+        Boolean includeData,
+        String targetPrefix,
+        String targetSuffix
 ) {
 }

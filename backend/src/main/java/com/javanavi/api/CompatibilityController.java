@@ -290,6 +290,18 @@ public class CompatibilityController {
         return ApiEnvelope.ok(databaseCompatibilityService.renameTable(request.connection(), request.database(), request.name(), request.newName()));
     }
 
+    @PostMapping("/ddl/copy-tables")
+    public ApiEnvelope<DatabaseOperationResultDto> copyTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
+        return ApiEnvelope.ok(databaseCompatibilityService.copyTables(
+                request.connection(),
+                request.database(),
+                request.tables(),
+                request.targetPrefix(),
+                request.targetSuffix(),
+                Boolean.TRUE.equals(request.includeData())
+        ));
+    }
+
     @PostMapping("/ddl/rename-view")
     public ApiEnvelope<DatabaseOperationResultDto> renameView(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.renameView(request.connection(), request.database(), request.name(), request.newName()));

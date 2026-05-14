@@ -57,6 +57,8 @@ public class I18nMessages {
         put("common.addSucceeded", "Added successfully.", "添加成功。");
         put("common.renameSucceeded", "Renamed successfully.", "重命名成功。");
         put("common.clearSucceeded", "Cleared successfully.", "清空成功。");
+        put("ddl.copyNameRequired", "Copied table name prefix or suffix is required.", "复制后的表名前缀或后缀至少需要填写一个。");
+        put("ddl.targetTableExists", "Target table already exists: {table}", "目标表已存在：{table}");
         put("redis.keyGone", "Redis key does not exist or has expired.", "Redis Key 不存在或已过期。");
         put("redis.commandRequired", "Command is required.", "命令不能为空。");
         put("redis.databaseRange", "Database index must be between 0 and 15.", "数据库索引必须在 0-15 之间。");
@@ -247,6 +249,7 @@ public class I18nMessages {
                 Map.entry("Connection package item is required.", "request.invalid"),
                 Map.entry("Connection id is required.", "request.invalid"),
                 Map.entry("At least one table is required.", "request.invalid"),
+                Map.entry("Copied table name prefix or suffix is required.", "ddl.copyNameRequired"),
                 Map.entry("New database name must differ from the old database name.", "request.invalid"),
                 Map.entry("Function signature must end with ')'.", "request.invalid"),
                 Map.entry("Function signature contains unsupported SQL control characters.", "request.invalid"),

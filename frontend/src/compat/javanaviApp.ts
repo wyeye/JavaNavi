@@ -362,6 +362,18 @@ export async function ClearTables(arg1:connection.ConnectionConfig,arg2:string,a
   return apiEnvelopeToQueryResult(payload, 'Tables cleared');
 }
 
+export async function CopyTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>,arg4:string,arg5:string,arg6:boolean): Promise<connection.QueryResult> {
+  const payload = await postJson('/ddl/copy-tables', {
+    connection: toConnectionPayload(arg1),
+    database: arg2,
+    tables: arg3,
+    targetPrefix: arg4,
+    targetSuffix: arg5,
+    includeData: arg6,
+  });
+  return apiEnvelopeToQueryResult(payload, 'Tables copied');
+}
+
 export async function ConfigureDriverRuntimeDirectory(arg1:string): Promise<connection.QueryResult> {
   const payload = await postJson('/drivers/runtime-directory', { path: arg1 });
   return apiEnvelopeToQueryResult(payload, 'Driver runtime directory configured');

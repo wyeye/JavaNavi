@@ -5,6 +5,7 @@ import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.connections.SavedConnectionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.i18n.LocalizedException;
 import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
 import com.javanavi.model.ColumnDefinitionDto;
@@ -347,6 +348,18 @@ public class DatabaseCompatibilityService {
 
     public DatabaseOperationResultDto renameTable(ConnectionConfigDto config, String requestedDatabase, String tableName, String newName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "rename-table", tableName, newName, requestedDatabase)));
+    }
+
+    public DatabaseOperationResultDto copyTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames, String targetPrefix, String targetSuffix, boolean includeData) {
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> copyTablesOnConnection(
+                connection,
+                config,
+                requestedDatabase,
+                tableNames,
+                targetPrefix,
+                targetSuffix,
+                includeData
+        )));
     }
 
     public DatabaseOperationResultDto renameView(ConnectionConfigDto config, String requestedDatabase, String viewName, String newName) {
@@ -901,6 +914,58 @@ public class DatabaseCompatibilityService {
             int affectedRows = Math.max(statement.executeUpdate(sql), 0);
             return new DatabaseOperationResultDto(operation, 1, affectedRows, List.of(), List.of(sql));
         }
+    }
+
+    private DatabaseOperationResultDto copyTablesOnConnection(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            List<String> tableNames,
+            String targetPrefix,
+            String targetSuffix,
+            boolean includeData
+    ) throws SQLException {
+        List<String> names = normalizedTableNames(tableNames);
+        String prefix = targetPrefix == null ? "" : targetPrefix.trim();
+        String suffix = targetSuffix == null ? "_copy" : targetSuffix.trim();
+        if (prefix.isBlank() && suffix.isBlank()) {
+            throw new LocalizedException("ddl.copyNameRequired");
+        }
+
+        String driver = jdbcConnectionFactory.normalizeDriver(config);
+        List<String> copiedTables = new ArrayList<>();
+        List<String> executed = new ArrayList<>();
+        int affected = 0;
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try (Statement statement = connection.createStatement()) {
+            for (String sourceName : names) {
+                TableRef sourceRef = tableRef(config, requestedDatabase, sourceName);
+                String targetTable = prefixedTableName(sourceRef.table(), prefix, suffix);
+                TableRef targetRef = sourceRef.withTable(targetTable);
+                if (tableExists(connection, targetRef)) {
+                    throw new LocalizedException("ddl.targetTableExists", "table", targetTable);
+                }
+
+                String createSql = copyTableStructureSql(driver, sourceRef, targetRef, includeData);
+                statement.execute(createSql);
+                executed.add(createSql);
+
+                if (includeData && !copyTableStructureSqlIncludesData(driver)) {
+                    String insertSql = copyTableDataSql(driver, sourceRef, targetRef);
+                    affected += Math.max(statement.executeUpdate(insertSql), 0);
+                    executed.add(insertSql);
+                }
+                copiedTables.add(targetTable);
+            }
+            connection.commit();
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+        return new DatabaseOperationResultDto(includeData ? "copy-tables-with-data" : "copy-tables", copiedTables.size(), affected, copiedTables, executed);
     }
 
     private String ddlSql(String driver, ConnectionConfigDto config, String operation, String name, String newName, String requestedDatabase) {
@@ -1983,6 +2048,8 @@ public class DatabaseCompatibilityService {
             return supplier.get();
         } catch (SQLException error) {
             throw new IllegalArgumentException(SecretRedactor.redact(error.getMessage()), error);
+        } catch (LocalizedException error) {
+            throw error;
         } catch (RuntimeException error) {
             throw new IllegalArgumentException(SecretRedactor.redact(error.getMessage()), error);
         }
@@ -2245,6 +2312,46 @@ public class DatabaseCompatibilityService {
 
     private static boolean isDeleteBackedTruncate(String driver) {
         return "sqlite".equals(driver) || "duckdb".equals(driver);
+    }
+
+    private static List<String> normalizedTableNames(List<String> tableNames) {
+        List<String> names = tableNames == null ? List.of() : tableNames.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::trim)
+                .distinct()
+                .toList();
+        if (names.isEmpty()) {
+            throw new IllegalArgumentException("At least one table is required.");
+        }
+        return names;
+    }
+
+    private static String prefixedTableName(String sourceTable, String prefix, String suffix) {
+        return requireText(nullToEmpty(prefix) + requireText(sourceTable, "table") + nullToEmpty(suffix), "newName");
+    }
+
+    private static String copyTableStructureSql(String driver, TableRef sourceRef, TableRef targetRef, boolean includeData) {
+        String sourceSqlName = tableSqlName(driver, sourceRef);
+        String targetSqlName = tableSqlName(driver, targetRef);
+        return switch (driver) {
+            case "mysql" -> "CREATE TABLE " + targetSqlName + " LIKE " + sourceSqlName;
+            case "postgresql" -> "CREATE TABLE " + targetSqlName + " (LIKE " + sourceSqlName + " INCLUDING ALL)";
+            case "sqlserver" -> includeData ? "SELECT * INTO " + targetSqlName + " FROM " + sourceSqlName : "SELECT TOP 0 * INTO " + targetSqlName + " FROM " + sourceSqlName;
+            default -> "CREATE TABLE " + targetSqlName + " AS SELECT * FROM " + sourceSqlName + " WHERE 1 = 0";
+        };
+    }
+
+    private static boolean copyTableStructureSqlIncludesData(String driver) {
+        return "sqlserver".equals(driver);
+    }
+
+    private static String copyTableDataSql(String driver, TableRef sourceRef, TableRef targetRef) {
+        String targetSqlName = tableSqlName(driver, targetRef);
+        String sourceSqlName = tableSqlName(driver, sourceRef);
+        if ("postgresql".equals(driver)) {
+            return "INSERT INTO " + targetSqlName + " OVERRIDING SYSTEM VALUE SELECT * FROM " + sourceSqlName;
+        }
+        return "INSERT INTO " + targetSqlName + " SELECT * FROM " + sourceSqlName;
     }
 
     private static boolean isDuckDbConnection(Connection connection) {
