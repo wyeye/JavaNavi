@@ -115,11 +115,11 @@ npm run desktop:build
 
 Desktop staging/build now uses the same backend jar semantics as Java Web. External JDBC drivers including MySQL, PostgreSQL, SQLite, DuckDB, Oracle, SQL Server, Dameng, TDengine, and ClickHouse are not bundled by default; Driver Manager shows them as **待下载** until they are downloaded on demand or uploaded manually as JDBC Jar(s).
 
-Desktop non-goals for the current shell: no signing/notarization, no automatic updater, no native UI rewrite, and no backend API redesign. See [Desktop documentation](docs/desktop-tauri.md) for essential lifecycle, logs, verification, and troubleshooting details.
+Desktop packages now include a Tauri automatic updater that checks the GitHub Release endpoint `https://github.com/wyeye/JavaNavi/releases/latest/download/latest.json` from the About dialog. Signing/notarization and native UI rewrite remain out of scope. See [Desktop documentation](docs/desktop-tauri.md) for lifecycle, updater, logs, verification, and troubleshooting details.
 
 ## GitHub Actions release builds
 
-The workflow at `.github/workflows/desktop-release.yml` builds unsigned Tauri desktop packages on GitHub-hosted AMD64 and arm64 runners for Linux, Windows, and macOS. Pull requests and pushes upload workflow artifacts; `v*` tags also publish those artifacts to the matching GitHub Release. The workflow uses the existing `npm run desktop:build` path, so CI exercises the same Java/Web/Desktop staging contract as local packaging.
+The workflow at `.github/workflows/desktop-release.yml` builds Tauri desktop packages on GitHub-hosted AMD64 and arm64 runners for Linux, Windows, and macOS. Branch pushes upload workflow artifacts; `v*` tags use `tauri-apps/tauri-action` to publish signed packages, signatures, and `latest.json` to the matching GitHub Release. The updater uses `TAURI_SIGNING_PRIVATE_KEY` and optional `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets.
 
 ## Key documentation
 

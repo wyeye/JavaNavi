@@ -109,13 +109,25 @@ The native menu exposes:
 - **Open Data Directory**
 - **Quit JavaNavi**
 
-## First-phase non-goals
+## Tauri automatic updater
 
-The first desktop phase intentionally does not configure:
+Packaged desktop builds use the Tauri v2 updater. The About dialog checks:
+
+```text
+https://github.com/wyeye/JavaNavi/releases/latest/download/latest.json
+```
+
+Release builds are produced by `.github/workflows/desktop-release.yml`. For `v*` tags, CI uses `tauri-apps/tauri-action` to upload signed packages, updater signatures, and `latest.json` to the GitHub Release. Configure these repository secrets before publishing updater-enabled releases:
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key has a password
+
+## Current non-goals
+
+The current desktop phase intentionally does not configure:
 
 - Windows code signing;
 - macOS notarization;
-- automatic updater;
 - native UI rewrite;
 - Spring Boot API redesign.
 

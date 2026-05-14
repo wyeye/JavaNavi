@@ -48,7 +48,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { ExportConnectionsPackage, GetAppInfo, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, ImportConnectionsPayload, LogWindowDiagnostic, SaveGlobalProxy, SaveLanguage, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveGlobalProxy, SaveLanguage, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -91,6 +91,13 @@ const mergeSavedConnections = (current: SavedConnection[], imported: SavedConnec
   return Array.from(merged.values());
 };
 
+type DesktopUpdateInfo = {
+  available: boolean;
+  currentVersion?: string;
+  version?: string;
+  body?: string;
+  date?: string;
+};
 
 type AppInfo = {
   version: string;
@@ -922,6 +929,10 @@ function App() {
   const isAboutOpenRef = React.useRef(false);
   const [aboutLoading, setAboutLoading] = useState(false);
   const [aboutInfo, setAboutInfo] = useState<{ version: string; author: string; buildTime?: string; repoUrl?: string; communityUrl?: string; communityName?: string; communityGroupNumber?: string } | null>(null);
+  const [desktopUpdateInfo, setDesktopUpdateInfo] = useState<DesktopUpdateInfo | null>(null);
+  const [desktopUpdateChecking, setDesktopUpdateChecking] = useState(false);
+  const [desktopUpdateInstalling, setDesktopUpdateInstalling] = useState(false);
+  const [desktopUpdateInstalled, setDesktopUpdateInstalled] = useState(false);
   const aboutDisplayVersion = resolveAboutDisplayVersion(runtimeBuildType, aboutInfo?.version);
 
   const isMacRuntime = runtimePlatform === 'darwin'
@@ -1108,6 +1119,40 @@ function App() {
       }
       setAboutLoading(false);
   }, [t]);
+
+  const checkDesktopUpdate = React.useCallback(async () => {
+      setDesktopUpdateChecking(true);
+      setDesktopUpdateInstalled(false);
+      const res = await CheckDesktopUpdate();
+      if (res?.success) {
+          const data = res.data as DesktopUpdateInfo;
+          setDesktopUpdateInfo(data);
+          if (data.available) {
+              void message.success(t('update.available', { version: data.version || t('common.unknown') }));
+          } else {
+              void message.info(t('update.upToDate'));
+          }
+      } else {
+          void message.error(t('update.checkFailed', { message: res?.message || t('message.unknownError') }));
+      }
+      setDesktopUpdateChecking(false);
+  }, [t]);
+
+  const installDesktopUpdate = React.useCallback(async () => {
+      setDesktopUpdateInstalling(true);
+      const res = await InstallDesktopUpdate();
+      if (res?.success) {
+          setDesktopUpdateInstalled(true);
+          void message.success(t('update.installed'));
+      } else {
+          void message.error(t('update.installFailed', { message: res?.message || t('message.unknownError') }));
+      }
+      setDesktopUpdateInstalling(false);
+  }, [t]);
+
+  const restartDesktopApp = React.useCallback(() => {
+      void RestartDesktopApp();
+  }, []);
 
   const handleNewQuery = useCallback(() => {
       let connId = '';
@@ -2397,6 +2442,38 @@ function App() {
                                     )}
                                 </div>
                             ) : null}
+                        </div>
+                    </div>
+                    <div style={utilityPanelStyle}>
+                        <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('update.title')}</div>
+                        <div style={{ display: 'grid', gap: 10 }}>
+                            <div style={utilityMutedTextStyle}>
+                                {desktopUpdateInstalled
+                                    ? t('update.restartRequired')
+                                    : desktopUpdateInfo
+                                        ? (desktopUpdateInfo.available
+                                            ? t('update.availableDescription', { version: desktopUpdateInfo.version || t('common.unknown') })
+                                            : t('update.currentDescription'))
+                                        : t('update.description')}
+                            </div>
+                            {desktopUpdateInfo?.body ? (
+                                <div style={{ ...utilityMutedTextStyle, whiteSpace: 'pre-wrap' }}>{desktopUpdateInfo.body}</div>
+                            ) : null}
+                            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+                                <Button loading={desktopUpdateChecking} onClick={() => { void checkDesktopUpdate(); }}>
+                                    {t('update.check')}
+                                </Button>
+                                {desktopUpdateInfo?.available && !desktopUpdateInstalled ? (
+                                    <Button type="primary" loading={desktopUpdateInstalling} onClick={() => { void installDesktopUpdate(); }}>
+                                        {t('update.install')}
+                                    </Button>
+                                ) : null}
+                                {desktopUpdateInstalled ? (
+                                    <Button type="primary" onClick={restartDesktopApp}>
+                                        {t('update.restart')}
+                                    </Button>
+                                ) : null}
+                            </div>
                         </div>
                     </div>
                     <div style={utilityPanelStyle}>

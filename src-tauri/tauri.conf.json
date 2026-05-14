@@ -14,7 +14,14 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": [
+      "deb",
+      "rpm",
+      "appimage",
+      "dmg",
+      "app",
+      "nsis"
+    ],
     "publisher": "wyeye",
     "homepage": "https://github.com/wyeye/JavaNavi",
     "category": "DeveloperTool",
@@ -30,6 +37,18 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "createUpdaterArtifacts": true
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEIxQjBCQjVGRDBBMTc3MjUKUldRbGQ2SFFYN3V3c1NQQ2ZEUGJIamhmRlBIRHdGeWc5YVNQdkQ4NjlUZlZsTU5BRVFqTGJ1b1cK",
+      "endpoints": [
+        "https://github.com/wyeye/JavaNavi/releases/latest/download/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
   }
 }
