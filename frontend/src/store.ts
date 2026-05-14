@@ -1,4 +1,5 @@
 import * as AIService from '@compat/aiService';
+import { DeleteSavedQuery, SaveConnectionTags, SaveSavedQueries, SaveSavedQuery } from '@compat/javanaviApp';
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
@@ -574,6 +575,8 @@ interface AppState {
   addConnectionTag: (tag: ConnectionTag) => void;
   updateConnectionTag: (tag: ConnectionTag) => void;
   removeConnectionTag: (id: string) => void;
+  replaceConnectionTags: (tags: ConnectionTag[]) => void;
+  replaceSavedQueries: (queries: SavedQuery[]) => void;
   moveConnectionToTag: (
     connectionId: string,
     targetTagId: string | null,
@@ -999,6 +1002,9 @@ const unwrapPersistedAppState = (
 };
 
 let shortcutOptionsExplicitlySet = false;
+let connectionTagsHydratingFromBackend = false;
+let connectionTagsPersistTimer: ReturnType<typeof setTimeout> | null = null;
+let savedQueriesHydratingFromBackend = false;
 
 const readPersistedShortcutOptions = (): ShortcutOptions | null => {
   if (typeof localStorage === "undefined") {
@@ -1035,6 +1041,66 @@ const runWithExplicitShortcutPersistence = (callback: () => void): void => {
     callback();
   } finally {
     shortcutOptionsExplicitlySet = false;
+  }
+};
+
+const persistConnectionTagsToBackend = (tags: ConnectionTag[]): void => {
+  if (connectionTagsHydratingFromBackend) {
+    return;
+  }
+  const safeTags = sanitizeConnectionTags(tags);
+  if (connectionTagsPersistTimer) {
+    clearTimeout(connectionTagsPersistTimer);
+  }
+  connectionTagsPersistTimer = setTimeout(() => {
+    connectionTagsPersistTimer = null;
+    SaveConnectionTags(safeTags).catch((error: unknown) => {
+      console.error("[Connection Tags Persist] 保存失败:", error);
+    });
+  }, 250);
+};
+
+export const replaceConnectionTagsFromBackend = (tags: ConnectionTag[]): void => {
+  connectionTagsHydratingFromBackend = true;
+  try {
+    useStore.getState().replaceConnectionTags(tags);
+  } finally {
+    connectionTagsHydratingFromBackend = false;
+  }
+};
+
+const persistSavedQueryToBackend = (query: SavedQuery): void => {
+  if (savedQueriesHydratingFromBackend) {
+    return;
+  }
+  const safeQuery = sanitizeSavedQueries([query])[0];
+  if (!safeQuery) {
+    return;
+  }
+  SaveSavedQuery(safeQuery).catch((error: unknown) => {
+    console.error("[Saved Query Persist] 保存失败:", error);
+  });
+};
+
+const deleteSavedQueryFromBackend = (id: string): void => {
+  if (savedQueriesHydratingFromBackend) {
+    return;
+  }
+  const queryId = toTrimmedString(id);
+  if (!queryId) {
+    return;
+  }
+  DeleteSavedQuery(queryId).catch((error: unknown) => {
+    console.error("[Saved Query Persist] 删除失败:", error);
+  });
+};
+
+export const replaceSavedQueriesFromBackend = (queries: SavedQuery[]): void => {
+  savedQueriesHydratingFromBackend = true;
+  try {
+    useStore.getState().replaceSavedQueries(queries);
+  } finally {
+    savedQueriesHydratingFromBackend = false;
   }
 };
 
@@ -1168,13 +1234,17 @@ export const useStore = create<AppState>()(
           ),
         })),
       removeConnection: (id) =>
-        set((state) => ({
-          connections: state.connections.filter((c) => c.id !== id),
-          connectionTags: state.connectionTags.map((tag) => ({
+        set((state) => {
+          const connectionTags = state.connectionTags.map((tag) => ({
             ...tag,
             connectionIds: tag.connectionIds.filter((cid) => cid !== id),
-          })),
-        })),
+          }));
+          persistConnectionTagsToBackend(connectionTags);
+          return {
+            connections: state.connections.filter((c) => c.id !== id),
+            connectionTags,
+          };
+        }),
       replaceConnections: (connections) =>
         set((state) => ({
           connections: sanitizeConnections(connections),
@@ -1182,17 +1252,34 @@ export const useStore = create<AppState>()(
         })),
 
       addConnectionTag: (tag) =>
-        set((state) => ({ connectionTags: [...state.connectionTags, tag] })),
+        set((state) => {
+          const connectionTags = sanitizeConnectionTags([
+            ...state.connectionTags,
+            tag,
+          ]);
+          persistConnectionTagsToBackend(connectionTags);
+          return { connectionTags };
+        }),
       updateConnectionTag: (tag) =>
-        set((state) => ({
-          connectionTags: state.connectionTags.map((t) =>
-            t.id === tag.id ? tag : t,
-          ),
-        })),
+        set((state) => {
+          const connectionTags = sanitizeConnectionTags(
+            state.connectionTags.map((t) => (t.id === tag.id ? tag : t)),
+          );
+          persistConnectionTagsToBackend(connectionTags);
+          return { connectionTags };
+        }),
       removeConnectionTag: (id) =>
-        set((state) => ({
-          connectionTags: state.connectionTags.filter((t) => t.id !== id),
-        })),
+        set((state) => {
+          const connectionTags = state.connectionTags.filter((t) => t.id !== id);
+          persistConnectionTagsToBackend(connectionTags);
+          return { connectionTags };
+        }),
+      replaceConnectionTags: (tags) =>
+        set(() => {
+          const connectionTags = sanitizeConnectionTags(tags);
+          persistConnectionTagsToBackend(connectionTags);
+          return { connectionTags };
+        }),
       moveConnectionToTag: (connectionId, targetTagId) =>
         set((state) => {
           const newTags = state.connectionTags.map((tag) => {
@@ -1205,7 +1292,9 @@ export const useStore = create<AppState>()(
             }
             return { ...tag, connectionIds: filteredIds };
           });
-          return { connectionTags: newTags };
+          const connectionTags = sanitizeConnectionTags(newTags);
+          persistConnectionTagsToBackend(connectionTags);
+          return { connectionTags };
         }),
       reorderTags: (tagIds) =>
         set((state) => {
@@ -1220,7 +1309,9 @@ export const useStore = create<AppState>()(
           });
           // 追加未指定的tag（如果有的话）
           newTags.push(...Array.from(tagMap.values()));
-          return { connectionTags: newTags };
+          const connectionTags = sanitizeConnectionTags(newTags);
+          persistConnectionTagsToBackend(connectionTags);
+          return { connectionTags };
         }),
 
       addTab: (tab) =>
@@ -1406,22 +1497,38 @@ export const useStore = create<AppState>()(
 
       saveQuery: (query) =>
         set((state) => {
-          // If query with same ID exists, update it
-          const existing = state.savedQueries.find((q) => q.id === query.id);
+          const safeQuery = sanitizeSavedQueries([query])[0];
+          if (!safeQuery) return state;
+          persistSavedQueryToBackend(safeQuery);
+          const existing = state.savedQueries.find((q) => q.id === safeQuery.id);
           if (existing) {
             return {
               savedQueries: state.savedQueries.map((q) =>
-                q.id === query.id ? query : q,
+                q.id === safeQuery.id ? safeQuery : q,
               ),
             };
           }
-          return { savedQueries: [...state.savedQueries, query] };
+          return { savedQueries: [...state.savedQueries, safeQuery] };
         }),
 
       deleteQuery: (id) =>
-        set((state) => ({
-          savedQueries: state.savedQueries.filter((q) => q.id !== id),
-        })),
+        set((state) => {
+          deleteSavedQueryFromBackend(id);
+          return {
+            savedQueries: state.savedQueries.filter((q) => q.id !== id),
+          };
+        }),
+
+      replaceSavedQueries: (queries) =>
+        set(() => {
+          const savedQueries = sanitizeSavedQueries(queries);
+          if (!savedQueriesHydratingFromBackend) {
+            SaveSavedQueries(savedQueries).catch((error: unknown) => {
+              console.error("[Saved Query Persist] 保存失败:", error);
+            });
+          }
+          return { savedQueries };
+        }),
 
       setTheme: (theme) => set({ theme }),
       setLanguage: (language) => {

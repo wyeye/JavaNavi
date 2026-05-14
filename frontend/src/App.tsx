@@ -8,7 +8,7 @@ import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
 import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TableOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
-import { DEFAULT_APPEARANCE, useStore } from './store';
+import { DEFAULT_APPEARANCE, replaceConnectionTagsFromBackend, replaceSavedQueriesFromBackend, useStore } from './store';
 import type { GlobalProxyConfig, SavedConnection } from './types';
 import { blurToFilter, isMacLikePlatform, normalizeBlurForPlatform, normalizeOpacityForPlatform, isWindowsPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from './utils/appearance';
 import { getDataGridColumnWidthModeOptions, sanitizeDataTableColumnWidthMode } from './utils/dataGridDisplay';
@@ -48,7 +48,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { ExportConnectionsPackage, GetAppInfo, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, ImportConnectionsPayload, LogWindowDiagnostic, SaveGlobalProxy, SaveLanguage, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, GetSavedQueries, ImportConnectionsPayload, LogWindowDiagnostic, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -321,6 +321,42 @@ function App() {
               }
           } catch (err) {
               console.warn('Failed to load saved connections', err);
+          }
+
+          try {
+              const latestConnectionTags = await GetConnectionTags();
+              if (!cancelled && Array.isArray(latestConnectionTags)) {
+                  if (latestConnectionTags.length > 0) {
+                      replaceConnectionTagsFromBackend(latestConnectionTags);
+                  } else {
+                      const localConnectionTags = useStore.getState().connectionTags;
+                      if (localConnectionTags.length > 0) {
+                          await SaveConnectionTags(localConnectionTags);
+                      } else {
+                          replaceConnectionTagsFromBackend([]);
+                      }
+                  }
+              }
+          } catch (err) {
+              console.warn('Failed to load connection groups', err);
+          }
+
+          try {
+              const latestSavedQueries = await GetSavedQueries();
+              if (!cancelled && Array.isArray(latestSavedQueries)) {
+                  if (latestSavedQueries.length > 0) {
+                      replaceSavedQueriesFromBackend(latestSavedQueries);
+                  } else {
+                      const localSavedQueries = useStore.getState().savedQueries;
+                      if (localSavedQueries.length > 0) {
+                          await SaveSavedQueries(localSavedQueries);
+                      } else {
+                          replaceSavedQueriesFromBackend([]);
+                      }
+                  }
+              }
+          } catch (err) {
+              console.warn('Failed to load saved queries', err);
           }
 
           try {

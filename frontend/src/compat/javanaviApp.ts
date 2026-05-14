@@ -25,6 +25,21 @@ type ConnectionPayload = UnknownRecord & {
   driverType: string;
 };
 
+export type ConnectionTagPayload = {
+  id: string;
+  name: string;
+  connectionIds: string[];
+};
+
+export type SavedQueryPayload = {
+  id: string;
+  name: string;
+  sql: string;
+  connectionId: string;
+  dbName: string;
+  createdAt: number;
+};
+
 function recordValue(value: unknown): UnknownRecord {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {};
 }
@@ -700,6 +715,42 @@ export async function GetSavedConnections(): Promise<Array<connection.SavedConne
   const payload = await postJson('/connections/saved/list', {});
   assertSuccessPayload(payload, 'Failed to load JavaNavi saved connections.');
   return payloadArrayData<connection.SavedConnectionView>(payload);
+}
+
+export async function GetConnectionTags(): Promise<ConnectionTagPayload[]> {
+  const payload = await postJson('/connections/saved/tags/list', {});
+  assertSuccessPayload(payload, 'Failed to load JavaNavi connection groups.');
+  return payloadArrayData<ConnectionTagPayload>(payload);
+}
+
+export async function SaveConnectionTags(arg1: ConnectionTagPayload[]): Promise<ConnectionTagPayload[]> {
+  const payload = await postJson('/connections/saved/tags/save', { tags: Array.isArray(arg1) ? arg1 : [] });
+  assertSuccessPayload(payload, 'Failed to save JavaNavi connection groups.');
+  return payloadArrayData<ConnectionTagPayload>(payload);
+}
+
+export async function GetSavedQueries(): Promise<SavedQueryPayload[]> {
+  const payload = await postJson('/connections/saved/queries/list', {});
+  assertSuccessPayload(payload, 'Failed to load JavaNavi saved queries.');
+  return payloadArrayData<SavedQueryPayload>(payload);
+}
+
+export async function SaveSavedQueries(arg1: SavedQueryPayload[]): Promise<SavedQueryPayload[]> {
+  const payload = await postJson('/connections/saved/queries/save', { queries: Array.isArray(arg1) ? arg1 : [] });
+  assertSuccessPayload(payload, 'Failed to save JavaNavi saved queries.');
+  return payloadArrayData<SavedQueryPayload>(payload);
+}
+
+export async function SaveSavedQuery(arg1: SavedQueryPayload): Promise<SavedQueryPayload[]> {
+  const payload = await postJson('/connections/saved/queries/save-one', arg1 || {});
+  assertSuccessPayload(payload, 'Failed to save JavaNavi saved query.');
+  return payloadArrayData<SavedQueryPayload>(payload);
+}
+
+export async function DeleteSavedQuery(arg1: string): Promise<SavedQueryPayload[]> {
+  const payload = await postJson('/connections/saved/queries/delete', { id: arg1 || '' });
+  assertSuccessPayload(payload, 'Failed to delete JavaNavi saved query.');
+  return payloadArrayData<SavedQueryPayload>(payload);
 }
 
 export async function ImportConnectionsPayload(arg1:string,arg2:string): Promise<Array<connection.SavedConnectionView>> {
