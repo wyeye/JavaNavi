@@ -5,6 +5,15 @@ import java.util.Map;
 
 public record ResultSetDataDto(
         List<Map<String, Object>> rows,
-        List<String> columns
+        List<String> columns,
+        Integer statementIndex,
+        Integer startLine,
+        Integer endLine,
+        String sql,
+        String status,
+        String message
 ) {
+    public ResultSetDataDto(List<Map<String, Object>> rows, List<String> columns) {
+        this(rows, columns, null, null, null, null, null, null);
+    }
 }
