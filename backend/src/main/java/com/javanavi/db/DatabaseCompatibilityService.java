@@ -677,22 +677,24 @@ public class DatabaseCompatibilityService {
     }
 
     private List<ResultSetDataDto> executeMultiOnConnection(Connection connection, QueryRequestDto request, RunningQuery running) throws SQLException {
-        List<String> statements = splitSQLStatements(request.sql());
+        List<SqlStatementSlice> statements = splitSQLStatementSlices(request.sql());
         List<ResultSetDataDto> resultSets = new ArrayList<>();
         for (int index = 0; index < statements.size(); index++) {
-            String statementSql = statements.get(index).trim();
+            SqlStatementSlice statementSlice = statements.get(index);
+            String statementSql = statementSlice.sql().trim();
             if (statementSql.isEmpty()) {
                 continue;
             }
             try (Statement statement = connection.createStatement()) {
                 configureStatement(statement, request.connection(), running);
-                resultSets.add(executeStatement(statement, statementSql, running));
+                ResultSetDataDto resultSet = executeStatement(statement, statementSql, running);
+                resultSets.add(withStatementExecutionMetadata(resultSet, statementSlice, index + 1, "success", "Execution succeeded"));
             } catch (SQLException error) {
-                String prefix = "Statement " + (index + 1) + " failed";
-                if (!resultSets.isEmpty()) {
-                    prefix += " after " + resultSets.size() + " successful statement(s)";
+                if (isQueryCancellation(error)) {
+                    throw error;
                 }
-                throw new SQLException(prefix + ": " + error.getMessage(), error);
+                resultSets.add(statementFailureResult(statementSlice, index + 1, error));
+                return resultSets;
             }
         }
         return resultSets;
@@ -710,6 +712,58 @@ public class DatabaseCompatibilityService {
         }
         int affectedRows = Math.max(statement.getUpdateCount(), 0);
         return affectedRowsResult(affectedRows);
+    }
+
+    private static ResultSetDataDto withStatementExecutionMetadata(
+            ResultSetDataDto resultSet,
+            SqlStatementSlice statement,
+            int statementIndex,
+            String status,
+            String message
+    ) {
+        return new ResultSetDataDto(
+                nullSafeRows(resultSet.rows()),
+                nullSafeColumns(resultSet.columns()),
+                statementIndex,
+                statement.startLine(),
+                statement.endLine(),
+                statement.sql(),
+                status,
+                message
+        );
+    }
+
+    private static boolean isQueryCancellation(SQLException error) {
+        String message = error.getMessage();
+        return message != null && message.toLowerCase(Locale.ROOT).contains("cancel");
+    }
+
+    private static ResultSetDataDto statementFailureResult(SqlStatementSlice statement, int statementIndex, SQLException error) {
+        String message = sqlErrorMessage(error);
+        Map<String, Object> row = new LinkedHashMap<>();
+        row.put("statementIndex", statementIndex);
+        row.put("startLine", statement.startLine());
+        row.put("endLine", statement.endLine());
+        row.put("status", "error");
+        row.put("message", message);
+        return new ResultSetDataDto(
+                List.of(row),
+                List.of("statementIndex", "startLine", "endLine", "status", "message"),
+                statementIndex,
+                statement.startLine(),
+                statement.endLine(),
+                statement.sql(),
+                "error",
+                message
+        );
+    }
+
+    private static String sqlErrorMessage(SQLException error) {
+        String message = error.getMessage();
+        if (message == null || message.isBlank()) {
+            return "SQL execution failed";
+        }
+        return SecretRedactor.redact(message);
     }
 
     private ApplyChangesResultDto applyChangesOnConnection(
@@ -2322,6 +2376,10 @@ public class DatabaseCompatibilityService {
         return rows == null ? List.of() : rows;
     }
 
+    private static List<String> nullSafeColumns(List<String> columns) {
+        return columns == null ? List.of() : columns;
+    }
+
     private static List<UpdateRowDto> nullSafeUpdates(List<UpdateRowDto> updates) {
         return updates == null ? List.of() : updates;
     }
@@ -2335,10 +2393,14 @@ public class DatabaseCompatibilityService {
     }
 
     static List<String> splitSQLStatements(String sql) {
+        return splitSQLStatementSlices(sql).stream().map(SqlStatementSlice::sql).toList();
+    }
+
+    static List<SqlStatementSlice> splitSQLStatementSlices(String sql) {
         if (sql == null || sql.isBlank()) {
             return List.of();
         }
-        List<String> statements = new ArrayList<>();
+        List<SqlStatementSlice> statements = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         boolean singleQuote = false;
         boolean doubleQuote = false;
@@ -2347,6 +2409,9 @@ public class DatabaseCompatibilityService {
         boolean lineComment = false;
         boolean blockComment = false;
         String dollarQuote = null;
+        int currentStartLine = 1;
+        int line = 1;
+        boolean previousWasCarriageReturn = false;
 
         for (int i = 0; i < sql.length(); i++) {
             char c = sql.charAt(i);
@@ -2356,6 +2421,12 @@ public class DatabaseCompatibilityService {
                 current.append(c);
                 if (c == '\n' || c == '\r') {
                     lineComment = false;
+                    if (shouldCountNewline(c, previousWasCarriageReturn)) {
+                        line++;
+                    }
+                    previousWasCarriageReturn = c == '\r';
+                } else {
+                    previousWasCarriageReturn = false;
                 }
                 continue;
             }
@@ -2366,6 +2437,14 @@ public class DatabaseCompatibilityService {
                     i++;
                     blockComment = false;
                 }
+                if (c == '\n' || c == '\r') {
+                    if (shouldCountNewline(c, previousWasCarriageReturn)) {
+                        line++;
+                    }
+                    previousWasCarriageReturn = c == '\r';
+                } else {
+                    previousWasCarriageReturn = false;
+                }
                 continue;
             }
             if (dollarQuote != null) {
@@ -2375,6 +2454,14 @@ public class DatabaseCompatibilityService {
                     dollarQuote = null;
                 } else {
                     current.append(c);
+                    if (c == '\n' || c == '\r') {
+                        if (shouldCountNewline(c, previousWasCarriageReturn)) {
+                            line++;
+                        }
+                        previousWasCarriageReturn = c == '\r';
+                    } else {
+                        previousWasCarriageReturn = false;
+                    }
                 }
                 continue;
             }
@@ -2418,6 +2505,18 @@ public class DatabaseCompatibilityService {
                 current.append(c);
                 continue;
             }
+            if (singleQuote || doubleQuote) {
+                current.append(c);
+                if (c == '\n' || c == '\r') {
+                    if (shouldCountNewline(c, previousWasCarriageReturn)) {
+                        line++;
+                    }
+                    previousWasCarriageReturn = c == '\r';
+                } else {
+                    previousWasCarriageReturn = false;
+                }
+                continue;
+            }
             if (c == '`' && !singleQuote && !doubleQuote && !bracketQuote) {
                 backtickQuote = !backtickQuote;
                 current.append(c);
@@ -2434,21 +2533,73 @@ public class DatabaseCompatibilityService {
                 continue;
             }
             if (c == ';' && !singleQuote && !doubleQuote && !backtickQuote && !bracketQuote) {
-                String statement = current.toString().trim();
-                if (!statement.isEmpty()) {
+                SqlStatementSlice statement = statementSlice(current.toString(), currentStartLine, line);
+                if (statement != null) {
                     statements.add(statement);
                 }
                 current.setLength(0);
+                currentStartLine = line;
+                previousWasCarriageReturn = false;
                 continue;
             }
             current.append(c);
+            if (c == '\n' || c == '\r') {
+                if (shouldCountNewline(c, previousWasCarriageReturn)) {
+                    line++;
+                }
+                previousWasCarriageReturn = c == '\r';
+            } else {
+                previousWasCarriageReturn = false;
+            }
         }
-        String tail = current.toString().trim();
-        if (!tail.isEmpty()) {
+        SqlStatementSlice tail = statementSlice(current.toString(), currentStartLine, line);
+        if (tail != null) {
             statements.add(tail);
         }
         return statements;
     }
+
+    private static boolean shouldCountNewline(char current, boolean previousWasCarriageReturn) {
+        return current == '\r' || (current == '\n' && !previousWasCarriageReturn);
+    }
+
+    private static SqlStatementSlice statementSlice(String raw, int rawStartLine, int rawEndLine) {
+        String statement = raw.trim();
+        if (statement.isEmpty()) {
+            return null;
+        }
+        int leadingLines = leadingBlankLines(raw);
+        int trailingLines = trailingBlankLines(raw);
+        int startLine = rawStartLine + leadingLines;
+        int endLine = Math.max(startLine, rawEndLine - trailingLines);
+        return new SqlStatementSlice(statement, startLine, endLine);
+    }
+
+    private static int leadingBlankLines(String raw) {
+        String[] lines = raw.split("\\R", -1);
+        int count = 0;
+        for (String line : lines) {
+            if (!line.trim().isEmpty()) {
+                return count;
+            }
+            count++;
+        }
+        return 0;
+    }
+
+    private static int trailingBlankLines(String raw) {
+        String[] lines = raw.split("\\R", -1);
+        int count = 0;
+        for (int index = lines.length - 1; index >= 0; index--) {
+            if (!lines[index].trim().isEmpty()) {
+                return count;
+            }
+            count++;
+        }
+        return 0;
+    }
+
+    record SqlStatementSlice(String sql, int startLine, int endLine) {}
 
     private static String stripTrailingSemicolon(String sql) {
         String result = sql;

@@ -19,6 +19,7 @@ import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { resolveSqlDialect, resolveSqlFunctions, resolveSqlKeywords } from '../utils/sqlDialect';
 import { isExecutionPlanSql } from '../utils/executionPlanPresentation';
+import { translate, type I18nKey } from '../i18n';
 
 const SQL_KEYWORDS = [
     'SELECT', 'FROM', 'WHERE', 'LIMIT', 'INSERT', 'UPDATE', 'DELETE', 'JOIN', 'LEFT', 'RIGHT',
@@ -186,8 +187,9 @@ let sqlCompletionRegistered = false;
 type QueryRow = Record<string, unknown> & Partial<Record<typeof JAVANAVI_ROW_KEY, string | number>>;
 type TableMeta = { dbName: string; tableName: string };
 type ColumnMeta = { dbName: string; tableName: string; name: string; type: string };
-type QueryResultSetData = { columns?: string[]; rows?: QueryRow[] };
+type QueryResultSetData = { columns?: string[]; rows?: QueryRow[]; statementIndex?: number; startLine?: number; endLine?: number; sql?: string; status?: string; message?: string };
 type AffectedRowsPayload = { affectedRows?: number };
+type StatementExecutionStatus = 'success' | 'error';
 type DatabaseRow = { Database?: unknown; database?: unknown };
 type SlashCommandDef = { cmd: string; label: string; desc: string; prompt: string; useSelection?: boolean };
 type InsertSqlEventDetail = { tabId?: string; sql?: string; connectionId?: string; dbName?: string; runImmediately?: boolean };
@@ -229,6 +231,35 @@ const affectedRowsOf = (value: unknown): number | undefined => {
 
 const affectedRowsRow = (affected: number): QueryRow => ({ affectedRows: affected, [JAVANAVI_ROW_KEY]: 0 });
 
+const statementExecutionSummaryRow = (input: {
+    statementIndex: number;
+    startLine: number;
+    endLine: number;
+    status: StatementExecutionStatus;
+    message: string;
+    affectedRows?: number;
+    statusText: string;
+}): QueryRow => ({
+    statementIndex: input.statementIndex,
+    startLine: input.startLine,
+    endLine: input.endLine,
+    status: input.statusText,
+    message: input.message,
+    ...(Number.isFinite(Number(input.affectedRows)) ? { affectedRows: Number(input.affectedRows) } : {}),
+    [JAVANAVI_ROW_KEY]: `statement-${input.statementIndex}`,
+});
+
+const statementResultTitle = (t: (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => string, statementIndex?: number, startLine?: number, endLine?: number): string => {
+    const indexText = Number.isFinite(Number(statementIndex))
+        ? t('queryEditor.statement.index', { index: Number(statementIndex) })
+        : t('queryEditor.statement.generic');
+    const start = Number(startLine);
+    const end = Number(endLine);
+    if (!Number.isFinite(start) || start <= 0) return indexText;
+    if (Number.isFinite(end) && end > start) return t('queryEditor.statement.lineRange', { title: indexText, start, end });
+    return t('queryEditor.statement.lineSingle', { title: indexText, line: start });
+};
+
 const queryResultSetDataArray = (result: QueryResult): QueryResultSetData[] => (
     Array.isArray(result.data) ? result.data as QueryResultSetData[] : []
 );
@@ -268,6 +299,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       truncated?: boolean;
       pkLoading?: boolean;
       source?: RunSource;
+      statementIndex?: number;
+      startLine?: number;
+      endLine?: number;
+      status?: StatementExecutionStatus;
+      message?: string;
+      statementSummary?: boolean;
   };
 
   // Result Sets
@@ -306,6 +343,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const addSqlLog = useStore(state => state.addSqlLog);
   const addTab = useStore(state => state.addTab);
   const savedQueries = useStore(state => state.savedQueries);
+  const language = useStore(state => state.language);
+  const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
   const currentConnectionIdRef = useRef(currentConnectionId);
   const currentDbRef = useRef(currentDb);
   const connectionsRef = useRef(connections);
@@ -1388,6 +1427,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           const resultSetDataArray = queryResultSetDataArray(res);
           if (resultSetDataArray.length === 0) return;
           const rsData = resultSetDataArray[0];
+          if (rsData.status === 'error') {
+              const title = statementResultTitle(t, rsData.statementIndex, rsData.startLine, rsData.endLine);
+              message.error(t('queryEditor.reload.statementFailed', { title, message: rsData.message || t('queryEditor.sqlExecutionFailed') }));
+              return;
+          }
           const isAffectedResult = Array.isArray(rsData.rows) && rsData.rows.length === 1
               && rsData.columns && rsData.columns.length === 1
               && rsData.columns[0] === 'affectedRows';
@@ -1505,7 +1549,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 const shellConvert = convertMongoShellToJsonCommand(executedSql);
                 if (shellConvert.recognized) {
                     if (shellConvert.error) {
-                        const prefix = statements.length > 1 ? `第 ${idx + 1} 条语句执行失败：` : '';
+                        const prefix = statements.length > 1 ? t('queryEditor.mongo.statementFailedPrefix', { index: idx + 1 }) : '';
                         setExecutionError(prefix + shellConvert.error);
                         setResultSets([]);
                         setActiveResultKey('');
@@ -1538,7 +1582,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     dbName: currentDb
                 });
                 if (!res.success) {
-                    const prefix = statements.length > 1 ? `第 ${idx + 1} 条语句执行失败：` : '';
+                    const prefix = statements.length > 1 ? t('queryEditor.mongo.statementFailedPrefix', { index: idx + 1 }) : '';
                     setExecutionError(prefix + res.message);
                     setResultSets([]);
                     setActiveResultKey('');
@@ -1591,9 +1635,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 message.warning(`结果超过 ${maxRows} 行，已按设置截断显示。`);
             }
             if (statements.length > 1) {
-                message.success(`已执行 ${statements.length} 条语句，生成 ${nextResultSets.length} 个结果集。`);
+                message.success(t('queryEditor.multiStatementExecuted', { statementCount: statements.length, resultSetCount: nextResultSets.length }));
             } else if (nextResultSets.length === 0) {
-                message.success('执行成功。');
+                message.success(t('queryEditor.executionSucceeded'));
             }
 
         } else {
@@ -1632,17 +1676,16 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             const res = await DBQueryMulti(rpcConfig, currentDb, fullSQL, queryId, runSource || 'query');
             const duration = Date.now() - startTime;
 
-            addSqlLog({
-                id: `log-${Date.now()}-query-multi`,
-                timestamp: Date.now(),
-                sql: fullSQL,
-                status: res.success ? 'success' : 'error',
-                duration,
-                message: res.success ? '' : res.message,
-                dbName: currentDb
-            });
-
             if (!res.success) {
+                addSqlLog({
+                    id: `log-${Date.now()}-query-multi`,
+                    timestamp: Date.now(),
+                    sql: fullSQL,
+                    status: 'error',
+                    duration,
+                    message: res.message,
+                    dbName: currentDb
+                });
                 const errorMsg = res.message.toLowerCase();
                 const isCancelledError = errorMsg.includes('context canceled') ||
                                          errorMsg.includes('查询已取消') ||
@@ -1672,6 +1715,21 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
             // res.data 是 ResultSetData[] 数组
             const resultSetDataArray = queryResultSetDataArray(res);
+            const backendFailedResult = resultSetDataArray.find(item => item.status === 'error');
+            addSqlLog({
+                id: `log-${Date.now()}-query-multi`,
+                timestamp: Date.now(),
+                sql: fullSQL,
+                status: backendFailedResult ? 'error' : 'success',
+                duration,
+                message: backendFailedResult
+                    ? t('queryEditor.statement.failedWithMessage', {
+                        title: statementResultTitle(t, backendFailedResult.statementIndex, backendFailedResult.startLine, backendFailedResult.endLine),
+                        message: backendFailedResult.message || t('queryEditor.sqlExecutionFailed')
+                    })
+                    : '',
+                dbName: currentDb
+            });
             const nextResultSets: ResultSet[] = [];
             const maxRows = Number(queryOptions?.maxRows) || 0;
             const forceReadOnlyResult = connCaps.forceReadOnlyQueryResult;
@@ -1683,7 +1741,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
             for (let idx = 0; idx < resultSetDataArray.length; idx++) {
                 const rsData = resultSetDataArray[idx];
-                const rawStatement = (idx < statements.length) ? statements[idx] : '';
+                const rawStatement = String(rsData.sql || ((idx < statements.length) ? statements[idx] : ''));
+                const statementIndex = Number(rsData.statementIndex || idx + 1);
+                const startLine = Number(rsData.startLine || 0);
+                const endLine = Number(rsData.endLine || 0);
+                const statementStatus: StatementExecutionStatus = rsData.status === 'error' ? 'error' : 'success';
+                const statementMessage = String(rsData.message || (statementStatus === 'error' ? t('queryEditor.executionFailed') : t('queryEditor.executionSucceededBare')));
 
                 // 检查是否为 affectedRows 类结果集
                 const isAffectedResult = Array.isArray(rsData.rows) && rsData.rows.length === 1
@@ -1697,11 +1760,25 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         key: `result-${idx + 1}`,
                         sql: rawStatement,
                         exportSql: rawStatement,
-                        rows: [affectedRowsRow(affected)],
-                        columns: ['affectedRows'],
+                        rows: [statementExecutionSummaryRow({
+                            statementIndex,
+                            startLine,
+                            endLine,
+                            status: statementStatus,
+                            message: statementMessage,
+                            affectedRows: affected,
+                            statusText: statementStatus === 'success' ? t('queryEditor.status.success') : t('queryEditor.status.error')
+                        })],
+                        columns: ['statementIndex', 'startLine', 'endLine', 'status', 'message', 'affectedRows'],
                         pkColumns: [],
                         readOnly: true,
-                        source: runSource
+                        source: runSource,
+                        statementIndex,
+                        startLine,
+                        endLine,
+                        status: statementStatus,
+                        message: statementMessage,
+                        statementSummary: true
                     });
                 } else {
                     let rows = Array.isArray(rsData.rows) ? rsData.rows : [];
@@ -1752,7 +1829,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         readOnly: true,
                         pkLoading: canResolveLocator,
                         truncated,
-                        source: runSource
+                        source: runSource,
+                        statementIndex,
+                        startLine,
+                        endLine,
+                        status: statementStatus,
+                        message: statementMessage,
+                        statementSummary: statementStatus === 'error'
                     });
                 }
             }
@@ -1805,14 +1888,20 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             if (anyTruncated) {
                 message.warning(`结果超过 ${maxRows} 行，已按设置截断显示。`);
             }
+            const failedStatement = nextResultSets.find(rs => rs.status === 'error');
             // 后端附带的提示信息（如数据源不支持原生多语句执行的回退提示）
-            if (res.message) {
+            if (res.message && !failedStatement) {
                 message.info(res.message);
             }
-            if (resultSetDataArray.length > 1) {
-                message.success(`已执行完成，生成 ${nextResultSets.length} 个结果集。`);
+            if (failedStatement) {
+                const title = statementResultTitle(t, failedStatement.statementIndex, failedStatement.startLine, failedStatement.endLine);
+                setActiveResultKey(failedStatement.key);
+                setExecutionError(t('queryEditor.statement.failedWithMessage', { title, message: failedStatement.message || t('queryEditor.sqlExecutionFailed') }));
+                message.error(t('queryEditor.statement.failed', { title }));
+            } else if (resultSetDataArray.length > 1) {
+                message.success(t('queryEditor.multiStatementCompleted', { resultSetCount: nextResultSets.length }));
             } else if (nextResultSets.length === 0) {
-                message.success('执行成功。');
+                message.success(t('queryEditor.executionSucceeded'));
             }
 
         }
@@ -2380,8 +2469,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                           <Tooltip title={rs.sql}>
                           <span>{(() => {
                               const isAffected = rs.columns.length === 1 && rs.columns[0] === 'affectedRows';
-                              if (isAffected) return `结果 ${idx + 1} ✓`;
-                              return `结果 ${idx + 1}${Array.isArray(rs.rows) ? ` (${rs.rows.length})` : ''}`;
+                              const title = statementResultTitle(t, rs.statementIndex ?? idx + 1, rs.startLine, rs.endLine);
+                              if (rs.status === 'error') return `${title} ✗`;
+                              if (rs.statementSummary && rs.columns.includes('affectedRows')) {
+                                  const affectedRows = Number(rs.rows[0]?.affectedRows ?? 0);
+                                  return t('queryEditor.statement.affectedRowsLabel', { title, affectedRows: Number.isFinite(affectedRows) ? affectedRows : 0 });
+                              }
+                              if (isAffected || rs.statementSummary) return `${title} ✓`;
+                              return `${title}${rs.status === 'success' ? ' ✓' : ''}${Array.isArray(rs.rows) ? ` (${rs.rows.length})` : ''}`;
                           })()}</span>
                           </Tooltip>
                           <Tooltip title="关闭结果">
@@ -2401,6 +2496,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   children: (() => {
                       // affectedRows 类型结果集（UPDATE/INSERT/DELETE）：简洁提示
                       const isAffectedResult = rs.columns.length === 1 && rs.columns[0] === 'affectedRows';
+                      const isStatementSummaryResult = rs.statementSummary === true;
                       if (isAffectedResult) {
                           const affected = Number(rs.rows[0]?.affectedRows ?? 0);
                           return (
@@ -2409,8 +2505,32 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                                   flexDirection: 'column', gap: 8, color: '#666', userSelect: 'text',
                               }}>
                                   <span style={{ fontSize: 36, color: '#52c41a' }}>✓</span>
-                                  <span style={{ fontSize: 14, fontWeight: 500 }}>执行成功</span>
-                                  <span style={{ fontSize: 13, color: '#999' }}>影响行数：{affected}</span>
+                                  <span style={{ fontSize: 14, fontWeight: 500 }}>{t('queryEditor.statement.succeeded', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine) })}</span>
+                                  <span style={{ fontSize: 13, color: '#999' }}>{t('queryEditor.affectedRows', { affectedRows: affected })}</span>
+                              </div>
+                          );
+                      }
+                      if (isStatementSummaryResult) {
+                          const ok = rs.status !== 'error';
+                          return (
+                              <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                                  <div style={{ padding: '10px 12px', color: ok ? '#389e0d' : '#cf1322', background: ok ? '#f6ffed' : '#fff2f0', borderBottom: `1px solid ${ok ? '#b7eb8f' : '#ffccc7'}` }}>
+                                      {ok
+                                          ? t('queryEditor.statement.succeededWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionSucceededBare') })
+                                          : t('queryEditor.statement.failedWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionFailed') })}
+                                  </div>
+                                  <DataGrid
+                                      data={rs.rows}
+                                      columnNames={rs.columns}
+                                      loading={loading}
+                                      exportScope="queryResult"
+                                      resultSql={rs.exportSql || rs.sql}
+                                      dbName={currentDb}
+                                      connectionId={currentConnectionId}
+                                      pkColumns={[]}
+                                      editLocator={{ strategy: 'none', columns: [], valueColumns: [], readOnly: true, reason: 'statement-summary' }}
+                                      readOnly={true}
+                                  />
                               </div>
                           );
                       }
@@ -2440,6 +2560,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       }
                       return (
                           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+                              <div style={{ padding: '10px 12px', color: '#389e0d', background: '#f6ffed', borderBottom: '1px solid #b7eb8f' }}>
+                                  {t('queryEditor.statement.succeededWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionSucceededBare') })}
+                              </div>
                               {grid}
                           </div>
                       );
