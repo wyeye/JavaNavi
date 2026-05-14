@@ -115,11 +115,11 @@ npm run desktop:build
 
 桌面 staging/build 现在与 Java Web 使用同一套后端 jar 语义。MySQL、PostgreSQL、SQLite、DuckDB、Oracle、SQL Server、Dameng、TDengine、ClickHouse 等外部 JDBC driver 默认不内置；Driver Manager 会先显示为 **待下载**，待按需下载或手动上传 JDBC Jar 后再启用。
 
-当前桌面壳非目标：不处理签名/公证、自动更新、原生 UI 重写或后端 API 重设计。关键生命周期、日志、验证与排障见[桌面文档](docs/desktop-tauri.md)。
+桌面包现在内置 Tauri 自动更新，可在关于弹窗中检查 GitHub Release 端点 `https://github.com/wyeye/JavaNavi/releases/latest/download/latest.json`。签名/公证与原生 UI 重写仍不在当前范围。关键生命周期、更新、日志、验证与排障见[桌面文档](docs/zh/desktop-tauri.md)。
 
 ## GitHub Actions 发布构建
 
-`.github/workflows/desktop-release.yml` 会在 GitHub-hosted AMD64 与 arm64 runner 上为 Linux、Windows、macOS 构建未签名的 Tauri 桌面包。PR 和分支 push 会上传 workflow artifact；`v*` tag 还会把这些 artifact 发布到同名 GitHub Release。该 workflow 复用现有 `npm run desktop:build` 路径，确保 CI 与本地打包使用同一套 Java/Web/Desktop staging 契约。
+`.github/workflows/desktop-release.yml` 会在 GitHub-hosted AMD64 与 arm64 runner 上为 Linux、Windows、macOS 构建 Tauri 桌面包。分支 push 会上传 workflow artifact；`v*` tag 会通过 `tauri-apps/tauri-action` 发布已签名的安装包、签名文件与 `latest.json` 到同名 GitHub Release。自动更新使用 `TAURI_SIGNING_PRIVATE_KEY` 与可选的 `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets。
 
 ## 关键文档
 

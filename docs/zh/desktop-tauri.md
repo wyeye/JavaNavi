@@ -109,13 +109,25 @@ Rust 侧会把 `JAVANAVI_DATA_DIR` 设置为 Tauri app data directory。sidecar 
 - **Open Data Directory**
 - **Quit JavaNavi**
 
+## 自动更新
+
+打包后的桌面版使用 Tauri v2 updater。关于弹窗会检查：
+
+```text
+https://github.com/wyeye/JavaNavi/releases/latest/download/latest.json
+```
+
+Release 构建由 `.github/workflows/desktop-release.yml` 处理。`v*` tag 会通过 `tauri-apps/tauri-action` 上传已签名的安装包、updater 签名文件与 `latest.json` 到 GitHub Release。发布前需要配置仓库 secrets：
+
+- `TAURI_SIGNING_PRIVATE_KEY`
+- `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`，仅在私钥有密码时需要
+
 ## 当前非目标
 
 当前桌面阶段有意不配置：
 
 - Windows 代码签名；
 - macOS 公证；
-- 自动更新；
 - 原生 UI 重写；
 - Spring Boot API 重设计。
 

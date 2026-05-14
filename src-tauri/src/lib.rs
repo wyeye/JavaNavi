@@ -5,7 +5,8 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
+use tauri_plugin_updater::UpdaterExt;
 use url::Url;
 
 use sidecar::JavaSidecar;
@@ -17,6 +18,74 @@ pub struct DesktopState {
 
 struct DesktopRuntime {
     sidecar: JavaSidecar,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateInfo {
+    available: bool,
+    current_version: String,
+    version: String,
+    body: Option<String>,
+    date: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct DesktopUpdateInstallResult {
+    installed: bool,
+}
+
+#[tauri::command]
+async fn check_desktop_update(app: AppHandle) -> Result<DesktopUpdateInfo, String> {
+    let current_version = app.package_info().version.to_string();
+    let update = app
+        .updater()
+        .map_err(|error| format!("Desktop updater is not available: {error}"))?
+        .check()
+        .await
+        .map_err(|error| format!("Unable to check for JavaNavi updates: {error}"))?;
+
+    Ok(match update {
+        Some(update) => DesktopUpdateInfo {
+            available: true,
+            current_version,
+            version: update.version,
+            body: update.body,
+            date: update.date.map(|value| value.to_string()),
+        },
+        None => DesktopUpdateInfo {
+            available: false,
+            version: current_version.clone(),
+            current_version,
+            body: None,
+            date: None,
+        },
+    })
+}
+
+#[tauri::command]
+async fn install_desktop_update(app: AppHandle) -> Result<DesktopUpdateInstallResult, String> {
+    let update = app
+        .updater()
+        .map_err(|error| format!("Desktop updater is not available: {error}"))?
+        .check()
+        .await
+        .map_err(|error| format!("Unable to check for JavaNavi updates: {error}"))?
+        .ok_or_else(|| "JavaNavi is already up to date.".to_string())?;
+
+    update
+        .download_and_install(|_, _| {}, || {})
+        .await
+        .map_err(|error| format!("Unable to install JavaNavi update: {error}"))?;
+
+    Ok(DesktopUpdateInstallResult { installed: true })
+}
+
+#[tauri::command]
+fn restart_desktop_app(app: AppHandle) {
+    app.state::<DesktopState>().shutdown_sidecar();
+    app.request_restart();
 }
 
 #[derive(Debug, Deserialize)]
@@ -453,7 +522,13 @@ impl DesktopState {
 pub fn run() {
     tauri::Builder::default()
         .manage(DesktopState::default())
-        .invoke_handler(tauri::generate_handler![select_local_file])
+        .invoke_handler(tauri::generate_handler![
+            select_local_file,
+            check_desktop_update,
+            install_desktop_update,
+            restart_desktop_app
+        ])
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             menu::install(app)?;
             let handle = app.handle().clone();

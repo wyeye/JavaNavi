@@ -13,7 +13,7 @@ name: Desktop release packages
   # remains available on pushes, tags, and manual dispatch.
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: desktop-release-${{ github.ref }}
@@ -45,36 +45,42 @@ jobs:
             runner-arch: X64
             platform: linux
             runtime-platform: linux
+            tauri-action-args: --bundles deb,rpm,appimage
           - name: linux
             arch: arm64
             runner: ubuntu-24.04-arm
             runner-arch: ARM64
             platform: linux
             runtime-platform: linux
+            tauri-action-args: --bundles deb,rpm,appimage
           - name: windows
             arch: amd64
             runner: windows-2025
             runner-arch: X64
             platform: windows
             runtime-platform: windows
+            tauri-action-args: --bundles nsis
           - name: windows
             arch: arm64
             runner: windows-11-arm
             runner-arch: ARM64
             platform: windows
             runtime-platform: windows
+            tauri-action-args: --bundles nsis
           - name: macos
             arch: amd64
             runner: macos-15-intel
             runner-arch: X64
             platform: macos
             runtime-platform: macos
+            tauri-action-args: --bundles app,dmg
           - name: macos
             arch: arm64
             runner: macos-15
             runner-arch: ARM64
             platform: macos
             runtime-platform: macos
+            tauri-action-args: --bundles app,dmg
 
     steps:
       - name: Checkout
@@ -146,7 +152,38 @@ jobs:
         shell: pwsh
         run: npm config set script-shell "C:\Program Files\Git\bin\bash.exe"
 
-      - name: Build desktop package
+      - name: Stage desktop resources
+        env:
+          JAVANAVI_DESKTOP_RUNTIME_PLATFORM: ${{ matrix.runtime-platform }}
+        run: |
+          set -euo pipefail
+          if [[ "${{ matrix.platform }}" == "windows" ]] && command -v cygpath >/dev/null 2>&1; then
+            export JAVA_HOME="$(cygpath -u "$JAVA_HOME")"
+            export JAVANAVI_DESKTOP_JAVA_HOME="$JAVA_HOME"
+          fi
+          npm run desktop:stage
+
+      - name: Build and publish signed desktop release assets
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: tauri-apps/tauri-action@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: JavaNavi ${{ github.ref_name }}
+          releaseBody: Automated signed JavaNavi desktop package build for Linux, Windows, macOS, and latest.json updater metadata.
+          releaseDraft: false
+          prerelease: false
+          tauriScript: npx tauri
+          args: ${{ matrix.tauri-action-args }}
+          updaterJsonPreferNsis: true
+          uploadUpdaterJson: true
+          uploadUpdaterSignatures: true
+
+      - name: Build desktop package for branch artifacts
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         env:
           JAVANAVI_DESKTOP_RUNTIME_PLATFORM: ${{ matrix.runtime-platform }}
         run: |
@@ -166,7 +203,7 @@ jobs:
           fi
 
       - name: Create macOS DMG
-        if: matrix.platform == 'macos'
+        if: ${{ matrix.platform == 'macos' && !startsWith(github.ref, 'refs/tags/v') }}
         env:
           PACKAGE_ARCH: ${{ matrix.arch }}
         run: |
@@ -193,6 +230,7 @@ jobs:
           ls -lh "$dmg_path"
 
       - name: Collect desktop bundles
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         env:
           PLATFORM: ${{ matrix.platform }}
           PACKAGE_ARCH: ${{ matrix.arch }}
@@ -222,13 +260,13 @@ jobs:
           selected_list="$RUNNER_TEMP/javanavi-release-package-files.txt"
           case "$PLATFORM" in
             linux)
-              find src-tauri/target/release/bundle -type f \( -name '*.deb' -o -name '*.rpm' \) -print | sort > "$selected_list"
+              find src-tauri/target/release/bundle -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.AppImage' -o -name '*.AppImage.sig' \) -print | sort > "$selected_list"
               ;;
             macos)
-              find src-tauri/target/release/bundle -type f -name '*.dmg' -print | sort > "$selected_list"
+              find src-tauri/target/release/bundle -type f \( -name '*.dmg' -o -name '*.app.tar.gz' -o -name '*.app.tar.gz.sig' \) -print | sort > "$selected_list"
               ;;
             windows)
-              find src-tauri/target/release/bundle -type f -name '*-setup.exe' -print | sort > "$selected_list"
+              find src-tauri/target/release/bundle -type f \( -name '*-setup.exe' -o -name '*-setup.exe.sig' \) -print | sort > "$selected_list"
               ;;
             *)
               echo "Unsupported desktop package platform: $PLATFORM" >&2
@@ -246,102 +284,10 @@ jobs:
           done < "$selected_list"
 
       - name: Upload workflow artifact
+        if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
         uses: actions/upload-artifact@v6
         with:
           name: javanavi-desktop-${{ matrix.platform }}-${{ matrix.arch }}
           path: dist/desktop-${{ matrix.platform }}-${{ matrix.arch }}/
           if-no-files-found: error
           retention-days: 14
-
-  publish-tag-release:
-    name: Publish tag release assets
-    if: startsWith(github.ref, 'refs/tags/v')
-    needs: build-desktop-package
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Download desktop artifacts
-        uses: actions/download-artifact@v7
-        with:
-          path: dist/release-assets
-          pattern: javanavi-desktop-*
-          merge-multiple: true
-
-      - name: Upload assets to GitHub Release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_REPO: ${{ github.repository }}
-          TAG_NAME: ${{ github.ref_name }}
-        run: |
-          set -euo pipefail
-          find dist/release-assets -maxdepth 2 -type f -print | sort
-          release_notes="Automated unsigned JavaNavi desktop amd64 and arm64 package build for Linux, Windows, and macOS."
-          if ! gh release view "$TAG_NAME" --repo "$GH_REPO" >/dev/null 2>&1; then
-            gh release create "$TAG_NAME" --repo "$GH_REPO" --title "JavaNavi ${TAG_NAME}" --notes "$release_notes" --draft=false --prerelease=false
-          fi
-          release_asset_dir="$RUNNER_TEMP/javanavi-release-assets"
-          mkdir -p "$release_asset_dir"
-          find dist/release-assets -type f \( -name '*.deb' -o -name '*.rpm' -o -name '*.dmg' -o -name '*-setup.exe' \) -print | sort > "$RUNNER_TEMP/javanavi-release-assets-source.txt"
-          if [[ ! -s "$RUNNER_TEMP/javanavi-release-assets-source.txt" ]]; then
-            echo "No release package assets found to upload" >&2
-            exit 1
-          fi
-          while IFS= read -r release_asset; do
-            asset_name="$(basename "$release_asset")"
-            case "$asset_name" in
-              *.deb)
-                arch_suffix="${asset_name##*_}"
-                arch_suffix="${arch_suffix%%.*}"
-                ;;
-              *.rpm)
-                arch_suffix="${asset_name%.rpm}"
-                arch_suffix="${arch_suffix##*.}"
-                ;;
-              *.dmg)
-                arch_suffix="${asset_name##*_}"
-                arch_suffix="${arch_suffix%.dmg}"
-                ;;
-              *-setup.exe)
-                arch_suffix="${asset_name%-setup.exe}"
-                arch_suffix="${arch_suffix##*_}"
-                ;;
-              *)
-                arch_suffix=""
-                ;;
-            esac
-            normalized_arch="$arch_suffix"
-            case "$arch_suffix" in
-              x64|x86_64) normalized_arch="amd64" ;;
-              aarch64) normalized_arch="arm64" ;;
-            esac
-            if [[ -n "$normalized_arch" && "$normalized_arch" != "$arch_suffix" ]]; then
-              case "$asset_name" in
-                *.rpm)
-                  renamed_asset="${asset_name%.$arch_suffix.rpm}.$normalized_arch.rpm"
-                  ;;
-                *)
-                  renamed_asset="${asset_name/$arch_suffix/$normalized_arch}"
-                  ;;
-              esac
-            else
-              renamed_asset="$asset_name"
-            fi
-            cp "$release_asset" "$release_asset_dir/$renamed_asset"
-          done < "$RUNNER_TEMP/javanavi-release-assets-source.txt"
-          release_asset_list="$RUNNER_TEMP/javanavi-release-assets.txt"
-          find "$release_asset_dir" -type f -print | sort > "$release_asset_list"
-          printf 'Uploading release package assets:\n'
-          cat "$release_asset_list"
-          while IFS= read -r release_asset; do
-            gh release upload "$TAG_NAME" "$release_asset" --repo "$GH_REPO" --clobber
-          done < "$release_asset_list"
-          stale_asset_list="$RUNNER_TEMP/javanavi-stale-release-assets.txt"
-          gh release view "$TAG_NAME" --repo "$GH_REPO" --json assets --jq '.assets[].name | select((endswith(".deb") or endswith(".rpm") or endswith(".dmg") or endswith("-setup.exe")) | not)' > "$stale_asset_list"
-          if [[ -s "$stale_asset_list" ]]; then
-            printf 'Deleting stale non-package release assets:\n'
-            cat "$stale_asset_list"
-            while IFS= read -r asset; do
-              gh release delete-asset "$TAG_NAME" "$asset" --repo "$GH_REPO" --yes
-            done < "$stale_asset_list"
-          fi

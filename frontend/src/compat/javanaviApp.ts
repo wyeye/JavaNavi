@@ -657,6 +657,50 @@ export async function ExportTablesSQL(arg1:connection.ConnectionConfig,arg2:stri
   return apiEnvelopeToQueryResult(payload, 'Tables SQL exported');
 }
 
+
+export async function CheckDesktopUpdate(): Promise<connection.QueryResult> {
+  if (!isJavaNaviDesktopRuntime()) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Desktop updates are only available in the packaged JavaNavi desktop app.' }, data: null }, 'Desktop update unavailable');
+  }
+  const result = tauriInvoke<UnknownRecord>('check_desktop_update', {});
+  if (!result) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Tauri updater bridge is not available.' }, data: null }, 'Desktop update unavailable');
+  }
+  try {
+    return apiEnvelopeToQueryResult({ success: true, data: await result }, 'Desktop update checked');
+  } catch (error: unknown) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: getErrorMessage(error) }, data: null }, 'Desktop update check failed');
+  }
+}
+
+export async function InstallDesktopUpdate(): Promise<connection.QueryResult> {
+  if (!isJavaNaviDesktopRuntime()) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Desktop updates are only available in the packaged JavaNavi desktop app.' }, data: null }, 'Desktop update unavailable');
+  }
+  const result = tauriInvoke<UnknownRecord>('install_desktop_update', {});
+  if (!result) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Tauri updater bridge is not available.' }, data: null }, 'Desktop update unavailable');
+  }
+  try {
+    return apiEnvelopeToQueryResult({ success: true, data: await result }, 'Desktop update installed');
+  } catch (error: unknown) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: getErrorMessage(error) }, data: null }, 'Desktop update install failed');
+  }
+}
+
+export async function RestartDesktopApp(): Promise<connection.QueryResult> {
+  const result = tauriInvoke<null>('restart_desktop_app', {});
+  if (!result) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Tauri restart bridge is not available.' }, data: null }, 'Desktop restart unavailable');
+  }
+  try {
+    await result;
+    return apiEnvelopeToQueryResult({ success: true, data: null }, 'Desktop restart requested');
+  } catch (error: unknown) {
+    return apiEnvelopeToQueryResult({ success: false, error: { message: getErrorMessage(error) }, data: null }, 'Desktop restart failed');
+  }
+}
+
 export async function GetAppInfo(): Promise<connection.QueryResult> {
   const payload = await getJson('/app/info');
   return apiEnvelopeToQueryResult(payload, 'App info loaded');
