@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Button, Input, Pagination, Popover, Select, Segmented, Tooltip } from 'antd';
 import type { InputProps } from 'antd';
 import { EditOutlined, FileTextOutlined, LeftOutlined, RightOutlined, SearchOutlined } from '@ant-design/icons';
 import { resolvePaginationTotalForControl } from '../../utils/dataGridPagination';
 import type { DataGridFindNavigationDirection, DataGridFindSummary } from '../../utils/dataGridFind';
+import { useStore } from '../../store';
+import { translate, type I18nKey } from '../../i18n';
 
 export type DataGridViewMode = 'table' | 'json' | 'text';
 
@@ -47,7 +49,13 @@ export type DataGridFooterControlsProps = {
     onPageSizeChange: (value: string) => void;
 };
 
-export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (props) => (
+export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (props) => {
+    const language = useStore(state => state.language);
+    const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
+    const findPositionPrefix = props.pageFindMatchesLength > 0
+        ? t('dataGrid.footer.findPositionPrefix', { position: props.activePageFindPosition, total: props.pageFindMatchesLength })
+        : '';
+    return (
     <>
         <div
             data-grid-secondary-actions="true"
@@ -67,14 +75,14 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                     disabled={props.viewMode !== 'table'}
                     onClick={props.onToggleDataPanel}
                 >
-                    数据预览
+                    {t('dataGrid.footer.dataPreview')}
                 </Button>
                 <Popover
                     trigger="click"
                     placement="bottomRight"
                     content={props.columnInfoSettingContent}
                 >
-                    <Button icon={<FileTextOutlined />}>字段信息</Button>
+                    <Button icon={<FileTextOutlined />}>{t('dataGrid.footer.columnInfo')}</Button>
                 </Popover>
                 {props.canViewDdl && (
                     <Button
@@ -83,17 +91,17 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                         loading={props.ddlLoading}
                         onClick={props.onOpenTableDdl}
                     >
-                        查看 DDL
+                        {t('dataGrid.footer.viewDdl')}
                     </Button>
                 )}
-                <Tooltip title="仅查找当前页已加载数据，不改变 WHERE 条件">
+                <Tooltip title={t('dataGrid.footer.findTooltip')}>
                     <div data-grid-page-find="true" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <Input
                             {...props.noAutoCapInputProps}
                             allowClear
                             size="small"
                             prefix={<SearchOutlined />}
-                            placeholder="当前页查找..."
+                            placeholder={t('dataGrid.footer.findPlaceholder')}
                             value={props.pageFindText}
                             onChange={(event) => props.onPageFindTextChange(event.target.value)}
                             style={{ width: 220 }}
@@ -105,7 +113,7 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                             disabled={props.pageFindMatchesLength === 0}
                             onClick={() => props.onNavigatePageFind('previous')}
                         >
-                            上一个
+                            {t('dataGrid.footer.previous')}
                         </Button>
                         <Button
                             data-grid-page-find-next="true"
@@ -114,25 +122,29 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                             disabled={props.pageFindMatchesLength === 0}
                             onClick={() => props.onNavigatePageFind('next')}
                         >
-                            下一个
+                            {t('dataGrid.footer.next')}
                         </Button>
                         {props.normalizedPageFindText && (
                             <span aria-live="polite" style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666', whiteSpace: 'nowrap' }}>
-                                {props.pageFindMatchesLength > 0 ? `${props.activePageFindPosition} / ${props.pageFindMatchesLength} · ` : ''}匹配 {props.pageFindSummary.occurrenceCount} 处 / {props.pageFindSummary.matchedCellCount} 个单元格
+                                {t('dataGrid.footer.findSummary', {
+                                    positionPrefix: findPositionPrefix,
+                                    occurrenceCount: props.pageFindSummary.occurrenceCount,
+                                    cellCount: props.pageFindSummary.matchedCellCount,
+                                })}
                             </span>
                         )}
                     </div>
                 </Tooltip>
             </div>
             <div data-grid-view-switcher="true" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666' }}>结果视图</span>
+                <span style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666' }}>{t('dataGrid.footer.resultView')}</span>
                 <Segmented
                     size="small"
                     value={props.viewMode}
                     options={[
-                        { label: '表格', value: 'table' },
+                        { label: t('dataGrid.footer.viewTable'), value: 'table' },
                         { label: 'JSON', value: 'json' },
-                        { label: '文本', value: 'text' }
+                        { label: t('dataGrid.footer.viewText'), value: 'text' }
                     ]}
                     onChange={(val) => props.onViewModeChange(String(val) as DataGridViewMode)}
                 />
@@ -143,7 +155,7 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
             <div className="data-grid-pagination-wrap" style={{ padding: '12px 0 0', borderTop: 'none', display: 'flex', justifyContent: 'flex-end' }}>
                 <div className="data-grid-pagination-shell">
                     <div className="data-grid-pagination-summary" aria-live="polite">
-                        <span className="data-grid-pagination-kicker">结果集</span>
+                        <span className="data-grid-pagination-kicker">{t('dataGrid.footer.resultSet')}</span>
                         <span className="data-grid-pagination-summary-value">{props.paginationSummaryText}</span>
                     </div>
                     <div className="data-grid-pagination-page-chip">{props.paginationPageText}</div>
@@ -173,12 +185,13 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                         popupMatchSelectWidth={false}
                         value={String(props.pagination.pageSize)}
                         onChange={props.onPageSizeChange}
-                        options={props.paginationPageSizeOptions.map((value) => ({ value, label: `${value} 条 / 页` }))}
+                        options={props.paginationPageSizeOptions.map((value) => ({ value, label: t('dataGrid.pagination.pageSize', { value }) }))}
                         className="data-grid-pagination-size-select"
-                        aria-label="每页条数"
+                        aria-label={t('dataGrid.pagination.ariaPageSize')}
                     />
                 </div>
             </div>
         )}
     </>
-);
+    );
+};

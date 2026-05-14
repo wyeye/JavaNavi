@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tooltip } from 'antd';
 import type { ColumnMeta } from './dataGridMetadata';
+import type { I18nKey } from '../../i18n';
 
 export type RenderDataGridColumnTitleParams = {
     name: string;
@@ -11,6 +12,7 @@ export type RenderDataGridColumnTitleParams = {
     columnMetaHintColor: string;
     columnMetaTooltipColor: string;
     darkMode: boolean;
+    t: (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => string;
 };
 
 export const renderDataGridColumnTitle = ({
@@ -22,12 +24,13 @@ export const renderDataGridColumnTitle = ({
     columnMetaHintColor,
     columnMetaTooltipColor,
     darkMode,
+    t,
 }: RenderDataGridColumnTitleParams): React.ReactNode => {
     const normalizedName = String(name || '');
     const meta = columnMetaMap[normalizedName] || columnMetaMapByLowerName[normalizedName.toLowerCase()];
     const hoverLines: string[] = [];
-    if (meta?.type) hoverLines.push(`类型：${meta.type}`);
-    if (meta?.comment) hoverLines.push(`备注：${meta.comment}`);
+    if (meta?.type) hoverLines.push(t('dataGrid.column.type', { type: meta.type }));
+    if (meta?.comment) hoverLines.push(t('dataGrid.column.comment', { comment: meta.comment }));
 
     const titleNode = (
         <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0, lineHeight: 1.2 }}>

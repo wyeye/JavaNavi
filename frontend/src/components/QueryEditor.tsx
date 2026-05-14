@@ -29,156 +29,6 @@ const SQL_KEYWORDS = [
     'COMMENT', 'SHOW', 'DESCRIBE', 'EXPLAIN',
 ];
 
-// SQL 常用内置函数（通用，适用于 MySQL/PostgreSQL/Oracle/SQL Server 等主流数据源）
-const SQL_FUNCTIONS: { name: string; detail: string }[] = [
-    // 聚合函数
-    { name: 'COUNT', detail: '聚合 - 计数' },
-    { name: 'SUM', detail: '聚合 - 求和' },
-    { name: 'AVG', detail: '聚合 - 平均值' },
-    { name: 'MAX', detail: '聚合 - 最大值' },
-    { name: 'MIN', detail: '聚合 - 最小值' },
-    { name: 'GROUP_CONCAT', detail: '聚合 - 拼接分组值' },
-    // 字符串函数
-    { name: 'CONCAT', detail: '字符串 - 拼接' },
-    { name: 'CONCAT_WS', detail: '字符串 - 带分隔符拼接' },
-    { name: 'SUBSTRING', detail: '字符串 - 截取子串' },
-    { name: 'SUBSTR', detail: '字符串 - 截取子串' },
-    { name: 'LEFT', detail: '字符串 - 从左截取' },
-    { name: 'RIGHT', detail: '字符串 - 从右截取' },
-    { name: 'LENGTH', detail: '字符串 - 字节长度' },
-    { name: 'CHAR_LENGTH', detail: '字符串 - 字符长度' },
-    { name: 'UPPER', detail: '字符串 - 转大写' },
-    { name: 'LOWER', detail: '字符串 - 转小写' },
-    { name: 'TRIM', detail: '字符串 - 去空格' },
-    { name: 'LTRIM', detail: '字符串 - 去左空格' },
-    { name: 'RTRIM', detail: '字符串 - 去右空格' },
-    { name: 'REPLACE', detail: '字符串 - 替换' },
-    { name: 'REVERSE', detail: '字符串 - 反转' },
-    { name: 'REPEAT', detail: '字符串 - 重复' },
-    { name: 'LPAD', detail: '字符串 - 左填充' },
-    { name: 'RPAD', detail: '字符串 - 右填充' },
-    { name: 'INSTR', detail: '字符串 - 查找位置' },
-    { name: 'LOCATE', detail: '字符串 - 查找位置' },
-    { name: 'FIND_IN_SET', detail: '字符串 - 在集合中查找' },
-    { name: 'FORMAT', detail: '字符串 - 数字格式化' },
-    { name: 'SPACE', detail: '字符串 - 生成空格' },
-    { name: 'INSERT', detail: '字符串 - 插入替换' },
-    { name: 'FIELD', detail: '字符串 - 返回位置索引' },
-    { name: 'ELT', detail: '字符串 - 按索引返回' },
-    { name: 'HEX', detail: '字符串 - 十六进制编码' },
-    { name: 'UNHEX', detail: '字符串 - 十六进制解码' },
-    // 数学函数
-    { name: 'ABS', detail: '数学 - 绝对值' },
-    { name: 'CEIL', detail: '数学 - 向上取整' },
-    { name: 'CEILING', detail: '数学 - 向上取整' },
-    { name: 'FLOOR', detail: '数学 - 向下取整' },
-    { name: 'ROUND', detail: '数学 - 四舍五入' },
-    { name: 'TRUNCATE', detail: '数学 - 截断小数' },
-    { name: 'MOD', detail: '数学 - 取模' },
-    { name: 'RAND', detail: '数学 - 随机数' },
-    { name: 'SIGN', detail: '数学 - 符号' },
-    { name: 'POWER', detail: '数学 - 幂运算' },
-    { name: 'POW', detail: '数学 - 幂运算' },
-    { name: 'SQRT', detail: '数学 - 平方根' },
-    { name: 'LOG', detail: '数学 - 对数' },
-    { name: 'LOG2', detail: '数学 - 以2为底对数' },
-    { name: 'LOG10', detail: '数学 - 以10为底对数' },
-    { name: 'LN', detail: '数学 - 自然对数' },
-    { name: 'EXP', detail: '数学 - e的次方' },
-    { name: 'PI', detail: '数学 - 圆周率' },
-    { name: 'GREATEST', detail: '数学 - 返回最大值' },
-    { name: 'LEAST', detail: '数学 - 返回最小值' },
-    // 日期时间函数
-    { name: 'NOW', detail: '日期 - 当前日期时间' },
-    { name: 'CURDATE', detail: '日期 - 当前日期' },
-    { name: 'CURRENT_DATE', detail: '日期 - 当前日期' },
-    { name: 'CURTIME', detail: '日期 - 当前时间' },
-    { name: 'CURRENT_TIME', detail: '日期 - 当前时间' },
-    { name: 'CURRENT_TIMESTAMP', detail: '日期 - 当前时间戳' },
-    { name: 'SYSDATE', detail: '日期 - 系统当前时间' },
-    { name: 'DATE', detail: '日期 - 提取日期部分' },
-    { name: 'TIME', detail: '日期 - 提取时间部分' },
-    { name: 'YEAR', detail: '日期 - 提取年份' },
-    { name: 'MONTH', detail: '日期 - 提取月份' },
-    { name: 'DAY', detail: '日期 - 提取天' },
-    { name: 'DAYOFWEEK', detail: '日期 - 星期几(1=周日)' },
-    { name: 'DAYOFYEAR', detail: '日期 - 年中第几天' },
-    { name: 'HOUR', detail: '日期 - 提取小时' },
-    { name: 'MINUTE', detail: '日期 - 提取分钟' },
-    { name: 'SECOND', detail: '日期 - 提取秒' },
-    { name: 'DATE_FORMAT', detail: '日期 - 格式化' },
-    { name: 'DATE_ADD', detail: '日期 - 加日期' },
-    { name: 'DATE_SUB', detail: '日期 - 减日期' },
-    { name: 'DATEDIFF', detail: '日期 - 日期差(天)' },
-    { name: 'TIMEDIFF', detail: '日期 - 时间差' },
-    { name: 'TIMESTAMPDIFF', detail: '日期 - 时间戳差' },
-    { name: 'TIMESTAMPADD', detail: '日期 - 时间戳加' },
-    { name: 'STR_TO_DATE', detail: '日期 - 字符串转日期' },
-    { name: 'UNIX_TIMESTAMP', detail: '日期 - Unix时间戳' },
-    { name: 'FROM_UNIXTIME', detail: '日期 - 从Unix时间戳转换' },
-    { name: 'LAST_DAY', detail: '日期 - 月末日期' },
-    { name: 'WEEK', detail: '日期 - 第几周' },
-    { name: 'QUARTER', detail: '日期 - 第几季度' },
-    { name: 'ADDDATE', detail: '日期 - 加日期' },
-    { name: 'SUBDATE', detail: '日期 - 减日期' },
-    // 条件/流程控制函数
-    { name: 'IF', detail: '条件 - 如果' },
-    { name: 'IFNULL', detail: '条件 - NULL替换' },
-    { name: 'NULLIF', detail: '条件 - 相等返回NULL' },
-    { name: 'COALESCE', detail: '条件 - 返回第一个非NULL' },
-    { name: 'CASE', detail: '条件 - 分支表达式' },
-    // 类型转换
-    { name: 'CAST', detail: '转换 - 类型转换' },
-    { name: 'CONVERT', detail: '转换 - 类型/字符集转换' },
-    // JSON 函数
-    { name: 'JSON_EXTRACT', detail: 'JSON - 提取值' },
-    { name: 'JSON_UNQUOTE', detail: 'JSON - 去引号' },
-    { name: 'JSON_SET', detail: 'JSON - 设置值' },
-    { name: 'JSON_INSERT', detail: 'JSON - 插入值' },
-    { name: 'JSON_REPLACE', detail: 'JSON - 替换值' },
-    { name: 'JSON_REMOVE', detail: 'JSON - 删除值' },
-    { name: 'JSON_CONTAINS', detail: 'JSON - 包含判断' },
-    { name: 'JSON_OBJECT', detail: 'JSON - 构建对象' },
-    { name: 'JSON_ARRAY', detail: 'JSON - 构建数组' },
-    { name: 'JSON_LENGTH', detail: 'JSON - 元素个数' },
-    { name: 'JSON_TYPE', detail: 'JSON - 值类型' },
-    { name: 'JSON_VALID', detail: 'JSON - 验证' },
-    { name: 'JSON_KEYS', detail: 'JSON - 获取键列表' },
-    // 加密/哈希函数
-    { name: 'MD5', detail: '加密 - MD5哈希' },
-    { name: 'SHA1', detail: '加密 - SHA1哈希' },
-    { name: 'SHA2', detail: '加密 - SHA2哈希' },
-    { name: 'UUID', detail: '工具 - 生成UUID' },
-    // 信息函数
-    { name: 'DATABASE', detail: '信息 - 当前数据库' },
-    { name: 'USER', detail: '信息 - 当前用户' },
-    { name: 'VERSION', detail: '信息 - MySQL版本' },
-    { name: 'CONNECTION_ID', detail: '信息 - 连接ID' },
-    { name: 'LAST_INSERT_ID', detail: '信息 - 最后插入ID' },
-    { name: 'ROW_COUNT', detail: '信息 - 影响行数' },
-    { name: 'FOUND_ROWS', detail: '信息 - 匹配总行数' },
-    { name: 'CHARSET', detail: '信息 - 字符集' },
-    { name: 'COLLATION', detail: '信息 - 排序规则' },
-    // 窗口函数
-    { name: 'ROW_NUMBER', detail: '窗口 - 行号' },
-    { name: 'RANK', detail: '窗口 - 排名(有间隔)' },
-    { name: 'DENSE_RANK', detail: '窗口 - 排名(无间隔)' },
-    { name: 'NTILE', detail: '窗口 - 分桶' },
-    { name: 'LAG', detail: '窗口 - 前一行' },
-    { name: 'LEAD', detail: '窗口 - 后一行' },
-    { name: 'FIRST_VALUE', detail: '窗口 - 第一个值' },
-    { name: 'LAST_VALUE', detail: '窗口 - 最后一个值' },
-    { name: 'NTH_VALUE', detail: '窗口 - 第N个值' },
-    // 其他
-    { name: 'DISTINCT', detail: '修饰 - 去重' },
-    { name: 'EXISTS', detail: '修饰 - 存在判断' },
-    { name: 'BETWEEN', detail: '修饰 - 范围判断' },
-    { name: 'LIKE', detail: '修饰 - 模式匹配' },
-    { name: 'REGEXP', detail: '修饰 - 正则匹配' },
-    { name: 'BENCHMARK', detail: '工具 - 性能测试' },
-    { name: 'SLEEP', detail: '工具 - 延时' },
-];
-
 // 模块级标志：确保 SQL completion provider 全局只注册一次
 let sqlCompletionRegistered = false;
 
@@ -203,7 +53,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => (
     value !== null && typeof value === 'object' && !Array.isArray(value)
 );
 
-const getErrorMessage = (error: unknown, fallback = '未知错误'): string => {
+const getErrorMessage = (error: unknown, fallback = 'Unknown error'): string => {
     if (error instanceof Error) return error.message || fallback;
     if (typeof error === 'string') return error || fallback;
     if (isRecord(error) && typeof error.message === 'string' && error.message) return error.message;
@@ -285,7 +135,7 @@ type RunRequest = RunMode | { sql: string; source?: RunSource };
 
 const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isActive = true }) => {
   const [query, setQuery] = useState(tab.query || 'SELECT * FROM ');
-  
+
   type ResultSet = {
       key: string;
       sql: string;
@@ -318,7 +168,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const currentQueryIdRef = useRef('');
   const [isSaveModalOpen, setIsSaveModalOpen] = useState(false);
   const [saveForm] = Form.useForm();
-  
+
   // Database Selection
   const [currentConnectionId, setCurrentConnectionId] = useState<string>(tab.connectionId);
   const [currentDb, setCurrentDb] = useState<string>(tab.dbName || '');
@@ -346,6 +196,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const savedQueries = useStore(state => state.savedQueries);
   const language = useStore(state => state.language);
   const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
+  const buildAiContextText = useMemo(() => (conn: SavedConnection | undefined | null, dbName: string): string => {
+      if (!conn) return '';
+      return t('queryEditor.ai.context', {
+          dbType: String(conn.config?.type || 'Database'),
+          connectionName: conn.name,
+          dbName: dbName || t('queryEditor.ai.defaultDatabase'),
+      });
+  }, [t]);
   const currentConnectionIdRef = useRef(currentConnectionId);
   const currentDbRef = useRef(currentDb);
   const connectionsRef = useRef(connections);
@@ -592,9 +450,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
       // 注册 AI 右键菜单操作
       const aiActions = [
-          { id: 'ai.generateSQL', label: '🤖 AI 生成 SQL', prompt: '请根据当前数据库表结构生成查询语句：' },
-          { id: 'ai.explainSQL', label: '🤖 AI 解释 SQL', useSelection: true, prompt: '请解释以下 SQL 语句的执行逻辑：\n```sql\n{SQL}\n```' },
-          { id: 'ai.optimizeSQL', label: '🤖 AI 优化 SQL', useSelection: true, prompt: '请分析以下 SQL 语句的性能并给出优化建议：\n```sql\n{SQL}\n```' },
+          { id: 'ai.generateSQL', label: t('queryEditor.ai.generateSQL.label'), prompt: t('queryEditor.ai.generateSQL.prompt') },
+          { id: 'ai.explainSQL', label: t('queryEditor.ai.explainSQL.label'), useSelection: true, prompt: t('queryEditor.ai.explainSQL.prompt') },
+          { id: 'ai.optimizeSQL', label: t('queryEditor.ai.optimizeSQL.label'), useSelection: true, prompt: t('queryEditor.ai.optimizeSQL.prompt') },
       ];
 
       aiActions.forEach(action => {
@@ -607,7 +465,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   const selectionRange = ed.getSelection();
                   const selection = selectionRange ? ed.getModel()?.getValueInRange(selectionRange) : '';
                   const conn = connectionsRef.current.find(c => c.id === currentConnectionIdRef.current);
-                  const ctxText = conn ? `【上下文环境：${conn.config?.type || '数据库'} "${conn.name}", 当前库选定为 "${currentDbRef.current || '默认'}"】\n` : '';
+                  const ctxText = buildAiContextText(conn, currentDbRef.current);
                   let prompt = ctxText + action.prompt;
                   if (action.useSelection && selection) {
                       prompt = prompt.replace('{SQL}', selection);
@@ -1035,14 +893,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       });
       // 注册 / 斜杠命令 AI 快捷补全
       const slashCmdDefs = [
-          { cmd: '/query',    label: '🔍 自然语言查询',  desc: '用中文描述你想查什么',   prompt: '帮我写一条 SQL 查询：' },
-          { cmd: '/sql',      label: '📝 生成 SQL',      desc: '描述需求自动生成语句',   prompt: '请根据以下需求生成 SQL：' },
-          { cmd: '/explain',  label: '💡 解释 SQL',      desc: '解释选中 SQL 的逻辑',    prompt: '请解释以下 SQL 的执行逻辑和每一步的作用：\n```sql\n{SQL}\n```', useSelection: true },
-          { cmd: '/optimize', label: '⚡ 优化分析',      desc: '分析 SQL 性能瓶颈',      prompt: '请分析以下 SQL 的性能问题，并给出优化后的版本：\n```sql\n{SQL}\n```', useSelection: true },
-          { cmd: '/schema',   label: '🏗️ 表设计评审',    desc: '评审表结构设计质量',     prompt: '请全面评审当前关联表的设计，包括字段类型、范式、索引策略等方面的改进建议：' },
-          { cmd: '/index',    label: '📊 索引建议',      desc: '推荐最优索引方案',       prompt: '请基于当前表结构和常见查询场景，推荐最优的索引方案并给出建表语句：' },
-          { cmd: '/diff',     label: '🔄 表对比',        desc: '对比两表差异生成变更',   prompt: '请对比以下两张表的结构差异，并生成从旧版本迁移到新版本的 ALTER 语句：' },
-          { cmd: '/mock',     label: '🎲 造测试数据',    desc: '生成 INSERT 测试数据',   prompt: '请为当前关联的表生成 10 条符合业务语义的测试数据 INSERT 语句：' },
+          { cmd: '/query',    label: t('queryEditor.ai.slash.query.label'),    desc: t('queryEditor.ai.slash.query.desc'),    prompt: t('queryEditor.ai.slash.query.prompt') },
+          { cmd: '/sql',      label: t('queryEditor.ai.slash.sql.label'),      desc: t('queryEditor.ai.slash.sql.desc'),      prompt: t('queryEditor.ai.slash.sql.prompt') },
+          { cmd: '/explain',  label: t('queryEditor.ai.slash.explain.label'),  desc: t('queryEditor.ai.slash.explain.desc'),  prompt: t('queryEditor.ai.slash.explain.prompt'), useSelection: true },
+          { cmd: '/optimize', label: t('queryEditor.ai.slash.optimize.label'), desc: t('queryEditor.ai.slash.optimize.desc'), prompt: t('queryEditor.ai.slash.optimize.prompt'), useSelection: true },
+          { cmd: '/schema',   label: t('queryEditor.ai.slash.schema.label'),   desc: t('queryEditor.ai.slash.schema.desc'),   prompt: t('queryEditor.ai.slash.schema.prompt') },
+          { cmd: '/index',    label: t('queryEditor.ai.slash.index.label'),    desc: t('queryEditor.ai.slash.index.desc'),    prompt: t('queryEditor.ai.slash.index.prompt') },
+          { cmd: '/diff',     label: t('queryEditor.ai.slash.diff.label'),     desc: t('queryEditor.ai.slash.diff.desc'),     prompt: t('queryEditor.ai.slash.diff.prompt') },
+          { cmd: '/mock',     label: t('queryEditor.ai.slash.mock.label'),     desc: t('queryEditor.ai.slash.mock.desc'),     prompt: t('queryEditor.ai.slash.mock.prompt') },
       ];
       // 全局变量存储命令定义，供 onDidChangeModelContent 使用
       window.__javanaviSlashCmdDefs = slashCmdDefs;
@@ -1102,7 +960,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
           // 组装 prompt
           const conn = connectionsRef.current.find(c => c.id === currentConnectionIdRef.current);
-          const ctxText = conn ? `【上下文环境：${conn.config?.type || '数据库'} "${conn.name}", 当前库选定为 "${currentDbRef.current || '默认'}"】\n` : '';
+          const ctxText = buildAiContextText(conn, currentDbRef.current);
           let finalPrompt = ctxText + cmdDef.prompt;
           if (cmdDef.useSelection) {
               const sel = editor.getSelection();
@@ -1126,7 +984,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           const formatted = format(getCurrentQuery(), { language: 'mysql', keywordCase: sqlFormatOptions.keywordCase });
           syncQueryToEditor(formatted);
       } catch (e) {
-          void message.error("格式化失败: SQL 语法可能有误");
+          void message.error(t('queryEditor.format.failed'));
       }
   };
 
@@ -1137,13 +995,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const fullSQL = getCurrentQuery();
 
       const conn = connections.find(c => c.id === currentConnectionId);
-      const ctxText = conn ? `【上下文环境：${conn.config?.type || '数据库'} "${conn.name}", 当前库选定为 "${currentDb || '默认'}"】\n` : '';
+      const ctxText = buildAiContextText(conn, currentDb);
 
       const prompts: Record<string, string> = {
-          generate: `${ctxText}请根据当前数据库表结构生成查询语句：`,
-          explain: `${ctxText}请解释以下 SQL 语句的执行逻辑：\n\`\`\`sql\n${selection || fullSQL}\n\`\`\``,
-          optimize: `${ctxText}请分析以下 SQL 语句的性能并给出优化建议：\n\`\`\`sql\n${selection || fullSQL}\n\`\`\``,
-          schema: `${ctxText}请针对当前数据库的表结构进行系统分析，并给出性能和设计上的优化建议。`,
+          generate: `${ctxText}${t('queryEditor.ai.generateSQL.prompt')}`,
+          explain: `${ctxText}${t('queryEditor.ai.explainSQL.prompt', { SQL: selection || fullSQL })}`,
+          optimize: `${ctxText}${t('queryEditor.ai.optimizeSQL.prompt', { SQL: selection || fullSQL })}`,
+          schema: `${ctxText}${t('queryEditor.ai.schemaPrompt')}`,
       };
 
       const store = useStore.getState();
@@ -1154,22 +1012,22 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   };
 
   const formatSettingsMenu: MenuProps['items'] = [
-      { 
-          key: 'upper', 
-          label: '关键字大写', 
+      {
+          key: 'upper',
+          label: t('queryEditor.format.keywordUpper'),
           icon: sqlFormatOptions.keywordCase === 'upper' ? '✓' : undefined,
-          onClick: () => setSqlFormatOptions({ keywordCase: 'upper' }) 
+          onClick: () => setSqlFormatOptions({ keywordCase: 'upper' })
       },
-      { 
-          key: 'lower', 
-          label: '关键字小写', 
+      {
+          key: 'lower',
+          label: t('queryEditor.format.keywordLower'),
           icon: sqlFormatOptions.keywordCase === 'lower' ? '✓' : undefined,
-          onClick: () => setSqlFormatOptions({ keywordCase: 'lower' }) 
+          onClick: () => setSqlFormatOptions({ keywordCase: 'lower' })
       },
       { type: 'divider' },
       {
           key: 'shortcut-settings',
-          label: '快捷键管理...',
+          label: t('queryEditor.format.shortcutSettings'),
           onClick: () => window.dispatchEvent(new CustomEvent('javanavi:open-shortcut-settings')),
       },
   ];
@@ -1349,12 +1207,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const runMenuItems: MenuProps['items'] = [
       {
           key: 'current',
-          label: '运行当前语句',
+          label: t('queryEditor.runCurrentStatement'),
           onClick: () => handleRun('current'),
       },
       {
           key: 'selected',
-          label: '运行已选择',
+          label: t('queryEditor.runSelected'),
           onClick: () => handleRun('selected'),
       },
   ];
@@ -1362,20 +1220,20 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const buildExplainSQL = (sourceSql: string, dbType: string, driver = ''): { sql: string; error?: string } => {
       const statements = splitSQLStatements(sourceSql);
       if (statements.length === 0) {
-          return { sql: '', error: '没有可生成执行计划的 SQL。' };
+          return { sql: '', error: t('queryEditor.explain.noSql') };
       }
       if (statements.length > 1) {
-          return { sql: '', error: '执行计划一次只支持一条 SQL，请先选中一条语句。' };
+          return { sql: '', error: t('queryEditor.explain.singleOnly') };
       }
 
       const statement = statements[0].trim().replace(/[;；]\s*$/u, '');
       if (!statement) {
-          return { sql: '', error: '没有可生成执行计划的 SQL。' };
+          return { sql: '', error: t('queryEditor.explain.noSql') };
       }
 
       const dialect = String(resolveSqlDialect(dbType, driver)).toLowerCase();
       if (dialect === 'mongodb' || dialect === 'redis') {
-          return { sql: '', error: '当前数据源不支持 SQL 执行计划。' };
+          return { sql: '', error: t('queryEditor.explain.unsupported') };
       }
 
       const withoutLeadingComments = statement.replace(/^\s*(?:(?:\/\*[\s\S]*?\*\/)\s*|(?:--[^\n]*(?:\n|$))\s*|(?:#[^\n]*(?:\n|$))\s*)+/u, '');
@@ -1421,7 +1279,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           }
           const res = await DBQueryMulti(buildRpcConnectionConfig(config), currentDb, sql, queryId, 'reload', queryExecutionOptions);
           if (!res?.success) {
-              message.error('刷新失败: ' + (res?.message || '未知错误'));
+              message.error(t('queryEditor.reload.failed', { message: res?.message || t('queryEditor.error.unknown') }));
               return;
           }
 
@@ -1459,13 +1317,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               const previousColumnKey = rs.columns.join('\u0001');
               const nextColumnKey = cols.join('\u0001');
               if (previousColumnKey !== nextColumnKey) {
-                  const readOnlyLocator = resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [] });
+                  const readOnlyLocator = resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [], language });
                   return { ...rs, rows, columns: cols, editLocator: readOnlyLocator, pkColumns: [], readOnly: true, pkLoading: false, truncated };
               }
               return { ...rs, rows, columns: cols, truncated };
           }));
       } catch (err: unknown) {
-          message.error('刷新失败: ' + getErrorMessage(err));
+          message.error(t('queryEditor.reload.failed', { message: getErrorMessage(err, t('queryEditor.error.unknown')) }));
       } finally {
           setLoading(false);
       }
@@ -1478,7 +1336,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
     const runSQL = explicitSQL || resolveRunnableSQL(mode);
     if (!runSQL.trim()) return;
     if (!currentDb) {
-        message.error("请先选择数据库");
+        message.error(t('queryEditor.selectDatabaseFirst'));
         return;
     }
     // 如果已有查询在运行，先取消它
@@ -1503,7 +1361,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
     }
     const connCaps = getDataSourceCapabilities(conn.config);
     if (!connCaps.supportsQueryEditor) {
-        message.error("当前数据源不支持 SQL 查询编辑器，请使用对应专用页面。");
+        message.error(t('queryEditor.unsupportedDataSource'));
         if (runSeqRef.current === runSeq) setLoading(false);
         return;
     }
@@ -1534,7 +1392,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 .replace(/^\s*#.*$/gm, '');
             const statements = splitSQLStatements(splitInput);
             if (statements.length === 0) {
-                message.info('没有可执行的 SQL。');
+                message.info(t('queryEditor.noExecutableSql'));
                 setResultSets([]);
                 setActiveResultKey('');
                 return;
@@ -1634,7 +1492,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             setResultSets(nextResultSets);
             setActiveResultKey(nextResultSets[0]?.key || '');
             if (anyTruncated) {
-                message.warning(`结果超过 ${maxRows} 行，已按设置截断显示。`);
+                message.warning(t('queryEditor.result.truncated', { maxRows }));
             }
             if (statements.length > 1) {
                 message.success(t('queryEditor.multiStatementExecuted', { statementCount: statements.length, resultSetCount: nextResultSets.length }));
@@ -1646,7 +1504,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             // 非 MongoDB：使用 DBQueryMulti 一次性执行多条 SQL，后端返回多结果集
             let fullSQL = normalizedRawSQL;
             if (!fullSQL.trim()) {
-                message.info('没有可执行的 SQL。');
+                message.info(t('queryEditor.noExecutableSql'));
                 setResultSets([]);
                 setActiveResultKey('');
                 return;
@@ -1691,6 +1549,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 const errorMsg = res.message.toLowerCase();
                 const isCancelledError = errorMsg.includes('context canceled') ||
                                          errorMsg.includes('查询已取消') ||
+                                         errorMsg.includes(t('queryEditor.cancel.success').toLowerCase()) ||
                                          errorMsg.includes('canceled') ||
                                          errorMsg.includes('cancelled') ||
                                          errorMsg.includes('statement canceled') ||
@@ -1821,7 +1680,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     const canResolveLocator = !!simpleTableName && !forceReadOnlyResult && !anyLimitApplied;
                     const initialEditLocator = canResolveLocator
                         ? undefined
-                        : resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [], dbType: normalizedDbType });
+                        : resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [], dbType: normalizedDbType, language });
                     nextResultSets.push({
                         key: `result-${idx + 1}`,
                         sql: rawStatement,
@@ -1852,13 +1711,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             pendingPk.forEach(({ resultKey, tableName }) => {
                 Promise.all([
                     DBGetColumns(rpcConfig, currentDb, tableName),
-                    DBGetIndexes(rpcConfig, currentDb, tableName).catch(() => ({ success: false, message: '索引加载失败', data: [] } as QueryResult)),
+                    DBGetIndexes(rpcConfig, currentDb, tableName).catch(() => ({ success: false, message: t('queryEditor.indexLoadFailed'), data: [] } as QueryResult)),
                 ])
                     .then(([resCols, resIndexes]: [QueryResult, QueryResult]) => {
                         if (runSeqRef.current !== runSeq) return;
                         if (!resCols?.success || !Array.isArray(resCols.data)) {
                             const readOnlyLocator = resolveEditRowLocator({
                                 dbType: normalizedDbType,
+                                language,
                                 resultColumns: [],
                                 primaryKeys: [],
                                 indexes: [],
@@ -1872,6 +1732,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                             if (rs.key !== resultKey) return rs;
                             const locator = resolveEditRowLocator({
                                 dbType: normalizedDbType,
+                                language,
                                 resultColumns: rs.columns,
                                 primaryKeys,
                                 indexes,
@@ -1883,6 +1744,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         if (runSeqRef.current !== runSeq) return;
                         const readOnlyLocator = resolveEditRowLocator({
                             dbType: normalizedDbType,
+                            language,
                             resultColumns: [],
                             primaryKeys: [],
                             indexes: [],
@@ -1892,7 +1754,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             });
 
             if (anyTruncated) {
-                message.warning(`结果超过 ${maxRows} 行，已按设置截断显示。`);
+                message.warning(t('queryEditor.result.truncated', { maxRows }));
             }
             const failedStatement = nextResultSets.find(rs => rs.status === 'error');
             // 后端附带的提示信息（如数据源不支持原生多语句执行的回退提示）
@@ -1913,7 +1775,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         }
     } catch (e: unknown) {
         const errorMessage = getErrorMessage(e);
-        message.error("Error executing query: " + errorMessage);
+        message.error(t('queryEditor.sqlExecutionFailed') + ': ' + errorMessage);
         addSqlLog({
             id: `log-${Date.now()}-error`,
             timestamp: Date.now(),
@@ -1937,7 +1799,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
     const sourceSQL = selectedSQL || resolveCurrentStatementSQL();
     if (!sourceSQL.trim()) return;
     if (!currentDb) {
-        message.error("请先选择数据库");
+        message.error(t('queryEditor.selectDatabaseFirst'));
         return;
     }
     const conn = connections.find(c => c.id === currentConnectionId);
@@ -1963,14 +1825,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const handleCancel = async () => {
     if (!currentQueryIdRef.current) {
-      message.warning('没有正在运行的查询可取消');
+      message.warning(t('queryEditor.cancel.noRunningQuery'));
       return;
     }
     const queryIdToCancel = currentQueryIdRef.current;
     try {
       const res = await CancelQuery(queryIdToCancel);
       if (res.success) {
-        message.success('查询已取消');
+        message.success(t('queryEditor.cancel.success'));
         // Clear query ID after successful cancellation
         if (currentQueryIdRef.current === queryIdToCancel) {
           clearQueryId()
@@ -1979,7 +1841,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         message.warning(res.message);
       }
     } catch (error: unknown) {
-      message.error('取消查询失败: ' + getErrorMessage(error));
+      message.error(t('queryEditor.cancel.failed', { message: getErrorMessage(error, t('queryEditor.error.unknown')) }));
     }
   };
 
@@ -2112,21 +1974,21 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               if (position) {
                   const mText = (sqlText.endsWith('\n') ? sqlText : sqlText + '\n');
                   const startRange = new monaco.Range(position.lineNumber, position.column, position.lineNumber, position.column);
-                  
+
                   editor.executeEdits('ai-insert', [{
                       range: startRange,
                       text: (position.column > 1 ? '\n' : '') + mText,
                       forceMoveMarkers: true
                   }]);
-                  
+
                   // 定位并滚动到可见区域
                   const targetLine = position.lineNumber + (position.column > 1 ? 1 : 0);
                   editor.revealLineInCenterIfOutsideViewport(targetLine);
                   editor.setPosition({ lineNumber: targetLine + mText.split('\n').length - 1, column: 1 });
                   editor.focus();
-                  
+
                   if (!detail.runImmediately) {
-                      message.success('代码已在当前光标处成功插入');
+                      message.success(t('queryEditor.insert.success'));
                   }
 
                   if (detail.runImmediately) {
@@ -2143,7 +2005,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               }
           } else {
               setQuery((prev: string) => prev ? prev + '\n' + sqlText : sqlText);
-              message.success('代码已追加');
+              message.success(t('queryEditor.append.success'));
           }
       };
       window.addEventListener('javanavi:insert-sql-to-tab', handleInsertSql as EventListener);
@@ -2152,8 +2014,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const resolveDefaultQueryName = () => {
       const rawTitle = String(tab.title || '').trim();
-      if (!rawTitle || rawTitle.startsWith('新建查询')) {
-          return '未命名查询';
+      if (!rawTitle || rawTitle.startsWith(t('generic.fallback.newQuery')) || rawTitle.startsWith('新建查询')) {
+          return t('queryEditor.untitledQuery');
       }
       return rawTitle;
   };
@@ -2187,7 +2049,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           try {
               const res = await WriteSQLFile(filePath, sql);
               if (!res.success) {
-                  message.error('保存 SQL 文件失败: ' + (res.message || '未知错误'));
+                  message.error(t('queryEditor.saveSqlFile.failed', { message: res.message || t('queryEditor.error.unknown') }));
                   return;
               }
               addTab({
@@ -2198,9 +2060,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   filePath,
                   savedQueryId: undefined,
               });
-              message.success('SQL 文件已保存！');
+              message.success(t('queryEditor.saveSqlFile.success'));
           } catch (error) {
-              message.error('保存 SQL 文件失败: ' + (error instanceof Error ? error.message : String(error)));
+              message.error(t('queryEditor.saveSqlFile.failed', { message: getErrorMessage(error, t('queryEditor.error.unknown')) }));
           }
           return;
       }
@@ -2215,7 +2077,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       }
       const saveName = existed?.name || resolveDefaultQueryName();
       persistQuery({ id: saveId, name: saveName, createdAt: existed?.createdAt });
-      message.success('查询已保存！');
+      message.success(t('queryEditor.saveQuery.success'));
   };
 
   const handleSave = async () => {
@@ -2226,10 +2088,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           const nextSavedId = existed?.id || fallbackSavedId || `saved-${Date.now()}`;
           persistQuery({
               id: nextSavedId,
-              name: String(values.name || '').trim() || '未命名查询',
+              name: String(values.name || '').trim() || t('queryEditor.untitledQuery'),
               createdAt: existed?.createdAt,
           });
-          message.success('查询已保存！');
+          message.success(t('queryEditor.saveQuery.success'));
           setIsSaveModalOpen(false);
       } catch (e) {
       }
@@ -2337,9 +2199,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       `}</style>
       <div ref={editorPaneRef}>
       <div style={{ padding: '8px', display: 'flex', gap: '8px', flexShrink: 0, alignItems: 'center' }}>
-        <Select 
-            style={{ width: 150 }} 
-            placeholder="选择连接"
+        <Select
+            style={{ width: 150 }}
+            placeholder={t('queryEditor.selectConnection.placeholder')}
             value={currentConnectionId}
             onChange={(val) => {
                 setCurrentConnectionId(val);
@@ -2348,25 +2210,25 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             options={queryCapableConnections.map(c => ({ label: c.name, value: c.id }))}
             showSearch
         />
-        <Select 
-            style={{ width: 200 }} 
-            placeholder="选择数据库"
+        <Select
+            style={{ width: 200 }}
+            placeholder={t('queryEditor.selectDatabase.placeholder')}
             value={currentDb}
             onChange={setCurrentDb}
             options={dbList.map(db => ({ label: db, value: db }))}
             showSearch
         />
-        <Tooltip title="最大返回行数（会对 SELECT 自动加 LIMIT，防止大结果集卡死）">
+        <Tooltip title={t('queryEditor.maxRows.tooltip')}>
             <Select
                 style={{ width: 170 }}
                 value={queryOptions?.maxRows ?? 5000}
                 onChange={(val) => setQueryOptions({ maxRows: Number(val) })}
                 options={[
-                    { label: '最大行数：500', value: 500 },
-                    { label: '最大行数：1000', value: 1000 },
-                    { label: '最大行数：5000', value: 5000 },
-                    { label: '最大行数：20000', value: 20000 },
-                    { label: '最大行数：不限', value: 0 },
+                    { label: t('queryEditor.maxRows.option', { count: 500 }), value: 500 },
+                    { label: t('queryEditor.maxRows.option', { count: 1000 }), value: 1000 },
+                    { label: t('queryEditor.maxRows.option', { count: 5000 }), value: 5000 },
+                    { label: t('queryEditor.maxRows.option', { count: 20000 }), value: 20000 },
+                    { label: t('queryEditor.maxRows.unlimited'), value: 0 },
                 ]}
             />
         </Tooltip>
@@ -2386,8 +2248,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           <Tooltip
               title={
                   shortcutOptions.runQuery?.enabled && shortcutOptions.runQuery?.combo
-                      ? `运行全部（${getShortcutDisplay(shortcutOptions.runQuery.combo)}）`
-                      : '运行全部'
+                      ? t('queryEditor.runAllWithShortcut', { shortcut: getShortcutDisplay(shortcutOptions.runQuery.combo) })
+                      : t('queryEditor.runAll')
               }
           >
               <Dropdown.Button
@@ -2398,33 +2260,33 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   disabled={loading}
                   menu={{ items: runMenuItems }}
               >
-                运行
+                {t('queryEditor.run')}
               </Dropdown.Button>
           </Tooltip>
           {loading && (
             <Button type="primary" danger icon={<StopOutlined />} onClick={handleCancel}>
-              停止
+              {t('queryEditor.stop')}
             </Button>
           )}
         </Button.Group>
         <Button onClick={handleExplainPlan} disabled={loading}>
-          执行计划
+          {t('queryEditor.executionPlan')}
         </Button>
         <Tooltip
             title={
                 shortcutOptions.saveQuery?.enabled && shortcutOptions.saveQuery?.combo
-                    ? `保存（${getShortcutDisplay(shortcutOptions.saveQuery.combo)}）`
-                    : '保存'
+                    ? t('queryEditor.saveWithShortcut', { shortcut: getShortcutDisplay(shortcutOptions.saveQuery.combo) })
+                    : t('queryEditor.save')
             }
         >
             <Button icon={<SaveOutlined />} onClick={handleQuickSave}>
-              保存
+              {t('queryEditor.save')}
             </Button>
         </Tooltip>
-        
+
         <Button.Group>
-            <Tooltip title="美化 SQL">
-                <Button icon={<FormatPainterOutlined />} onClick={handleFormat}>美化</Button>
+            <Tooltip title={t('queryEditor.format.tooltip')}>
+                <Button icon={<FormatPainterOutlined />} onClick={handleFormat}>{t('queryEditor.format.action')}</Button>
             </Tooltip>
             <Dropdown menu={{ items: formatSettingsMenu }} placement="bottomRight">
                 <Button icon={<SettingOutlined />} />
@@ -2432,26 +2294,26 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         </Button.Group>
 
         <Dropdown menu={{ items: [
-            { key: 'ai-generate', label: '生成 SQL', icon: <RobotOutlined />, onClick: () => handleAIAction('generate') },
-            { key: 'ai-explain', label: '解释 SQL', icon: <RobotOutlined />, onClick: () => handleAIAction('explain') },
-            { key: 'ai-optimize', label: '优化 SQL', icon: <RobotOutlined />, onClick: () => handleAIAction('optimize') },
+            { key: 'ai-generate', label: t('queryEditor.ai.generate.menu'), icon: <RobotOutlined />, onClick: () => handleAIAction('generate') },
+            { key: 'ai-explain', label: t('queryEditor.ai.explain.menu'), icon: <RobotOutlined />, onClick: () => handleAIAction('explain') },
+            { key: 'ai-optimize', label: t('queryEditor.ai.optimize.menu'), icon: <RobotOutlined />, onClick: () => handleAIAction('optimize') },
             { type: 'divider' as const },
-            { key: 'ai-schema', label: 'Schema 分析', icon: <RobotOutlined />, onClick: () => handleAIAction('schema') },
+            { key: 'ai-schema', label: t('queryEditor.ai.schema.menu'), icon: <RobotOutlined />, onClick: () => handleAIAction('schema') },
         ] }} placement="bottomRight">
             <Button icon={<RobotOutlined />} style={{ color: '#818cf8' }}>AI</Button>
         </Dropdown>
       </div>
-      
+
       <div style={{ height: editorHeight, minHeight: '100px' }}>
-        <Editor 
-          height="100%" 
-          defaultLanguage="sql" 
+        <Editor
+          height="100%"
+          defaultLanguage="sql"
           theme={darkMode ? "transparent-dark" : "transparent-light"}
           defaultValue={query}
           onChange={(val) => setQuery(val || '')}
           onMount={handleEditorDidMount}
-          options={{ 
-            minimap: { enabled: false }, 
+          options={{
+            minimap: { enabled: false },
             automaticLayout: true,
             scrollBeyondLastLine: false,
             fontSize: 14
@@ -2459,16 +2321,16 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         />
       </div>
 
-      <div 
+      <div
         onMouseDown={handleMouseDown}
-        style={{ 
-            height: '5px', 
-            cursor: 'row-resize', 
+        style={{
+            height: '5px',
+            cursor: 'row-resize',
             background: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
             flexShrink: 0,
-            zIndex: 10 
-        }} 
-        title="拖动调整高度"
+            zIndex: 10
+        }}
+        title={t('queryEditor.resizeHandle.title')}
       />
       </div>
 
@@ -2497,7 +2359,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                               return `${title}${rs.status === 'success' ? ' ✓' : ''}${Array.isArray(rs.rows) ? ` (${rs.rows.length})` : ''}`;
                           })()}</span>
                           </Tooltip>
-                          <Tooltip title="关闭结果">
+                          <Tooltip title={t('queryEditor.closeResult.tooltip')}>
                               <span
                                   onClick={(e) => {
                                       e.preventDefault();
@@ -2591,7 +2453,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           <div style={{ flex: 1, minHeight: 0, padding: 24, display: 'flex', flexDirection: 'column', gap: 16, background: darkMode ? '#1e1e1e' : '#fafafa', overflow: 'auto' }}>
               <div style={{ color: '#ff4d4f', fontWeight: 'bold', fontSize: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <CloseOutlined />
-                  <span>执行失败</span>
+                  <span>{t('queryEditor.error.title')}</span>
               </div>
               <div className="custom-scrollbar" style={{ padding: 16, background: darkMode ? '#2d1a1a' : '#fff2f0', border: `1px solid ${darkMode ? '#5c2020' : '#ffccc7'}`, borderRadius: 6, color: darkMode ? '#ffa39e' : '#cf1322', fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: '40vh', overflow: 'auto' }}>
                   {executionError}
@@ -2603,7 +2465,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       style={{ background: '#818cf8', borderColor: '#818cf8', boxShadow: '0 2px 0 rgba(129, 140, 248, 0.2)' }}
                       onClick={() => {
                           const errSql = getCurrentQuery();
-                          const prompt = `我在执行以下 SQL 时遇到了错误：\n\`\`\`sql\n${errSql}\n\`\`\`\n\n数据库报错信息如下：\n\`\`\`text\n${executionError}\n\`\`\`\n\n请帮我分析错误原因，并给出修改建议。`;
+                          const prompt = t('queryEditor.ai.diagnose.prompt', { sql: errSql, error: executionError });
                           const store = useStore.getState();
                           const wasClosed = !store.aiPanelVisible;
                           if (wasClosed) store.setAIPanelVisible(true);
@@ -2612,7 +2474,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                           }, wasClosed ? 350 : 0);
                       }}
                   >
-                      一键 AI 诊断
+                      {t('queryEditor.ai.diagnose.action')}
                   </Button>
               </div>
           </div>
@@ -2621,17 +2483,17 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         )}
       </div>
 
-      <Modal 
-        title="保存查询" 
-        open={isSaveModalOpen} 
-        onOk={handleSave} 
+      <Modal
+        title={t('queryEditor.saveModal.title')}
+        open={isSaveModalOpen}
+        onOk={handleSave}
         onCancel={() => setIsSaveModalOpen(false)}
-        okText="确认"
-        cancelText="取消"
+        okText={t('common.confirm')}
+        cancelText={t('common.cancel')}
       >
           <Form form={saveForm} layout="vertical">
-              <Form.Item name="name" label="查询名称" rules={[{ required: true, message: '请输入查询名称' }]}>
-                  <Input placeholder="例如：查询所有用户" />
+              <Form.Item name="name" label={t('queryEditor.saveModal.nameLabel')} rules={[{ required: true, message: t('queryEditor.saveModal.nameRequired') }]}>
+                  <Input placeholder={t('queryEditor.saveModal.namePlaceholder')} />
               </Form.Item>
           </Form>
       </Modal>

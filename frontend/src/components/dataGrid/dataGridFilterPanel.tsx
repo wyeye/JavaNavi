@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { AutoComplete, Button, Checkbox, Input, Select } from 'antd';
 import type { AutoCompleteProps, InputProps, SelectProps } from 'antd';
 import { ClearOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import type { GridFilterCondition, GridSortInfo } from './dataGridFilterTypes';
+import { useStore } from '../../store';
+import { translate, type I18nKey } from '../../i18n';
 
 type QuickWhereSuggestionOption = {
     value: string;
@@ -52,6 +54,8 @@ export type DataGridFilterPanelProps = {
 };
 
 export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) => {
+    const language = useStore(state => state.language);
+    const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
     if (!props.showFilter) return null;
 
     const quickWhereSelectHandler: NonNullable<AutoCompleteProps<string, QuickWhereSuggestionOption>['onSelect']> = (value, option) => {
@@ -116,7 +120,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                        <Input
                            {...props.noAutoCapInputProps}
                            allowClear
-                           placeholder={props.dbType === 'mongodb' ? '输入 MongoDB JSON 查询对象，例如 {"status":"A"}' : '输入 WHERE 后面的条件，例如 status = 1 AND name LIKE \'A%\''}
+                           placeholder={props.dbType === 'mongodb' ? t('dataGrid.filter.quickWherePlaceholderMongo') : t('dataGrid.filter.quickWherePlaceholderSql')}
                            onPressEnter={(event) => {
                                if (!event.shiftKey) {
                                    event.preventDefault();
@@ -126,10 +130,10 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                        />
                    </AutoComplete>
                    <Button size="small" type="primary" onClick={() => props.applyQuickWhereCondition()}>
-                       应用 WHERE
+                       {t('dataGrid.filter.applyWhere')}
                    </Button>
                    <Button size="small" onClick={props.clearQuickWhereCondition} disabled={!props.quickWhereDraft && !props.quickWhereCondition}>
-                       清空
+                       {t('dataGrid.filter.clear')}
                    </Button>
                </div>
                {/* 筛选条件 + 排序区域：固定最大高度，超出后可滚动，避免条件过多挤压数据表 */}
@@ -141,13 +145,13 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                            onChange={e => props.updateFilter(cond.id, 'enabled', e.target.checked)}
                             style={{ marginTop: 6, flex: '0 0 auto', whiteSpace: 'nowrap' }}
                        >
-                           启用
+                           {t('dataGrid.filter.enabled')}
                        </Checkbox>
                         <Select
                             style={{ width: 96, minWidth: 96, maxWidth: 96, flex: '0 0 96px' }}
                             value={condIndex === 0 ? '__FIRST__' : (cond.logic === 'OR' ? 'OR' : 'AND')}
                             onChange={v => props.updateFilter(cond.id, 'logic', v)}
-                            options={condIndex === 0 ? [{ value: '__FIRST__', label: '首条' }] : props.filterLogicOptions}
+                            options={condIndex === 0 ? [{ value: '__FIRST__', label: t('dataGrid.filter.first') }] : props.filterLogicOptions}
                             disabled={condIndex === 0}
                         />
                         <Select
@@ -162,7 +166,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                                     .toLowerCase()
                                     .includes(String(input || '').trim().toLowerCase())
                             }
-                            placeholder="搜索字段名"
+                            placeholder={t('dataGrid.filter.searchColumns')}
                             disabled={cond.op === 'CUSTOM'}
                         />
                        <Select
@@ -179,7 +183,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                                autoSize={{ minRows: 1, maxRows: 4 }}
                                value={cond.value}
                                onChange={e => props.updateFilter(cond.id, 'value', e.target.value)}
-                               placeholder="输入自定义 WHERE 表达式（不需要再写 WHERE），例如：status IN ('A','B')"
+                               placeholder={t('dataGrid.filter.customWherePlaceholder')}
                            />
                        ) : props.isListOp(cond.op) ? (
                            <Input.TextArea
@@ -188,7 +192,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                                autoSize={{ minRows: 1, maxRows: 4 }}
                                value={cond.value}
                                onChange={e => props.updateFilter(cond.id, 'value', e.target.value)}
-                               placeholder="多个值用逗号或换行分隔"
+                               placeholder={t('dataGrid.filter.listPlaceholder')}
                            />
                        ) : props.isBetweenOp(cond.op) ? (
                            <>
@@ -197,18 +201,18 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                                    style={{ width: 220 }}
                                    value={cond.value}
                                    onChange={e => props.updateFilter(cond.id, 'value', e.target.value)}
-                                   placeholder="开始值"
+                                   placeholder={t('dataGrid.filter.startValue')}
                                />
                                <Input
                                    {...props.noAutoCapInputProps}
                                    style={{ width: 220 }}
                                    value={cond.value2 || ''}
                                    onChange={e => props.updateFilter(cond.id, 'value2', e.target.value)}
-                                   placeholder="结束值"
+                                   placeholder={t('dataGrid.filter.endValue')}
                                />
                            </>
                        ) : props.isNoValueOp(cond.op) ? (
-                           <Input {...props.noAutoCapInputProps} style={{ width: 220 }} value="" disabled placeholder="无需输入值" />
+                           <Input {...props.noAutoCapInputProps} style={{ width: 220 }} value="" disabled placeholder={t('dataGrid.filter.noValue')} />
                        ) : (
                            <Input
                                {...props.noAutoCapInputProps}
@@ -234,7 +238,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                                     }}
                                     style={{ flex: '0 0 auto' }}
                                 />
-                                <span style={{ fontSize: 12, color: 'inherit', opacity: 0.7, whiteSpace: 'nowrap', minWidth: 32 }}>{idx === 0 ? '排序' : '然后'}</span>
+                                <span style={{ fontSize: 12, color: 'inherit', opacity: 0.7, whiteSpace: 'nowrap', minWidth: 32 }}>{idx === 0 ? t('dataGrid.filter.sort') : t('dataGrid.filter.then')}</span>
                                 <Select
                                     style={{ width: 180 }}
                                     value={s.columnKey || undefined}
@@ -254,7 +258,7 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                                             .toLowerCase()
                                             .includes(String(input || '').trim().toLowerCase())
                                     }
-                                    placeholder="选择排序字段"
+                                    placeholder={t('dataGrid.filter.selectSortField')}
                                     allowClear
                                     onClear={() => {
                                         const next = props.sortInfo.filter((_, i) => i !== idx);
@@ -270,8 +274,8 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                                         props.onSort?.(JSON.stringify(next), '');
                                     }}
                                     options={[
-                                        { value: 'ascend', label: '升序 ↑' },
-                                        { value: 'descend', label: '降序 ↓' },
+                                        { value: 'ascend', label: t('dataGrid.filter.asc') },
+                                        { value: 'descend', label: t('dataGrid.filter.desc') },
                                     ]}
                                     disabled={!s.columnKey}
                                 />
@@ -285,24 +289,24 @@ export const DataGridFilterPanel: React.FC<DataGridFilterPanelProps> = (props) =
                 )}
                </div>
                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', flex: '0 0 auto', marginTop: (props.onSort && props.sortInfo.length > 0) || props.filterConditions.length > 0 ? 4 : 0, paddingTop: (props.onSort && props.sortInfo.length > 0) || props.filterConditions.length > 0 ? 6 : 0, borderTop: (props.onSort && props.sortInfo.length > 0) || props.filterConditions.length > 0 ? `1px dashed ${props.panelFrameColor}` : 'none' }}>
-                   <Button type="primary" ghost onClick={props.addFilter} size="small" icon={<PlusOutlined />}>添加条件</Button>
+                   <Button type="primary" ghost onClick={props.addFilter} size="small" icon={<PlusOutlined />}>{t('dataGrid.filter.addCondition')}</Button>
                    {props.onSort && (
                        <Button type="dashed" size="small" icon={<PlusOutlined />} onClick={() => {
                            const next = [...props.sortInfo, { columnKey: props.displayColumnNames.find(c => !props.sortInfo.some(s => s.columnKey === c)) || props.displayColumnNames[0] || '', order: 'ascend', enabled: true }];
                            props.onSort?.(JSON.stringify(next), '');
-                       }} disabled={props.sortInfo.length >= props.displayColumnNames.length}>添加排序</Button>
+                       }} disabled={props.sortInfo.length >= props.displayColumnNames.length}>{t('dataGrid.filter.addSort')}</Button>
                    )}
                    <div style={{ width: 1, height: 16, background: props.panelFrameColor, margin: '0 2px', flexShrink: 0 }} />
-                   <Button size="small" onClick={() => props.setFilterConditions(prev => prev.map(c => ({ ...c, enabled: true })))}>全启用</Button>
-                   <Button size="small" onClick={() => props.setFilterConditions(prev => prev.map(c => ({ ...c, enabled: false })))}>全停用</Button>
+                   <Button size="small" onClick={() => props.setFilterConditions(prev => prev.map(c => ({ ...c, enabled: true })))}>{t('dataGrid.filter.enableAll')}</Button>
+                   <Button size="small" onClick={() => props.setFilterConditions(prev => prev.map(c => ({ ...c, enabled: false })))}>{t('dataGrid.filter.disableAll')}</Button>
                    <div style={{ width: 1, height: 16, background: props.panelFrameColor, margin: '0 2px', flexShrink: 0 }} />
-                   <Button type="primary" onClick={props.applyFilters} size="small">应用</Button>
+                   <Button type="primary" onClick={props.applyFilters} size="small">{t('dataGrid.filter.apply')}</Button>
                    <Button size="small" icon={<ClearOutlined />} onClick={() => {
                        props.setFilterConditions([]);
                        props.clearQuickWhereCondition();
                        if (props.onApplyFilter) props.onApplyFilter([]);
                        if (props.onSort) props.onSort?.('', '');
-                   }}>清除</Button>
+                   }}>{t('dataGrid.filter.clear')}</Button>
                </div>
            </div>
     );

@@ -1,3 +1,5 @@
+import { translate } from '../i18n';
+
 export type DataModificationRiskLevel = 'low' | 'medium' | 'high';
 export type DataModificationRiskLanguage = 'en' | 'zh';
 
@@ -38,6 +40,7 @@ type TableOpsLike = {
 };
 
 type DataSyncExecutionRiskInput = {
+  language?: DataModificationRiskLanguage;
   syncMode?: string;
   syncContent?: string;
   targetDatabase?: string;
@@ -60,6 +63,7 @@ type SchemaDiffTableLike = {
 };
 
 type SchemaSyncExecutionRiskInput = {
+  language?: DataModificationRiskLanguage;
   targetDatabase?: string;
   schemaDiffTables?: SchemaDiffTableLike[];
   selectedItemIds?: string[];
@@ -71,17 +75,19 @@ const clampCount = (value: unknown): number => {
   return Math.trunc(parsed);
 };
 
-const compactJoin = (parts: string[]): string => parts.filter(Boolean).join('，');
+const compactJoin = (parts: string[], separator: string): string => parts.filter(Boolean).join(separator);
 
 const resolveSelectedCount = (enabled: boolean | undefined, total: number, selected?: unknown[]): number => {
   if (!enabled || total <= 0) return 0;
   return Array.isArray(selected) && selected.length > 0 ? Math.min(selected.length, total) : total;
 };
 
-const summarizeTableNames = (names: string[], limit = 4): string => {
+const summarizeTableNames = (names: string[], language: DataModificationRiskLanguage, limit = 4): string => {
   const clean = names.map((name) => String(name || '').trim()).filter(Boolean);
-  if (clean.length <= limit) return clean.join('、');
-  return `${clean.slice(0, limit).join('、')} 等 ${clean.length} 张表`;
+  const separator = language === 'zh' ? '、' : ', ';
+  if (clean.length <= limit) return clean.join(separator);
+  const shown = clean.slice(0, limit).join(separator);
+  return language === 'zh' ? `${shown} 等 ${clean.length} 张表` : `${shown}, and ${clean.length} tables total`;
 };
 
 const riskLevelFromDeletes = (deleteCount: number, structuralDeleteCount = 0): DataModificationRiskLevel => {
@@ -113,21 +119,26 @@ export const buildDataGridModificationRiskSummary = ({
   const updateCount = updates.length;
   const deleteCount = deletes.length;
   const total = insertCount + updateCount + deleteCount;
-  const target = compactJoin([dbName ? `库 ${dbName}` : '', tableName ? `表 ${tableName}` : '']);
+  const targetSeparator = language === 'zh' ? '，' : ', ';
+  const target = compactJoin([
+    dbName ? translate(language, 'dataGrid.risk.database', { database: dbName }) : '',
+    tableName ? translate(language, 'dataGrid.risk.table', { table: tableName }) : '',
+  ], targetSeparator);
   const lines = [
-    `目标：${target || '当前表'}`,
+    translate(language, 'dataGrid.risk.target', { target: target || translate(language, 'dataGrid.risk.currentTable') }),
     buildDataGridPendingRowsText(language, insertCount, updateCount, deleteCount),
-    deleteCount > 0 ? '包含删除行操作，请确认已了解影响范围。' : '本次不包含删除行操作。',
+    deleteCount > 0 ? translate(language, 'dataGrid.risk.hasDelete') : translate(language, 'dataGrid.risk.noDelete'),
   ];
   return {
     level: riskLevelFromDeletes(deleteCount),
     lines,
-    shortText: total > 0 ? `新增 ${insertCount}，更新 ${updateCount}，删除 ${deleteCount}` : '无待提交变更',
+    shortText: total > 0 ? translate(language, 'dataGrid.risk.shortText', { insertCount, updateCount, deleteCount }) : translate(language, 'dataGrid.risk.noPendingChanges'),
     requiresExplicitConfirm: deleteCount > 0,
   };
 };
 
 export const buildDataSyncExecutionRiskSummary = ({
+  language = 'en',
   syncMode,
   syncContent,
   targetDatabase,
@@ -161,31 +172,38 @@ export const buildDataSyncExecutionRiskSummary = ({
   });
 
   const fullOverwrite = syncMode === 'full_overwrite';
-  const lines = [
-    `目标库：${targetDatabase || '未选择'}`,
-    `影响表：${affectedTables.length > 0 ? summarizeTableNames(affectedTables) : '无可执行差异'}`,
-    `本次将执行：INSERT ${insertCount} rows，UPDATE ${updateCount} rows，DELETE ${deleteCount} rows，结构变更 ${schemaChangeCount} 项`,
-  ];
+  const lines = language === 'zh'
+    ? [
+        `目标库：${targetDatabase || '未选择'}`,
+        `影响表：${affectedTables.length > 0 ? summarizeTableNames(affectedTables, language) : '无可执行差异'}`,
+        `本次将执行：INSERT ${insertCount} rows，UPDATE ${updateCount} rows，DELETE ${deleteCount} rows，结构变更 ${schemaChangeCount} 项`,
+      ]
+    : [
+        `Target database: ${targetDatabase || 'not selected'}`,
+        `Affected tables: ${affectedTables.length > 0 ? summarizeTableNames(affectedTables, language) : 'no executable differences'}`,
+        `This run will execute: INSERT ${insertCount} rows, UPDATE ${updateCount} rows, DELETE ${deleteCount} rows, schema changes ${schemaChangeCount}`,
+      ];
   if (fullOverwrite) {
-    lines.push('Full overwrite 会先清空目标表再写入数据。');
+    lines.push(language === 'zh' ? 'Full overwrite 会先清空目标表再写入数据。' : 'Full overwrite clears target tables before writing data.');
   }
   if (warningCount > 0) {
-    lines.push(`预检风险或降级项：${warningCount} 项。`);
+    lines.push(language === 'zh' ? `预检风险或降级项：${warningCount} 项。` : `Preflight risks or fallback items: ${warningCount}.`);
   }
   if (syncContent === 'both') {
-    lines.push('本次同时包含结构与数据变更。');
+    lines.push(language === 'zh' ? '本次同时包含结构与数据变更。' : 'This run includes both schema and data changes.');
   }
 
   const level: DataModificationRiskLevel = fullOverwrite || deleteCount > 0 || schemaChangeCount > 0 ? 'high' : 'medium';
   return {
     level,
     lines,
-    shortText: `插入 ${insertCount}，更新 ${updateCount}，删除 ${deleteCount}，结构 ${schemaChangeCount}`,
+    shortText: language === 'zh' ? `插入 ${insertCount}，更新 ${updateCount}，删除 ${deleteCount}，结构 ${schemaChangeCount}` : `INSERT ${insertCount}, UPDATE ${updateCount}, DELETE ${deleteCount}, schema ${schemaChangeCount}`,
     requiresExplicitConfirm: level === 'high',
   };
 };
 
 export const buildSchemaSyncExecutionRiskSummary = ({
+  language = 'en',
   targetDatabase,
   schemaDiffTables = [],
   selectedItemIds = [],
@@ -213,23 +231,29 @@ export const buildSchemaSyncExecutionRiskSummary = ({
   });
 
   const total = addCount + alterCount + dropCount;
-  const lines = [
-    `目标库：${targetDatabase || '未选择'}`,
-    `影响表：${affectedTables.length > 0 ? summarizeTableNames(affectedTables) : '无已选结构变更'}`,
-    `本次将执行：ADD ${addCount} 项，ALTER ${alterCount} 项，DROP ${dropCount} 项`,
-  ];
+  const lines = language === 'zh'
+    ? [
+        `目标库：${targetDatabase || '未选择'}`,
+        `影响表：${affectedTables.length > 0 ? summarizeTableNames(affectedTables, language) : '无已选结构变更'}`,
+        `本次将执行：ADD ${addCount} 项，ALTER ${alterCount} 项，DROP ${dropCount} 项`,
+      ]
+    : [
+        `Target database: ${targetDatabase || 'not selected'}`,
+        `Affected tables: ${affectedTables.length > 0 ? summarizeTableNames(affectedTables, language) : 'no selected schema changes'}`,
+        `This run will execute: ADD ${addCount}, ALTER ${alterCount}, DROP ${dropCount}`,
+      ];
   if (dropCount > 0) {
-    lines.push('包含 DROP 结构删除，请确认目标库已完成备份。');
+    lines.push(language === 'zh' ? '包含 DROP 结构删除，请确认目标库已完成备份。' : 'Includes DROP schema deletion. Confirm that the target database is backed up.');
   }
   if (unsupportedCount > 0) {
-    lines.push(`包含不可执行项 ${unsupportedCount} 项，请重新检查勾选范围。`);
+    lines.push(language === 'zh' ? `包含不可执行项 ${unsupportedCount} 项，请重新检查勾选范围。` : `Includes ${unsupportedCount} non-executable items. Review the selected scope.`);
   }
 
   const level = riskLevelFromDeletes(0, dropCount);
   return {
     level,
     lines,
-    shortText: `结构变更 ${total} 项，DROP ${dropCount} 项`,
+    shortText: language === 'zh' ? `结构变更 ${total} 项，DROP ${dropCount} 项` : `Schema changes ${total}, DROP ${dropCount}`,
     requiresExplicitConfirm: dropCount > 0,
   };
 };

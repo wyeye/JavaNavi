@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { EditOutlined, UndoOutlined, VerticalAlignBottomOutlined } from '@ant-design/icons';
 import { JAVANAVI_ROW_KEY } from './dataGridCells';
+import type { I18nKey } from '../../i18n';
 
 type DataGridContextRecord = Record<string, unknown>;
 
@@ -75,6 +76,7 @@ type DataGridCellContextMenuProps<TRecord = DataGridContextRecord> = {
     onCopyJson: (record: TRecord) => void;
     onCopyCsv: (record: TRecord) => void;
     renderExportActions: (record: TRecord | null) => React.ReactNode;
+    t: (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => string;
 };
 
 export const DataGridCellContextMenu = <TRecord extends DataGridContextRecord,>({
@@ -103,6 +105,7 @@ export const DataGridCellContextMenu = <TRecord extends DataGridContextRecord,>(
     onCopyJson,
     onCopyCsv,
     renderExportActions,
+    t,
 }: DataGridCellContextMenuProps<TRecord>) => {
     if (viewMode !== 'table' || !menuState.visible) return null;
 
@@ -134,21 +137,21 @@ export const DataGridCellContextMenu = <TRecord extends DataGridContextRecord,>(
         >
             {isHeaderMenu ? (
                 <>
-                    {renderAction('复制字段名', () => copyToClipboard(menuState.dataIndex))}
-                    {renderAction('复制注释', () => copyToClipboard(menuState.columnComment), { disabled: !menuState.columnComment })}
+                    {renderAction(t('dataGrid.context.copyFieldName'), () => copyToClipboard(menuState.dataIndex))}
+                    {renderAction(t('dataGrid.context.copyComment'), () => copyToClipboard(menuState.columnComment), { disabled: !menuState.columnComment })}
                 </>
             ) : (
                 <>
             {canModifyData && (
                 <>
-                    {renderAction('设置为 NULL', onCellSetNull)}
-                    {renderAction('回滚此字段', rollbackCellChange, { icon: <UndoOutlined style={{ marginRight: 8 }} />, disabled: !canRollbackCellChange })}
-                    {renderAction('回滚此行', rollbackRowChange, { icon: <UndoOutlined style={{ marginRight: 8 }} />, disabled: !canRollbackRowChange })}
-                    {renderAction('编辑本行', onOpenContextMenuRowEditor, { icon: <EditOutlined style={{ marginRight: 8 }} /> })}
-                    {renderAction(`填充到选中行 (${selectedRowKeysLength})`, () => {
+                    {renderAction(t('dataGrid.context.setNull'), onCellSetNull)}
+                    {renderAction(t('dataGrid.context.rollbackCell'), rollbackCellChange, { icon: <UndoOutlined style={{ marginRight: 8 }} />, disabled: !canRollbackCellChange })}
+                    {renderAction(t('dataGrid.context.rollbackRow'), rollbackRowChange, { icon: <UndoOutlined style={{ marginRight: 8 }} />, disabled: !canRollbackRowChange })}
+                    {renderAction(t('dataGrid.context.editRow'), onOpenContextMenuRowEditor, { icon: <EditOutlined style={{ marginRight: 8 }} /> })}
+                    {renderAction(t('dataGrid.context.fillToSelectedRows', { count: selectedRowKeysLength }), () => {
                         if (menuState.record) onBatchFillToSelected(menuState.record, menuState.dataIndex);
                     }, { icon: <VerticalAlignBottomOutlined style={{ marginRight: 8 }} />, disabled: selectedRowKeysLength === 0 })}
-                    {renderAction('粘贴已复制列（同名列）', () => {
+                    {renderAction(t('dataGrid.context.pasteCopiedColumns'), () => {
                         const rawFallbackKey = menuState.record?.[JAVANAVI_ROW_KEY];
                         const fallbackKey = (typeof rawFallbackKey === 'string' || typeof rawFallbackKey === 'number') ? rawFallbackKey : undefined;
                         onPasteCopiedColumnsToSelectedRows(fallbackKey);
@@ -158,14 +161,14 @@ export const DataGridCellContextMenu = <TRecord extends DataGridContextRecord,>(
             )}
             {supportsCopyInsert && (
                 <>
-                    {renderAction('复制为 INSERT', () => { if (menuState.record) onCopyInsert(menuState.record); })}
-                    {renderAction('复制为 UPDATE', () => { if (menuState.record) onCopyUpdate(menuState.record); })}
-                    {renderAction('复制为 DELETE', () => { if (menuState.record) onCopyDelete(menuState.record); })}
+                    {renderAction(t('dataGrid.context.copyAsInsert'), () => { if (menuState.record) onCopyInsert(menuState.record); })}
+                    {renderAction(t('dataGrid.context.copyAsUpdate'), () => { if (menuState.record) onCopyUpdate(menuState.record); })}
+                    {renderAction(t('dataGrid.context.copyAsDelete'), () => { if (menuState.record) onCopyDelete(menuState.record); })}
                 </>
             )}
-            {renderAction('复制为 JSON', () => { if (menuState.record) onCopyJson(menuState.record); })}
-            {renderAction('复制为 CSV', () => { if (menuState.record) onCopyCsv(menuState.record); })}
-            {renderAction('复制为 Markdown', () => {
+            {renderAction(t('dataGrid.context.copyAsJson'), () => { if (menuState.record) onCopyJson(menuState.record); })}
+            {renderAction(t('dataGrid.context.copyAsCsv'), () => { if (menuState.record) onCopyCsv(menuState.record); })}
+            {renderAction(t('dataGrid.context.copyAsMarkdown'), () => {
                 if (menuState.record) {
                     const records = getTargets(menuState.record);
                     const lines = records.map((record) => {

@@ -1,4 +1,5 @@
 import type { IndexDefinition } from '../types';
+import { translate, type AppLanguage } from '../i18n';
 import { resolveUniqueKeyGroupsFromIndexes } from '../components/dataGrid/dataGridCopyInsert';
 
 export type RowLocatorStrategy = 'primary-key' | 'unique-key' | 'rowid' | 'none';
@@ -16,6 +17,7 @@ export type ResolveEditRowLocatorParams = {
   primaryKeys?: string[];
   indexes?: IndexDefinition[];
   dbType?: string;
+  language?: AppLanguage;
 };
 
 type RowLocatorValueMap = Record<string, unknown>;
@@ -57,6 +59,7 @@ export const resolveEditRowLocator = ({
   primaryKeys = [],
   indexes,
   dbType,
+  language = 'en',
 }: ResolveEditRowLocatorParams): EditRowLocator => {
   const columns = (resultColumns || []).map(normalizeColumnName).filter(Boolean);
   const primaryKeyColumns = (primaryKeys || []).map(normalizeColumnName).filter(Boolean);
@@ -71,7 +74,7 @@ export const resolveEditRowLocator = ({
         readOnly: false,
       };
     }
-    return buildReadOnlyLocator(`结果集中缺少主键列 ${missing.join(', ')}，无法安全提交修改。`);
+    return buildReadOnlyLocator(translate(language, 'dataGrid.locator.missingPrimaryKeyColumns', { columns: missing.join(', ') }));
   }
 
   const uniqueKeyGroup = resolveUniqueKeyGroupsFromIndexes(indexes)
@@ -95,15 +98,16 @@ export const resolveEditRowLocator = ({
     };
   }
 
-  return buildReadOnlyLocator('未检测到主键、可用唯一索引或可用 ROWID，无法安全提交修改。');
+  return buildReadOnlyLocator(translate(language, 'dataGrid.locator.noSafeLocator'));
 };
 
 export const resolveRowLocatorValues = (
   locator: EditRowLocator | undefined,
   row: RowLocatorValueMap,
+  language: AppLanguage = 'en',
 ): ResolveRowLocatorValuesResult => {
   if (!locator || locator.readOnly || locator.strategy === 'none') {
-    return { ok: false, error: locator?.reason || '当前结果没有可用的安全行定位方式，无法提交修改。' };
+    return { ok: false, error: locator?.reason || translate(language, 'dataGrid.locator.noSafeLocatorCurrent') };
   }
 
   const values: RowLocatorValueMap = {};
@@ -112,7 +116,7 @@ export const resolveRowLocatorValues = (
     const valueColumn = locator.valueColumns[index] || column;
     const value = row?.[valueColumn];
     if (isRowLocatorValueEmpty(row, valueColumn)) {
-      return { ok: false, error: `定位列 ${column} 的值为空，无法安全提交修改。` };
+      return { ok: false, error: translate(language, 'dataGrid.locator.emptyLocatorValue', { column }) };
     }
     values[column] = value;
   }

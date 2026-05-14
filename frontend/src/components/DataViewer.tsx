@@ -16,6 +16,7 @@ import {
   normalizeQuickWhereCondition,
   validateQuickWhereCondition,
 } from '../utils/dataGridWhereFilter';
+import { translate, type I18nKey } from '../i18n';
 
 type ViewerPaginationState = {
   current: number;
@@ -39,7 +40,7 @@ const toRecord = (value: unknown): Record<string, unknown> | null => (
   value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
 );
 
-const getErrorMessage = (error: unknown, fallback = '操作失败'): string => {
+const getErrorMessage = (error: unknown, fallback = 'Operation failed'): string => {
   if (error instanceof Error) return error.message || fallback;
   if (typeof error === 'string') return error || fallback;
   const record = toRecord(error);
@@ -245,6 +246,8 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
   const [loading, setLoading] = useState(false);
   const connections = useStore(state => state.connections);
   const addSqlLog = useStore(state => state.addSqlLog);
+  const language = useStore(state => state.language);
+  const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
   const fetchSeqRef = useRef(0);
   const countSeqRef = useRef(0);
   const countKeyRef = useRef<string>('');
@@ -373,7 +376,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     const countKey = latestCountKeyRef.current;
 
     if (!config || !countSql || !countKey) {
-      message.warning('当前结果集尚未就绪，请先执行一次加载');
+      message.warning(t('dataViewer.resultNotReady'));
       return;
     }
 
@@ -392,7 +395,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
         sql: countSql,
         status: resCount?.success ? 'success' : 'error',
         duration: countDuration,
-        message: resCount?.success ? '' : String(resCount?.message || '统计失败'),
+        message: resCount?.success ? '' : String(resCount?.message || t('dataViewer.count.failed')),
         dbName
       });
 
@@ -401,7 +404,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
 
       if (!resCount?.success) {
         setPagination(prev => ({ ...prev, totalCountLoading: false }));
-        message.error(String(resCount?.message || '统计总数失败'));
+        message.error(String(resCount?.message || t('dataViewer.countTotal.failed')));
         return;
       }
       if (!Array.isArray(resCount.data) || resCount.data.length === 0) {
@@ -412,7 +415,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
       const total = parseTotalFromCountRow(resCount.data[0]);
       if (total === null) {
         setPagination(prev => ({ ...prev, totalCountLoading: false }));
-        message.error('统计结果解析失败');
+        message.error(t('dataViewer.count.parseFailed'));
         return;
       }
 
@@ -429,9 +432,9 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
       if (manualCountSeqRef.current !== countSeq) return;
       if (manualCountKeyRef.current !== countKey) return;
       setPagination(prev => ({ ...prev, totalCountLoading: false }));
-      message.error(`统计总数失败: ${getErrorMessage(e)}`);
+      message.error(t('dataViewer.countTotal.failed') + ': ' + getErrorMessage(e, t('message.unknownError')));
     }
-  }, [addSqlLog]);
+  }, [addSqlLog, t]);
 
   const handleCancelManualTotalCount = useCallback(() => {
     manualCountSeqRef.current++;
@@ -443,7 +446,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     setLoading(true);
     const conn = connections.find(c => c.id === tab.connectionId);
     if (!conn) {
-        message.error("Connection not found");
+        message.error(t('designer.connectionNotFound'));
         if (fetchSeqRef.current === seq) setLoading(false);
         return;
     }
@@ -460,13 +463,13 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     const dbType = resolveDataSourceType(config);
     const dbTypeLower = String(dbType || '').trim().toLowerCase();
     if (dbTypeLower === 'redis') {
-        message.error('当前数据源不支持表格数据浏览。');
+        message.error(t('dataViewer.redisUnsupported'));
         if (fetchSeqRef.current === seq) setLoading(false);
         return;
     }
     const isMySQLFamily = dbTypeLower === 'mysql' || dbTypeLower === 'mariadb' || dbTypeLower === 'diros';
     const normalizedQuickWhereCondition = normalizeQuickWhereCondition(quickWhereCondition);
-    const quickWhereValidation = validateQuickWhereCondition(normalizedQuickWhereCondition);
+    const quickWhereValidation = validateQuickWhereCondition(normalizedQuickWhereCondition, language);
     if (!quickWhereValidation.ok) {
         message.error(quickWhereValidation.message);
         if (fetchSeqRef.current === seq) setLoading(false);
@@ -482,7 +485,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
         try {
             mongoFilter = buildMongoFilter(effectiveFilterConditions);
         } catch (e: unknown) {
-            message.error(`Mongo 筛选条件无效：${getErrorMessage(e, '解析失败')}`);
+            message.error(t('dataViewer.mongoFilter.invalid', { message: getErrorMessage(e, t('message.unknownError')) }));
             if (fetchSeqRef.current === seq) setLoading(false);
             return;
         }
@@ -582,7 +585,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
 
         const hasSort = hasExplicitSort(sortInfo);
         const isSortMemoryErr = (msg: string) => /error\s*1038|out of sort memory/i.test(String(msg || ''));
-        let resData = await executeDataQuery(sql, '主查询');
+        let resData = await executeDataQuery(sql, t('dataViewer.query.main'));
 
         if (!resData.success && dbTypeLower === 'duckdb' && isDuckDBUnsupportedTypeError(String(resData.message || ''))) {
             const cacheKey = `${tab.connectionId}|${dbName}|${tableName}`;
@@ -615,7 +618,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                 let fallbackSql = `SELECT ${safeSelect} FROM ${quoteQualifiedIdent(dbType, tableName)} ${whereSQL}`;
                 fallbackSql = buildPaginatedSelectSQL(dbType, fallbackSql, buildOrderBySQL(dbType, sortInfo, pkColumns), size + 1, offset);
                 executedSql = fallbackSql;
-                resData = await executeDataQuery(fallbackSql, '复杂类型降级重试');
+                resData = await executeDataQuery(fallbackSql, t('dataViewer.query.complexTypeRetry'));
             }
         }
 
@@ -623,17 +626,17 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
             const retrySql32MB = withSortBufferTuningSQL(dbType, sql, 32 * 1024 * 1024);
             if (retrySql32MB !== sql) {
                 executedSql = retrySql32MB;
-                resData = await executeDataQuery(retrySql32MB, '重试(32MB sort_buffer)');
+                resData = await executeDataQuery(retrySql32MB, t('dataViewer.query.retrySortBuffer32'));
             }
             if (!resData.success && isSortMemoryErr(resData.message)) {
                 const retrySql128MB = withSortBufferTuningSQL(dbType, sql, 128 * 1024 * 1024);
                 if (retrySql128MB !== executedSql) {
                     executedSql = retrySql128MB;
-                    resData = await executeDataQuery(retrySql128MB, '重试(128MB sort_buffer)');
+                    resData = await executeDataQuery(retrySql128MB, t('dataViewer.query.retrySortBuffer128'));
                 }
             }
             if (resData.success) {
-                message.warning('已自动提升排序缓冲并重试成功。');
+                message.warning(t('dataViewer.sortBufferRetrySuccess'));
             }
         }
         
@@ -661,7 +664,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     editLocatorKeyRef.current = mongoEditLocatorKey;
                     editLocatorSeqRef.current++;
                     setPkColumns([]);
-                    setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower }));
+                    setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language }));
                 }
             }
 
@@ -672,26 +675,26 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                 setEditLocator(undefined);
                 Promise.all([
                     DBGetColumns(buildRpcConnectionConfig(config), dbName, tableName),
-                    DBGetIndexes(buildRpcConnectionConfig(config), dbName, tableName).catch(() => ({ success: false, message: '索引加载失败', data: [] } as QueryResult)),
+                    DBGetIndexes(buildRpcConnectionConfig(config), dbName, tableName).catch(() => ({ success: false, message: t('queryEditor.indexLoadFailed'), data: [] } as QueryResult)),
                 ])
                     .then(([resCols, resIndexes]: [QueryResult, QueryResult]) => {
                         if (editLocatorSeqRef.current !== editSeq) return;
                         if (editLocatorKeyRef.current !== editLocatorKey) return;
                         if (!resCols?.success || !Array.isArray(resCols.data)) {
                             setPkColumns([]);
-                            setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower }));
+                            setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language }));
                             return;
                         }
                         const pks = queryArrayData<ColumnDefinition>(resCols).filter((c) => c.key === 'PRI').map((c) => c.name);
                         const indexes = resIndexes?.success ? queryArrayData<IndexDefinition>(resIndexes) : [];
                         setPkColumns(pks);
-                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: pks, indexes, dbType: dbTypeLower }));
+                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: pks, indexes, dbType: dbTypeLower, language }));
                     })
                     .catch(() => {
                         if (editLocatorSeqRef.current !== editSeq) return;
                         if (editLocatorKeyRef.current !== editLocatorKey) return;
                         setPkColumns([]);
-                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower }));
+                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language }));
                     });
             }
 
@@ -902,12 +905,12 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                 }
             }
         } else {
-            message.error(String(resData.message || '查询失败'));
+            message.error(String(resData.message || t('dataViewer.query.failed')));
         }
     } catch (e: unknown) {
         if (fetchSeqRef.current !== seq) return;
-        const errorMessage = getErrorMessage(e, 'Error fetching data');
-        message.error("Error fetching data: " + errorMessage);
+        const errorMessage = getErrorMessage(e, t('message.unknownError'));
+        message.error(t('dataViewer.fetch.failed', { message: errorMessage }));
         addSqlLog({
             id: `log-${Date.now()}-error`,
             timestamp: Date.now(),
@@ -919,7 +922,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
         });
     }
     if (fetchSeqRef.current === seq) setLoading(false);
-  }, [connections, tab, sortInfo, filterConditions, quickWhereCondition, pkColumns, pagination.total, pagination.totalKnown, pagination.totalApprox, pagination.approximateTotal, preferManualTotalCount, supportsApproximateTableCount, supportsApproximateTotalPages]);
+  }, [connections, tab, sortInfo, filterConditions, quickWhereCondition, pkColumns, pagination.total, pagination.totalKnown, pagination.totalApprox, pagination.approximateTotal, preferManualTotalCount, supportsApproximateTableCount, supportsApproximateTotalPages, language, t]);
   // 依赖 pkColumns：在无手动排序时可回退到主键稳定排序。
   // 主键信息只会在首次加载后更新一次，避免循环查询。
 
@@ -949,13 +952,13 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
   const handleApplyFilter = useCallback((conditions: FilterCondition[]) => setFilterConditions(conditions), []);
   const handleApplyQuickWhereCondition = useCallback((condition: string) => {
     const normalized = normalizeQuickWhereCondition(condition);
-    const validation = validateQuickWhereCondition(normalized);
+    const validation = validateQuickWhereCondition(normalized, language);
     if (!validation.ok) {
       message.error(validation.message);
       return;
     }
     setQuickWhereCondition(normalized);
-  }, []);
+  }, [language]);
 
   const exportSqlWithFilter = useMemo(() => {
     const tableName = String(tab.tableName || '').trim();

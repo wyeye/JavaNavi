@@ -1,3 +1,5 @@
+import { translate, type AppLanguage } from '../i18n';
+
 export type PaginationStateLike = {
   current: number;
   pageSize: number;
@@ -33,34 +35,36 @@ export const resolvePaginationSummaryText = (params: {
   pagination: PaginationStateLike;
   prefersManualTotalCount: boolean;
   supportsApproximateTableCount: boolean;
+  language?: AppLanguage;
 }): string => {
-  const { pagination, prefersManualTotalCount, supportsApproximateTableCount } = params;
+  const { pagination, prefersManualTotalCount, supportsApproximateTableCount, language = 'en' } = params;
   const currentCount = resolveCurrentCount(pagination);
   const total = toFiniteNonNegativeNumber(pagination.total) ?? 0;
   const approximateTotal = resolveApproximateTotal(pagination);
 
   if (pagination.totalKnown === false) {
     if (prefersManualTotalCount) {
-      if (pagination.totalCountLoading) return `当前 ${currentCount} 条 / 正在统计精确总数…`;
-      if (supportsApproximateTableCount && approximateTotal !== null) return `当前 ${currentCount} 条 / 约 ${approximateTotal} 条`;
-      if (pagination.totalCountCancelled) return `当前 ${currentCount} 条 / 已取消统计`;
-      return `当前 ${currentCount} 条 / 总数未统计`;
+      if (pagination.totalCountLoading) return translate(language, 'dataGrid.pagination.summary.countingExact', { currentCount });
+      if (supportsApproximateTableCount && approximateTotal !== null) return translate(language, 'dataGrid.pagination.summary.approximate', { currentCount, total: approximateTotal });
+      if (pagination.totalCountCancelled) return translate(language, 'dataGrid.pagination.summary.cancelled', { currentCount });
+      return translate(language, 'dataGrid.pagination.summary.unknown', { currentCount });
     }
-    return `当前 ${currentCount} 条 / 正在统计总数…`;
+    return translate(language, 'dataGrid.pagination.summary.counting', { currentCount });
   }
 
   if (!Number.isFinite(total) || total <= 0) {
-    return '当前 0 条 / 共 0 条';
+    return translate(language, 'dataGrid.pagination.summary.empty');
   }
 
-  return `当前 ${currentCount} 条 / 共 ${total} 条`;
+  return translate(language, 'dataGrid.pagination.summary.known', { currentCount, total });
 };
 
 export const resolvePaginationPageText = (params: {
   pagination: PaginationStateLike;
   supportsApproximateTotalPages: boolean;
+  language?: AppLanguage;
 }): string => {
-  const { pagination, supportsApproximateTotalPages } = params;
+  const { pagination, supportsApproximateTotalPages, language = 'en' } = params;
   const exactTotal = toFiniteNonNegativeNumber(pagination.total) ?? 0;
   const approximateTotal = resolveApproximateTotal(pagination);
   const effectiveTotal =
@@ -70,13 +74,13 @@ export const resolvePaginationPageText = (params: {
         ? approximateTotal
         : 0;
 
-  if (effectiveTotal <= 0) return `第 ${pagination.current} 页`;
+  if (effectiveTotal <= 0) return translate(language, 'dataGrid.pagination.page.current', { current: pagination.current });
 
   const totalPages = Math.max(1, Math.ceil(effectiveTotal / Math.max(1, pagination.pageSize)));
   if (pagination.totalKnown === false && !(supportsApproximateTotalPages && approximateTotal !== null)) {
-    return `第 ${pagination.current} 页`;
+    return translate(language, 'dataGrid.pagination.page.current', { current: pagination.current });
   }
-  return `第 ${pagination.current} / ${totalPages} 页`;
+  return translate(language, 'dataGrid.pagination.page.currentTotal', { current: pagination.current, total: totalPages });
 };
 
 export const resolvePaginationTotalForControl = (params: {

@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from 'antd';
 import Editor from '@monaco-editor/react';
+import type { I18nKey } from '../../i18n';
 
 export type DataGridFocusedCellInfo<TRecord = Record<string, unknown>> = {
     record: TRecord;
@@ -20,6 +21,7 @@ export type DataGridPreviewPanelProps<TRecord = Record<string, unknown>> = {
     onFormatJson: () => void;
     onSave: () => void;
     onValueChange: (value: string) => void;
+    t: (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => string;
 };
 
 export const DataGridPreviewPanel = <TRecord,>(props: DataGridPreviewPanelProps<TRecord>) => {
@@ -44,7 +46,7 @@ export const DataGridPreviewPanel = <TRecord,>(props: DataGridPreviewPanelProps<
                 flexShrink: 0,
             }}>
                 <span style={{ color: props.darkMode ? '#aaa' : '#666', fontWeight: 500 }}>
-                    {props.focusedCellInfo ? props.focusedCellInfo.dataIndex : '点击单元格查看数据'}
+                    {props.focusedCellInfo ? props.focusedCellInfo.dataIndex : props.t('dataGrid.preview.emptyTitle')}
                 </span>
                 {props.focusedCellInfo && (() => {
                     const meta = props.columnMetaMap[props.focusedCellInfo.dataIndex] || props.columnMetaMapByLowerName[props.focusedCellInfo.dataIndex.toLowerCase()];
@@ -52,10 +54,10 @@ export const DataGridPreviewPanel = <TRecord,>(props: DataGridPreviewPanelProps<
                 })()}
                 <div style={{ flex: 1 }} />
                 {props.dataPanelIsJson && (
-                    <Button size="small" onClick={props.onFormatJson}>格式化 JSON</Button>
+                    <Button size="small" onClick={props.onFormatJson}>{props.t('dataGrid.json.format')}</Button>
                 )}
                 {props.canModifyData && props.focusedCellInfo && (
-                    <Button size="small" type="primary" onClick={props.onSave}>保存</Button>
+                    <Button size="small" type="primary" onClick={props.onSave}>{props.t('common.save')}</Button>
                 )}
             </div>
             <div style={{ flex: 1, minHeight: 0 }}>
@@ -83,7 +85,7 @@ export const DataGridPreviewPanel = <TRecord,>(props: DataGridPreviewPanelProps<
                     />
                 ) : (
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#999', fontSize: 13 }}>
-                        点击表格中的单元格以预览完整数据
+                        {props.t('dataGrid.preview.empty')}
                     </div>
                 )}
             </div>
