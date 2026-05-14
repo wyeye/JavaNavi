@@ -40,7 +40,25 @@ try {
   const aiProviderPresets = await transpileToModule('src/utils/aiProviderPresets.ts', 'aiProviderPresets.mjs');
   const providerSecretDraft = await transpileToModule('src/utils/providerSecretDraft.ts', 'providerSecretDraft.mjs');
   const dataModificationRisk = await transpileToModule('src/utils/dataModificationRisk.ts', 'dataModificationRisk.mjs');
+  const connectionTagDisplay = await transpileToModule('src/utils/connectionTagDisplay.ts', 'connectionTagDisplay.mjs');
   const javanaviAppSource = await readFile(path.join(projectRoot, 'src/compat/javanaviApp.ts'), 'utf8');
+
+  assert.equal(
+    connectionTagDisplay.formatConnectionTagOptionText(
+      '生产环境主库连接名称非常非常非常非常非常非常非常非常非常长',
+      'prod-primary-db.internal.example.company.local',
+    ).length,
+    connectionTagDisplay.MAX_CONNECTION_TAG_OPTION_TEXT_LENGTH,
+    'long connection group option labels should be capped',
+  );
+  assert.equal(
+    connectionTagDisplay.formatConnectionTagOptionText(
+      '生产环境主库连接名称非常非常非常非常非常非常非常非常非常长',
+      'prod-primary-db.internal.example.company.local',
+    ).endsWith('…'),
+    true,
+    'long connection group option labels should end with an ellipsis',
+  );
 
   assert.equal(
     javanaviAppSource.includes('payload.isLargeFile === true'),

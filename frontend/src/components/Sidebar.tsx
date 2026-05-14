@@ -78,6 +78,7 @@ import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 import { buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
+import { formatConnectionTagOptionText } from '../utils/connectionTagDisplay';
 import { filterSidebarTree, normalizeMySQLViewDDLForEditing, resolveCopyableSidebarNodeName, type SearchScope, type TreeNode } from './sidebarSearch';
 import { locateActiveSidebarTable } from './sidebarTreeNavigation';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
@@ -4196,11 +4197,17 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                         <Checkbox.Group style={{ width: '100%' }}>
                             <div style={modalScrollSectionStyle}>
                                 <Space direction="vertical" style={{ width: '100%' }}>
-                                    {connections.map(conn => (
-                                        <Checkbox key={conn.id} value={conn.id}>
-                                            {conn.name} {conn.config.host ? `(${conn.config.host})` : ''}
-                                        </Checkbox>
-                                    ))}
+                                    {connections.map(conn => {
+                                        const optionText = formatConnectionTagOptionText(conn.name, conn.config.host);
+                                        const fullText = conn.config.host ? `${conn.name} (${conn.config.host})` : conn.name;
+                                        return (
+                                            <Checkbox key={conn.id} value={conn.id} title={fullText} style={{ width: '100%', minWidth: 0 }}>
+                                                <span style={{ display: 'inline-block', maxWidth: '100%', verticalAlign: 'bottom', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    {optionText}
+                                                </span>
+                                            </Checkbox>
+                                        );
+                                    })}
                                 </Space>
                             </div>
                         </Checkbox.Group>

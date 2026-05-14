@@ -3,8 +3,12 @@ package com.javanavi.connections;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.config.SecurityProperties;
+import com.javanavi.model.ConnectionTagDto;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.SavedConnectionInputDto;
+import com.javanavi.model.SavedConnectionTagsRequestDto;
+import com.javanavi.model.SavedQueriesRequestDto;
+import com.javanavi.model.SavedQueryDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import com.javanavi.security.SecretStore;
 import org.springframework.stereotype.Service;
@@ -26,6 +30,8 @@ import java.util.UUID;
 @Service
 public class SavedConnectionService {
     private static final TypeReference<List<StoredConnection>> STORED_CONNECTIONS = new TypeReference<>() {};
+    private static final TypeReference<List<StoredConnectionTag>> STORED_CONNECTION_TAGS = new TypeReference<>() {};
+    private static final TypeReference<List<StoredSavedQuery>> STORED_SAVED_QUERIES = new TypeReference<>() {};
     private static final String SECRET_PREFIX = "connection:";
     public static final String METADATA_CATALOG_OPTION = "javanaviMetadataCatalog";
     public static final String METADATA_SCHEMA_OPTION = "javanaviMetadataSchema";
@@ -34,12 +40,16 @@ public class SavedConnectionService {
     private final ObjectMapper objectMapper;
     private final SecretStore secretStore;
     private final Path connectionsFile;
+    private final Path connectionTagsFile;
+    private final Path savedQueriesFile;
 
     public SavedConnectionService(SecurityProperties properties, ObjectMapper objectMapper, SecretStore secretStore) {
         this.objectMapper = objectMapper;
         this.secretStore = secretStore;
         Path directory = Path.of(properties.getDataDirectory()).toAbsolutePath().normalize();
         this.connectionsFile = directory.resolve("connections.json");
+        this.connectionTagsFile = directory.resolve("connection-tags.json");
+        this.savedQueriesFile = directory.resolve("saved-queries.json");
     }
 
     public synchronized List<SavedConnectionViewDto> list() {
@@ -47,6 +57,56 @@ public class SavedConnectionService {
                 .sorted(Comparator.comparing(StoredConnection::createdAt, Comparator.nullsLast(Comparator.naturalOrder())))
                 .map(this::toView)
                 .toList();
+    }
+
+    public synchronized List<ConnectionTagDto> listTags() {
+        return readAllTags().stream()
+                .map(this::toTagDto)
+                .toList();
+    }
+
+    public synchronized List<ConnectionTagDto> saveTags(SavedConnectionTagsRequestDto input) {
+        List<StoredConnectionTag> tags = safeConnectionTags(input == null ? null : input.tags());
+        writeAllTags(tags);
+        return tags.stream().map(this::toTagDto).toList();
+    }
+
+    public synchronized List<SavedQueryDto> listSavedQueries() {
+        return readAllSavedQueries().stream()
+                .map(this::toSavedQueryDto)
+                .toList();
+    }
+
+    public synchronized List<SavedQueryDto> saveSavedQueries(SavedQueriesRequestDto input) {
+        List<StoredSavedQuery> queries = safeSavedQueries(input == null ? null : input.queries());
+        writeAllSavedQueries(queries);
+        return queries.stream().map(this::toSavedQueryDto).toList();
+    }
+
+    public synchronized List<SavedQueryDto> deleteSavedQuery(String id) {
+        String queryId = requireSavedQueryId(id);
+        List<StoredSavedQuery> queries = new ArrayList<>(readAllSavedQueries());
+        queries.removeIf(query -> query.id().equals(queryId));
+        writeAllSavedQueries(queries);
+        return queries.stream().map(this::toSavedQueryDto).toList();
+    }
+
+    public synchronized List<SavedQueryDto> saveSavedQuery(SavedQueryDto input) {
+        StoredSavedQuery query = safeSavedQuery(input, 0);
+        List<StoredSavedQuery> queries = new ArrayList<>(readAllSavedQueries());
+        boolean updated = false;
+        for (int index = 0; index < queries.size(); index++) {
+            if (queries.get(index).id().equals(query.id())) {
+                queries.set(index, query);
+                updated = true;
+                break;
+            }
+        }
+        if (!updated) {
+            queries.add(query);
+        }
+        writeAllSavedQueries(queries);
+        return queries.stream().map(this::toSavedQueryDto).toList();
     }
 
     public synchronized SavedConnectionViewDto save(SavedConnectionInputDto input) {
@@ -574,6 +634,66 @@ public class SavedConnectionService {
         }
     }
 
+    private List<StoredConnectionTag> readAllTags() {
+        try {
+            if (!Files.exists(connectionTagsFile)) {
+                return new ArrayList<>();
+            }
+            String text = Files.readString(connectionTagsFile, StandardCharsets.UTF_8);
+            if (text.isBlank()) {
+                return new ArrayList<>();
+            }
+            List<StoredConnectionTag> tags = objectMapper.readValue(text, STORED_CONNECTION_TAGS);
+            return tags == null ? new ArrayList<>() : new ArrayList<>(tags);
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to read JavaNavi connection groups.", error);
+        }
+    }
+
+    private void writeAllTags(List<StoredConnectionTag> tags) {
+        try {
+            Files.createDirectories(connectionTagsFile.getParent());
+            byte[] json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(tags);
+            Files.write(connectionTagsFile, json);
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to write JavaNavi connection groups.", error);
+        }
+    }
+
+    private ConnectionTagDto toTagDto(StoredConnectionTag tag) {
+        return new ConnectionTagDto(tag.id(), tag.name(), tag.connectionIds());
+    }
+
+    private List<StoredSavedQuery> readAllSavedQueries() {
+        try {
+            if (!Files.exists(savedQueriesFile)) {
+                return new ArrayList<>();
+            }
+            String text = Files.readString(savedQueriesFile, StandardCharsets.UTF_8);
+            if (text.isBlank()) {
+                return new ArrayList<>();
+            }
+            List<StoredSavedQuery> queries = objectMapper.readValue(text, STORED_SAVED_QUERIES);
+            return queries == null ? new ArrayList<>() : new ArrayList<>(queries);
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to read JavaNavi saved queries.", error);
+        }
+    }
+
+    private void writeAllSavedQueries(List<StoredSavedQuery> queries) {
+        try {
+            Files.createDirectories(savedQueriesFile.getParent());
+            byte[] json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(queries);
+            Files.write(savedQueriesFile, json);
+        } catch (IOException error) {
+            throw new IllegalStateException("Unable to write JavaNavi saved queries.", error);
+        }
+    }
+
+    private SavedQueryDto toSavedQueryDto(StoredSavedQuery query) {
+        return new SavedQueryDto(query.id(), query.name(), query.sql(), query.connectionId(), query.dbName(), query.createdAt());
+    }
+
     @SuppressWarnings("unchecked")
     private Map<String, Object> deepCopyMap(Map<String, Object> value) {
         if (value == null) {
@@ -713,6 +833,90 @@ public class SavedConnectionService {
         return result.isEmpty() ? null : result;
     }
 
+    private static List<StoredSavedQuery> safeSavedQueries(List<SavedQueryDto> queries) {
+        if (queries == null || queries.isEmpty()) {
+            return List.of();
+        }
+        List<StoredSavedQuery> result = new ArrayList<>();
+        List<String> seenQueryIds = new ArrayList<>();
+        for (int index = 0; index < queries.size(); index++) {
+            StoredSavedQuery query = safeSavedQuery(queries.get(index), index);
+            if (seenQueryIds.contains(query.id())) {
+                continue;
+            }
+            seenQueryIds.add(query.id());
+            result.add(query);
+        }
+        return result;
+    }
+
+    private static StoredSavedQuery safeSavedQuery(SavedQueryDto query, int index) {
+        if (query == null) {
+            throw new IllegalArgumentException("Saved query payload is required.");
+        }
+        String id = requireSavedQueryId(firstText(query.id(), "saved-" + (index + 1)));
+        String sql = firstText(query.sql());
+        if (sql == null) {
+            throw new IllegalArgumentException("Saved query SQL is required.");
+        }
+        String name = firstText(query.name(), "Query-" + (index + 1));
+        String connectionId = sanitizeId(firstText(query.connectionId(), "conn-unknown"));
+        String dbName = firstText(query.dbName(), "");
+        long createdAt = query.createdAt() == null || query.createdAt() < 0 ? System.currentTimeMillis() : query.createdAt();
+        return new StoredSavedQuery(id, name, sql, connectionId, dbName == null ? "" : dbName, createdAt);
+    }
+
+    private static String requireSavedQueryId(String value) {
+        String sanitized = value == null ? "" : value.trim().replaceAll("[^A-Za-z0-9_.:@-]", "-");
+        if (sanitized.isBlank()) {
+            throw new IllegalArgumentException("Saved query id is required.");
+        }
+        return sanitized.length() > 96 ? sanitized.substring(0, 96) : sanitized;
+    }
+
+    private static List<StoredConnectionTag> safeConnectionTags(List<ConnectionTagDto> tags) {
+        if (tags == null || tags.isEmpty()) {
+            return List.of();
+        }
+        List<StoredConnectionTag> result = new ArrayList<>();
+        List<String> seenTagIds = new ArrayList<>();
+        for (int index = 0; index < tags.size(); index++) {
+            ConnectionTagDto tag = tags.get(index);
+            if (tag == null) {
+                continue;
+            }
+            String fallbackId = "tag-" + (index + 1);
+            String id = sanitizeTagId(firstText(tag.id(), fallbackId));
+            if (seenTagIds.contains(id)) {
+                continue;
+            }
+            seenTagIds.add(id);
+            String name = firstText(tag.name(), "Group-" + (index + 1));
+            result.add(new StoredConnectionTag(id, name, safeTagConnectionIds(tag.connectionIds())));
+        }
+        return result;
+    }
+
+    private static List<String> safeTagConnectionIds(List<String> values) {
+        if (values == null || values.isEmpty()) {
+            return List.of();
+        }
+        List<String> result = values.stream()
+                .filter(value -> value != null && !value.isBlank())
+                .map(value -> sanitizeId(value.trim()))
+                .distinct()
+                .toList();
+        return result.isEmpty() ? List.of() : result;
+    }
+
+    private static String sanitizeTagId(String value) {
+        String sanitized = value == null ? "" : value.trim().replaceAll("[^A-Za-z0-9_.:@-]", "-");
+        if (sanitized.isBlank()) {
+            return "tag-" + UUID.randomUUID().toString().substring(0, 8);
+        }
+        return sanitized.length() > 96 ? sanitized.substring(0, 96) : sanitized;
+    }
+
     public record StoredConnection(
             String id,
             String name,
@@ -736,5 +940,22 @@ public class SavedConnectionService {
     }
 
     public record MetadataScopeMemory(String catalog, String schema) {
+    }
+
+    public record StoredConnectionTag(
+            String id,
+            String name,
+            List<String> connectionIds
+    ) {
+    }
+
+    public record StoredSavedQuery(
+            String id,
+            String name,
+            String sql,
+            String connectionId,
+            String dbName,
+            long createdAt
+    ) {
     }
 }
