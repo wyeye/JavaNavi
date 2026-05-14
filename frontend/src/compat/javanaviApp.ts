@@ -9,6 +9,10 @@ export type QueryResult = connection.QueryResult;
 
 type QueryResultPayload = Pick<QueryResult, 'success' | 'message' | 'data'>;
 
+export type QueryExecutionOptions = {
+  autoCommit?: boolean;
+};
+
 const API_BASE = '/api/v1';
 
 type PostJsonOptions = {
@@ -455,8 +459,8 @@ export async function DBGetTriggers(arg1:connection.ConnectionConfig,arg2:string
   return apiEnvelopeToQueryResult(payload, 'Triggers loaded');
 }
 
-export async function DBQuery(arg1: connection.ConnectionConfig, arg2: string, arg3: string, requestSource = 'query'): Promise<connection.QueryResult> {
-  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3 }, { requestSource });
+export async function DBQuery(arg1: connection.ConnectionConfig, arg2: string, arg3: string, requestSource = 'query', options?: QueryExecutionOptions): Promise<connection.QueryResult> {
+  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, ...(options || {}) }, { requestSource });
   return apiEnvelopeToQueryResult(payload, 'Query executed');
 }
 
@@ -464,8 +468,8 @@ export async function DBQueryIsolated(arg1: connection.ConnectionConfig, arg2: s
   return DBQuery(arg1, arg2, arg3);
 }
 
-export async function DBQueryMulti(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string, requestSource = 'query'): Promise<connection.QueryResult> {
-  const payload = await postJson('/query/multi', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4 }, { requestSource });
+export async function DBQueryMulti(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string, requestSource = 'query', options?: QueryExecutionOptions): Promise<connection.QueryResult> {
+  const payload = await postJson('/query/multi', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4, ...(options || {}) }, { requestSource });
   const result = apiEnvelopeToQueryResult(payload, 'Query batch executed');
   if (result.success && !Array.isArray(result.data)) {
     result.data = [];
@@ -474,8 +478,8 @@ export async function DBQueryMulti(arg1: connection.ConnectionConfig, arg2: stri
   return result;
 }
 
-export async function DBQueryWithCancel(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string, requestSource = 'query'): Promise<connection.QueryResult> {
-  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4 }, { requestSource });
+export async function DBQueryWithCancel(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string, requestSource = 'query', options?: QueryExecutionOptions): Promise<connection.QueryResult> {
+  const payload = await postJson('/query', { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4, ...(options || {}) }, { requestSource });
   const result = apiEnvelopeToQueryResult(payload, 'Query executed');
   result.queryId = result.queryId || arg4;
   return result;

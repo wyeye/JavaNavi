@@ -665,31 +665,55 @@ public class DatabaseCompatibilityService {
     }
 
     private QueryResultDto executeSingleOnConnection(Connection connection, QueryRequestDto request, String queryId, RunningQuery running) throws SQLException {
-        long started = System.nanoTime();
-        String sql = requireText(request.sql(), "sql");
-        int page = request.normalizedPage();
-        int pageSize = request.normalizedPageSize();
-        String executableSql = shouldApplyServerPaging(request, sql) ? pagedSql(sql, page, pageSize) : sql.trim();
+        return executeWithRequestedTransactionMode(connection, request, () -> {
+            long started = System.nanoTime();
+            String sql = requireText(request.sql(), "sql");
+            int page = request.normalizedPage();
+            int pageSize = request.normalizedPageSize();
+            String executableSql = shouldApplyServerPaging(request, sql) ? pagedSql(sql, page, pageSize) : sql.trim();
 
-        try (Statement statement = connection.createStatement()) {
-            configureStatement(statement, request.connection(), running);
-            ResultSetDataDto resultSet = executeStatement(statement, executableSql, running);
-            long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
-            boolean readOnly = !isAffectedRowsResult(resultSet);
-            return new QueryResultDto(
-                    resultSet.columns(),
-                    resultSet.rows(),
-                    resultSet.rows().size(),
-                    page,
-                    pageSize,
-                    elapsedMs,
-                    readOnly,
-                    queryId
-            );
-        }
+            try (Statement statement = connection.createStatement()) {
+                configureStatement(statement, request.connection(), running);
+                ResultSetDataDto resultSet = executeStatement(statement, executableSql, running);
+                long elapsedMs = (System.nanoTime() - started) / 1_000_000L;
+                boolean readOnly = !isAffectedRowsResult(resultSet);
+                return new QueryResultDto(
+                        nullSafeColumns(resultSet.columns()),
+                        nullSafeRows(resultSet.rows()),
+                        nullSafeRows(resultSet.rows()).size(),
+                        page,
+                        pageSize,
+                        elapsedMs,
+                        readOnly,
+                        queryId
+                );
+            }
+        });
     }
 
     private List<ResultSetDataDto> executeMultiOnConnection(Connection connection, QueryRequestDto request, RunningQuery running) throws SQLException {
+        if (request.normalizedAutoCommit()) {
+            return executeMultiStatementsOnConnection(connection, request, running);
+        }
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try {
+            List<ResultSetDataDto> resultSets = executeMultiStatementsOnConnection(connection, request, running);
+            if (hasStatementFailure(resultSets)) {
+                connection.rollback();
+                return resultSets;
+            }
+            connection.commit();
+            return resultSets;
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private List<ResultSetDataDto> executeMultiStatementsOnConnection(Connection connection, QueryRequestDto request, RunningQuery running) throws SQLException {
         List<SqlStatementSlice> statements = splitSQLStatementSlices(request.sql());
         List<ResultSetDataDto> resultSets = new ArrayList<>();
         for (int index = 0; index < statements.size(); index++) {
@@ -706,11 +730,33 @@ public class DatabaseCompatibilityService {
                 if (isQueryCancellation(error)) {
                     throw error;
                 }
-                resultSets.add(statementFailureResult(statementSlice, index + 1, error));
+                resultSets.add(statementFailureResult(statementSlice, index + 1, error, !request.normalizedAutoCommit()));
                 return resultSets;
             }
         }
         return resultSets;
+    }
+
+    private <T> T executeWithRequestedTransactionMode(Connection connection, QueryRequestDto request, SqlWork<T> work) throws SQLException {
+        if (request.normalizedAutoCommit()) {
+            return work.execute();
+        }
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try {
+            T result = work.execute();
+            connection.commit();
+            return result;
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private static boolean hasStatementFailure(List<ResultSetDataDto> resultSets) {
+        return resultSets.stream().anyMatch(resultSet -> "error".equalsIgnoreCase(nullToEmpty(resultSet.status())));
     }
 
     private ResultSetDataDto executeStatement(Statement statement, String sql, RunningQuery running) throws SQLException {
@@ -742,7 +788,8 @@ public class DatabaseCompatibilityService {
                 statement.endLine(),
                 statement.sql(),
                 status,
-                message
+                message,
+                null
         );
     }
 
@@ -752,6 +799,10 @@ public class DatabaseCompatibilityService {
     }
 
     private static ResultSetDataDto statementFailureResult(SqlStatementSlice statement, int statementIndex, SQLException error) {
+        return statementFailureResult(statement, statementIndex, error, false);
+    }
+
+    private static ResultSetDataDto statementFailureResult(SqlStatementSlice statement, int statementIndex, SQLException error, boolean transactionRolledBack) {
         String message = sqlErrorMessage(error);
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("statementIndex", statementIndex);
@@ -759,15 +810,21 @@ public class DatabaseCompatibilityService {
         row.put("endLine", statement.endLine());
         row.put("status", "error");
         row.put("message", message);
+        if (transactionRolledBack) {
+            row.put("transactionRolledBack", true);
+        }
         return new ResultSetDataDto(
                 List.of(row),
-                List.of("statementIndex", "startLine", "endLine", "status", "message"),
+                transactionRolledBack
+                        ? List.of("statementIndex", "startLine", "endLine", "status", "message", "transactionRolledBack")
+                        : List.of("statementIndex", "startLine", "endLine", "status", "message"),
                 statementIndex,
                 statement.startLine(),
                 statement.endLine(),
                 statement.sql(),
                 "error",
-                message
+                message,
+                transactionRolledBack
         );
     }
 
@@ -2010,6 +2067,12 @@ public class DatabaseCompatibilityService {
         return table.tableName();
     }
 
+
+    @FunctionalInterface
+    private interface SqlWork<T> {
+        T execute() throws SQLException;
+    }
+
     private <T> T withConnection(ConnectionConfigDto config, SqlConnectionWork<T> work) throws SQLException {
         if (jdbcConnectionFactory.isDemo(config)) {
             return requireDemoDatabaseService().withConnection(work::execute);
@@ -2183,7 +2246,8 @@ public class DatabaseCompatibilityService {
     }
 
     private static boolean isAffectedRowsResult(ResultSetDataDto resultSet) {
-        return resultSet.columns().size() == 1 && "affectedRows".equals(resultSet.columns().get(0));
+        List<String> columns = nullSafeColumns(resultSet.columns());
+        return columns.size() == 1 && "affectedRows".equals(columns.get(0));
     }
 
     private static ResultSetDataDto affectedRowsResult(int affectedRows) {

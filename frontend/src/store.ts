@@ -516,6 +516,7 @@ export interface QueryOptions {
   maxRows: number;
   showColumnComment: boolean;
   showColumnType: boolean;
+  autoCommit: boolean;
 }
 
 interface AppState {
@@ -761,13 +762,15 @@ const sanitizeQueryOptions = (value: unknown): QueryOptions => {
     typeof raw.showColumnComment === "boolean" ? raw.showColumnComment : true;
   const showColumnType =
     typeof raw.showColumnType === "boolean" ? raw.showColumnType : true;
+  const autoCommit = typeof raw.autoCommit === "boolean" ? raw.autoCommit : true;
   if (!Number.isFinite(maxRows) || maxRows <= 0) {
-    return { maxRows: 5000, showColumnComment, showColumnType };
+    return { maxRows: 5000, showColumnComment, showColumnType, autoCommit };
   }
   return {
     maxRows: Math.min(50000, Math.trunc(maxRows)),
     showColumnComment,
     showColumnType,
+    autoCommit,
   };
 };
 
@@ -1134,6 +1137,7 @@ export const useStore = create<AppState>()(
         maxRows: 5000,
         showColumnComment: true,
         showColumnType: true,
+        autoCommit: true,
       },
       shortcutOptions: cloneShortcutOptions(DEFAULT_SHORTCUT_OPTIONS),
       sqlLogs: [],

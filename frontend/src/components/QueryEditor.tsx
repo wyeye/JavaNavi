@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Editor, { OnMount, type Monaco } from '@monaco-editor/react';
 import type { editor, Position } from 'monaco-editor';
-import { Button, message, Modal, Input, Form, Dropdown, MenuProps, Tooltip, Select, Tabs } from 'antd';
+import { Button, message, Modal, Input, Form, Dropdown, MenuProps, Tooltip, Select, Tabs, Switch } from 'antd';
 import { PlayCircleOutlined, SaveOutlined, FormatPainterOutlined, SettingOutlined, CloseOutlined, StopOutlined, RobotOutlined } from '@ant-design/icons';
 import { format } from 'sql-formatter';
 import { v4 as uuidv4 } from 'uuid';
@@ -187,7 +187,7 @@ let sqlCompletionRegistered = false;
 type QueryRow = Record<string, unknown> & Partial<Record<typeof JAVANAVI_ROW_KEY, string | number>>;
 type TableMeta = { dbName: string; tableName: string };
 type ColumnMeta = { dbName: string; tableName: string; name: string; type: string };
-type QueryResultSetData = { columns?: string[]; rows?: QueryRow[]; statementIndex?: number; startLine?: number; endLine?: number; sql?: string; status?: string; message?: string };
+type QueryResultSetData = { columns?: string[]; rows?: QueryRow[]; statementIndex?: number; startLine?: number; endLine?: number; sql?: string; status?: string; message?: string; transactionRolledBack?: boolean };
 type AffectedRowsPayload = { affectedRows?: number };
 type StatementExecutionStatus = 'success' | 'error';
 type DatabaseRow = { Database?: unknown; database?: unknown };
@@ -305,6 +305,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       status?: StatementExecutionStatus;
       message?: string;
       statementSummary?: boolean;
+      transactionRolledBack?: boolean;
   };
 
   // Result Sets
@@ -355,6 +356,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const sqlFormatOptions = useStore(state => state.sqlFormatOptions);
   const setSqlFormatOptions = useStore(state => state.setSqlFormatOptions);
   const queryOptions = useStore(state => state.queryOptions);
+  const queryExecutionOptions = useMemo(() => ({ autoCommit: queryOptions?.autoCommit ?? true }), [queryOptions?.autoCommit]);
   const setQueryOptions = useStore(state => state.setQueryOptions);
   const shortcutOptions = useStore(state => state.shortcutOptions);
   const activeTabId = useStore(state => state.activeTabId);
@@ -1417,7 +1419,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           } catch {
               queryId = 'reload-' + Date.now();
           }
-          const res = await DBQueryMulti(buildRpcConnectionConfig(config), currentDb, sql, queryId, 'reload');
+          const res = await DBQueryMulti(buildRpcConnectionConfig(config), currentDb, sql, queryId, 'reload', queryExecutionOptions);
           if (!res?.success) {
               message.error('刷新失败: ' + (res?.message || '未知错误'));
               return;
@@ -1569,7 +1571,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 }
                 setQueryId(queryId);
 
-                const res = await DBQueryWithCancel(rpcConfig, currentDb, executedSql, queryId, runSource || 'query');
+                const res = await DBQueryWithCancel(rpcConfig, currentDb, executedSql, queryId, runSource || 'query', queryExecutionOptions);
                 const duration = Date.now() - startTime;
                 addSqlLog({
                     id: `log-${Date.now()}-query-${idx + 1}`,
@@ -1673,7 +1675,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             }
             setQueryId(queryId);
 
-            const res = await DBQueryMulti(rpcConfig, currentDb, fullSQL, queryId, runSource || 'query');
+            const res = await DBQueryMulti(rpcConfig, currentDb, fullSQL, queryId, runSource || 'query', queryExecutionOptions);
             const duration = Date.now() - startTime;
 
             if (!res.success) {
@@ -1716,18 +1718,19 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             // res.data 是 ResultSetData[] 数组
             const resultSetDataArray = queryResultSetDataArray(res);
             const backendFailedResult = resultSetDataArray.find(item => item.status === 'error');
+            const failureLogMessage = backendFailedResult
+                ? t(backendFailedResult.transactionRolledBack ? 'queryEditor.statement.failedWithRollback' : 'queryEditor.statement.failedWithMessage', {
+                    title: statementResultTitle(t, backendFailedResult.statementIndex, backendFailedResult.startLine, backendFailedResult.endLine),
+                    message: backendFailedResult.message || t('queryEditor.sqlExecutionFailed')
+                })
+                : '';
             addSqlLog({
                 id: `log-${Date.now()}-query-multi`,
                 timestamp: Date.now(),
                 sql: fullSQL,
                 status: backendFailedResult ? 'error' : 'success',
                 duration,
-                message: backendFailedResult
-                    ? t('queryEditor.statement.failedWithMessage', {
-                        title: statementResultTitle(t, backendFailedResult.statementIndex, backendFailedResult.startLine, backendFailedResult.endLine),
-                        message: backendFailedResult.message || t('queryEditor.sqlExecutionFailed')
-                    })
-                    : '',
+                message: failureLogMessage,
                 dbName: currentDb
             });
             const nextResultSets: ResultSet[] = [];
@@ -1747,6 +1750,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 const endLine = Number(rsData.endLine || 0);
                 const statementStatus: StatementExecutionStatus = rsData.status === 'error' ? 'error' : 'success';
                 const statementMessage = String(rsData.message || (statementStatus === 'error' ? t('queryEditor.executionFailed') : t('queryEditor.executionSucceededBare')));
+                const transactionRolledBack = rsData.transactionRolledBack === true;
 
                 // 检查是否为 affectedRows 类结果集
                 const isAffectedResult = Array.isArray(rsData.rows) && rsData.rows.length === 1
@@ -1778,7 +1782,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         endLine,
                         status: statementStatus,
                         message: statementMessage,
-                        statementSummary: true
+                        statementSummary: true,
+                        transactionRolledBack
                     });
                 } else {
                     let rows = Array.isArray(rsData.rows) ? rsData.rows : [];
@@ -1835,7 +1840,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                         endLine,
                         status: statementStatus,
                         message: statementMessage,
-                        statementSummary: statementStatus === 'error'
+                        statementSummary: statementStatus === 'error',
+                        transactionRolledBack
                     });
                 }
             }
@@ -1896,7 +1902,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             if (failedStatement) {
                 const title = statementResultTitle(t, failedStatement.statementIndex, failedStatement.startLine, failedStatement.endLine);
                 setActiveResultKey(failedStatement.key);
-                setExecutionError(t('queryEditor.statement.failedWithMessage', { title, message: failedStatement.message || t('queryEditor.sqlExecutionFailed') }));
+                setExecutionError(t(failedStatement.transactionRolledBack ? 'queryEditor.statement.failedWithRollback' : 'queryEditor.statement.failedWithMessage', { title, message: failedStatement.message || t('queryEditor.sqlExecutionFailed') }));
                 message.error(t('queryEditor.statement.failed', { title }));
             } else if (resultSetDataArray.length > 1) {
                 message.success(t('queryEditor.multiStatementCompleted', { resultSetCount: nextResultSets.length }));
@@ -2364,6 +2370,18 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 ]}
             />
         </Tooltip>
+        <Tooltip title={t('queryEditor.autoCommit.tooltip')}>
+            <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                <span style={{ color: darkMode ? '#e5e7eb' : '#334155' }}>{t('queryEditor.autoCommit.label')}</span>
+                <Switch
+                    size="small"
+                    checked={queryOptions?.autoCommit ?? true}
+                    checkedChildren={t('queryEditor.autoCommit.on')}
+                    unCheckedChildren={t('queryEditor.autoCommit.off')}
+                    onChange={(checked) => setQueryOptions({ autoCommit: checked })}
+                />
+            </div>
+        </Tooltip>
         <Button.Group>
           <Tooltip
               title={
@@ -2517,7 +2535,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                                   <div style={{ padding: '10px 12px', color: ok ? '#389e0d' : '#cf1322', background: ok ? '#f6ffed' : '#fff2f0', borderBottom: `1px solid ${ok ? '#b7eb8f' : '#ffccc7'}` }}>
                                       {ok
                                           ? t('queryEditor.statement.succeededWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionSucceededBare') })
-                                          : t('queryEditor.statement.failedWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionFailed') })}
+                                          : t(rs.transactionRolledBack ? 'queryEditor.statement.failedWithRollback' : 'queryEditor.statement.failedWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionFailed') })}
                                   </div>
                                   <DataGrid
                                       data={rs.rows}

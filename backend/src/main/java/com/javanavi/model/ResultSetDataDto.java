@@ -11,9 +11,10 @@ public record ResultSetDataDto(
         Integer endLine,
         String sql,
         String status,
-        String message
+        String message,
+        Boolean transactionRolledBack
 ) {
     public ResultSetDataDto(List<Map<String, Object>> rows, List<String> columns) {
-        this(rows, columns, null, null, null, null, null, null);
+        this(rows, columns, null, null, null, null, null, null, null);
     }
 }

@@ -10,10 +10,15 @@ public record QueryRequestDto(
         @NotBlank String sql,
         Integer page,
         Integer pageSize,
-        String queryId
+        String queryId,
+        Boolean autoCommit
 ) {
     public QueryRequestDto(ConnectionConfigDto connection, String sql, Integer page, Integer pageSize) {
-        this(connection, null, sql, page, pageSize, null);
+        this(connection, null, sql, page, pageSize, null, null);
+    }
+
+    public QueryRequestDto(ConnectionConfigDto connection, String database, String sql, Integer page, Integer pageSize, String queryId) {
+        this(connection, database, sql, page, pageSize, queryId, null);
     }
 
     public int normalizedPage() {
@@ -25,5 +30,9 @@ public record QueryRequestDto(
             return 100;
         }
         return Math.min(pageSize, 500);
+    }
+
+    public boolean normalizedAutoCommit() {
+        return autoCommit == null || autoCommit;
     }
 }
