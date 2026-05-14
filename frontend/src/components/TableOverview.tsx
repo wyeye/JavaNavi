@@ -319,11 +319,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         const res = await DBShowCreateTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
         if (res.success) {
             navigator.clipboard.writeText(res.data as string);
-            message.success('表结构已复制到剪贴板');
+            message.success(t('sidebar.msg.schemaCopied'));
         } else {
             message.error(res.message);
         }
-    }, [buildConfig, tab.dbName]);
+    }, [buildConfig, tab.dbName, t]);
 
     const handleExport = useCallback(async (tableName: string, format: string) => {
         const config = buildConfig();
@@ -482,7 +482,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const openCopyTablesModal = useCallback((tableNames?: string[]) => {
         const names = tableNames && tableNames.length > 0 ? tableNames : rowSelection.selectedRowKeys.map(String);
         if (names.length === 0) {
-            message.warning('请选择要复制的表');
+            message.warning(t('tableOverview.copy.selectRequired'));
             return;
         }
         setSelectedTableNames(names);
@@ -490,7 +490,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         setCopyTablePrefix('');
         setCopyTableSuffix('_copy');
         setCopyModalOpen(true);
-    }, [rowSelection.selectedRowKeys]);
+    }, [rowSelection.selectedRowKeys, t]);
 
     const handleCopyTables = useCallback(async () => {
         const config = buildConfig();
@@ -498,14 +498,14 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         const targetPrefix = copyTablePrefix.trim();
         if (!config) return;
         if (selectedTableNames.length === 0) {
-            message.warning('请选择要复制的表');
+            message.warning(t('tableOverview.copy.selectRequired'));
             return Promise.reject();
         }
         if (!targetPrefix && !targetSuffix) {
-            message.error('目标表前缀或后缀至少填写一个');
+            message.error(t('tableOverview.copy.nameRequired'));
             return Promise.reject();
         }
-        const hide = message.loading(`正在复制 ${selectedTableNames.length} 张表...`, 0);
+        const hide = message.loading(t('tableOverview.copy.loading', { count: selectedTableNames.length }), 0);
         try {
             const res = await CopyTables(
                 buildRpcConnectionConfig(config),
@@ -517,20 +517,20 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             );
             hide();
             if (res.success) {
-                message.success(`已复制 ${selectedTableNames.length} 张表`);
+                message.success(t('tableOverview.copy.success', { count: selectedTableNames.length }));
                 setCopyModalOpen(false);
                 setSelectedTableNames([]);
                 await loadData();
                 return;
             }
-            message.error('复制表失败: ' + res.message);
+            message.error(t('tableOverview.copy.failed', { message: res.message }));
             return Promise.reject();
         } catch (e: unknown) {
             hide();
-            message.error('复制表失败: ' + getErrorMessage(e));
+            message.error(t('tableOverview.copy.failed', { message: getErrorMessage(e) }));
             return Promise.reject();
         }
-    }, [buildConfig, copyTableMode, copyTablePrefix, copyTableSuffix, loadData, selectedTableNames, tab.dbName]);
+    }, [buildConfig, copyTableMode, copyTablePrefix, copyTableSuffix, loadData, selectedTableNames, tab.dbName, t]);
 
     const openNewQueryForTable = useCallback((tableName: string) => {
         setActiveContext({ connectionId: tab.connectionId, dbName: tab.dbName || '' });
@@ -550,8 +550,8 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         { key: 'new-query', label: '新建查询', icon: <ConsoleSqlOutlined />, onClick: () => openNewQueryForTable(table.name) },
         { type: 'divider' },
         { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(table) },
-        { key: 'copy-table', label: '复制表', icon: <CopyOutlined />, onClick: () => openCopyTablesModal([table.name]) },
-        { key: 'copy-structure', label: '复制表结构到剪贴板', icon: <CopyOutlined />, onClick: () => handleCopyStructure(table.name) },
+        { key: 'copy-table', label: t('tableOverview.copy.action'), icon: <CopyOutlined />, onClick: () => openCopyTablesModal([table.name]) },
+        { key: 'copy-structure', label: t('tableOverview.copy.structureToClipboard'), icon: <CopyOutlined />, onClick: () => handleCopyStructure(table.name) },
         { key: 'backup-table', label: '备份表 (SQL)', icon: <SaveOutlined />, onClick: () => handleExport(table.name, 'sql') },
         { key: 'rename-table', label: '重命名表', icon: <EditOutlined />, onClick: () => handleRenameTable(table.name) },
         { key: 'danger-zone', label: '危险操作', icon: <WarningOutlined />, children: [
@@ -567,7 +567,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             { key: 'export-md', label: '导出 Markdown', onClick: () => handleExport(table.name, 'md') },
             { key: 'export-html', label: '导出 HTML', onClick: () => handleExport(table.name, 'html') },
         ]},
-    ], [allowTruncate, handleCopyStructure, handleDeleteTable, handleExport, handleRenameTable, handleTableDataDangerAction, openCopyTablesModal, openDesign, openNewQueryForTable]);
+    ], [allowTruncate, handleCopyStructure, handleDeleteTable, handleExport, handleRenameTable, handleTableDataDangerAction, openCopyTablesModal, openDesign, openNewQueryForTable, t]);
 
 
     // --- Theme ---
@@ -638,12 +638,12 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                         checked={visibleTableNames.length > 0 && visibleSelectedCount === visibleTableNames.length}
                         onChange={e => selectVisibleTables(e.target.checked)}
                     >
-                        选择当前列表
+                        {t('tableOverview.selection.currentList')}
                     </Checkbox>
                 )}
                 {selectedTableCount > 0 && (
                     <Button size="small" icon={<CopyOutlined />} onClick={() => openCopyTablesModal()}>
-                        复制表 ({selectedTableCount})
+                        {t('tableOverview.copy.actionWithCount', { count: selectedTableCount })}
                     </Button>
                 )}
                 <div style={{ flex: 1 }} />
@@ -907,32 +907,32 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 )}
             </div>
             <Modal
-                title={`复制表（${selectedTableCount}）`}
+                title={t('tableOverview.copy.modalTitle', { count: selectedTableCount })}
                 open={copyModalOpen}
-                okText="复制"
-                cancelText="取消"
+                okText={t('tableOverview.copy.action')}
+                cancelText={t('common.cancel')}
                 onOk={handleCopyTables}
                 onCancel={() => setCopyModalOpen(false)}
             >
                 <Space direction="vertical" size={12} style={{ width: '100%' }}>
                     <div style={{ color: textSecondary, fontSize: 12 }}>
-                        目标表名 = 前缀 + 原表名 + 后缀
+                        {t('tableOverview.copy.namePattern')}
                     </div>
                     <Input
                         {...noAutoCapInputProps}
                         value={copyTablePrefix}
                         onChange={e => setCopyTablePrefix(e.target.value)}
-                        placeholder="目标表名前缀，可留空"
+                        placeholder={t('tableOverview.copy.prefixPlaceholder')}
                     />
                     <Input
                         {...noAutoCapInputProps}
                         value={copyTableSuffix}
                         onChange={e => setCopyTableSuffix(e.target.value)}
-                        placeholder="目标表名后缀，例如 _copy"
+                        placeholder={t('tableOverview.copy.suffixPlaceholder')}
                     />
                     <Radio.Group value={copyTableMode} onChange={e => setCopyTableMode(e.target.value)}>
-                        <Radio value="structure">仅复制结构</Radio>
-                        <Radio value="structureData">复制结构与数据</Radio>
+                        <Radio value="structure">{t('tableOverview.copy.structureOnly')}</Radio>
+                        <Radio value="structureData">{t('tableOverview.copy.structureAndData')}</Radio>
                     </Radio.Group>
                 </Space>
             </Modal>
