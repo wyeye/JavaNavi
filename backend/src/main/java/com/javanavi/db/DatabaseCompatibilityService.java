@@ -138,6 +138,26 @@ public class DatabaseCompatibilityService {
         }
     }
 
+    public ConnectionTestResultDto testSshConnection(ConnectionConfigDto config) {
+        try {
+            ConnectionConfigDto resolvedConfig = resolveSavedConnectionSecret(config);
+            jdbcConnectionFactory.networkTunnelService().testSshConnection(resolvedConfig);
+            return new ConnectionTestResultDto(
+                    resolvedConfig == null ? null : resolvedConfig.id(),
+                    "ssh",
+                    true,
+                    messages.message("common.connectionSucceeded")
+            );
+        } catch (IllegalArgumentException error) {
+            return new ConnectionTestResultDto(
+                    config == null ? null : config.id(),
+                    "ssh",
+                    false,
+                    SecretRedactor.redact(error.getMessage())
+            );
+        }
+    }
+
     public ConnectionPoolStatusDto openConnectionPool(ConnectionConfigDto config) {
         String unsupportedTunnel = unsupportedNetworkTunnelMessage(config);
         if (unsupportedTunnel != null) {

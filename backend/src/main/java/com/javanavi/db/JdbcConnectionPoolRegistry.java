@@ -43,16 +43,10 @@ public class JdbcConnectionPoolRegistry {
     public Connection openConnection(ConnectionConfigDto config) throws SQLException {
         jdbcConnectionFactory.prepareDriver(config);
         if (config != null && config.sshEnabled()) {
-            ConnectionNetworkTunnelService.TunnelLease tunnelLease = jdbcConnectionFactory.networkTunnelService().openSshTunnel(config);
             try {
-                ConnectionConfigDto effective = config.withEndpoint("127.0.0.1", tunnelLease.localPort());
-                return TunnelBoundConnection.wrap(jdbcConnectionFactory.openRawConnection(effective), tunnelLease);
-            } catch (SQLException | RuntimeException error) {
-                tunnelLease.close();
-                if (error instanceof SQLException sqlException) {
-                    throw connectionFailure(config, sqlException);
-                }
-                throw error;
+                return openSshConnection(config);
+            } catch (SQLException error) {
+                throw connectionFailure(config, error);
             }
         }
         jdbcConnectionFactory.networkTunnelService().rejectUnsupported(config);
@@ -65,9 +59,44 @@ public class JdbcConnectionPoolRegistry {
         }
     }
 
+    private Connection openSshConnection(ConnectionConfigDto config) throws SQLException {
+        ConnectionNetworkTunnelService.TunnelLease tunnelLease = jdbcConnectionFactory.networkTunnelService().openSshTunnel(config);
+        try {
+            ConnectionConfigDto effective = config.withEndpoint("127.0.0.1", tunnelLease.localPort());
+            return TunnelBoundConnection.wrap(jdbcConnectionFactory.openRawConnection(effective), tunnelLease);
+        } catch (SQLException | RuntimeException error) {
+            tunnelLease.close();
+            if (error instanceof SQLException sqlException) {
+                throw sqlException;
+            }
+            throw error;
+        }
+    }
+
     public ConnectionPoolStatusDto openPool(ConnectionConfigDto config) throws SQLException {
         jdbcConnectionFactory.prepareDriver(config);
         jdbcConnectionFactory.networkTunnelService().rejectUnsupported(config);
+        if (config != null && config.sshEnabled()) {
+            try (Connection connection = openSshConnection(config)) {
+                if (!connection.isValid(3)) {
+                    throw new SQLException("JDBC connection is not valid.");
+                }
+            } catch (SQLException error) {
+                throw connectionFailure(config, error);
+            }
+            Instant now = Instant.now();
+            return new ConnectionPoolStatusDto(
+                    connectionId(config),
+                    jdbcConnectionFactory.normalizeDriver(config),
+                    false,
+                    0,
+                    0,
+                    0,
+                    0,
+                    now,
+                    now
+            );
+        }
         ManagedPool pool = poolFor(config);
         boolean discardInvalidPool = false;
         try (Connection connection = pool.openConnection()) {
