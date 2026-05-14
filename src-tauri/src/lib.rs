@@ -95,12 +95,28 @@ struct DesktopFileSelectRequest {
     current_path: Option<String>,
 }
 
+#[derive(Debug, Deserialize)]
+struct DesktopExportSelectRequest {
+    kind: Option<String>,
+    #[serde(rename = "defaultName")]
+    default_name: Option<String>,
+    extension: Option<String>,
+    #[serde(rename = "currentPath")]
+    current_path: Option<String>,
+}
+
 #[derive(Debug, Serialize)]
 struct DesktopFileSelectResult {
     selected: bool,
     path: String,
     name: String,
     kind: String,
+}
+
+#[derive(Debug, Deserialize)]
+struct DesktopWriteTextFileRequest {
+    path: String,
+    content: String,
 }
 
 #[tauri::command]
@@ -111,6 +127,52 @@ async fn select_local_file(
     if let Some(path) =
         select_local_file_with_platform_dialog(kind, request.current_path.as_deref())?
     {
+        let name = path
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_string();
+        Ok(DesktopFileSelectResult {
+            selected: true,
+            path: path.to_string_lossy().to_string(),
+            name,
+            kind: kind.to_string(),
+        })
+    } else {
+        Ok(DesktopFileSelectResult {
+            selected: false,
+            path: String::new(),
+            name: String::new(),
+            kind: kind.to_string(),
+        })
+    }
+}
+
+#[tauri::command]
+async fn write_text_file(request: DesktopWriteTextFileRequest) -> Result<(), String> {
+    let path = PathBuf::from(request.path.trim()).to_absolute_export_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Unable to create export directory: {error}"))?;
+    }
+    std::fs::write(&path, request.content)
+        .map_err(|error| format!("Unable to write export file: {error}"))?;
+    Ok(())
+}
+
+#[tauri::command]
+async fn select_export_file(
+    request: DesktopExportSelectRequest,
+) -> Result<DesktopFileSelectResult, String> {
+    let kind = request.kind.as_deref().unwrap_or("export").trim();
+    let extension = normalize_export_extension(request.extension.as_deref());
+    let default_name = export_default_file_name(request.default_name.as_deref(), &extension);
+    if let Some(path) = select_export_file_with_platform_dialog(
+        kind,
+        &default_name,
+        &extension,
+        request.current_path.as_deref(),
+    )? {
         let name = path
             .file_name()
             .and_then(|value| value.to_str())
@@ -177,7 +239,7 @@ fn select_local_file_with_platform_dialog(
             unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> HRESULT,
         get_folder: usize,
         get_current_selection: usize,
-        set_file_name: usize,
+        set_file_name: unsafe extern "system" fn(*mut core::ffi::c_void, PCWSTR) -> HRESULT,
         get_file_name: usize,
         set_title: unsafe extern "system" fn(*mut core::ffi::c_void, PCWSTR) -> HRESULT,
         set_ok_button_label: usize,
@@ -329,6 +391,213 @@ fn select_local_file_with_platform_dialog(
 }
 
 #[cfg(target_os = "windows")]
+fn select_export_file_with_platform_dialog(
+    kind: &str,
+    default_name: &str,
+    extension: &str,
+    current_path: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    use windows_sys::core::{GUID, HRESULT, IUnknown_Vtbl, PCWSTR, PWSTR};
+    use windows_sys::Win32::Foundation::{ERROR_CANCELLED, HWND};
+    use windows_sys::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CoTaskMemFree, CoUninitialize, CLSCTX_INPROC_SERVER,
+        COINIT_APARTMENTTHREADED,
+    };
+    use windows_sys::Win32::UI::Shell::Common::COMDLG_FILTERSPEC;
+    use windows_sys::Win32::UI::Shell::{
+        FileSaveDialog, SHCreateItemFromParsingName, SIGDN, SIGDN_FILESYSPATH,
+    };
+
+    const IID_IFILE_SAVE_DIALOG: GUID =
+        GUID::from_u128(0x84bccd23_5fde_4cdb_aea4_af64b83d78ab);
+    const IID_ISHELL_ITEM: GUID = GUID::from_u128(0x43826d1e_e718_42ee_bc55_a1e261c37bfe);
+
+    #[repr(C)]
+    struct IModalWindowVtbl {
+        base: IUnknown_Vtbl,
+        show: unsafe extern "system" fn(*mut core::ffi::c_void, HWND) -> HRESULT,
+    }
+
+    #[repr(C)]
+    struct IFileDialogVtbl {
+        base: IModalWindowVtbl,
+        set_file_types: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            u32,
+            *const COMDLG_FILTERSPEC,
+        ) -> HRESULT,
+        set_file_type_index: usize,
+        get_file_type_index: usize,
+        advise: usize,
+        unadvise: usize,
+        set_options: usize,
+        get_options: usize,
+        set_default_folder: usize,
+        set_folder:
+            unsafe extern "system" fn(*mut core::ffi::c_void, *mut core::ffi::c_void) -> HRESULT,
+        get_folder: usize,
+        get_current_selection: usize,
+        set_file_name: unsafe extern "system" fn(*mut core::ffi::c_void, PCWSTR) -> HRESULT,
+        get_file_name: usize,
+        set_title: unsafe extern "system" fn(*mut core::ffi::c_void, PCWSTR) -> HRESULT,
+        set_ok_button_label: usize,
+        set_file_name_label: usize,
+        get_result: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            *mut *mut core::ffi::c_void,
+        ) -> HRESULT,
+        add_place: usize,
+        set_default_extension: unsafe extern "system" fn(*mut core::ffi::c_void, PCWSTR) -> HRESULT,
+        close: usize,
+        set_client_guid: usize,
+        clear_client_data: usize,
+        set_filter: usize,
+    }
+
+    #[repr(C)]
+    struct IShellItemVtbl {
+        base: IUnknown_Vtbl,
+        bind_to_handler: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            *mut core::ffi::c_void,
+            *const GUID,
+            *const GUID,
+            *mut *mut core::ffi::c_void,
+        ) -> HRESULT,
+        get_parent: usize,
+        get_display_name: unsafe extern "system" fn(
+            *mut core::ffi::c_void,
+            SIGDN,
+            *mut PWSTR,
+        ) -> HRESULT,
+        get_attributes: usize,
+        compare: usize,
+    }
+
+    struct ComGuard;
+    impl Drop for ComGuard {
+        fn drop(&mut self) {
+            unsafe { CoUninitialize() };
+        }
+    }
+
+    unsafe {
+        let hr = CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32);
+        if failed(hr) {
+            return Err(format_hresult("Unable to initialize Windows save dialog", hr));
+        }
+        let _guard = ComGuard;
+        let mut dialog: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hr = CoCreateInstance(
+            &FileSaveDialog,
+            std::ptr::null_mut(),
+            CLSCTX_INPROC_SERVER,
+            &IID_IFILE_SAVE_DIALOG,
+            &mut dialog,
+        );
+        if failed(hr) || dialog.is_null() {
+            return Err(format_hresult("Unable to create Windows save dialog", hr));
+        }
+        let dialog_vtbl = *(dialog as *mut *mut IFileDialogVtbl);
+        let title = wide_null(match kind {
+            "ai-chat" => "Export AI chat",
+            "connections" => "Export connections",
+            "database-sql" => "Export database SQL",
+            "tables-sql" => "Export tables SQL",
+            _ => "Export file",
+        });
+        let hr = ((*dialog_vtbl).set_title)(dialog, title.as_ptr());
+        if failed(hr) {
+            release_unknown(dialog);
+            return Err(format_hresult("Unable to configure Windows save dialog", hr));
+        }
+
+        let file_name = wide_null(default_name);
+        let hr = ((*dialog_vtbl).set_file_name)(dialog, file_name.as_ptr());
+        if failed(hr) {
+            release_unknown(dialog);
+            return Err(format_hresult("Unable to configure Windows export name", hr));
+        }
+
+        if !extension.is_empty() {
+            let filter_label = wide_null(&format!("{} files", extension.to_uppercase()));
+            let filter_spec = wide_null(&format!("*.{extension}"));
+            let all_name = wide_null("All files");
+            let all_spec = wide_null("*.*");
+            let filters = [
+                COMDLG_FILTERSPEC {
+                    pszName: filter_label.as_ptr(),
+                    pszSpec: filter_spec.as_ptr(),
+                },
+                COMDLG_FILTERSPEC {
+                    pszName: all_name.as_ptr(),
+                    pszSpec: all_spec.as_ptr(),
+                },
+            ];
+            let hr = ((*dialog_vtbl).set_file_types)(dialog, filters.len() as u32, filters.as_ptr());
+            if failed(hr) {
+                release_unknown(dialog);
+                return Err(format_hresult("Unable to configure Windows export filters", hr));
+            }
+            let extension_wide = wide_null(extension);
+            let hr = ((*dialog_vtbl).set_default_extension)(dialog, extension_wide.as_ptr());
+            if failed(hr) {
+                release_unknown(dialog);
+                return Err(format_hresult("Unable to configure Windows export extension", hr));
+            }
+        }
+
+        if let Some(folder) = current_folder(current_path) {
+            let folder_wide = wide_null(&folder.to_string_lossy());
+            let mut shell_item: *mut core::ffi::c_void = std::ptr::null_mut();
+            let hr = SHCreateItemFromParsingName(
+                folder_wide.as_ptr(),
+                std::ptr::null_mut(),
+                &IID_ISHELL_ITEM,
+                &mut shell_item,
+            );
+            if !failed(hr) && !shell_item.is_null() {
+                let _ = ((*dialog_vtbl).set_folder)(dialog, shell_item);
+                release_unknown(shell_item);
+            }
+        }
+
+        let hr = ((*dialog_vtbl).base.show)(dialog, std::ptr::null_mut());
+        if hr == hresult_from_win32(ERROR_CANCELLED) {
+            release_unknown(dialog);
+            return Ok(None);
+        }
+        if failed(hr) {
+            release_unknown(dialog);
+            return Err(format_hresult("Windows save dialog failed", hr));
+        }
+        let mut item: *mut core::ffi::c_void = std::ptr::null_mut();
+        let hr = ((*dialog_vtbl).get_result)(dialog, &mut item);
+        if failed(hr) || item.is_null() {
+            release_unknown(dialog);
+            return Err(format_hresult("Unable to read selected export file", hr));
+        }
+        let item_vtbl = *(item as *mut *mut IShellItemVtbl);
+        let mut raw_path: PWSTR = std::ptr::null_mut();
+        let hr = ((*item_vtbl).get_display_name)(item, SIGDN_FILESYSPATH, &mut raw_path);
+        if failed(hr) || raw_path.is_null() {
+            release_unknown(item);
+            release_unknown(dialog);
+            return Err(format_hresult("Unable to read selected export path", hr));
+        }
+        let mut len = 0usize;
+        while *raw_path.add(len) != 0 {
+            len += 1;
+        }
+        let value = String::from_utf16_lossy(std::slice::from_raw_parts(raw_path, len));
+        CoTaskMemFree(raw_path as *const core::ffi::c_void);
+        release_unknown(item);
+        release_unknown(dialog);
+        Ok(Some(PathBuf::from(value)))
+    }
+}
+
+#[cfg(target_os = "windows")]
 fn failed(hr: windows_sys::core::HRESULT) -> bool {
     hr < 0
 }
@@ -396,6 +665,43 @@ fn select_local_file_with_platform_dialog(
     }
 }
 
+#[cfg(target_os = "macos")]
+fn select_export_file_with_platform_dialog(
+    _kind: &str,
+    default_name: &str,
+    extension: &str,
+    current_path: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    let mut script = String::from("set selectedFile to choose file name");
+    if !default_name.trim().is_empty() {
+        script.push_str(" default name ");
+        script.push_str(&applescript_string(default_name));
+    }
+    if let Some(folder) = current_folder(current_path) {
+        script.push_str(" default location POSIX file ");
+        script.push_str(&applescript_string(&folder.to_string_lossy()));
+    }
+    script.push_str("\nreturn POSIX path of selectedFile");
+    let output = std::process::Command::new("osascript")
+        .arg("-e")
+        .arg(script)
+        .output()
+        .map_err(|error| format!("Unable to open macOS export dialog: {error}"))?;
+    if output.status.success() {
+        let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if path.is_empty() {
+            return Ok(None);
+        }
+        return Ok(Some(ensure_path_extension(PathBuf::from(path), extension)));
+    }
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+    if stderr.contains("User canceled") || stderr.contains("-128") {
+        Ok(None)
+    } else {
+        Err(format!("macOS export dialog failed: {}", stderr.trim()))
+    }
+}
+
 #[cfg(all(unix, not(target_os = "macos")))]
 fn select_local_file_with_platform_dialog(
     kind: &str,
@@ -457,6 +763,73 @@ fn select_local_file_with_platform_dialog(
     })
 }
 
+#[cfg(all(unix, not(target_os = "macos")))]
+fn select_export_file_with_platform_dialog(
+    kind: &str,
+    default_name: &str,
+    extension: &str,
+    current_path: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    let title = match kind {
+        "ai-chat" => "Export AI chat",
+        "connections" => "Export connections",
+        "database-sql" => "Export database SQL",
+        "tables-sql" => "Export tables SQL",
+        _ => "Export file",
+    };
+    let mut commands = Vec::new();
+    let initial_path = initial_export_path(current_path, default_name);
+    let mut zenity = std::process::Command::new("zenity");
+    zenity
+        .arg("--file-selection")
+        .arg("--save")
+        .arg("--confirm-overwrite")
+        .arg("--title")
+        .arg(title)
+        .arg("--filename")
+        .arg(initial_path.to_string_lossy().to_string());
+    if !extension.is_empty() {
+        zenity
+            .arg(format!("--file-filter={} files | *.{}", extension.to_uppercase(), extension))
+            .arg("--file-filter=All files | *");
+    }
+    commands.push(zenity);
+
+    let mut kdialog = std::process::Command::new("kdialog");
+    kdialog.arg("--title").arg(title).arg("--getsavefilename").arg(&initial_path);
+    if !extension.is_empty() {
+        kdialog.arg(format!("*.{}|{} files", extension, extension.to_uppercase()));
+    }
+    commands.push(kdialog);
+
+    let mut last_error = String::new();
+    for mut command in commands {
+        match command.output() {
+            Ok(output) if output.status.success() => {
+                let path = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if path.is_empty() {
+                    return Ok(None);
+                }
+                return Ok(Some(ensure_path_extension(PathBuf::from(path), extension)));
+            }
+            Ok(output) => {
+                if matches!(output.status.code(), Some(1)) {
+                    return Ok(None);
+                }
+                last_error = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            }
+            Err(error) => {
+                last_error = error.to_string();
+            }
+        }
+    }
+    Err(if last_error.is_empty() {
+        "No native Linux export dialog command is available.".to_string()
+    } else {
+        format!("Linux export dialog failed: {last_error}")
+    })
+}
+
 #[cfg(target_os = "macos")]
 fn applescript_string(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('\"', "\\\"");
@@ -469,6 +842,80 @@ fn select_local_file_with_platform_dialog(
     _current_path: Option<&str>,
 ) -> Result<Option<PathBuf>, String> {
     Err("Native file selector is not available in this desktop build.".to_string())
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", unix)))]
+fn select_export_file_with_platform_dialog(
+    _kind: &str,
+    _default_name: &str,
+    _extension: &str,
+    _current_path: Option<&str>,
+) -> Result<Option<PathBuf>, String> {
+    Err("Native export selector is not available in this desktop build.".to_string())
+}
+
+fn normalize_export_extension(value: Option<&str>) -> String {
+    let extension = value.unwrap_or("json").trim().trim_start_matches('.');
+    if extension.is_empty() {
+        "json".to_string()
+    } else {
+        extension
+            .chars()
+            .filter(|ch| ch.is_ascii_alphanumeric() || *ch == '-')
+            .collect::<String>()
+            .to_lowercase()
+    }
+}
+
+fn export_default_file_name(value: Option<&str>, extension: &str) -> String {
+    let mut name = value.unwrap_or("export").trim().replace(['/', '\\'], "-");
+    if name.is_empty() {
+        name = "export".to_string();
+    }
+    if !extension.is_empty() && !has_extension(&name) {
+        name.push('.');
+        name.push_str(extension);
+    }
+    name
+}
+
+fn has_extension(value: &str) -> bool {
+    Path::new(value).extension().is_some()
+}
+
+fn ensure_path_extension(path: PathBuf, extension: &str) -> PathBuf {
+    if extension.is_empty() || path.extension().is_some() {
+        path
+    } else {
+        path.with_extension(extension)
+    }
+}
+
+fn initial_export_path(current_path: Option<&str>, default_name: &str) -> PathBuf {
+    current_folder(current_path)
+        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+        .join(default_name)
+}
+
+trait ExportPathExt {
+    fn to_absolute_export_path(self) -> Result<PathBuf, String>;
+}
+
+impl ExportPathExt for PathBuf {
+    fn to_absolute_export_path(self) -> Result<PathBuf, String> {
+        let path = self;
+        if path.as_os_str().is_empty() {
+            return Err("Export target file name is required.".to_string());
+        }
+        let absolute = if path.is_absolute() {
+            path
+        } else {
+            std::env::current_dir()
+                .map_err(|error| format!("Unable to resolve current directory: {error}"))?
+                .join(path)
+        };
+        Ok(absolute)
+    }
 }
 
 #[cfg(any(
@@ -524,6 +971,8 @@ pub fn run() {
         .manage(DesktopState::default())
         .invoke_handler(tauri::generate_handler![
             select_local_file,
+            select_export_file,
+            write_text_file,
             check_desktop_update,
             install_desktop_update,
             restart_desktop_app

@@ -7,7 +7,7 @@ import ts from 'typescript';
 const projectRoot = path.resolve(import.meta.dirname, '..');
 const tempDir = path.join(projectRoot, '.tmp-custom-datasource-tests');
 
-async function transpileToModule(sourcePath, outputName) {
+async function transpileToModule(sourcePath, outputName, options = {}) {
   const source = await readFile(path.join(projectRoot, sourcePath), 'utf8');
   const transpiled = ts.transpileModule(source, {
     compilerOptions: {
@@ -20,7 +20,10 @@ async function transpileToModule(sourcePath, outputName) {
     fileName: sourcePath,
   });
   const outputPath = path.join(tempDir, outputName);
-  await writeFile(outputPath, transpiled.outputText, 'utf8');
+  const outputText = typeof options.transformOutput === 'function'
+    ? options.transformOutput(transpiled.outputText)
+    : transpiled.outputText;
+  await writeFile(outputPath, outputText, 'utf8');
   return import(pathToFileURL(outputPath));
 }
 
@@ -39,7 +42,10 @@ try {
   const shortcuts = await transpileToModule('src/utils/shortcuts.ts', 'shortcuts.mjs');
   const aiProviderPresets = await transpileToModule('src/utils/aiProviderPresets.ts', 'aiProviderPresets.mjs');
   const providerSecretDraft = await transpileToModule('src/utils/providerSecretDraft.ts', 'providerSecretDraft.mjs');
-  const dataModificationRisk = await transpileToModule('src/utils/dataModificationRisk.ts', 'dataModificationRisk.mjs');
+  await transpileToModule('src/i18n/index.ts', 'i18n.mjs');
+  const dataModificationRisk = await transpileToModule('src/utils/dataModificationRisk.ts', 'dataModificationRisk.mjs', {
+    transformOutput: (output) => output.replace("from '../i18n';", "from './i18n.mjs';"),
+  });
   const connectionTagDisplay = await transpileToModule('src/utils/connectionTagDisplay.ts', 'connectionTagDisplay.mjs');
   const javanaviAppSource = await readFile(path.join(projectRoot, 'src/compat/javanaviApp.ts'), 'utf8');
 
@@ -319,11 +325,25 @@ try {
   });
   assert.equal(gridRisk.level, 'high');
   assert.equal(gridRisk.requiresExplicitConfirm, true);
-  assert.equal(gridRisk.shortText, '新增 1，更新 1，删除 2');
+  assert.equal(gridRisk.shortText, 'INSERT 1, UPDATE 1, DELETE 2');
   assert.equal(
     gridRisk.lines.some((line) => line.includes('DELETE 2 rows')),
     true,
     'table edit risk summary should expose delete count',
+  );
+  const zhGridRisk = dataModificationRisk.buildDataGridModificationRiskSummary({
+    language: 'zh',
+    tableName: 'users',
+    dbName: 'crm',
+    inserts: [{ id: 3 }],
+    updates: [{ id: 1 }],
+    deletes: [{ id: 2 }, { id: 4 }],
+  });
+  assert.equal(zhGridRisk.shortText, '新增 1，更新 1，删除 2');
+  assert.equal(
+    zhGridRisk.lines.some((line) => line.includes('删除 2 行')),
+    true,
+    'table edit risk summary should expose Chinese delete count',
   );
 
   const syncRisk = dataModificationRisk.buildDataSyncExecutionRiskSummary({
@@ -341,11 +361,26 @@ try {
   });
   assert.equal(syncRisk.level, 'high');
   assert.equal(syncRisk.requiresExplicitConfirm, true);
-  assert.equal(syncRisk.shortText, '插入 10，更新 2，删除 2，结构 1');
+  assert.equal(syncRisk.shortText, 'INSERT 10, UPDATE 2, DELETE 2, schema 1');
   assert.equal(
     syncRisk.lines.some((line) => line.includes('Full overwrite')),
     true,
     'full overwrite risk summary should be explicit',
+  );
+  assert.equal(
+    dataModificationRisk.buildDataSyncExecutionRiskSummary({
+      language: 'zh',
+      syncMode: 'full_overwrite',
+      syncContent: 'both',
+      targetDatabase: 'target_db',
+      diffTables: [
+        { table: 'users', canSync: true, inserts: 10, updates: 2, deletes: 4, schemaDiffCount: 1, warnings: ['type changed'] },
+      ],
+      tableOptions: {
+        users: { insert: true, update: true, delete: true, selectedDeletePks: ['1', '2'] },
+      },
+    }).shortText,
+    '插入 10，更新 2，删除 2，结构 1',
   );
 
   const schemaRisk = dataModificationRisk.buildSchemaSyncExecutionRiskSummary({
@@ -361,11 +396,26 @@ try {
   });
   assert.equal(schemaRisk.level, 'high');
   assert.equal(schemaRisk.requiresExplicitConfirm, true);
-  assert.equal(schemaRisk.shortText, '结构变更 2 项，DROP 1 项');
+  assert.equal(schemaRisk.shortText, 'Schema changes 2, DROP 1');
   assert.equal(
     schemaRisk.lines.some((line) => line.includes('DROP 1')),
     true,
     'schema risk summary should expose DROP count',
+  );
+  assert.equal(
+    dataModificationRisk.buildSchemaSyncExecutionRiskSummary({
+      language: 'zh',
+      targetDatabase: 'target_db',
+      selectedItemIds: ['users:column:name:alter', 'users:index:old:drop'],
+      schemaDiffTables: [{
+        table: 'users',
+        items: [
+          { id: 'users:column:name:alter', changeType: 'ALTER', objectType: 'COLUMN', objectName: 'name', supported: true },
+          { id: 'users:index:old:drop', changeType: 'DROP', objectType: 'INDEX', objectName: 'old_idx', requiresDeleteConfirm: true, supported: true },
+        ],
+      }],
+    }).shortText,
+    '结构变更 2 项，DROP 1 项',
   );
 
   const frontendFallback = customDataSources.createCustomDataSource({

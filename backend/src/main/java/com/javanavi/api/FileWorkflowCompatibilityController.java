@@ -64,7 +64,8 @@ public class FileWorkflowCompatibilityController {
                 input == null || input.rows() == null ? List.of() : input.rows(),
                 input == null || input.columns() == null ? List.of() : input.columns(),
                 input == null ? "" : input.defaultName(),
-                input == null ? "" : input.format()
+                input == null ? "" : input.format(),
+                input == null ? "" : input.targetPath()
         )));
     }
 
