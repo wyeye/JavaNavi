@@ -137,7 +137,8 @@ public class AppCompatibilityController {
     public ApiEnvelope<AppContracts.ConnectionExportPackageResponse> exportConnectionsPackage(@RequestBody(required = false) AppContracts.ConnectionExportPackageRequest input) {
         return ApiEnvelope.ok(appCompatibilityService.exportConnectionsPackage(
                 input != null && input.includeSecretsValue(),
-                input == null ? "" : input.filePassword()
+                input == null ? "" : input.filePassword(),
+                input == null ? "" : input.targetPath()
         ));
     }
 

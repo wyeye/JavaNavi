@@ -127,6 +127,7 @@ export interface ExportDataRequest {
   columns: string[];
   defaultName: string;
   format: string;
+  targetPath?: string;
 }
 
 export interface FileExportRequest {
@@ -138,6 +139,7 @@ export interface FileExportRequest {
   defaultName?: string;
   format?: string;
   includeData?: boolean;
+  targetPath?: string;
 }
 
 export type AiSafetyLevelValue = AISafetyLevel;

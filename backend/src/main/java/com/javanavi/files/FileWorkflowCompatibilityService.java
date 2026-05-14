@@ -251,11 +251,15 @@ public class FileWorkflowCompatibilityService {
     }
 
     public Map<String, Object> exportData(List<? extends Map<String, Object>> rows, List<String> columns, String defaultName, String format) {
+        return exportData(rows, columns, defaultName, format, "");
+    }
+
+    public Map<String, Object> exportData(List<? extends Map<String, Object>> rows, List<String> columns, String defaultName, String format, String targetPath) {
         List<Map<String, Object>> exportRows = rows == null
                 ? List.of()
                 : rows.stream().<Map<String, Object>>map(LinkedHashMap::new).toList();
         List<String> resolvedColumns = columns == null || columns.isEmpty() ? columnsForRows(exportRows) : columns;
-        Path file = writeRowsExport(exportRows, resolvedColumns, defaultName, format, normalizeFileToken(defaultName, "export"));
+        Path file = writeRowsExport(exportRows, resolvedColumns, defaultName, format, normalizeFileToken(defaultName, "export"), targetPath);
         return exportResult(file, exportRows.size(), resolvedColumns, format, false);
     }
 
@@ -267,7 +271,7 @@ public class FileWorkflowCompatibilityService {
         ConnectionConfigDto connection = connectionConfig(input);
         String database = stringValue(input, "database", "dbName");
         QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, sql, 1, 500, "export-" + Instant.now().toEpochMilli()));
-        Path file = writeRowsExport(result.rows(), result.columns(), stringValue(input, "defaultName", "name"), stringValue(input, "format"), "query-export");
+        Path file = writeRowsExport(result.rows(), result.columns(), stringValue(input, "defaultName", "name"), stringValue(input, "format"), "query-export", stringValue(input, "targetPath", "exportPath", "path"));
         return exportResult(file, result.rowCount(), result.columns(), stringValue(input, "format"), false);
     }
 
@@ -289,9 +293,9 @@ public class FileWorkflowCompatibilityService {
                     .filter(value -> value != null && !value.isBlank())
                     .toList();
         }
-        String baseName = normalizeFileToken(database, "database") + "-" + (includeSchema && includeData ? "backup" : includeSchema ? "schema" : "data");
-        Path file = exportDirectory.resolve(baseName + "-" + Instant.now().toEpochMilli() + ".sql").normalize();
-        ensureManagedPath(file, exportDirectory);
+        String fallbackBaseName = normalizeFileToken(database, "database") + "-" + (includeSchema && includeData ? "backup" : includeSchema ? "schema" : "data");
+        String baseName = normalizeFileToken(stringValue(input, "defaultName", "name"), fallbackBaseName);
+        Path file = resolveExportFile(baseName, "sql", stringValue(input, "targetPath", "exportPath", "path"));
         try {
             Files.createDirectories(file.getParent());
             StringBuilder sql = new StringBuilder();
@@ -329,13 +333,12 @@ public class FileWorkflowCompatibilityService {
         return exportTablesSql(input, true, includeData);
     }
 
-    private Path writeRowsExport(List<Map<String, Object>> rows, List<String> columns, String defaultName, String format, String fallbackName) {
+    private Path writeRowsExport(List<Map<String, Object>> rows, List<String> columns, String defaultName, String format, String fallbackName, String targetPath) {
         String resolvedFormat = normalizeFormat(format);
         String baseName = normalizeFileToken(defaultName, fallbackName);
         List<Map<String, Object>> exportRows = rows == null ? List.of() : rows;
         List<String> exportColumns = columns == null ? List.of() : columns;
-        Path file = exportDirectory.resolve(baseName + "-" + Instant.now().toEpochMilli() + "." + resolvedFormat).normalize();
-        ensureManagedPath(file, exportDirectory);
+        Path file = resolveExportFile(baseName, resolvedFormat, targetPath);
         try {
             Files.createDirectories(file.getParent());
             if ("xlsx".equals(resolvedFormat)) {
@@ -354,6 +357,24 @@ public class FileWorkflowCompatibilityService {
         } catch (IOException error) {
             throw new IllegalStateException("Unable to write JavaNavi export file.", error);
         }
+    }
+
+    private Path resolveExportFile(String baseName, String format, String targetPath) {
+        String normalizedTarget = text(targetPath);
+        if (normalizedTarget.isBlank()) {
+            Path file = exportDirectory.resolve(baseName + "-" + Instant.now().toEpochMilli() + "." + format).normalize();
+            ensureManagedPath(file, exportDirectory);
+            return file;
+        }
+        Path file = Path.of(normalizedTarget).toAbsolutePath().normalize();
+        String name = file.getFileName() == null ? "" : file.getFileName().toString();
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("Export target file name is required.");
+        }
+        if (!name.contains(".") && !format.isBlank()) {
+            file = file.resolveSibling(name + "." + format);
+        }
+        return file;
     }
 
     private Map<String, Object> exportResult(Path file, int rowCount, List<String> columns, String requestedFormat, boolean dryRun) {

@@ -1,6 +1,7 @@
 package com.javanavi.model;
 
 import com.fasterxml.jackson.annotation.JsonValue;
+import com.fasterxml.jackson.annotation.JsonAlias;
 
 import java.util.List;
 
@@ -116,7 +117,7 @@ public final class AppContracts {
         }
     }
 
-    public record ConnectionExportPackageRequest(Boolean includeSecrets, String filePassword) {
+    public record ConnectionExportPackageRequest(Boolean includeSecrets, String filePassword, @JsonAlias({"exportPath", "path"}) String targetPath) {
         public boolean includeSecretsValue() {
             return Boolean.TRUE.equals(includeSecrets);
         }

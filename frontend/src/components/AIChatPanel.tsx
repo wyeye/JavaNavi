@@ -31,6 +31,7 @@ import {
     buildMissingProviderNotice,
     buildModelFetchFailedNotice,
 } from '../utils/aiComposerNotice';
+import { translate } from '../i18n';
 
 interface AIChatPanelProps {
     width?: number;
@@ -329,6 +330,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const activeTabId = useStore(state => state.activeTabId);
     const aiPanelVisible = useStore(state => state.aiPanelVisible);
     const aiChatSendShortcutBinding = useStore(state => state.shortcutOptions.sendAIChatMessage);
+    const language = useStore(state => state.language);
 
     useEffect(() => {
         if (!aiPanelVisible) return;
@@ -1531,7 +1533,7 @@ SELECT * FROM users WHERE status = 1;
                 onSettingsClick={() => { onOpenSettings?.(); setTimeout(loadActiveProvider, 500); }}
                 onClose={onClose}
                 messages={messages}
-                sessionTitle={useStore.getState().aiChatSessions.find(s => s.id === sid)?.title || '新对话'}
+                sessionTitle={useStore.getState().aiChatSessions.find(s => s.id === sid)?.title || translate(language, 'ai.chat.newSession')}
             />
 
             <div className="ai-chat-messages" onScroll={handleScrollMessages}>

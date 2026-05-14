@@ -626,38 +626,127 @@ export async function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:strin
   return result;
 }
 
+type ExportDestinationInput = {
+  kind: string;
+  defaultName: string;
+  extension: string;
+};
+
+function exportFileExtension(format: string): string {
+  const normalized = String(format || 'json').trim().toLowerCase();
+  if (normalized === 'excel' || normalized === 'xls') return 'xlsx';
+  if (normalized === 'markdown') return 'md';
+  if (normalized === 'htm') return 'html';
+  return normalized || 'json';
+}
+
+function exportDefaultName(baseName: string, extension: string): string {
+  const safeBase = firstNonEmptyText(baseName, 'export').replace(/[\\/]+/g, '-');
+  return /\.[^\\/.]+$/.test(safeBase) ? safeBase : `${safeBase}.${extension}`;
+}
+
+async function prepareExportDestination(input: ExportDestinationInput): Promise<string | undefined> {
+  if (!isJavaNaviDesktopRuntime()) return '';
+  const nativeSelection = tauriInvoke<UnknownRecord>('select_export_file', {
+    request: {
+      kind: input.kind,
+      defaultName: input.defaultName,
+      extension: input.extension,
+    },
+  });
+  if (!nativeSelection) return '';
+  const selected = await nativeSelection;
+  if (selected.selected === false) return undefined;
+  return typeof selected.path === 'string' ? selected.path.trim() : '';
+}
+
+export async function SelectExportFile(arg1:string,arg2:string,arg3 = ''): Promise<connection.QueryResult> {
+  const extension = exportFileExtension(arg2);
+  const targetPath = await prepareExportDestination({
+    kind: arg3 || 'export',
+    defaultName: exportDefaultName(arg1 || 'export', extension),
+    extension,
+  });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Export file selected');
+  return apiEnvelopeToQueryResult({ success: true, data: { selected: true, path: targetPath, filePath: targetPath } }, 'Export file selected');
+}
+
 export async function ExportConnectionsPackage(arg1:app.ConnectionExportOptions): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/connections/export-package', arg1 || {});
+  const extension = 'javanavi-conn';
+  const targetPath = await prepareExportDestination({
+    kind: 'connections',
+    defaultName: exportDefaultName('connections', extension),
+    extension,
+  });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Connections package exported');
+  const payload = await postJson('/app/connections/export-package', { ...(arg1 || {}), targetPath });
   return apiEnvelopeToQueryResult(payload, 'Connections package exported');
 }
 
 export async function ExportData(arg1:DataRow[],arg2:Array<string>,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/export/data', { rows: arg1 || [], columns: arg2 || [], defaultName: arg3, format: arg4 });
+  const extension = exportFileExtension(arg4);
+  const targetPath = await prepareExportDestination({
+    kind: 'data',
+    defaultName: exportDefaultName(arg3 || 'export', extension),
+    extension,
+  });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Data exported');
+  const payload = await postJson('/files/export/data', { rows: arg1 || [], columns: arg2 || [], defaultName: arg3, format: arg4, targetPath });
   return apiEnvelopeToQueryResult(payload, 'Data exported');
 }
 
 export async function ExportDatabaseSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:boolean): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/export/database-sql', { connection: toConnectionPayload(arg1), database: arg2, includeData: arg3 });
+  const suffix = arg3 ? 'backup' : 'schema';
+  const defaultBaseName = `${arg2 || 'database'}-${suffix}`;
+  const defaultName = exportDefaultName(defaultBaseName, 'sql');
+  const targetPath = await prepareExportDestination({ kind: 'database-sql', defaultName, extension: 'sql' });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Database SQL exported');
+  const payload = await postJson('/files/export/database-sql', { connection: toConnectionPayload(arg1), database: arg2, includeData: arg3, defaultName: defaultBaseName, targetPath });
   return apiEnvelopeToQueryResult(payload, 'Database SQL exported');
 }
 
 export async function ExportQuery(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/export/query', { connection: toConnectionPayload(arg1), database: arg2, query: arg3, defaultName: arg4, format: arg5 });
+  const extension = exportFileExtension(arg5);
+  const targetPath = await prepareExportDestination({
+    kind: 'query',
+    defaultName: exportDefaultName(arg4 || 'query-export', extension),
+    extension,
+  });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Query exported');
+  const payload = await postJson('/files/export/query', { connection: toConnectionPayload(arg1), database: arg2, query: arg3, defaultName: arg4, format: arg5, targetPath });
   return apiEnvelopeToQueryResult(payload, 'Query exported');
 }
 
 export async function ExportTable(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/export/table', { connection: toConnectionPayload(arg1), database: arg2, table: arg3, format: arg4 });
+  const extension = exportFileExtension(arg4);
+  const targetPath = await prepareExportDestination({
+    kind: 'table',
+    defaultName: exportDefaultName(arg3 || 'table-export', extension),
+    extension,
+  });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Table exported');
+  const payload = await postJson('/files/export/table', { connection: toConnectionPayload(arg1), database: arg2, table: arg3, format: arg4, targetPath });
   return apiEnvelopeToQueryResult(payload, 'Table exported');
 }
 
 export async function ExportTablesDataSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/export/tables-data-sql', { connection: toConnectionPayload(arg1), database: arg2, tables: arg3 || [] });
+  const tableNames = arg3 || [];
+  const defaultBaseName = `${arg2 || 'database'}-data`;
+  const defaultName = exportDefaultName(defaultBaseName, 'sql');
+  const targetPath = await prepareExportDestination({ kind: 'tables-sql', defaultName, extension: 'sql' });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Tables data SQL exported');
+  const payload = await postJson('/files/export/tables-data-sql', { connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, defaultName: defaultBaseName, targetPath });
   return apiEnvelopeToQueryResult(payload, 'Tables data SQL exported');
 }
 
 export async function ExportTablesSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>,arg4:boolean): Promise<connection.QueryResult> {
-  const payload = await postJson('/files/export/tables-sql', { connection: toConnectionPayload(arg1), database: arg2, tables: arg3 || [], includeData: arg4 });
+  const tableNames = arg3 || [];
+  const suffix = arg4 ? 'backup' : 'schema';
+  const defaultBaseName = `${arg2 || 'database'}-${suffix}`;
+  const defaultName = exportDefaultName(defaultBaseName, 'sql');
+  const targetPath = await prepareExportDestination({ kind: 'tables-sql', defaultName, extension: 'sql' });
+  if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Tables SQL exported');
+  const payload = await postJson('/files/export/tables-sql', { connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, includeData: arg4, defaultName: defaultBaseName, targetPath });
   return apiEnvelopeToQueryResult(payload, 'Tables SQL exported');
 }
 

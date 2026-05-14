@@ -172,6 +172,7 @@ export namespace app {
 	export class ConnectionExportOptions {
 	    includeSecrets: boolean;
 	    filePassword?: string;
+	    targetPath?: string;
 
 	    static createFrom(source: CompatModelSource = {}) {
 	        return new ConnectionExportOptions(source);
@@ -181,6 +182,7 @@ export namespace app {
 	        const sourceRecord = parseModelSource(source);
 	        this.includeSecrets = sourceRecord["includeSecrets"];
 	        this.filePassword = sourceRecord["filePassword"];
+	        this.targetPath = sourceRecord["targetPath"];
 	    }
 	}
 

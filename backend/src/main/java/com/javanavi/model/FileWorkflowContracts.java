@@ -60,7 +60,8 @@ public final class FileWorkflowContracts {
             List<DataRow> rows,
             List<String> columns,
             @JsonAlias({"name"}) String defaultName,
-            String format
+            String format,
+            @JsonAlias({"exportPath", "path"}) String targetPath
     ) {
     }
 
@@ -69,7 +70,8 @@ public final class FileWorkflowContracts {
             @JsonAlias({"dbName"}) String database,
             @JsonAlias({"sql"}) String query,
             @JsonAlias({"name"}) String defaultName,
-            String format
+            String format,
+            @JsonAlias({"exportPath", "path"}) String targetPath
     ) implements PayloadRequest {
         public RequestPayload toPayload() {
             return payloadOf(
@@ -77,7 +79,8 @@ public final class FileWorkflowContracts {
                     "database", database,
                     "query", query,
                     "defaultName", defaultName,
-                    "format", format
+                    "format", format,
+                    "targetPath", targetPath
             );
         }
     }
@@ -87,7 +90,8 @@ public final class FileWorkflowContracts {
             @JsonAlias({"dbName"}) String database,
             @JsonAlias({"tableName"}) String table,
             @JsonAlias({"name"}) String defaultName,
-            String format
+            String format,
+            @JsonAlias({"exportPath", "path"}) String targetPath
     ) implements PayloadRequest {
         public RequestPayload toPayload() {
             return payloadOf(
@@ -95,7 +99,8 @@ public final class FileWorkflowContracts {
                     "database", database,
                     "table", table,
                     "defaultName", defaultName,
-                    "format", format
+                    "format", format,
+                    "targetPath", targetPath
             );
         }
     }
@@ -104,14 +109,18 @@ public final class FileWorkflowContracts {
             ConnectionConfigDto connection,
             @JsonAlias({"dbName"}) String database,
             List<String> tables,
-            Boolean includeData
+            Boolean includeData,
+            @JsonAlias({"name"}) String defaultName,
+            @JsonAlias({"exportPath", "path"}) String targetPath
     ) implements PayloadRequest {
         public RequestPayload toPayload() {
             return payloadOf(
                     "connection", CompatibilityRequestMaps.connectionConfig(connection),
                     "database", database,
                     "tables", tables,
-                    "includeData", includeData
+                    "includeData", includeData,
+                    "defaultName", defaultName,
+                    "targetPath", targetPath
             );
         }
     }

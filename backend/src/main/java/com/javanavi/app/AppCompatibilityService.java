@@ -154,9 +154,13 @@ public class AppCompatibilityService {
     }
 
     public AppContracts.ConnectionExportPackageResponse exportConnectionsPackage(Boolean includeSecrets, String filePassword) {
+        return exportConnectionsPackage(includeSecrets, filePassword, "");
+    }
+
+    public AppContracts.ConnectionExportPackageResponse exportConnectionsPackage(Boolean includeSecrets, String filePassword, String targetPath) {
         try {
-            Files.createDirectories(dataDirectory.resolve("exports"));
-            Path exportFile = dataDirectory.resolve("exports").resolve("connections-" + Instant.now().toEpochMilli() + ".javanavi-conn");
+            Path exportFile = resolveExportFile("connections", "javanavi-conn", targetPath);
+            Files.createDirectories(exportFile.getParent());
             Map<String, Object> payload = connectionPackageCompatibilityService.buildExportFile(Boolean.TRUE.equals(includeSecrets), filePassword);
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(exportFile.toFile(), payload);
             Map<String, Object> result = orderedMap(
@@ -517,6 +521,22 @@ public class AppCompatibilityService {
         } catch (IOException error) {
             throw new IllegalStateException("Unable to write JavaNavi app state.", error);
         }
+    }
+
+    private Path resolveExportFile(String baseName, String extension, String targetPath) {
+        String normalizedTarget = textOrDefault(targetPath, "");
+        if (normalizedTarget.isBlank()) {
+            return dataDirectory.resolve("exports").resolve(baseName + "-" + Instant.now().toEpochMilli() + "." + extension).normalize();
+        }
+        Path file = Path.of(normalizedTarget).toAbsolutePath().normalize();
+        String name = file.getFileName() == null ? "" : file.getFileName().toString();
+        if (name.isBlank()) {
+            throw new IllegalArgumentException("Export target file name is required.");
+        }
+        if (!name.contains(".")) {
+            file = file.resolveSibling(name + "." + extension);
+        }
+        return file;
     }
 
     private static Map<String, Object> defaultGlobalProxy() {
