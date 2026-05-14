@@ -50,14 +50,14 @@ jobs:
             runner-arch: X64
             platform: linux
             runtime-platform: linux
-            tauri-action-args: --bundles deb,rpm,appimage
+            tauri-action-args: --bundles deb,rpm
           - name: linux
             arch: arm64
             runner: ubuntu-24.04-arm
             runner-arch: ARM64
             platform: linux
             runtime-platform: linux
-            tauri-action-args: --bundles deb,rpm,appimage
+            tauri-action-args: --bundles deb,rpm
           - name: windows
             arch: amd64
             runner: windows-2025
