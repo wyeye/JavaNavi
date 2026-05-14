@@ -24,6 +24,11 @@ defaults:
     shell: bash
 
 env:
+  # Keep updater signing env names stable for Tauri CLI and tauri-action.
+  TAURI_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+  TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+  TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
   # Temurin 17 is not available on the GitHub-hosted Windows ARM64 runner;
   # build with Java 21 while keeping Java source/target compatibility at 17.
   JAVA_VERSION: '21'
@@ -168,8 +173,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0.6.2
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: JavaNavi ${{ github.ref_name }}
@@ -179,8 +182,7 @@ jobs:
           tauriScript: npx tauri
           args: ${{ matrix.tauri-action-args }}
           updaterJsonPreferNsis: true
-          uploadUpdaterJson: true
-          uploadUpdaterSignatures: true
+          includeUpdaterJson: true
 
       - name: Build desktop package for branch artifacts
         if: ${{ !startsWith(github.ref, 'refs/tags/v') }}
