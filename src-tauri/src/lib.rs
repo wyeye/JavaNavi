@@ -501,7 +501,7 @@ fn create_main_window(app: &tauri::AppHandle, port: u16) -> tauri::Result<()> {
         .title("JavaNavi")
         .inner_size(1280.0, 820.0)
         .min_inner_size(960.0, 640.0)
-        .user_agent("JavaNaviDesktop/0.1.5")
+        .user_agent("JavaNaviDesktop/0.1.6")
         .visible(true)
         .build()?;
     Ok(())

@@ -61,7 +61,7 @@ public class AppCompatibilityService {
     public AppContracts.AppInfoResponse appInfo() {
         return new AppContracts.AppInfoResponse(
                 "JavaNavi",
-                "0.1.5",
+                "0.1.6",
                 "java-spring-boot",
                 "java-web",
                 dataDirectory.toString(),
