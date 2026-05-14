@@ -1,35 +1,36 @@
 import React from 'react';
 import type { FilterCondition } from '../../utils/sql';
 import { resolveWhereConditionSuggestions } from '../../utils/dataGridWhereFilter';
+import { translate, type AppLanguage } from '../../i18n';
 import type { GridFilterCondition } from './dataGridFilterTypes';
 
-export const filterOpOptions = [
+export const buildFilterOpOptions = (language: AppLanguage) => [
     { value: '=', label: '=' },
     { value: '!=', label: '!=' },
     { value: '<', label: '<' },
     { value: '<=', label: '<=' },
     { value: '>', label: '>' },
     { value: '>=', label: '>=' },
-    { value: 'CONTAINS', label: '包含' },
-    { value: 'NOT_CONTAINS', label: '不包含' },
-    { value: 'STARTS_WITH', label: '开始以' },
-    { value: 'NOT_STARTS_WITH', label: '不是开始于' },
-    { value: 'ENDS_WITH', label: '结束以' },
-    { value: 'NOT_ENDS_WITH', label: '不是结束于' },
-    { value: 'IS_NULL', label: '是 null' },
-    { value: 'IS_NOT_NULL', label: '不是 null' },
-    { value: 'IS_EMPTY', label: '是空的' },
-    { value: 'IS_NOT_EMPTY', label: '不是空的' },
-    { value: 'BETWEEN', label: '介于' },
-    { value: 'NOT_BETWEEN', label: '不介于' },
-    { value: 'IN', label: '在列表' },
-    { value: 'NOT_IN', label: '不在列表' },
-    { value: 'CUSTOM', label: '[自定义]' },
+    { value: 'CONTAINS', label: translate(language, 'dataGrid.filter.op.contains') },
+    { value: 'NOT_CONTAINS', label: translate(language, 'dataGrid.filter.op.notContains') },
+    { value: 'STARTS_WITH', label: translate(language, 'dataGrid.filter.op.startsWith') },
+    { value: 'NOT_STARTS_WITH', label: translate(language, 'dataGrid.filter.op.notStartsWith') },
+    { value: 'ENDS_WITH', label: translate(language, 'dataGrid.filter.op.endsWith') },
+    { value: 'NOT_ENDS_WITH', label: translate(language, 'dataGrid.filter.op.notEndsWith') },
+    { value: 'IS_NULL', label: translate(language, 'dataGrid.filter.op.isNull') },
+    { value: 'IS_NOT_NULL', label: translate(language, 'dataGrid.filter.op.isNotNull') },
+    { value: 'IS_EMPTY', label: translate(language, 'dataGrid.filter.op.isEmpty') },
+    { value: 'IS_NOT_EMPTY', label: translate(language, 'dataGrid.filter.op.isNotEmpty') },
+    { value: 'BETWEEN', label: translate(language, 'dataGrid.filter.op.between') },
+    { value: 'NOT_BETWEEN', label: translate(language, 'dataGrid.filter.op.notBetween') },
+    { value: 'IN', label: translate(language, 'dataGrid.filter.op.in') },
+    { value: 'NOT_IN', label: translate(language, 'dataGrid.filter.op.notIn') },
+    { value: 'CUSTOM', label: translate(language, 'dataGrid.filter.op.custom') },
 ];
 
-export const filterLogicOptions = [
-    { value: 'AND', label: '且 (AND)' },
-    { value: 'OR', label: '或 (OR)' },
+export const buildFilterLogicOptions = (language: AppLanguage) => [
+    { value: 'AND', label: translate(language, 'dataGrid.filter.logic.and') },
+    { value: 'OR', label: translate(language, 'dataGrid.filter.logic.or') },
 ];
 
 export const normalizeFilterLogic = (logic: unknown): 'AND' | 'OR' => {
@@ -75,12 +76,14 @@ export const buildQuickWhereSuggestionOptions = ({
     displayColumnNames,
     dbType,
     darkMode,
+    language,
 }: {
     quickWhereDraft: string;
     allTableColumnNames: string[];
     displayColumnNames: string[];
     dbType: string;
     darkMode: boolean;
+    language: AppLanguage;
 }) => {
     const columnSuggestionSource = allTableColumnNames.length > 0 ? allTableColumnNames : displayColumnNames;
     return resolveWhereConditionSuggestions({
@@ -94,7 +97,7 @@ export const buildQuickWhereSuggestionOptions = ({
         label: (
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
                 <span>{item.label}</span>
-                <span style={{ color: darkMode ? 'rgba(255,255,255,0.46)' : 'rgba(0,0,0,0.42)', fontSize: 12 }}>{item.detail}</span>
+                <span style={{ color: darkMode ? 'rgba(255,255,255,0.46)' : 'rgba(0,0,0,0.42)', fontSize: 12 }}>{translate(language, item.detail)}</span>
             </div>
         ),
     }));

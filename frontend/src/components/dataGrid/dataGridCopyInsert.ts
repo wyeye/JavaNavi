@@ -1,4 +1,5 @@
 import type { IndexDefinition } from '../../types';
+import { translate, type AppLanguage } from '../../i18n';
 import { escapeLiteral, quoteIdentPart, quoteQualifiedIdent } from '../../utils/sql';
 import { isOracleLikeDialect } from '../../utils/sqlDialect';
 
@@ -16,6 +17,7 @@ type BuildCopyMutationSQLParams = BuildCopyInsertSQLParams & {
   pkColumns?: string[];
   uniqueKeyGroups?: string[][];
   allTableColumns?: string[];
+  language?: AppLanguage;
 };
 
 type CopySqlWhereStrategy = 'primary-key' | 'unique-key' | 'all-columns';
@@ -253,6 +255,7 @@ const resolveMutationWhereClause = ({
   uniqueKeyGroups = [],
   allTableColumns = [],
   columnTypesByLowerName = {},
+  language = 'en',
 }: BuildCopyMutationSQLParams): CopyMutationWhereClauseResult => {
   const normalizedPkColumns = normalizeColumnList(pkColumns);
   const pkWhereClause = buildWhereClauseForColumns({
@@ -297,7 +300,7 @@ const resolveMutationWhereClause = ({
 
   return {
     ok: false,
-    error: '当前结果集缺少可安全定位行数据的主键/唯一键，且未覆盖表的全部字段，无法生成 WHERE 条件。',
+    error: translate(language, 'dataGrid.copySql.missingSafeLocator'),
   };
 };
 
@@ -329,6 +332,7 @@ const buildCopyMutationSQL = (
     uniqueKeyGroups = [],
     allTableColumns = [],
     columnTypesByLowerName = {},
+    language = 'en',
   }: BuildCopyMutationSQLParams,
 ): CopyMutationSQLResult => {
   const normalizedTableName = String(tableName || '').trim();
@@ -336,13 +340,13 @@ const buildCopyMutationSQL = (
   if (!normalizedTableName) {
     return {
       ok: false,
-      error: `当前结果集未关联明确表名，无法生成 ${mode.toUpperCase()} SQL。`,
+      error: translate(language || 'en', 'dataGrid.copySql.tableNameMissing', { mode: mode.toUpperCase() }),
     };
   }
   if (normalizedOrderedCols.length === 0) {
     return {
       ok: false,
-      error: '当前结果集没有可复制的字段，无法生成 SQL。',
+      error: translate(language || 'en', 'dataGrid.copySql.noCopyableColumns'),
     };
   }
 
@@ -354,6 +358,7 @@ const buildCopyMutationSQL = (
     uniqueKeyGroups,
     allTableColumns,
     columnTypesByLowerName,
+    language,
   });
   if (whereClause.ok === false) {
     return { ok: false, error: whereClause.error };

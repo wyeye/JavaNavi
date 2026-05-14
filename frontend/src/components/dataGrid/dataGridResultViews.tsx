@@ -1,6 +1,7 @@
 import React from 'react';
 import { Button } from 'antd';
 import Editor from '@monaco-editor/react';
+import type { I18nKey } from '../../i18n';
 
 export type DataGridTextRow = Record<string, unknown>;
 
@@ -10,6 +11,7 @@ export type DataGridJsonViewProps = {
     canModifyData: boolean;
     jsonViewText: string;
     onEditJson: () => void;
+    t: (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => string;
 };
 
 export type DataGridTextViewProps = {
@@ -22,17 +24,18 @@ export type DataGridTextViewProps = {
     formatTextViewValue: (value: unknown) => string;
     onTextRecordIndexChange: React.Dispatch<React.SetStateAction<number>>;
     onEditCurrentRecord: () => void;
+    t: (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => string;
 };
 
 export const DataGridJsonView: React.FC<DataGridJsonViewProps> = (props) => (
     <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '8px 10px', borderBottom: props.darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <span style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666' }}>
-                {props.rowCount === 0 ? '当前结果集无数据' : `当前结果集 ${props.rowCount} 条记录`}
+                {props.rowCount === 0 ? props.t('dataGrid.result.empty') : props.t('dataGrid.result.rowCount', { count: props.rowCount })}
             </span>
             {props.canModifyData && (
                 <Button size="small" type="primary" onClick={props.onEditJson} disabled={props.rowCount === 0}>
-                    编辑 JSON
+                    {props.t('dataGrid.result.jsonEdit')}
                 </Button>
             )}
         </div>
@@ -61,17 +64,17 @@ export const DataGridTextView: React.FC<DataGridTextViewProps> = (props) => (
     <div style={{ height: '100%', minHeight: 0, display: 'flex', flexDirection: 'column' }}>
         <div style={{ padding: '8px 12px', borderBottom: props.darkMode ? '1px solid rgba(255,255,255,0.08)' : '1px solid rgba(0,0,0,0.08)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <Button size="small" onClick={() => props.onTextRecordIndexChange((i) => Math.max(0, i - 1))} disabled={props.textViewRows.length === 0 || props.textRecordIndex <= 0}>
-                上一条
+                {props.t('dataGrid.result.previousRecord')}
             </Button>
             <Button size="small" onClick={() => props.onTextRecordIndexChange((i) => Math.min(props.textViewRows.length - 1, i + 1))} disabled={props.textViewRows.length === 0 || props.textRecordIndex >= props.textViewRows.length - 1}>
-                下一条
+                {props.t('dataGrid.result.nextRecord')}
             </Button>
             <span style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666' }}>
-                {props.textViewRows.length === 0 ? '当前结果集无数据' : `记录 ${props.textRecordIndex + 1} / ${props.textViewRows.length}`}
+                {props.textViewRows.length === 0 ? props.t('dataGrid.result.empty') : props.t('dataGrid.result.recordPosition', { current: props.textRecordIndex + 1, total: props.textViewRows.length })}
             </span>
             {props.canModifyData && (
                 <Button size="small" type="primary" onClick={props.onEditCurrentRecord} disabled={props.textViewRows.length === 0}>
-                    编辑当前记录
+                    {props.t('dataGrid.result.editRecord')}
                 </Button>
             )}
         </div>
@@ -87,7 +90,7 @@ export const DataGridTextView: React.FC<DataGridTextViewProps> = (props) => (
                 </div>
             )) : (
                 <div style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666', paddingTop: 4 }}>
-                    当前结果集无数据
+                    {props.t('dataGrid.result.empty')}
                 </div>
             )}
         </div>

@@ -1,4 +1,5 @@
 import { quoteIdentPart, type FilterCondition } from './sql';
+import { translate, type AppLanguage, type I18nKey } from '../i18n';
 
 export type WhereConditionSuggestionKind = 'column' | 'operator' | 'keyword';
 
@@ -6,7 +7,7 @@ export type WhereConditionSuggestion = {
   label: string;
   value: string;
   insertText: string;
-  detail: string;
+  detail: I18nKey;
   kind: WhereConditionSuggestionKind;
 };
 
@@ -105,6 +106,7 @@ export const normalizeQuickWhereCondition = (value: unknown): string => {
 
 export const validateQuickWhereCondition = (
   value: unknown,
+  language: AppLanguage = 'en',
 ): { ok: true } | { ok: false; message: string } => {
   const text = normalizeQuickWhereCondition(value);
   if (!text) {
@@ -113,7 +115,7 @@ export const validateQuickWhereCondition = (
   if (/[;]/.test(text) || /--|\/\*/.test(text)) {
     return {
       ok: false,
-      message: 'WHERE 条件不能包含分号或 SQL 注释',
+      message: translate(language, 'dataGrid.filter.quickWhere.invalid'),
     };
   }
   return { ok: true };
@@ -202,7 +204,7 @@ export const resolveWhereConditionSuggestions = ({
         label: operator,
         insertText,
         value: applyWhereConditionSuggestion(text, insertText),
-        detail: '操作符',
+        detail: 'dataGrid.filter.suggestion.operator',
         kind: 'operator',
       });
     });
@@ -220,7 +222,7 @@ export const resolveWhereConditionSuggestions = ({
         label: column,
         insertText,
         value: applyWhereConditionSuggestion(text, insertText),
-        detail: '字段',
+        detail: 'dataGrid.filter.suggestion.column',
         kind: 'column',
       });
     });
@@ -233,7 +235,7 @@ export const resolveWhereConditionSuggestions = ({
         label: keyword,
         insertText,
         value: applyWhereConditionSuggestion(text, insertText),
-        detail: '关键字',
+        detail: 'dataGrid.filter.suggestion.keyword',
         kind: 'keyword',
       });
     });

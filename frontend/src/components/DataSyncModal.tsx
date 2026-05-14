@@ -571,7 +571,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
       <div style={{ lineHeight: 1.7 }}>
           {riskSummary.lines.map((line) => <div key={line}>{line}</div>)}
           {riskSummary.requiresExplicitConfirm && (
-              <div style={{ marginTop: 8, color: '#cf1322' }}>高风险操作会直接修改目标库，请确认后继续。</div>
+              <div style={{ marginTop: 8, color: '#cf1322' }}>{language === 'zh' ? '高风险操作会直接修改目标库，请确认后继续。' : 'High-risk operations directly modify the target database. Confirm before continuing.'}</div>
           )}
       </div>
   );
@@ -581,7 +581,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
           Modal.confirm({
               title,
               content: renderRiskSummary(riskSummary),
-              okText: '确认执行',
+              okText: language === 'zh' ? '确认执行' : 'Confirm execution',
               cancelText: t('common.cancel'),
               okButtonProps: { danger: riskSummary.level === 'high' },
               onOk: () => resolve(true),
@@ -691,11 +691,12 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
           .map((item) => item.id);
       const missingDeleteConfirm = selectedDeleteIds.filter((item) => !schemaConfirmedDeleteItemIds.includes(item));
       const riskSummary = buildSchemaSyncExecutionRiskSummary({
+          language,
           targetDatabase: targetDb,
           schemaDiffTables,
           selectedItemIds: schemaSelectedItemIds,
       });
-      const ok = await confirmExecutionRisk('确认执行结构同步', riskSummary);
+      const ok = await confirmExecutionRisk(language === 'zh' ? '确认执行结构同步' : 'Confirm structure sync', riskSummary);
       if (!ok) return;
       if (missingDeleteConfirm.length > 0) {
           setSchemaConfirmedDeleteItemIds(prev => Array.from(new Set([...prev, ...missingDeleteConfirm])));
@@ -877,13 +878,14 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
           return;
       }
       const riskSummary = buildDataSyncExecutionRiskSummary({
+          language,
           syncMode,
           syncContent,
           targetDatabase: targetDb,
           diffTables,
           tableOptions,
       });
-      const ok = await confirmExecutionRisk('确认执行数据同步', riskSummary);
+      const ok = await confirmExecutionRisk(language === 'zh' ? '确认执行数据同步' : 'Confirm data sync', riskSummary);
       if (!ok) return;
 
       setLoading(true);
@@ -1027,18 +1029,20 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
   const resolvedPreviewActiveTab = previewTabKeys.includes(previewActiveTab) ? previewActiveTab : previewTabKeys[0];
 
   const dataExecutionRiskSummary = useMemo(() => buildDataSyncExecutionRiskSummary({
+      language,
       syncMode,
       syncContent,
       targetDatabase: targetDb,
       diffTables,
       tableOptions,
-  }), [syncMode, syncContent, targetDb, diffTables, tableOptions]);
+  }), [language, syncMode, syncContent, targetDb, diffTables, tableOptions]);
 
   const schemaExecutionRiskSummary = useMemo(() => buildSchemaSyncExecutionRiskSummary({
+      language,
       targetDatabase: targetDb,
       schemaDiffTables,
       selectedItemIds: schemaSelectedItemIds,
-  }), [targetDb, schemaDiffTables, schemaSelectedItemIds]);
+  }), [language, targetDb, schemaDiffTables, schemaSelectedItemIds]);
 
   const currentExecutionRiskSummary = syncDomain === 'schema' ? schemaExecutionRiskSummary : dataExecutionRiskSummary;
 

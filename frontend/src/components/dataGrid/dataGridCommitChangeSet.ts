@@ -1,5 +1,6 @@
 import React from 'react';
 import { resolveRowLocatorValues, type EditRowLocator } from '../../utils/rowLocator';
+import { translate, type AppLanguage } from '../../i18n';
 import { JAVANAVI_ROW_KEY } from './dataGridCells';
 import { isCellValueEqualForDiff } from './dataGridValue';
 
@@ -27,6 +28,7 @@ export const buildDataGridCommitChangeSet = ({
     columnNames,
     rowKeyToString,
     normalizeCommitCellValue,
+    language = 'en',
 }: {
     addedRows: DataGridCommitRow[];
     modifiedRows: Record<string, DataGridCommitRow>;
@@ -36,9 +38,10 @@ export const buildDataGridCommitChangeSet = ({
     columnNames: string[];
     rowKeyToString: (key: React.Key) => string;
     normalizeCommitCellValue: NormalizeCommitCellValue;
+    language?: AppLanguage;
 }): { ok: true; changes: DataGridCommitChangeSet } | { ok: false; error: string } => {
     if (!editLocator || editLocator.readOnly || editLocator.strategy === 'none') {
-        return { ok: false, error: editLocator?.reason || '当前结果没有可用的安全行定位方式，无法提交修改。' };
+        return { ok: false, error: editLocator?.reason || translate(language, 'dataGrid.locator.noSafeLocatorCurrent') };
     }
 
     const normalizeValues = (values: DataGridCommitRow, mode: 'insert' | 'update') => {
@@ -81,7 +84,7 @@ export const buildDataGridCommitChangeSet = ({
         if (key !== undefined && key !== null && deletedRowKeys.has(rowKeyToString(key as React.Key))) return;
         const insertValues = filterWritableValues(normalizeValues(row, 'insert'));
         if (Object.keys(insertValues).length === 0) {
-            return { ok: false, error: '新增行没有可写字段，无法提交修改。' };
+            return { ok: false, error: translate(language, 'dataGrid.commit.noWritableInsertFields') };
         }
         inserts.push(insertValues);
     });
@@ -89,7 +92,7 @@ export const buildDataGridCommitChangeSet = ({
     for (const keyStr of deletedRowKeys) {
         const originalRow = originalRowsByKey.get(keyStr);
         if (!originalRow) continue;
-        const locatorValues = resolveRowLocatorValues(editLocator, originalRow);
+        const locatorValues = resolveRowLocatorValues(editLocator, originalRow, language);
         if (!locatorValues.ok) return { ok: false, error: locatorValues.error };
         deletes.push(locatorValues.values);
     }
@@ -98,7 +101,7 @@ export const buildDataGridCommitChangeSet = ({
         if (deletedRowKeys.has(keyStr)) continue;
         const originalRow = originalRowsByKey.get(keyStr);
         if (!originalRow) continue;
-        const locatorValues = resolveRowLocatorValues(editLocator, originalRow);
+        const locatorValues = resolveRowLocatorValues(editLocator, originalRow, language);
         if (!locatorValues.ok) return { ok: false, error: locatorValues.error };
 
         const hasRowKey = Object.prototype.hasOwnProperty.call(newRow, JAVANAVI_ROW_KEY);

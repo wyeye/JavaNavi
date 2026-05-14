@@ -17,6 +17,8 @@ import {
     isCellValueEqualForDiff,
     normalizeDateTimeString,
 } from './dataGridValue';
+import { useStore } from '../../store';
+import { translate, type I18nKey } from '../../i18n';
 
 const DATA_GRID_BODY_FONT_WEIGHT = 400;
 
@@ -69,6 +71,8 @@ const removeCapturedWheelListener = (el: HTMLElement, handler: (event: WheelEven
 // --- Resizable Header (Native Implementation) ---
 export const ResizableTitle = React.forwardRef<HTMLTableCellElement, ResizableTitleProps>((props, ref) => {
   const { onResizeStart, onResizeAutoFit, width, ...restProps } = props;
+  const language = useStore(state => state.language);
+  const t = useCallback((key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
 
   const nextStyle = { ...(restProps.style || {}) } as React.CSSProperties;
   if (width) {
@@ -104,7 +108,7 @@ export const ResizableTitle = React.forwardRef<HTMLTableCellElement, ResizableTi
             e.stopPropagation();
         }}
         onClick={(e) => e.stopPropagation()}
-        title="拖动调整列宽，双击按内容自适应"
+        title={t('dataGrid.header.resizeColumn')}
         style={{
             position: 'absolute',
             right: 0, // Align to right edge
@@ -151,6 +155,8 @@ const sortableHeaderStaticStyles = `
 `;
 
 export const SortableHeaderCell: React.FC<SortableHeaderCellProps> = React.memo((props) => {
+    const language = useStore(state => state.language);
+    const t = useCallback((key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
     const { id, children, style: propStyle, className: propClassName, ...restProps } = props;
     const [isPressed, setIsPressed] = useState(false);
     const {
@@ -204,7 +210,7 @@ export const SortableHeaderCell: React.FC<SortableHeaderCellProps> = React.memo(
             }}
         >
             <style>{sortableHeaderStaticStyles}</style>
-            <div className="sortable-header-cell-drag-handle" title="拖拽以调整列顺序">
+            <div className="sortable-header-cell-drag-handle" title={t('dataGrid.header.reorderColumn')}>
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', minWidth: 0, cursor: 'inherit' }}>
                     {children}
                 </div>
@@ -268,6 +274,8 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   onDoubleClick,
   ...restProps
 }) => {
+  const language = useStore(state => state.language);
+  const t = useCallback((key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
   const [editing, setEditing] = useState(false);
   type FocusableEditorRef = Pick<InputRef, 'focus' | 'blur'> | Pick<PickerRef, 'focus' | 'blur'>;
   const inputRef = useRef<FocusableEditorRef | null>(null);
@@ -386,7 +394,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
                     const fieldName = getCellFieldName(record, dataIndex);
                     setCellFieldValue(form, fieldName, dayjs());
                   }}
-                >此刻</a>
+                >{t('dataGrid.editor.now')}</a>
               )}
               onOk={(value) => setTimeout(() => { void save((value as dayjs.Dayjs | null | undefined) ?? undefined); }, 0)}
               onOpenChange={(open) => {
@@ -486,6 +494,8 @@ type ContextMenuRowProps = React.HTMLAttributes<HTMLTableRowElement> & {
 
 export const ContextMenuRow = React.memo(({ children, record, ...props }: ContextMenuRowProps) => {
     const context = useContext(DataContext);
+    const language = useStore(state => state.language);
+    const t = useCallback((key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
     
     if (!record || !context) return <tr {...props}>{children}</tr>;
 
@@ -522,23 +532,23 @@ export const ContextMenuRow = React.memo(({ children, record, ...props }: Contex
     const menuItems: MenuProps['items'] = [
         ...(supportsCopyInsert ? [{
             key: 'insert',
-            label: '复制为 INSERT',
+            label: t('dataGrid.context.copyAsInsert'),
             icon: <ConsoleSqlOutlined />,
             onClick: () => handleCopyInsert(record),
         }, {
             key: 'update',
-            label: '复制为 UPDATE',
+            label: t('dataGrid.context.copyAsUpdate'),
             icon: <ConsoleSqlOutlined />,
             onClick: () => handleCopyUpdate(record),
         }, {
             key: 'delete',
-            label: '复制为 DELETE',
+            label: t('dataGrid.context.copyAsDelete'),
             icon: <ConsoleSqlOutlined />,
             onClick: () => handleCopyDelete(record),
         }] : []),
-        { key: 'json', label: '复制为 JSON', icon: <FileTextOutlined />, onClick: () => handleCopyJson(record) },
-        { key: 'csv', label: '复制为 CSV', icon: <FileTextOutlined />, onClick: () => handleCopyCsv(record) },
-        { key: 'copy', label: '复制为 Markdown', icon: <CopyOutlined />, onClick: () => { 
+        { key: 'json', label: t('dataGrid.context.copyAsJson'), icon: <FileTextOutlined />, onClick: () => handleCopyJson(record) },
+        { key: 'csv', label: t('dataGrid.context.copyAsCsv'), icon: <FileTextOutlined />, onClick: () => handleCopyCsv(record) },
+        { key: 'copy', label: t('dataGrid.context.copyAsMarkdown'), icon: <CopyOutlined />, onClick: () => {
             const records = getTargets();
             const orderedCols = displayDataRef.current.length > 0
                 ? Object.keys(displayDataRef.current[0]).filter(c => c !== JAVANAVI_ROW_KEY)
@@ -558,7 +568,7 @@ export const ContextMenuRow = React.memo(({ children, record, ...props }: Contex
         { type: 'divider' },
         {
             key: 'export-selected',
-            label: '导出选中数据',
+            label: t('dataGrid.context.exportSelected'),
             icon: <ExportOutlined />,
             children: [
                 { key: 'exp-csv', label: 'CSV', onClick: () => handleExportSelected('csv', record).catch(console.error) },
