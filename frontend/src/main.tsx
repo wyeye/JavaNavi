@@ -1,6 +1,9 @@
 import * as compatibilityApp from './compat/javanaviApp'
 import * as compatibilityAI from './compat/aiService'
 import * as compatibilityRuntime from './compat/runtime'
+import { installDesktopContextMenuSuppression } from './utils/desktopContextMenu'
+
+installDesktopContextMenuSuppression()
 
 if (typeof window !== 'undefined' && !window.runtime) {
     window.runtime = compatibilityRuntime;
