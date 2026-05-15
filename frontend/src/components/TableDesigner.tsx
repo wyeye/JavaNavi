@@ -2057,7 +2057,7 @@ END;`;
       }
   };
 
-  const handleRefreshDesigner = () => {
+  const handleRefreshDesigner = useCallback(() => {
       if (!hasUnsavedDraftChanges) {
           void fetchData();
           return;
@@ -2073,7 +2073,21 @@ END;`;
               await fetchData();
           },
       });
-  };
+  }, [fetchData, hasUnsavedDraftChanges, t]);
+
+  useEffect(() => {
+      const handleRefreshActiveDesign = () => {
+          if (useStore.getState().activeTabId !== tab.id) {
+              return;
+          }
+          handleRefreshDesigner();
+      };
+
+      window.addEventListener('javanavi:refresh-active-design', handleRefreshActiveDesign as EventListener);
+      return () => {
+          window.removeEventListener('javanavi:refresh-active-design', handleRefreshActiveDesign as EventListener);
+      };
+  }, [handleRefreshDesigner, tab.id]);
 
 	  const handleExecuteSave = async () => {
 	      const result = await executeSchemaStatements(previewSql);

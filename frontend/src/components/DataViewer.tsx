@@ -930,6 +930,19 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
   const handleReload = useCallback(() => {
     fetchData(pagination.current, pagination.pageSize);
   }, [fetchData, pagination.current, pagination.pageSize]);
+  useEffect(() => {
+    const handleRefreshActiveTable = () => {
+      if (useStore.getState().activeTabId !== tab.id) {
+        return;
+      }
+      handleReload();
+    };
+
+    window.addEventListener('javanavi:refresh-active-table', handleRefreshActiveTable as EventListener);
+    return () => {
+      window.removeEventListener('javanavi:refresh-active-table', handleRefreshActiveTable as EventListener);
+    };
+  }, [handleReload, tab.id]);
   const handleSort = useCallback((field: string, order: string) => {
     // 支持多字段排序：field 为 JSON 数组字符串时解析为多字段
     try {

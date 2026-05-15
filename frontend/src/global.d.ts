@@ -53,5 +53,6 @@ declare global {
     ipcRenderer?: JavaNaviIpcRenderer;
     __TAURI__?: JavaNaviTauriBridge;
     __javanaviBrowserSecrets?: JavaNaviBrowserSecrets;
+    __JAVANAVI_ALLOW_F5__?: boolean;
   }
 }

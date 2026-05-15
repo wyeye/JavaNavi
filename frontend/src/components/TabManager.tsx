@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useMemo, useRef, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { Tabs, Dropdown } from 'antd';
 import type { MenuProps, TabsProps } from 'antd';
 import { DndContext, PointerSensor, closestCenter, useSensor, useSensors } from '@dnd-kit/core';
@@ -173,6 +173,39 @@ const TabManager: React.FC = () => {
   const handleDragCancel = () => {
     setDraggingTabId(null);
   };
+
+  const activeTab = useMemo(() => tabs.find(tab => tab.id === activeTabId), [activeTabId, tabs]);
+
+  useEffect(() => {
+    window.__JAVANAVI_ALLOW_F5__ = activeTab?.type === 'table' || activeTab?.type === 'design';
+    return () => {
+      window.__JAVANAVI_ALLOW_F5__ = false;
+    };
+  }, [activeTab]);
+
+  useEffect(() => {
+    const handleWorkspaceF5 = (event: KeyboardEvent) => {
+      if ((event.key !== 'F5' && event.code !== 'F5') || event.ctrlKey || event.metaKey || event.altKey || event.shiftKey) {
+        return;
+      }
+      if (activeTab?.type === 'table') {
+        event.preventDefault();
+        event.stopPropagation();
+        window.dispatchEvent(new CustomEvent('javanavi:refresh-active-table'));
+        return;
+      }
+      if (activeTab?.type === 'design') {
+        event.preventDefault();
+        event.stopPropagation();
+        window.dispatchEvent(new CustomEvent('javanavi:refresh-active-design'));
+      }
+    };
+
+    window.addEventListener('keydown', handleWorkspaceF5, true);
+    return () => {
+      window.removeEventListener('keydown', handleWorkspaceF5, true);
+    };
+  }, [activeTab]);
 
   React.useEffect(() => {
     const handleGlobalInsertSql = (e: CustomEvent<InsertSqlEventDetail>) => {

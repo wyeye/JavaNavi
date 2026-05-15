@@ -23,6 +23,23 @@ struct DesktopRuntime {
 
 const DESKTOP_UPDATE_TIMEOUT_SECONDS: u64 = 20;
 
+const SUPPRESS_F5_INITIALIZATION_SCRIPT: &str = r#"
+(() => {
+  const shouldAllowJavaNaviF5 = () => window.__JAVANAVI_ALLOW_F5__ === true;
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'F5' && event.code !== 'F5') {
+      return;
+    }
+    if (shouldAllowJavaNaviF5()) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    event.stopImmediatePropagation?.();
+  }, { capture: true });
+})();
+"#;
+
 fn desktop_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
     app.updater_builder()
         .timeout(Duration::from_secs(DESKTOP_UPDATE_TIMEOUT_SECONDS))
@@ -1032,6 +1049,7 @@ fn create_main_window(app: &tauri::AppHandle, port: u16) -> tauri::Result<()> {
         .inner_size(1280.0, 820.0)
         .min_inner_size(960.0, 640.0)
         .user_agent("JavaNaviDesktop/0.1.8")
+        .initialization_script(SUPPRESS_F5_INITIALIZATION_SCRIPT)
         .visible(true)
         .build()?;
     Ok(())
@@ -1052,6 +1070,7 @@ fn create_error_window(
     WebviewWindowBuilder::new(app, "startup-error", WebviewUrl::App(app_url.into()))
         .title("JavaNavi Startup Error")
         .inner_size(900.0, 620.0)
+        .initialization_script(SUPPRESS_F5_INITIALIZATION_SCRIPT)
         .visible(true)
         .build()?;
     Ok(())
