@@ -1,5 +1,5 @@
 import * as AIService from '@compat/aiService';
-import { DeleteSavedQuery, SaveConnectionTags, SaveSavedQueries, SaveSavedQuery } from '@compat/javanaviApp';
+import { ClearSqlLogs, DeleteSavedQuery, SaveConnectionTags, SaveSavedQueries, SaveSavedQuery, SaveSqlLog, SaveSqlLogs } from '@compat/javanaviApp';
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import {
@@ -619,6 +619,7 @@ interface AppState {
 
   addSqlLog: (log: SqlLog) => void;
   clearSqlLogs: () => void;
+  replaceSqlLogs: (logs: SqlLog[]) => void;
 
   recordTableAccess: (
     connectionId: string,
@@ -1031,6 +1032,8 @@ let shortcutOptionsExplicitlySet = false;
 let connectionTagsHydratingFromBackend = false;
 let connectionTagsPersistTimer: ReturnType<typeof setTimeout> | null = null;
 let savedQueriesHydratingFromBackend = false;
+let sqlLogsHydratingFromBackend = false;
+let sqlLogsPersistTimer: ReturnType<typeof setTimeout> | null = null;
 
 const readPersistedShortcutOptions = (): ShortcutOptions | null => {
   if (typeof localStorage === "undefined") {
@@ -1127,6 +1130,57 @@ export const replaceSavedQueriesFromBackend = (queries: SavedQuery[]): void => {
     useStore.getState().replaceSavedQueries(queries);
   } finally {
     savedQueriesHydratingFromBackend = false;
+  }
+};
+
+const persistSqlLogToBackend = (log: SqlLog): void => {
+  if (sqlLogsHydratingFromBackend) {
+    return;
+  }
+  const safeLog = sanitizeSqlLogs([log])[0];
+  if (!safeLog) {
+    return;
+  }
+  SaveSqlLog(safeLog).catch((error: unknown) => {
+    console.error("[SQL Log Persist] 保存失败:", error);
+  });
+};
+
+const persistSqlLogsToBackend = (logs: SqlLog[]): void => {
+  if (sqlLogsHydratingFromBackend) {
+    return;
+  }
+  const safeLogs = sanitizeSqlLogs(logs);
+  if (sqlLogsPersistTimer) {
+    clearTimeout(sqlLogsPersistTimer);
+  }
+  sqlLogsPersistTimer = setTimeout(() => {
+    sqlLogsPersistTimer = null;
+    SaveSqlLogs(safeLogs).catch((error: unknown) => {
+      console.error("[SQL Log Persist] 保存失败:", error);
+    });
+  }, 250);
+};
+
+const clearSqlLogsFromBackend = (): void => {
+  if (sqlLogsHydratingFromBackend) {
+    return;
+  }
+  if (sqlLogsPersistTimer) {
+    clearTimeout(sqlLogsPersistTimer);
+    sqlLogsPersistTimer = null;
+  }
+  ClearSqlLogs().catch((error: unknown) => {
+    console.error("[SQL Log Persist] 清空失败:", error);
+  });
+};
+
+export const replaceSqlLogsFromBackend = (logs: SqlLog[]): void => {
+  sqlLogsHydratingFromBackend = true;
+  try {
+    useStore.getState().replaceSqlLogs(logs);
+  } finally {
+    sqlLogsHydratingFromBackend = false;
   }
 };
 
@@ -1608,8 +1662,25 @@ export const useStore = create<AppState>()(
       },
 
       addSqlLog: (log) =>
-        set((state) => ({ sqlLogs: sanitizeSqlLogs([log, ...state.sqlLogs]) })),
-      clearSqlLogs: () => set({ sqlLogs: [] }),
+        set((state) => {
+          const sqlLogs = sanitizeSqlLogs([log, ...state.sqlLogs]);
+          const safeLog = sqlLogs[0];
+          if (safeLog) {
+            persistSqlLogToBackend(safeLog);
+          }
+          return { sqlLogs };
+        }),
+      clearSqlLogs: () =>
+        set(() => {
+          clearSqlLogsFromBackend();
+          return { sqlLogs: [] };
+        }),
+      replaceSqlLogs: (logs) =>
+        set(() => {
+          const sqlLogs = sanitizeSqlLogs(logs);
+          persistSqlLogsToBackend(sqlLogs);
+          return { sqlLogs };
+        }),
 
       recordTableAccess: (connectionId, dbName, tableName) =>
         set((state) => {

@@ -1,6 +1,6 @@
-import React, { useRef, useEffect } from 'react';
-import { Table, Tag, Button, Tooltip, Empty } from 'antd';
-import { ClearOutlined, CloseOutlined, BugOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import React, { useMemo, useState } from 'react';
+import { Table, Tag, Button, Tooltip, Empty, Input } from 'antd';
+import { ClearOutlined, CloseOutlined, BugOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
 import { normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
 import type { SqlLog } from '../store';
@@ -19,6 +19,19 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
     const darkMode = theme === 'dark';
     const resolvedAppearance = resolveAppearanceValues(appearance);
     const opacity = normalizeOpacityForPlatform(resolvedAppearance.opacity);
+    const [sqlLogSearchTerm, setSqlLogSearchTerm] = useState('');
+    const filteredSqlLogs = useMemo(() => {
+        const keyword = sqlLogSearchTerm.trim().toLowerCase();
+        if (!keyword) return sqlLogs;
+        return sqlLogs.filter((log) => [
+            log.sql,
+            log.message,
+            log.dbName,
+            log.status,
+            String(log.duration),
+            log.affectedRows === undefined ? '' : String(log.affectedRows),
+        ].some((value) => String(value || '').toLowerCase().includes(keyword)));
+    }, [sqlLogSearchTerm, sqlLogs]);
 
     // Background Helper
     const getBg = (darkHex: string) => {
@@ -29,7 +42,6 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
         const b = parseInt(hex.substring(4, 6), 16);
         return `rgba(${r}, ${g}, ${b}, ${opacity})`;
     };
-    const bgMain = getBg('#1d1d1d');
     const shellOpacity = darkMode ? Math.max(0.18, opacity * 0.82) : Math.max(0.28, opacity * 0.92);
     const shellOpacityStrong = darkMode ? Math.max(0.22, opacity * 0.9) : Math.max(0.34, opacity * 0.96);
     const panelDividerColor = darkMode
@@ -135,7 +147,15 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
                         <div style={{ fontSize: 12, color: panelMutedTextColor }}>记录执行状态、耗时与错误信息，便于快速回溯。</div>
                     </div>
                 </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <Input.Search
+                        allowClear
+                        size="small"
+                        placeholder="搜索 SQL / 信息 / 数据库"
+                        value={sqlLogSearchTerm}
+                        onChange={(event) => setSqlLogSearchTerm(event.target.value)}
+                        style={{ width: 220 }}
+                    />
                     <Tooltip title="清空日志">
                         <Button type="text" size="small" icon={<ClearOutlined />} onClick={clearSqlLogs} style={{ color: panelMutedTextColor }} />
                     </Tooltip>
@@ -154,10 +174,17 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
                             description={<span style={{ color: panelMutedTextColor }}>暂无 SQL 执行日志</span>}
                         />
                     </div>
+                ) : filteredSqlLogs.length === 0 ? (
+                    <div style={{ height: '100%', minHeight: 160, display: 'grid', placeItems: 'center' }}>
+                        <Empty
+                            image={Empty.PRESENTED_IMAGE_SIMPLE}
+                            description={<span style={{ color: panelMutedTextColor }}>未找到匹配日志</span>}
+                        />
+                    </div>
                 ) : (
                     <Table 
                         className="log-panel-table"
-                        dataSource={sqlLogs} 
+                        dataSource={filteredSqlLogs}
                         columns={columns} 
                         size="small" 
                         pagination={false} 
