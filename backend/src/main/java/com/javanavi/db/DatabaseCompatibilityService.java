@@ -745,7 +745,7 @@ public class DatabaseCompatibilityService {
             try (Statement statement = connection.createStatement()) {
                 configureStatement(statement, request.connection(), running);
                 ResultSetDataDto resultSet = executeStatement(statement, statementSql, running);
-                resultSets.add(withStatementExecutionMetadata(resultSet, statementSlice, index + 1, "success", "Execution succeeded"));
+                resultSets.add(withStatementExecutionMetadata(resultSet, statementSlice, index + 1, "success", messages.message("common.operationSucceeded")));
             } catch (SQLException error) {
                 if (isQueryCancellation(error)) {
                     throw error;
