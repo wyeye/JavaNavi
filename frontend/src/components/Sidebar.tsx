@@ -1336,6 +1336,21 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       void handleCopySidebarNodeName(copyName);
   };
 
+  const focusSidebarTreeForCopyShortcut = (event: React.MouseEvent<HTMLDivElement>) => {
+      const target = event.target instanceof HTMLElement ? event.target : null;
+      if (!target?.closest('.ant-tree')) return;
+      if (target.closest('input, textarea, select, [contenteditable="true"], [contenteditable=""]')) return;
+
+      const treeElement = target.closest('.ant-tree') as HTMLElement | null;
+      if (!treeElement || !treeContainerRef.current?.contains(treeElement)) return;
+
+      window.requestAnimationFrame(() => {
+          if (treeContainerRef.current?.contains(treeElement)) {
+              treeElement.focus({ preventScroll: true });
+          }
+      });
+  };
+
   const onDoubleClick = (_event: React.MouseEvent | null, node: SidebarEventNode) => {
       // 双击时取消单击延迟动作（如表概览打开），让双击只触发展开/折叠
       if (clickTimerRef.current) {
@@ -4086,6 +4101,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         <div
             ref={treeContainerRef}
             className="sidebar-tree-scroll-shell"
+            onMouseDownCapture={focusSidebarTreeForCopyShortcut}
             style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}
         >
             <div className="sidebar-tree-scroll-content">
