@@ -8,7 +8,7 @@ import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
 import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TableOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
-import { DEFAULT_APPEARANCE, replaceConnectionTagsFromBackend, replaceSavedQueriesFromBackend, useStore } from './store';
+import { DEFAULT_APPEARANCE, replaceConnectionTagsFromBackend, replaceSavedQueriesFromBackend, replaceSqlLogsFromBackend, useStore } from './store';
 import type { GlobalProxyConfig, SavedConnection } from './types';
 import { blurToFilter, isMacLikePlatform, normalizeBlurForPlatform, normalizeOpacityForPlatform, isWindowsPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from './utils/appearance';
 import { getDataGridColumnWidthModeOptions, sanitizeDataTableColumnWidthMode } from './utils/dataGridDisplay';
@@ -48,7 +48,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, GetSavedQueries, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, GetSavedQueries, GetSqlLogs, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SaveSqlLogs, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -364,6 +364,25 @@ function App() {
               }
           } catch (err) {
               console.warn('Failed to load saved queries', err);
+          }
+
+          try {
+              const latestSqlLogs = await GetSqlLogs();
+              if (!cancelled && Array.isArray(latestSqlLogs)) {
+                  if (latestSqlLogs.length > 0) {
+                      replaceSqlLogsFromBackend(latestSqlLogs);
+                  } else {
+                      const localSqlLogs = useStore.getState().sqlLogs;
+                      if (localSqlLogs.length > 0) {
+                          await SaveSqlLogs(localSqlLogs);
+                          replaceSqlLogsFromBackend(localSqlLogs);
+                      } else {
+                          replaceSqlLogsFromBackend([]);
+                      }
+                  }
+              }
+          } catch (err) {
+              console.warn('Failed to load SQL logs', err);
           }
 
           try {

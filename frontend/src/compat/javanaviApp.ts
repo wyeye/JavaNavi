@@ -40,6 +40,17 @@ export type SavedQueryPayload = {
   createdAt: number;
 };
 
+export type SqlLogPayload = {
+  id: string;
+  timestamp: number;
+  sql: string;
+  status: 'success' | 'error';
+  duration: number;
+  message?: string;
+  dbName?: string;
+  affectedRows?: number;
+};
+
 function recordValue(value: unknown): UnknownRecord {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {};
 }
@@ -898,6 +909,30 @@ export async function DeleteSavedQuery(arg1: string): Promise<SavedQueryPayload[
   const payload = await postJson('/connections/saved/queries/delete', { id: arg1 || '' });
   assertSuccessPayload(payload, 'Failed to delete JavaNavi saved query.');
   return payloadArrayData<SavedQueryPayload>(payload);
+}
+
+export async function GetSqlLogs(): Promise<SqlLogPayload[]> {
+  const payload = await postJson('/sql-logs/list', {});
+  assertSuccessPayload(payload, 'Failed to load JavaNavi SQL logs.');
+  return payloadArrayData<SqlLogPayload>(payload);
+}
+
+export async function SaveSqlLogs(arg1: SqlLogPayload[]): Promise<SqlLogPayload[]> {
+  const payload = await postJson('/sql-logs/save', { logs: Array.isArray(arg1) ? arg1 : [] });
+  assertSuccessPayload(payload, 'Failed to save JavaNavi SQL logs.');
+  return payloadArrayData<SqlLogPayload>(payload);
+}
+
+export async function SaveSqlLog(arg1: SqlLogPayload): Promise<SqlLogPayload[]> {
+  const payload = await postJson('/sql-logs/save-one', arg1 || {});
+  assertSuccessPayload(payload, 'Failed to save JavaNavi SQL log.');
+  return payloadArrayData<SqlLogPayload>(payload);
+}
+
+export async function ClearSqlLogs(): Promise<SqlLogPayload[]> {
+  const payload = await postJson('/sql-logs/clear', {});
+  assertSuccessPayload(payload, 'Failed to clear JavaNavi SQL logs.');
+  return payloadArrayData<SqlLogPayload>(payload);
 }
 
 export async function ImportConnectionsPayload(arg1:string,arg2:string): Promise<Array<connection.SavedConnectionView>> {
