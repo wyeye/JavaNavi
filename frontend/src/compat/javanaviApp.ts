@@ -3,7 +3,7 @@ import { connection, sync, app, redis, schemaSync } from './models';
 import type { ApiPayload, DataRow, RedisCursor, RedisHashFieldsInput, RedisListPushOptions, UnknownRecord } from './contracts';
 import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { resolveSelectedSqlFilePath } from './sqlFileSelection';
-import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translateBackendFallback, type AppLanguage } from '../i18n';
+import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translate, translateBackendFallback, type AppLanguage, type I18nKey } from '../i18n';
 
 export type QueryResult = connection.QueryResult;
 
@@ -61,7 +61,12 @@ function getErrorMessage(error: unknown, fallback = 'Request failed'): string {
   return text || fallback;
 }
 
-function getDesktopBridgeErrorMessage(error: unknown, fallback = 'Desktop bridge request failed'): string {
+function localText(key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>): string {
+  return translate(currentAppLanguage(), key, params);
+}
+
+function getDesktopBridgeErrorMessage(error: unknown, fallbackKey: I18nKey): string {
+  const fallback = localText(fallbackKey);
   const raw = getErrorMessage(error, fallback);
   return raw === 'Request failed' ? fallback : raw;
 }
@@ -775,33 +780,33 @@ export async function ExportTablesSQL(arg1:connection.ConnectionConfig,arg2:stri
 
 export async function CheckDesktopUpdate(): Promise<connection.QueryResult> {
   if (!isJavaNaviDesktopRuntime()) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Desktop updates are only available in the packaged JavaNavi desktop app.' }, data: null }, 'Desktop update unavailable');
+    return apiEnvelopeToQueryResult({ success: false, error: { message: localText('update.desktopOnly') }, data: null }, localText('update.unavailable'));
   }
   const result = tauriInvoke<UnknownRecord>('check_desktop_update', {});
   if (!result) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Tauri updater bridge is not available.' }, data: null }, 'Desktop update unavailable');
+    return apiEnvelopeToQueryResult({ success: false, error: { message: localText('update.bridgeUnavailable') }, data: null }, localText('update.unavailable'));
   }
   try {
     return apiEnvelopeToQueryResult({ success: true, data: await result }, 'Desktop update checked');
   } catch (error: unknown) {
-    const message = getDesktopBridgeErrorMessage(error, 'Desktop update check failed');
-    return apiEnvelopeToQueryResult({ success: false, error: { message }, data: null }, 'Desktop update check failed');
+    const message = getDesktopBridgeErrorMessage(error, 'update.checkFailedFallback');
+    return apiEnvelopeToQueryResult({ success: false, error: { message }, data: null }, localText('update.checkFailedFallback'));
   }
 }
 
 export async function InstallDesktopUpdate(): Promise<connection.QueryResult> {
   if (!isJavaNaviDesktopRuntime()) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Desktop updates are only available in the packaged JavaNavi desktop app.' }, data: null }, 'Desktop update unavailable');
+    return apiEnvelopeToQueryResult({ success: false, error: { message: localText('update.desktopOnly') }, data: null }, localText('update.unavailable'));
   }
   const result = tauriInvoke<UnknownRecord>('install_desktop_update', {});
   if (!result) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Tauri updater bridge is not available.' }, data: null }, 'Desktop update unavailable');
+    return apiEnvelopeToQueryResult({ success: false, error: { message: localText('update.bridgeUnavailable') }, data: null }, localText('update.unavailable'));
   }
   try {
     return apiEnvelopeToQueryResult({ success: true, data: await result }, 'Desktop update installed');
   } catch (error: unknown) {
-    const message = getDesktopBridgeErrorMessage(error, 'Desktop update install failed');
-    return apiEnvelopeToQueryResult({ success: false, error: { message }, data: null }, 'Desktop update install failed');
+    const message = getDesktopBridgeErrorMessage(error, 'update.installFailedFallback');
+    return apiEnvelopeToQueryResult({ success: false, error: { message }, data: null }, localText('update.installFailedFallback'));
   }
 }
 
