@@ -3,6 +3,7 @@ mod sidecar;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, WebviewUrl, WebviewWindowBuilder, WindowEvent};
@@ -18,6 +19,15 @@ pub struct DesktopState {
 
 struct DesktopRuntime {
     sidecar: JavaSidecar,
+}
+
+const DESKTOP_UPDATE_TIMEOUT_SECONDS: u64 = 20;
+
+fn desktop_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
+    app.updater_builder()
+        .timeout(Duration::from_secs(DESKTOP_UPDATE_TIMEOUT_SECONDS))
+        .build()
+        .map_err(|error| format!("Desktop updater is not available: {error}"))
 }
 
 #[derive(Debug, Serialize)]
@@ -39,9 +49,7 @@ struct DesktopUpdateInstallResult {
 #[tauri::command]
 async fn check_desktop_update(app: AppHandle) -> Result<DesktopUpdateInfo, String> {
     let current_version = app.package_info().version.to_string();
-    let update = app
-        .updater()
-        .map_err(|error| format!("Desktop updater is not available: {error}"))?
+    let update = desktop_updater(&app)?
         .check()
         .await
         .map_err(|error| format!("Unable to check for JavaNavi updates: {error}"))?;
@@ -66,9 +74,7 @@ async fn check_desktop_update(app: AppHandle) -> Result<DesktopUpdateInfo, Strin
 
 #[tauri::command]
 async fn install_desktop_update(app: AppHandle) -> Result<DesktopUpdateInstallResult, String> {
-    let update = app
-        .updater()
-        .map_err(|error| format!("Desktop updater is not available: {error}"))?
+    let update = desktop_updater(&app)?
         .check()
         .await
         .map_err(|error| format!("Unable to check for JavaNavi updates: {error}"))?
