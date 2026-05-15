@@ -60,6 +60,7 @@ const DEFAULT_TIMEOUT_SECONDS = 30;
 const MAX_TIMEOUT_SECONDS = 3600;
 const PERSIST_VERSION = 9;
 const PERSIST_STORAGE_KEY = "lite-db-storage";
+const MAX_SQL_LOGS = 1000;
 const DEFAULT_CONNECTION_TYPE = "mysql";
 const DEFAULT_GLOBAL_PROXY: GlobalProxyConfig = {
   enabled: false,
@@ -753,6 +754,31 @@ const sanitizeSqlFormatOptions = (
       ? (value as Record<string, unknown>)
       : {};
   return { keywordCase: raw.keywordCase === "lower" ? "lower" : "upper" };
+};
+
+const sanitizeSqlLogs = (value: unknown): SqlLog[] => {
+  if (!Array.isArray(value)) return [];
+  const result: SqlLog[] = [];
+  value.forEach((entry, index) => {
+    const raw = toUnknownRecord(entry);
+    const sql = toTrimmedString(raw.sql).slice(0, 200_000);
+    if (!sql) return;
+    const timestamp = Number(raw.timestamp);
+    const duration = Number(raw.duration);
+    const status = raw.status === 'error' ? 'error' : 'success';
+    const affectedRows = Number(raw.affectedRows);
+    result.push({
+      id: toTrimmedString(raw.id, `sql-log-${index + 1}`) || `sql-log-${index + 1}`,
+      timestamp: Number.isFinite(timestamp) && timestamp > 0 ? timestamp : Date.now(),
+      sql,
+      status,
+      duration: Number.isFinite(duration) && duration >= 0 ? Math.trunc(duration) : 0,
+      message: toTrimmedString(raw.message) || undefined,
+      dbName: toTrimmedString(raw.dbName) || undefined,
+      affectedRows: Number.isFinite(affectedRows) ? Math.trunc(affectedRows) : undefined,
+    });
+  });
+  return result.slice(0, MAX_SQL_LOGS);
 };
 
 const sanitizeQueryOptions = (value: unknown): QueryOptions => {
@@ -1582,7 +1608,7 @@ export const useStore = create<AppState>()(
       },
 
       addSqlLog: (log) =>
-        set((state) => ({ sqlLogs: [log, ...state.sqlLogs].slice(0, 1000) })), // Keep last 1000 logs
+        set((state) => ({ sqlLogs: sanitizeSqlLogs([log, ...state.sqlLogs]) })),
       clearSqlLogs: () => set({ sqlLogs: [] }),
 
       recordTableAccess: (connectionId, dbName, tableName) =>
@@ -1899,6 +1925,7 @@ export const useStore = create<AppState>()(
           state.sqlFormatOptions,
         );
         nextState.queryOptions = sanitizeQueryOptions(state.queryOptions);
+        nextState.sqlLogs = sanitizeSqlLogs(state.sqlLogs);
         nextState.shortcutOptions = sanitizeShortcutOptions(
           state.shortcutOptions,
         );
@@ -1969,6 +1996,7 @@ export const useStore = create<AppState>()(
 
           sqlFormatOptions: sanitizeSqlFormatOptions(state.sqlFormatOptions),
           queryOptions: sanitizeQueryOptions(state.queryOptions),
+          sqlLogs: sanitizeSqlLogs(state.sqlLogs),
           shortcutOptions: sanitizeShortcutOptions(state.shortcutOptions),
           tableAccessCount: sanitizeTableAccessCount(state.tableAccessCount),
 
@@ -1993,6 +2021,7 @@ export const useStore = create<AppState>()(
               : toPersistedGlobalProxy(state.globalProxy),
           sqlFormatOptions: state.sqlFormatOptions,
           queryOptions: state.queryOptions,
+          sqlLogs: sanitizeSqlLogs(state.sqlLogs),
           shortcutOptions: resolveShortcutOptionsForPersistence(state.shortcutOptions),
           tableAccessCount: state.tableAccessCount,
           tableSortPreference: state.tableSortPreference,
@@ -2012,7 +2041,7 @@ export const useStore = create<AppState>()(
 
         // AI 会话数据已迁移到后端文件持久化（~/.javanavi/sessions/），不再写入 localStorage
         return partialState as AppState;
-      }, // Don't persist logs
+      },
     },
   ),
 );

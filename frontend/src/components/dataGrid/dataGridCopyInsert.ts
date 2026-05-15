@@ -189,7 +189,7 @@ const formatOracleTemporalLiteral = (value: unknown, columnType?: string): strin
   return `TO_DATE('${escaped}', 'YYYY-MM-DD HH24:MI:SS')`;
 };
 
-const formatCopySqlLiteral = (value: unknown, columnType?: string, dbType = ''): string => {
+export const formatCopySqlLiteral = (value: unknown, columnType?: string, dbType = ''): string => {
   if (value === null || value === undefined) {
     return 'NULL';
   }

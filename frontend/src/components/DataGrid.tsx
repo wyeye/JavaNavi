@@ -43,6 +43,7 @@ import {
     buildCopyDeleteSQL,
     buildCopyInsertSQL,
     buildCopyUpdateSQL,
+    formatCopySqlLiteral,
     normalizeTemporalLiteralText,
 } from './dataGrid/dataGridCopyInsert';
 import { calculateAutoFitColumnWidth } from './dataGrid/dataGridAutoWidth';
@@ -2664,6 +2665,51 @@ const DataGrid: React.FC<DataGridProps> = ({
       });
   };
 
+  const buildDataGridCommitSqlLog = useCallback((changes: {
+      inserts: Record<string, unknown>[];
+      updates: Array<{ keys: Record<string, unknown>; values: Record<string, unknown> }>;
+      deletes: Record<string, unknown>[];
+  }): string => {
+      const tableSql = quoteQualifiedIdent(dbType, tableName || 'table');
+      const literal = (columnName: string, value: unknown) => formatCopySqlLiteral(
+          value,
+          columnTypeMapByLowerName[String(columnName || '').toLowerCase()],
+          dbType,
+      );
+      const whereClause = (values: Record<string, unknown>) => Object.entries(values)
+          .map(([column, value]) => {
+              const columnSql = dbType === 'oracle' && column.toUpperCase() === 'ROWID'
+                  ? 'ROWID'
+                  : quoteIdentPart(dbType, column);
+              return value === null || value === undefined
+                  ? `${columnSql} IS NULL`
+                  : `${columnSql} = ${literal(column, value)}`;
+          })
+          .join(' AND ');
+      const statements: string[] = [];
+
+      changes.deletes.forEach((keys) => {
+          const whereSql = whereClause(keys);
+          if (whereSql) statements.push(`DELETE FROM ${tableSql} WHERE ${whereSql};`);
+      });
+      changes.updates.forEach((update) => {
+          const assignments = Object.entries(update.values)
+              .map(([column, value]) => `${quoteIdentPart(dbType, column)} = ${literal(column, value)}`)
+              .join(', ');
+          const whereSql = whereClause(update.keys);
+          if (assignments && whereSql) statements.push(`UPDATE ${tableSql} SET ${assignments} WHERE ${whereSql};`);
+      });
+      changes.inserts.forEach((row) => {
+          const entries = Object.entries(row);
+          if (entries.length === 0) return;
+          const columnsSql = entries.map(([column]) => quoteIdentPart(dbType, column)).join(', ');
+          const valuesSql = entries.map(([column, value]) => literal(column, value)).join(', ');
+          statements.push(`INSERT INTO ${tableSql} (${columnsSql}) VALUES (${valuesSql});`);
+      });
+
+      return statements.join('\n');
+  }, [columnTypeMapByLowerName, dbType, tableName]);
+
   const handleCommit = async () => {
       if (commitLoading || !connectionId || !tableName) return;
       const conn = connections.find(c => c.id === connectionId);
@@ -2734,11 +2780,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           const res = await ApplyChanges(buildRpcConnectionConfig(config), dbName || '', tableName, new connection.ChangeSet({ inserts, updates, deletes, locatorStrategy: effectiveEditLocator?.strategy }));
           const duration = Date.now() - startTime;
 
-          // Construct a pseudo-SQL representation for the log
-          let logSql = `/* Batch Apply on ${tableName} */\n`;
-          if (inserts.length > 0) logSql += `INSERT ${inserts.length} rows;\n`;
-          if (updates.length > 0) logSql += `UPDATE ${updates.length} rows;\n`;
-          if (deletes.length > 0) logSql += `DELETE ${deletes.length} rows;\n`;
+          const logSql = buildDataGridCommitSqlLog({ inserts, updates, deletes });
 
           if (res.success) {
               addSqlLog({
