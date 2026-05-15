@@ -1,0 +1,11 @@
+[[permission]]
+identifier = "allow-desktop-commands"
+description = "Allows the JavaNavi desktop webview to use native file, update, and restart commands."
+commands.allow = [
+  "select_local_file",
+  "select_export_file",
+  "write_text_file",
+  "check_desktop_update",
+  "install_desktop_update",
+  "restart_desktop_app",
+]

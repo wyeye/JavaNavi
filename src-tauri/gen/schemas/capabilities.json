@@ -1,1 +1,1 @@
-{"main-capability":{"identifier":"main-capability","description":"Default JavaNavi desktop capability. Java sidecar and menu actions are owned by Rust, not webview IPC.","local":true,"windows":["main","startup-error","about"],"permissions":["core:default"]}}
+{"main-capability":{"identifier":"main-capability","description":"Default JavaNavi desktop capability for the packaged local webview.","remote":{"urls":["http://127.0.0.1:*","http://localhost:*"]},"local":true,"windows":["main","startup-error","about"],"permissions":["core:default","allow-desktop-commands"]}}

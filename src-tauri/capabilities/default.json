@@ -1,7 +1,20 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
-  "description": "Default JavaNavi desktop capability. Java sidecar and menu actions are owned by Rust, not webview IPC.",
-  "windows": ["main", "startup-error", "about"],
-  "permissions": ["core:default"]
+  "description": "Default JavaNavi desktop capability for the packaged local webview.",
+  "windows": [
+    "main",
+    "startup-error",
+    "about"
+  ],
+  "permissions": [
+    "core:default",
+    "allow-desktop-commands"
+  ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*",
+      "http://localhost:*"
+    ]
+  }
 }

@@ -54,9 +54,16 @@ function payloadErrorMessage(payload: unknown): unknown {
 }
 
 function getErrorMessage(error: unknown, fallback = 'Request failed'): string {
-  if (error instanceof Error) return error.message;
+  if (error instanceof Error) {
+    return error.message || fallback;
+  }
   const text = String(error || '').trim();
   return text || fallback;
+}
+
+function getDesktopBridgeErrorMessage(error: unknown, fallback = 'Desktop bridge request failed'): string {
+  const raw = getErrorMessage(error, fallback);
+  return raw === 'Request failed' ? fallback : raw;
 }
 
 function assertSuccessPayload(payload: unknown, fallbackMessage: string): void {
@@ -777,7 +784,8 @@ export async function CheckDesktopUpdate(): Promise<connection.QueryResult> {
   try {
     return apiEnvelopeToQueryResult({ success: true, data: await result }, 'Desktop update checked');
   } catch (error: unknown) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: getErrorMessage(error) }, data: null }, 'Desktop update check failed');
+    const message = getDesktopBridgeErrorMessage(error, 'Desktop update check failed');
+    return apiEnvelopeToQueryResult({ success: false, error: { message }, data: null }, 'Desktop update check failed');
   }
 }
 
@@ -792,7 +800,8 @@ export async function InstallDesktopUpdate(): Promise<connection.QueryResult> {
   try {
     return apiEnvelopeToQueryResult({ success: true, data: await result }, 'Desktop update installed');
   } catch (error: unknown) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: getErrorMessage(error) }, data: null }, 'Desktop update install failed');
+    const message = getDesktopBridgeErrorMessage(error, 'Desktop update install failed');
+    return apiEnvelopeToQueryResult({ success: false, error: { message }, data: null }, 'Desktop update install failed');
   }
 }
 
