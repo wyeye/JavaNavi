@@ -1,7 +1,7 @@
 import { resolveEffectiveSSLMode } from '../utils/sslMode';
 import { connection, sync, app, redis, schemaSync } from './models';
 import type { ApiPayload, DataRow, RedisCursor, RedisHashFieldsInput, RedisListPushOptions, UnknownRecord } from './contracts';
-import { localSessionHeaders as baseLocalSessionHeaders } from './localSession';
+import { isLocalSessionAuthFailure, localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { resolveSelectedSqlFilePath } from './sqlFileSelection';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translate, translateBackendFallback, type AppLanguage, type I18nKey } from '../i18n';
 
@@ -138,10 +138,10 @@ function currentAppLanguage(): AppLanguage {
   }
 }
 
-async function localSessionHeaders(): Promise<Record<string, string>> {
+async function localSessionHeaders(forceRefresh = false): Promise<Record<string, string>> {
   const language = currentAppLanguage();
   return {
-    ...(await baseLocalSessionHeaders()),
+    ...(await baseLocalSessionHeaders(forceRefresh)),
     'X-JavaNavi-Language': currentLanguageHeaderValue(language),
     'Accept-Language': currentLanguageHeaderValue(language),
   };
@@ -243,14 +243,29 @@ function localizeBackendMessage(message: unknown, fallbackMessage = 'Request fai
   return translateBackendFallback(currentAppLanguage(), raw);
 }
 
+async function fetchWithLocalSessionRetry(path: string, init: RequestInit, refreshHeaders: () => Promise<Record<string, string>>): Promise<{ response: Response; payload: unknown }> {
+  const response = await fetch(`${API_BASE}${path}`, init);
+  const payload: unknown = await response.json().catch(() => null);
+  if (!isLocalSessionAuthFailure(response.status, payload)) {
+    return { response, payload };
+  }
+  const retryResponse = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      ...(await refreshHeaders()),
+    },
+  });
+  return { response: retryResponse, payload: await retryResponse.json().catch(() => null) };
+}
+
 async function postJson<T = unknown>(path: string, body: unknown, options: PostJsonOptions = {}): Promise<ApiPayload<T | null>> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const { response, payload } = await fetchWithLocalSessionRetry(path, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(await localSessionHeaders()), ...requestSourceHeaders(options.requestSource) },
     body: JSON.stringify(body),
-  });
-  const payload: unknown = await response.json().catch(() => null);
+  }, async () => ({ ...(await localSessionHeaders(true)), ...requestSourceHeaders(options.requestSource) }));
   if (!response.ok) {
     return { success: false, message: localizeBackendMessage(payloadErrorMessage(payload) || response.statusText), data: null };
   }
@@ -258,13 +273,12 @@ async function postJson<T = unknown>(path: string, body: unknown, options: PostJ
 }
 
 async function postMultipart<T = unknown>(path: string, body: FormData): Promise<ApiPayload<T | null>> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const { response, payload } = await fetchWithLocalSessionRetry(path, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { ...(await localSessionHeaders()) },
     body,
-  });
-  const payload: unknown = await response.json().catch(() => null);
+  }, async () => ({ ...(await localSessionHeaders(true)) }));
   if (!response.ok) {
     return { success: false, message: localizeBackendMessage(payloadErrorMessage(payload) || response.statusText), data: null };
   }
@@ -272,12 +286,11 @@ async function postMultipart<T = unknown>(path: string, body: FormData): Promise
 }
 
 async function getJson<T = unknown>(path: string): Promise<ApiPayload<T | null>> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const { response, payload } = await fetchWithLocalSessionRetry(path, {
     method: 'GET',
     credentials: 'same-origin',
     headers: { ...(await localSessionHeaders()) },
-  });
-  const payload: unknown = await response.json().catch(() => null);
+  }, async () => ({ ...(await localSessionHeaders(true)) }));
   if (!response.ok) {
     return { success: false, message: localizeBackendMessage(payloadErrorMessage(payload) || response.statusText), data: null };
   }

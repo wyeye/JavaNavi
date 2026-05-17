@@ -1,7 +1,7 @@
 // JavaNavi AI service compatibility adapter.
 // Provider/session/settings state is stored by the Java backend; stream failures surface as real errors.
 
-import { localSessionHeaders } from './localSession';
+import { isLocalSessionAuthFailure, localSessionHeaders } from './localSession';
 import { currentLanguageHeaderValue, getRuntimeLanguage, translateBackendFallback } from '../i18n';
 import type { AiChatSendResult, AiContextLevelValue, AiMessage, AiModelListResult, AiProviderConfig, AiProviderTestResult, AiSafetyLevelValue, AiSafetyResult, AiSessionPayload, AiSessionSummary, AiTool, ApiPayload } from './contracts';
 
@@ -13,12 +13,11 @@ function localizeAIBackendMessage(message: unknown, fallbackMessage = 'JavaNavi 
 }
 
 async function getJson<T = unknown>(path: string): Promise<ApiPayload<T>> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const { response, payload } = await fetchWithLocalSessionRetry(path, {
     method: 'GET',
     credentials: 'same-origin',
     headers: { ...(await aiServiceHeaders()) },
-  });
-  const payload = await response.json().catch(() => null);
+  }, async () => ({ ...(await aiServiceHeaders(true)) }));
   if (!response.ok) {
     throw new Error(localizeAIBackendMessage(payload?.error?.message || response.statusText, 'JavaNavi AI request failed.'));
   }
@@ -26,26 +25,41 @@ async function getJson<T = unknown>(path: string): Promise<ApiPayload<T>> {
 }
 
 async function postJson<T = unknown>(path: string, body: unknown): Promise<ApiPayload<T>> {
-  const response = await fetch(`${API_BASE}${path}`, {
+  const { response, payload } = await fetchWithLocalSessionRetry(path, {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json', ...(await aiServiceHeaders()) },
     body: JSON.stringify(body || {}),
-  });
-  const payload = await response.json().catch(() => null);
+  }, async () => ({ ...(await aiServiceHeaders(true)) }));
   if (!response.ok) {
     throw new Error(localizeAIBackendMessage(payload?.error?.message || response.statusText, 'JavaNavi AI request failed.'));
   }
   return payload;
 }
 
-async function aiServiceHeaders(): Promise<Record<string, string>> {
+async function aiServiceHeaders(forceRefresh = false): Promise<Record<string, string>> {
   const language = currentLanguageHeaderValue(getRuntimeLanguage());
   return {
-    ...(await localSessionHeaders()),
+    ...(await localSessionHeaders(forceRefresh)),
     'X-JavaNavi-Language': language,
     'Accept-Language': language,
   };
+}
+
+async function fetchWithLocalSessionRetry(path: string, init: RequestInit, refreshHeaders: () => Promise<Record<string, string>>): Promise<{ response: Response; payload: any }> {
+  const response = await fetch(`${API_BASE}${path}`, init);
+  const payload = await response.json().catch(() => null);
+  if (!isLocalSessionAuthFailure(response.status, payload)) {
+    return { response, payload };
+  }
+  const retryResponse = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      ...(init.headers || {}),
+      ...(await refreshHeaders()),
+    },
+  });
+  return { response: retryResponse, payload: await retryResponse.json().catch(() => null) };
 }
 
 function dataOrThrow<T = unknown>(payload: ApiPayload<T | null> | null, fallbackMessage: string): T {

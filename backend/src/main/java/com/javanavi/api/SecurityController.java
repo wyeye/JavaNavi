@@ -49,6 +49,7 @@ public class SecurityController {
                 issuedSession.token(),
                 issuedSession.tokenFingerprint(),
                 issuedSession.sessionId(),
+                issuedSession.expiresAt(),
                 properties.getSessionHeader(),
                 properties.getSessionCookie(),
                 properties.isLocalSessionRequired(),
