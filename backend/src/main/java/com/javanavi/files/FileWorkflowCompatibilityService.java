@@ -338,7 +338,7 @@ public class FileWorkflowCompatibilityService {
         }
         ConnectionConfigDto connection = connectionConfig(input);
         String database = stringValue(input, "database", "dbName");
-        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, sql, 1, 500, "export-" + Instant.now().toEpochMilli()));
+        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, sql, null, null, "export-" + Instant.now().toEpochMilli()));
         Path file = writeRowsExport(result.rows(), result.columns(), stringValue(input, "defaultName", "name"), stringValue(input, "format"), "query-export", stringValue(input, "targetPath", "exportPath", "path"));
         return exportResult(file, result.rowCount(), result.columns(), stringValue(input, "format"), false);
     }
@@ -382,7 +382,7 @@ public class FileWorkflowCompatibilityService {
                 if (includeData) {
                     sql.append("\n-- Data for ").append(safeTable).append("\n");
                     try {
-                        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, "select * from " + safeTable, 1, 500, "export-" + Instant.now().toEpochMilli()));
+                        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, "select * from " + safeTable, null, null, "export-" + Instant.now().toEpochMilli()));
                         appendInsertStatements(sql, safeTable, result.rows(), result.columns());
                     } catch (RuntimeException error) {
                         sql.append("-- Data unavailable in JavaNavi Web export smoke: ").append(SecretRedactor.redact(error.getMessage())).append("\n");
