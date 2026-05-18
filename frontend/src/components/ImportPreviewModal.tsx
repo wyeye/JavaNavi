@@ -5,6 +5,7 @@ import { PreviewImportFile, ImportDataWithProgress } from '@compat/javanaviApp';
 import { EventsOn, EventsOff } from '@compat/runtime';
 import { useStore } from '../store';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
+import { translate, type I18nKey } from '../i18n';
 
 interface ImportPreviewModalProps {
     visible: boolean;
@@ -22,7 +23,22 @@ interface PreviewData {
     previewRows: Record<string, unknown>[];
 }
 
-type PreviewPayload = { columns?: unknown; totalRows?: unknown; previewRows?: unknown };
+type PreviewPayload = {
+    columns?: unknown;
+    totalRows?: unknown;
+    previewRows?: unknown;
+    success?: unknown;
+    failed?: unknown;
+    skippedDuplicates?: unknown;
+    errorLogs?: unknown;
+    duplicateLogs?: unknown;
+    duplicateLogCodes?: unknown;
+    duplicateStrategy?: unknown;
+    duplicateStrategyCode?: unknown;
+    duplicateColumns?: unknown;
+    duplicateWarning?: unknown;
+    duplicateWarningCode?: unknown;
+};
 
 interface ImportProgress {
     current: number;
@@ -34,7 +50,15 @@ interface ImportProgress {
 interface ImportResult {
     success?: number;
     failed?: number;
+    skippedDuplicates?: number;
     errorLogs?: string[];
+    duplicateLogs?: string[];
+    duplicateLogCodes?: Array<Record<string, unknown>>;
+    duplicateStrategy?: string;
+    duplicateStrategyCode?: string;
+    duplicateColumns?: string[];
+    duplicateWarning?: string;
+    duplicateWarningCode?: string;
 }
 
 const getErrorMessage = (error: unknown): string => (
@@ -44,6 +68,25 @@ const getErrorMessage = (error: unknown): string => (
 const toPreviewPayload = (value: unknown): PreviewPayload => (
     value && typeof value === 'object' && !Array.isArray(value) ? value as PreviewPayload : {}
 );
+
+const toImportResult = (value: unknown): ImportResult => {
+    const payload = toPreviewPayload(value);
+    return {
+        success: typeof payload.success === 'number' ? payload.success : Number(payload.success || 0),
+        failed: typeof payload.failed === 'number' ? payload.failed : Number(payload.failed || 0),
+        skippedDuplicates: typeof payload.skippedDuplicates === 'number' ? payload.skippedDuplicates : Number(payload.skippedDuplicates || 0),
+        errorLogs: Array.isArray(payload.errorLogs) ? payload.errorLogs.map(String) : [],
+        duplicateLogs: Array.isArray(payload.duplicateLogs) ? payload.duplicateLogs.map(String) : [],
+        duplicateLogCodes: Array.isArray(payload.duplicateLogCodes)
+            ? payload.duplicateLogCodes.filter((item): item is Record<string, unknown> => !!item && typeof item === 'object' && !Array.isArray(item))
+            : [],
+        duplicateStrategy: typeof payload.duplicateStrategy === 'string' ? payload.duplicateStrategy : '',
+        duplicateStrategyCode: typeof payload.duplicateStrategyCode === 'string' ? payload.duplicateStrategyCode : '',
+        duplicateColumns: Array.isArray(payload.duplicateColumns) ? payload.duplicateColumns.map(String) : [],
+        duplicateWarning: typeof payload.duplicateWarning === 'string' ? payload.duplicateWarning : '',
+        duplicateWarningCode: typeof payload.duplicateWarningCode === 'string' ? payload.duplicateWarningCode : '',
+    };
+};
 
 const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     visible,
@@ -55,6 +98,8 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
     onSuccess
 }) => {
     const connections = useStore(state => state.connections);
+    const language = useStore(state => state.language);
+    const t = (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params);
     const [loading, setLoading] = useState(true);
     const [previewData, setPreviewData] = useState<PreviewData | null>(null);
     const [error, setError] = useState<string | null>(null);
@@ -92,10 +137,10 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
                     previewRows: Array.isArray(payload.previewRows) ? payload.previewRows as Record<string, unknown>[] : []
                 });
             } else {
-                setError(res.message || '预览失败');
+                setError(res.message || t('dataGrid.import.previewFailed'));
             }
         } catch (e: unknown) {
-            setError('预览失败: ' + getErrorMessage(e));
+            setError(t('dataGrid.import.previewFailedWithMessage', { message: getErrorMessage(e) }));
         } finally {
             setLoading(false);
         }
@@ -111,7 +156,7 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
         try {
             const conn = connections.find(c => c.id === connectionId);
             if (!conn) {
-                setError('连接配置未找到');
+                setError(t('dataGrid.import.connectionMissing'));
                 setImporting(false);
                 return;
             }
@@ -128,19 +173,70 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             const res = await ImportDataWithProgress(buildRpcConnectionConfig(config), dbName, tableName, filePath, true);
 
             if (res.success && res.data) {
-                const resultData = toPreviewPayload(res.data) as ImportResult;
+                const resultData = toImportResult(res.data);
                 setImportResult(resultData);
-                if (resultData.failed === 0) {
+                if ((resultData.failed ?? 0) === 0 && (resultData.skippedDuplicates ?? 0) === 0) {
                     onSuccess();
                 }
             } else {
-                setError(res.message || '导入失败');
+                setError(res.message || t('dataGrid.import.failed'));
             }
         } catch (e: unknown) {
-            setError('导入失败: ' + getErrorMessage(e));
+            setError(t('dataGrid.import.failedWithMessage', { message: getErrorMessage(e) }));
         } finally {
             setImporting(false);
         }
+    };
+
+    const handleClose = () => {
+        if (importResult && (importResult.failed ?? 0) === 0) {
+            onSuccess();
+            return;
+        }
+        onClose();
+    };
+
+    const formatDuplicateStrategy = (result: ImportResult): string => {
+        if (result.duplicateStrategyCode === 'key') {
+            return t('dataGrid.import.duplicateStrategyKey', { columns: (result.duplicateColumns || []).join(', ') });
+        }
+        if (result.duplicateStrategyCode === 'file-full-row') {
+            return t('dataGrid.import.duplicateStrategyFileOnly');
+        }
+        return result.duplicateStrategy || '';
+    };
+
+    const formatDuplicateWarning = (result: ImportResult): string => {
+        if (result.duplicateWarningCode === 'IMPORT_DUPLICATES_SKIPPED_BY_KEY') {
+            return t('dataGrid.import.duplicateWarningByKey', { columns: (result.duplicateColumns || []).join(', ') });
+        }
+        if (result.duplicateWarningCode === 'IMPORT_DUPLICATES_FILE_ONLY') {
+            return t('dataGrid.import.duplicateWarningFileOnly');
+        }
+        if (result.duplicateWarningCode === 'IMPORT_DUPLICATES_SKIPPED_ON_APPLY') {
+            return t('dataGrid.import.duplicateNoticeApply');
+        }
+        return result.duplicateWarning || '';
+    };
+
+    const formatDuplicateLog = (log: Record<string, unknown>, fallback: string): string => {
+        const reason = String(log.reason || '');
+        const row = Number(log.row || 0);
+        const key = String(log.key || '');
+        const remaining = Number(log.remaining || 0);
+        if (reason === 'file-key') {
+            return t('dataGrid.import.duplicateLogFileKey', { row, key });
+        }
+        if (reason === 'database-key') {
+            return t('dataGrid.import.duplicateLogDatabaseKey', { row, key });
+        }
+        if (reason === 'file-full-row') {
+            return t('dataGrid.import.duplicateLogFileFullRow', { row });
+        }
+        if (reason === 'overflow') {
+            return t('dataGrid.import.duplicateLogOverflow', { count: remaining });
+        }
+        return fallback;
     };
 
     const columns = previewData?.columns.map(col => ({
@@ -155,24 +251,24 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
 
     return (
         <Modal
-            title="导入数据预览"
+            title={t('dataGrid.import.previewTitle')}
             open={visible}
-            onCancel={onClose}
+            onCancel={handleClose}
             width={900}
             footer={
                 importResult ? (
                     <Space>
-                        <Button onClick={onClose}>关闭</Button>
+                        <Button onClick={handleClose}>{t('common.close')}</Button>
                     </Space>
                 ) : importing ? null : (
                     <Space>
-                        <Button onClick={onClose}>取消</Button>
+                        <Button onClick={onClose}>{t('common.cancel')}</Button>
                         <Button
                             type="primary"
                             onClick={handleImport}
                             disabled={!previewData || loading}
                         >
-                            开始导入
+                            {t('dataGrid.import.start')}
                         </Button>
                     </Space>
                 )
@@ -180,22 +276,22 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
         >
             {error && <Alert type="error" message={error} style={{ marginBottom: 16 }} showIcon />}
 
-            {loading && <div style={{ textAlign: 'center', padding: 40 }}>加载预览数据...</div>}
+            {loading && <div style={{ textAlign: 'center', padding: 40 }}>{t('dataGrid.import.previewLoading')}</div>}
 
             {!loading && previewData && !importing && !importResult && (
                 <>
                     <Alert
                         type="info"
-                        message={`共 ${previewData.totalRows} 行数据，${previewData.columns.length} 个字段`}
-                        description='以下是前 5 行预览数据，确认无误后点击“开始导入”'
+                        message={t('dataGrid.import.previewSummary', { rows: previewData.totalRows, fields: previewData.columns.length })}
+                        description={t('dataGrid.import.previewDuplicateNotice')}
                         style={{ marginBottom: 16 }}
                         showIcon
                     />
-                    <div style={{ marginBottom: 8, fontWeight: 600 }}>字段列表：</div>
+                    <div style={{ marginBottom: 8, fontWeight: 600 }}>{t('dataGrid.import.fieldList')}</div>
                     <div style={{ marginBottom: 16, padding: 8, background: '#f5f5f5', borderRadius: 4 }}>
                         {previewData.columns.join(', ')}
                     </div>
-                    <div style={{ marginBottom: 8, fontWeight: 600 }}>数据预览（前 5 行）：</div>
+                    <div style={{ marginBottom: 8, fontWeight: 600 }}>{t('dataGrid.import.previewRowsTitle')}</div>
                     <Table
                         dataSource={previewData.previewRows}
                         columns={columns}
@@ -210,17 +306,17 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
             {importing && progress && (
                 <div style={{ padding: '40px 20px' }}>
                     <div style={{ marginBottom: 16, fontSize: 16, fontWeight: 600, textAlign: 'center' }}>
-                        正在导入数据...
+                        {t('dataGrid.import.importing')}
                     </div>
                     <Progress percent={progressPercent} status="active" />
                     <div style={{ marginTop: 16, textAlign: 'center', color: '#666' }}>
-                        已处理 {progress.current} / {progress.total} 行
+                        {t('dataGrid.import.progress', { current: progress.current, total: progress.total })}
                         <span style={{ marginLeft: 16, color: '#52c41a' }}>
-                            <CheckCircleOutlined /> 成功 {progress.success}
+                            <CheckCircleOutlined /> {t('dataGrid.import.successCount', { count: progress.success })}
                         </span>
                         {progress.errors > 0 && (
                             <span style={{ marginLeft: 16, color: '#ff4d4f' }}>
-                                <CloseCircleOutlined /> 失败 {progress.errors}
+                                <CloseCircleOutlined /> {t('dataGrid.import.failedCount', { count: progress.errors })}
                             </span>
                         )}
                     </div>
@@ -229,21 +325,55 @@ const ImportPreviewModal: React.FC<ImportPreviewModalProps> = ({
 
             {importResult && (
                 <div style={{ padding: 20 }}>
+                    {(() => {
+                        const duplicateWarning = formatDuplicateWarning(importResult);
+                        const duplicateStrategy = formatDuplicateStrategy(importResult);
+                        const duplicateLogs = (importResult.duplicateLogCodes || []).length > 0
+                            ? (importResult.duplicateLogCodes || []).map((log, idx) => formatDuplicateLog(log, importResult.duplicateLogs?.[idx] || ''))
+                            : (importResult.duplicateLogs || []);
+                        return (
+                            <>
                     <Alert
-                        type={(importResult.failed ?? 0) === 0 ? 'success' : 'warning'}
-                        message="导入完成"
+                        type={(importResult.failed ?? 0) > 0 || (importResult.skippedDuplicates ?? 0) > 0 ? 'warning' : 'success'}
+                        message={t('dataGrid.import.resultTitle')}
                         description={
                             <div>
-                                <div>成功导入 {importResult.success ?? 0} 行</div>
-                                {(importResult.failed ?? 0) > 0 && <div>失败 {importResult.failed} 行</div>}
+                                <div>{t('dataGrid.import.resultSuccess', { count: importResult.success ?? 0 })}</div>
+                                {(importResult.skippedDuplicates ?? 0) > 0 && <div>{t('dataGrid.import.resultSkippedDuplicates', { count: importResult.skippedDuplicates ?? 0 })}</div>}
+                                {(importResult.failed ?? 0) > 0 && <div>{t('dataGrid.import.resultFailed', { count: importResult.failed ?? 0 })}</div>}
+                                {duplicateWarning && <div style={{ marginTop: 8 }}>{duplicateWarning}</div>}
+                                {duplicateStrategy && <div style={{ marginTop: 4 }}>{t('dataGrid.import.duplicateStrategyLabel', { strategy: duplicateStrategy })}</div>}
                             </div>
                         }
                         showIcon
                         style={{ marginBottom: 16 }}
                     />
+                    {duplicateLogs.length > 0 && (
+                        <>
+                            <div style={{ marginBottom: 8, fontWeight: 600, color: '#faad14' }}>{t('dataGrid.import.duplicateLogTitle')}</div>
+                            <div style={{
+                                maxHeight: 220,
+                                overflow: 'auto',
+                                background: '#fffbe6',
+                                border: '1px solid #ffe58f',
+                                borderRadius: 4,
+                                padding: 12,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                marginBottom: 16
+                            }}>
+                                {duplicateLogs.map((log: string, idx: number) => (
+                                    <div key={idx} style={{ marginBottom: 4 }}>{log}</div>
+                                ))}
+                            </div>
+                        </>
+                    )}
+                            </>
+                        );
+                    })()}
                     {importResult.errorLogs && importResult.errorLogs.length > 0 && (
                         <>
-                            <div style={{ marginBottom: 8, fontWeight: 600, color: '#ff4d4f' }}>错误日志：</div>
+                            <div style={{ marginBottom: 8, fontWeight: 600, color: '#ff4d4f' }}>{t('dataGrid.import.errorLogTitle')}</div>
                             <div style={{
                                 maxHeight: 300,
                                 overflow: 'auto',

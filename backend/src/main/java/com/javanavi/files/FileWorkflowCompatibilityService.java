@@ -12,6 +12,7 @@ import com.javanavi.model.ChangeSetDto;
 import com.javanavi.model.ColumnDefinitionDto;
 import com.javanavi.model.CompatEventReplayRequestDto;
 import com.javanavi.model.ConnectionConfigDto;
+import com.javanavi.model.IndexDefinitionDto;
 import com.javanavi.model.QueryRequestDto;
 import com.javanavi.model.QueryResultDto;
 import com.javanavi.model.TableSummaryDto;
@@ -32,6 +33,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.StringJoiner;
 import java.util.regex.Pattern;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
@@ -42,6 +44,8 @@ public class FileWorkflowCompatibilityService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private static final Pattern SAFE_TABLE_PATTERN = Pattern.compile("[A-Za-z0-9_.$\\\"]+");
     private static final Duration IMPORT_FILE_RETENTION = Duration.ofDays(7);
+    private static final int IMPORT_DUPLICATE_QUERY_CHUNK_SIZE = 100;
+    private static final int MAX_DUPLICATE_LOGS = 200;
     private static final Set<String> SUPPORTED_IMPORT_DRIVERS = Set.of(
             "demo",
             "mysql",
@@ -196,26 +200,38 @@ public class FileWorkflowCompatibilityService {
                 createImportTableIfNeeded(connection, database, tableName, columns);
             }
             rows = normalizeImportRowsForTargetTypes(connection, database, tableName, rows);
+            DuplicateFilterResult duplicateFilter = filterDuplicateImportRows(connection, database, tableName, rows);
+            rows = duplicateFilter.rows();
             ApplyChangesResultDto result = databaseCompatibilityService.applyChanges(
                     connection,
                     database,
                     tableName,
                     new ChangeSetDto(rows, List.of(), List.of())
             );
-            int failed = Math.max(0, total - result.insertedRows());
+            int failed = Math.max(0, rows.size() - result.insertedRows());
             Map<String, Object> importResult = orderedMap(
                     "success", result.insertedRows(),
                     "failed", failed,
                     "total", total,
+                    "skippedDuplicates", duplicateFilter.skippedDuplicates(),
+                    "duplicateLogs", duplicateFilter.logs(),
+                    "duplicateLogCodes", duplicateFilter.logCodes(),
+                    "duplicateStrategy", duplicateFilter.strategy(),
+                    "duplicateStrategyCode", duplicateFilter.strategyCode(),
+                    "duplicateColumns", duplicateFilter.columns(),
+                    "duplicateWarning", duplicateFilter.warning(),
+                    "duplicateWarningCode", duplicateFilter.warningCode(),
                     "errorLogs", failed == 0 ? List.of() : List.of("Some rows were not inserted; inspect database constraints."),
-                    "errorSummary", "Imported: " + result.insertedRows() + ", Failed: " + failed,
+                    "errorSummary", "Imported: " + result.insertedRows() + ", Skipped duplicates: " + duplicateFilter.skippedDuplicates() + ", Failed: " + failed,
                     "dryRun", false,
                     "appliedToDatabase", true,
                     "insertedRows", result.insertedRows(),
                     "affectedRows", result.affectedRows(),
                     "table", tableName,
                     "filePath", file.toString(),
-                    "message", "JavaNavi Web import compatibility inserted parsed rows into the managed JDBC target."
+                    "message", duplicateFilter.skippedDuplicates() > 0
+                            ? "Duplicate rows were skipped and existing data was not overwritten."
+                            : "JavaNavi Web import compatibility inserted parsed rows into the managed JDBC target."
             );
             deleteQuietly(file);
             return importResult;
@@ -224,6 +240,14 @@ public class FileWorkflowCompatibilityService {
                 "success", total,
                 "failed", 0,
                 "total", total,
+                "skippedDuplicates", 0,
+                "duplicateLogs", List.of(),
+                "duplicateLogCodes", List.of(),
+                "duplicateStrategy", "",
+                "duplicateStrategyCode", "",
+                "duplicateColumns", List.of(),
+                "duplicateWarning", "重复数据将在正式导入时跳过，不会覆盖已有数据。",
+                "duplicateWarningCode", "IMPORT_DUPLICATES_SKIPPED_ON_APPLY",
                 "errorLogs", List.of(),
                 "errorSummary", "Imported: " + total + ", Failed: 0",
                 "dryRun", true,
@@ -316,6 +340,279 @@ public class FileWorkflowCompatibilityService {
             return text.substring(1, text.length() - 1);
         }
         return value;
+    }
+
+    private DuplicateFilterResult filterDuplicateImportRows(
+            ConnectionConfigDto connection,
+            String database,
+            String tableName,
+            List<Map<String, Object>> rows
+    ) {
+        if (rows == null || rows.isEmpty()) {
+            return new DuplicateFilterResult(List.of(), 0, List.of(), List.of(), "", "", List.of(), "重复数据将在正式导入时跳过，不会覆盖已有数据。", "IMPORT_DUPLICATES_SKIPPED_ON_APPLY");
+        }
+        List<String> duplicateColumns = importDuplicateKeyColumns(connection, database, tableName, rows);
+        return duplicateColumns.isEmpty()
+                ? filterFileDuplicateRows(rows)
+                : filterKeyDuplicateRows(connection, database, tableName, rows, duplicateColumns);
+    }
+
+    private DuplicateFilterResult filterKeyDuplicateRows(
+            ConnectionConfigDto connection,
+            String database,
+            String tableName,
+            List<Map<String, Object>> rows,
+            List<String> duplicateColumns
+    ) {
+        String driver = importDriverType(connection);
+        Set<String> existingKeys = existingImportKeys(connection, database, tableName, driver, duplicateColumns, rows);
+        Set<String> seenKeys = new LinkedHashSet<>();
+        List<Map<String, Object>> filteredRows = new ArrayList<>();
+        List<String> logs = new ArrayList<>();
+        List<Map<String, Object>> logCodes = new ArrayList<>();
+        int skipped = 0;
+        for (int index = 0; index < rows.size(); index++) {
+            Map<String, Object> row = rows.get(index);
+            String key = importKeySignature(duplicateColumns, row, true);
+            if (key.isBlank()) {
+                filteredRows.add(row);
+                continue;
+            }
+            if (seenKeys.contains(key)) {
+                skipped++;
+                addDuplicateLog(logs, "第 " + (index + 1) + " 行跳过：导入文件内重复，依据 " + key + "。");
+                addDuplicateLogCode(logCodes, "file-key", index + 1, key);
+                continue;
+            }
+            if (existingKeys.contains(key)) {
+                skipped++;
+                addDuplicateLog(logs, "第 " + (index + 1) + " 行跳过：数据库中已存在，依据 " + key + "。");
+                addDuplicateLogCode(logCodes, "database-key", index + 1, key);
+                continue;
+            }
+            seenKeys.add(key);
+            filteredRows.add(row);
+        }
+        addDuplicateOverflowLog(logs, skipped);
+        addDuplicateOverflowLogCode(logCodes, skipped);
+        String strategy = "按唯一标识判断重复：" + String.join(", ", duplicateColumns);
+        return new DuplicateFilterResult(
+                filteredRows,
+                skipped,
+                logs,
+                logCodes,
+                strategy,
+                "key",
+                duplicateColumns,
+                "重复数据已跳过，不会覆盖已有数据；" + strategy + "。",
+                "IMPORT_DUPLICATES_SKIPPED_BY_KEY"
+        );
+    }
+
+    private DuplicateFilterResult filterFileDuplicateRows(List<Map<String, Object>> rows) {
+        List<String> columns = columnsForRows(rows);
+        Set<String> seenRows = new LinkedHashSet<>();
+        List<Map<String, Object>> filteredRows = new ArrayList<>();
+        List<String> logs = new ArrayList<>();
+        List<Map<String, Object>> logCodes = new ArrayList<>();
+        int skipped = 0;
+        for (int index = 0; index < rows.size(); index++) {
+            Map<String, Object> row = rows.get(index);
+            String signature = importKeySignature(columns, row, false);
+            if (seenRows.contains(signature)) {
+                skipped++;
+                addDuplicateLog(logs, "第 " + (index + 1) + " 行跳过：导入文件内完全重复。");
+                addDuplicateLogCode(logCodes, "file-full-row", index + 1, "");
+                continue;
+            }
+            seenRows.add(signature);
+            filteredRows.add(row);
+        }
+        addDuplicateOverflowLog(logs, skipped);
+        addDuplicateOverflowLogCode(logCodes, skipped);
+        return new DuplicateFilterResult(
+                filteredRows,
+                skipped,
+                logs,
+                logCodes,
+                "仅判断导入文件内部完全重复行",
+                "file-full-row",
+                List.of(),
+                "当前表未检测到主键或唯一索引，无法可靠判断数据库已有数据；仅跳过导入文件内部完全重复行。",
+                "IMPORT_DUPLICATES_FILE_ONLY"
+        );
+    }
+
+    private List<String> importDuplicateKeyColumns(
+            ConnectionConfigDto connection,
+            String database,
+            String tableName,
+            List<Map<String, Object>> rows
+    ) {
+        List<String> availableColumns = columnsForRows(rows);
+        List<ColumnDefinitionDto> targetColumns;
+        try {
+            targetColumns = databaseCompatibilityService.listColumns(connection, database, tableName);
+        } catch (RuntimeException ignored) {
+            return List.of();
+        }
+        List<String> primaryColumns = targetColumns.stream()
+                .filter(column -> "PRI".equalsIgnoreCase(column.key()))
+                .map(ColumnDefinitionDto::name)
+                .toList();
+        if (!primaryColumns.isEmpty() && primaryColumns.stream().allMatch(column -> importRowsContainColumn(availableColumns, column))) {
+            return primaryColumns;
+        }
+
+        List<IndexDefinitionDto> indexes;
+        try {
+            indexes = databaseCompatibilityService.listIndexes(connection, database, tableName);
+        } catch (RuntimeException ignored) {
+            return List.of();
+        }
+        Map<String, List<IndexDefinitionDto>> uniqueGroups = new LinkedHashMap<>();
+        for (IndexDefinitionDto index : indexes) {
+            if (index == null || index.nonUnique() != 0 || text(index.columnName()).isBlank()) {
+                continue;
+            }
+            uniqueGroups.computeIfAbsent(text(index.name()).toLowerCase(Locale.ROOT), ignored -> new ArrayList<>()).add(index);
+        }
+        return uniqueGroups.values().stream()
+                .map(group -> group.stream()
+                        .sorted((left, right) -> Integer.compare(left.seqInIndex(), right.seqInIndex()))
+                        .map(IndexDefinitionDto::columnName)
+                        .toList())
+                .filter(group -> !group.isEmpty())
+                .filter(group -> group.stream().allMatch(column -> importRowsContainColumn(availableColumns, column)))
+                .findFirst()
+                .orElse(List.of());
+    }
+
+    private Set<String> existingImportKeys(
+            ConnectionConfigDto connection,
+            String database,
+            String tableName,
+            String driver,
+            List<String> duplicateColumns,
+            List<Map<String, Object>> rows
+    ) {
+        List<Map<String, Object>> keyRows = rows.stream()
+                .filter(row -> !importKeySignature(duplicateColumns, row, true).isBlank())
+                .toList();
+        if (keyRows.isEmpty()) {
+            return Set.of();
+        }
+        Set<String> existingKeys = new LinkedHashSet<>();
+        for (int start = 0; start < keyRows.size(); start += IMPORT_DUPLICATE_QUERY_CHUNK_SIZE) {
+            List<Map<String, Object>> chunk = keyRows.subList(start, Math.min(keyRows.size(), start + IMPORT_DUPLICATE_QUERY_CHUNK_SIZE));
+            String whereSql = importDuplicateWhereSql(driver, duplicateColumns, chunk);
+            if (whereSql.isBlank()) {
+                continue;
+            }
+            String selectedColumns = duplicateColumns.stream()
+                    .map(column -> quoteIdentifier(driver, column))
+                    .reduce((left, right) -> left + ", " + right)
+                    .orElse("");
+            String sql = "select " + selectedColumns
+                    + " from " + tableSqlName(driver, connection, database, tableName)
+                    + " where " + whereSql;
+            QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(
+                    connection,
+                    database,
+                    sql,
+                    1,
+                    chunk.size(),
+                    "import-duplicates-" + Instant.now().toEpochMilli()
+            ));
+            result.rows().forEach(row -> {
+                String key = importKeySignature(duplicateColumns, row, true);
+                if (!key.isBlank()) {
+                    existingKeys.add(key);
+                }
+            });
+        }
+        return existingKeys;
+    }
+
+    private static String importDuplicateWhereSql(String driver, List<String> duplicateColumns, List<Map<String, Object>> rows) {
+        List<String> clauses = new ArrayList<>();
+        for (Map<String, Object> row : rows) {
+            StringJoiner rowClause = new StringJoiner(" AND ");
+            boolean complete = true;
+            for (String column : duplicateColumns) {
+                Object value = importRowValue(row, column);
+                if (value == null || text(value).isBlank()) {
+                    complete = false;
+                    break;
+                }
+                rowClause.add(quoteIdentifier(driver, column) + " = " + sqlLiteral(value));
+            }
+            if (complete) {
+                clauses.add("(" + rowClause + ")");
+            }
+        }
+        return clauses.isEmpty() ? "" : String.join(" OR ", clauses);
+    }
+
+    private static boolean importRowsContainColumn(List<String> columns, String column) {
+        String expected = text(column).toLowerCase(Locale.ROOT);
+        return !expected.isBlank() && columns.stream().anyMatch(value -> text(value).equalsIgnoreCase(expected));
+    }
+
+    private static String importKeySignature(List<String> columns, Map<String, Object> row, boolean requireNonBlankValues) {
+        StringJoiner joiner = new StringJoiner("|");
+        for (String column : columns) {
+            Object value = importRowValue(row, column);
+            if (requireNonBlankValues && (value == null || text(value).isBlank())) {
+                return "";
+            }
+            joiner.add(column + "=" + importKeyValue(value));
+        }
+        return joiner.toString();
+    }
+
+    private static Object importRowValue(Map<String, Object> row, String column) {
+        if (row == null || column == null) {
+            return null;
+        }
+        if (row.containsKey(column)) {
+            return row.get(column);
+        }
+        String expected = column.toLowerCase(Locale.ROOT);
+        for (Map.Entry<String, Object> entry : row.entrySet()) {
+            if (text(entry.getKey()).toLowerCase(Locale.ROOT).equals(expected)) {
+                return entry.getValue();
+            }
+        }
+        return null;
+    }
+
+    private static String importKeyValue(Object value) {
+        return value == null ? "<NULL>" : String.valueOf(value).trim();
+    }
+
+    private static void addDuplicateLog(List<String> logs, String message) {
+        if (logs.size() < MAX_DUPLICATE_LOGS) {
+            logs.add(message);
+        }
+    }
+
+    private static void addDuplicateOverflowLog(List<String> logs, int skipped) {
+        if (skipped > logs.size()) {
+            logs.add("还有 " + (skipped - logs.size()) + " 条重复数据已跳过。");
+        }
+    }
+
+    private static void addDuplicateLogCode(List<Map<String, Object>> logs, String reason, int rowNumber, String key) {
+        if (logs.size() < MAX_DUPLICATE_LOGS) {
+            logs.add(orderedMap("reason", reason, "row", rowNumber, "key", key));
+        }
+    }
+
+    private static void addDuplicateOverflowLogCode(List<Map<String, Object>> logs, int skipped) {
+        if (skipped > logs.size()) {
+            logs.add(orderedMap("reason", "overflow", "remaining", skipped - logs.size()));
+        }
     }
 
     public Map<String, Object> exportData(List<? extends Map<String, Object>> rows, List<String> columns, String defaultName, String format) {
@@ -1127,6 +1424,19 @@ public class FileWorkflowCompatibilityService {
             map.put(String.valueOf(entries[index]), entries[index + 1]);
         }
         return map;
+    }
+
+    private record DuplicateFilterResult(
+            List<Map<String, Object>> rows,
+            int skippedDuplicates,
+            List<String> logs,
+            List<Map<String, Object>> logCodes,
+            String strategy,
+            String strategyCode,
+            List<String> columns,
+            String warning,
+            String warningCode
+    ) {
     }
 
     private record QualifiedName(String qualifier, String name) {
