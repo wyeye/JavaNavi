@@ -181,6 +181,7 @@ jobs:
           prerelease: false
           tauriScript: npx tauri
           args: ${{ matrix.tauri-action-args }}
+          retryAttempts: 2
           updaterJsonPreferNsis: true
           includeUpdaterJson: true
 
