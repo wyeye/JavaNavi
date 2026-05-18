@@ -3,6 +3,7 @@ mod sidecar;
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
+use std::thread;
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
@@ -22,6 +23,7 @@ struct DesktopRuntime {
 }
 
 const DESKTOP_UPDATE_TIMEOUT_SECONDS: u64 = 20;
+const DESKTOP_UPDATE_SIDECAR_SHUTDOWN_GRACE_MS: u64 = 500;
 
 const SUPPRESS_F5_INITIALIZATION_SCRIPT: &str = r#"
 (() => {
@@ -41,8 +43,18 @@ const SUPPRESS_F5_INITIALIZATION_SCRIPT: &str = r#"
 "#;
 
 fn desktop_updater(app: &AppHandle) -> Result<tauri_plugin_updater::Updater, String> {
+    let app_for_update_exit = app.clone();
     app.updater_builder()
         .timeout(Duration::from_secs(DESKTOP_UPDATE_TIMEOUT_SECONDS))
+        .on_before_exit(move || {
+            app_for_update_exit
+                .state::<DesktopState>()
+                .shutdown_sidecar();
+            thread::sleep(Duration::from_millis(
+                DESKTOP_UPDATE_SIDECAR_SHUTDOWN_GRACE_MS,
+            ));
+            app_for_update_exit.cleanup_before_exit();
+        })
         .build()
         .map_err(|error| format!("Desktop updater is not available: {error}"))
 }
