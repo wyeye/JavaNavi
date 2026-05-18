@@ -168,6 +168,25 @@ jobs:
           fi
           npm run desktop:stage
 
+      - name: Resolve release notes
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          set -euo pipefail
+          notes_file="RELEASE_NOTES_${GITHUB_REF_NAME}.md"
+          if [[ -f "$notes_file" ]]; then
+            {
+              echo 'RELEASE_BODY<<EOF'
+              cat "$notes_file"
+              echo 'EOF'
+            } >> "$GITHUB_ENV"
+          else
+            {
+              echo 'RELEASE_BODY<<EOF'
+              echo "JavaNavi ${GITHUB_REF_NAME} signed desktop package build for Linux, Windows, macOS, and latest.json updater metadata."
+              echo 'EOF'
+            } >> "$GITHUB_ENV"
+          fi
+
       - name: Build and publish signed desktop release assets
         if: startsWith(github.ref, 'refs/tags/v')
         uses: tauri-apps/tauri-action@v0.6.2
@@ -176,7 +195,7 @@ jobs:
         with:
           tagName: ${{ github.ref_name }}
           releaseName: JavaNavi ${{ github.ref_name }}
-          releaseBody: Automated signed JavaNavi desktop package build for Linux, Windows, macOS, and latest.json updater metadata.
+          releaseBody: ${{ env.RELEASE_BODY }}
           releaseDraft: false
           prerelease: false
           tauriScript: npx tauri

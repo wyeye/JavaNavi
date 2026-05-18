@@ -12,7 +12,7 @@
 
     <groupId>com.javanavi</groupId>
     <artifactId>javanavi-backend</artifactId>
-    <version>0.1.10</version>
+    <version>0.2.0</version>
     <name>JavaNavi Backend</name>
     <description>Java API shell for the JavaNavi desktop/web runtime</description>
 
