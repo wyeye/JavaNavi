@@ -201,6 +201,42 @@ class FileWorkflowCompatibilityServiceTest {
     }
 
     @Test
+    void importDataWithProgressNormalizesQuotedTemporalCsvCellsForExistingTables() throws Exception {
+        FileWorkflowCompatibilityService service = service();
+        lastDatabaseCompatibilityService.execute(new com.javanavi.model.QueryRequestDto(
+                null,
+                "",
+                "create table \"import_temporal_rows\" (\"dept_id\" bigint primary key, \"org_code\" varchar(50), \"create_time\" timestamp)",
+                1,
+                10,
+                "prepare-temporal-import"
+        ));
+        Path file = tempDir.resolve("imports/temporal.csv");
+        Files.createDirectories(file.getParent());
+        Files.writeString(file, "dept_id,org_code,create_time\n4400,004400,\"\"\"2025-11-23T00:00:01\"\"\"\n");
+
+        Map<String, Object> result = service.importDataWithProgress(Map.of(
+                "filePath", file.toString(),
+                "table", "import_temporal_rows",
+                "applyToDatabase", true
+        ));
+
+        assertThat(result)
+                .containsEntry("insertedRows", 1)
+                .containsEntry("failed", 0);
+        QueryResultDto rows = lastDatabaseCompatibilityService.execute(new com.javanavi.model.QueryRequestDto(
+                null,
+                "",
+                "select dept_id, org_code, create_time from \"import_temporal_rows\"",
+                1,
+                10,
+                "verify-temporal-import"
+        ));
+        assertThat(rows.rows()).hasSize(1);
+        assertThat(String.valueOf(rows.rows().get(0).get("create_time"))).contains("2025-11-23");
+    }
+
+    @Test
     void importDataWithProgressRejectsUnsupportedBackendDatasourceTypes() throws Exception {
         FileWorkflowCompatibilityService service = service();
         Path file = tempDir.resolve("imports/mongo.csv");

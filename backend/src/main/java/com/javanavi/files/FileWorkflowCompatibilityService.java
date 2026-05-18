@@ -9,6 +9,7 @@ import com.javanavi.events.CompatEventPublisher;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
+import com.javanavi.model.ColumnDefinitionDto;
 import com.javanavi.model.CompatEventReplayRequestDto;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.QueryRequestDto;
@@ -194,6 +195,7 @@ public class FileWorkflowCompatibilityService {
             if (!columns.isEmpty()) {
                 createImportTableIfNeeded(connection, database, tableName, columns);
             }
+            rows = normalizeImportRowsForTargetTypes(connection, database, tableName, rows);
             ApplyChangesResultDto result = databaseCompatibilityService.applyChanges(
                     connection,
                     database,
@@ -248,6 +250,72 @@ public class FileWorkflowCompatibilityService {
                 1,
                 "import-ddl-" + Instant.now().toEpochMilli()
         ));
+    }
+
+    private List<Map<String, Object>> normalizeImportRowsForTargetTypes(
+            ConnectionConfigDto connection,
+            String database,
+            String tableName,
+            List<Map<String, Object>> rows
+    ) {
+        if (rows == null || rows.isEmpty()) {
+            return rows;
+        }
+        List<ColumnDefinitionDto> targetColumns;
+        try {
+            targetColumns = databaseCompatibilityService.listColumns(connection, database, tableName);
+        } catch (RuntimeException ignored) {
+            return rows;
+        }
+        if (targetColumns == null || targetColumns.isEmpty()) {
+            return rows;
+        }
+        Map<String, String> typeByColumn = new LinkedHashMap<>();
+        for (ColumnDefinitionDto column : targetColumns) {
+            if (column != null && column.name() != null) {
+                typeByColumn.put(column.name().toLowerCase(Locale.ROOT), text(column.type()).toLowerCase(Locale.ROOT));
+            }
+        }
+        if (typeByColumn.isEmpty()) {
+            return rows;
+        }
+
+        boolean changed = false;
+        List<Map<String, Object>> normalizedRows = new ArrayList<>(rows.size());
+        for (Map<String, Object> row : rows) {
+            Map<String, Object> normalizedRow = new LinkedHashMap<>();
+            for (Map.Entry<String, Object> entry : row.entrySet()) {
+                String column = text(entry.getKey()).toLowerCase(Locale.ROOT);
+                Object value = normalizeImportCellForColumnType(entry.getValue(), typeByColumn.get(column));
+                if (value != entry.getValue()) {
+                    changed = true;
+                }
+                normalizedRow.put(entry.getKey(), value);
+            }
+            normalizedRows.add(normalizedRow);
+        }
+        return changed ? normalizedRows : rows;
+    }
+
+    private static Object normalizeImportCellForColumnType(Object value, String columnType) {
+        if (!(value instanceof String textValue) || !isTemporalColumnType(columnType)) {
+            return value;
+        }
+        String unwrapped = unwrapRedundantCsvTextQuotes(textValue);
+        return unwrapped.equals(textValue) ? value : unwrapped;
+    }
+
+    private static boolean isTemporalColumnType(String columnType) {
+        String type = text(columnType).toLowerCase(Locale.ROOT);
+        return type.contains("date") || type.contains("time") || "year".equals(type);
+    }
+
+    private static String unwrapRedundantCsvTextQuotes(String value) {
+        String text = value == null ? "" : value.trim();
+        if (text.length() >= 2 && text.charAt(0) == '"' && text.charAt(text.length() - 1) == '"') {
+            return text.substring(1, text.length() - 1);
+        }
+        return value;
     }
 
     public Map<String, Object> exportData(List<? extends Map<String, Object>> rows, List<String> columns, String defaultName, String format) {
