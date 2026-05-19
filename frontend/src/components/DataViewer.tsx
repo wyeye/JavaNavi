@@ -237,6 +237,10 @@ const getViewerFilterSnapshot = (tabId: string): ViewerFilterSnapshot => {
   };
 };
 
+type FetchDataOptions = {
+  refreshTotal?: boolean;
+};
+
 const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isActive = true }) => {
   const initialViewerSnapshot = useMemo(() => getViewerFilterSnapshot(tab.id), [tab.id]);
   const [data, setData] = useState<DataRow[]>([]);
@@ -441,7 +445,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     setPagination(prev => ({ ...prev, totalCountLoading: false, totalCountCancelled: true }));
   }, []);
 
-  const fetchData = useCallback(async (page = pagination.current, size = pagination.pageSize) => {
+  const fetchData = useCallback(async (page = pagination.current, size = pagination.pageSize, options?: FetchDataOptions) => {
     const seq = ++fetchSeqRef.current;
     setLoading(true);
     const conn = connections.find(c => c.id === tab.connectionId);
@@ -476,6 +480,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
         return;
     }
     const effectiveFilterConditions = buildEffectiveFilterConditions(filterConditions, normalizedQuickWhereCondition);
+    const shouldRefreshExactTotal = options?.refreshTotal === true;
 
     const dbName = tab.dbName || '';
     const tableName = tab.tableName || '';
@@ -705,9 +710,11 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
             const countKey = `${tab.connectionId}|${dbName}|${tableName}|${whereSQL}`;
             const derivedTotalKnown = !hasMore;
             const derivedTotal = derivedTotalKnown ? offset + resultData.length : currentPage * size + 1;
-            const isDuckDB = dbTypeLower === 'duckdb';
             const minExpectedTotal = hasMore ? offset + resultData.length + 1 : offset + resultData.length;
-            if (derivedTotalKnown) countKeyRef.current = countKey;
+            if (derivedTotalKnown) {
+                countKeyRef.current = countKey;
+                countSeqRef.current++;
+            }
             latestConfigRef.current = config;
             latestDbTypeRef.current = dbTypeLower;
             latestDbNameRef.current = dbName;
@@ -728,17 +735,29 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                         totalCountCancelled: false,
                     };
                 }
+                const keepManualCounting = prev.totalCountLoading && manualCountKeyRef.current === countKey;
                 if (prev.totalKnown && countKeyRef.current === countKey) {
-                    if (!isDuckDB) {
+                    // 当当前页存在“下一页”信号时，已知总数至少应大于当前页末尾。
+                    // 若旧总数不满足该条件（例如刷新前统计值偏小），降级为未知总数并回退到 derivedTotal。
+                    const previousTotal = Number(prev.total);
+                    const staleKnownTotalBelowPage = !Number.isFinite(previousTotal) || previousTotal < minExpectedTotal;
+                    if (!shouldRefreshExactTotal && !staleKnownTotalBelowPage) {
                         return { ...prev, current: currentPage, pageSize: size };
                     }
-                    // 当当前页存在“下一页”信号时，已知总数至少应大于当前页末尾。
-                    // 若旧总数不满足该条件（例如历史统计值为 0），降级为未知总数并回退到 derivedTotal。
-                    if (Number.isFinite(prev.total) && prev.total >= minExpectedTotal) {
-                        return { ...prev, current: currentPage, pageSize: size };
+                    if (shouldRefreshExactTotal && !staleKnownTotalBelowPage) {
+                        return {
+                            ...prev,
+                            current: currentPage,
+                            pageSize: size,
+                            total: Math.max(previousTotal, derivedTotal),
+                            totalKnown: false,
+                            totalApprox: false,
+                            approximateTotal: undefined,
+                            totalCountLoading: keepManualCounting,
+                            totalCountCancelled: keepManualCounting ? false : prev.totalCountCancelled,
+                        };
                     }
                 }
-                const keepManualCounting = prev.totalCountLoading && manualCountKeyRef.current === countKey;
                 const hasApproximateTotalForCurrentKey =
                   prev.totalApprox &&
                   (duckdbApproxKeyRef.current === countKey || oracleApproxKeyRef.current === countKey) &&
@@ -772,7 +791,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
 
             const shouldRunAsyncCount = !derivedTotalKnown && !preferManualTotalCount;
             if (shouldRunAsyncCount) {
-                if (countKeyRef.current !== countKey) {
+                if (shouldRefreshExactTotal || countKeyRef.current !== countKey) {
                     countKeyRef.current = countKey;
                     const countSeq = ++countSeqRef.current;
                     const countStart = Date.now();
@@ -928,7 +947,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
 
   // Handlers memoized
   const handleReload = useCallback(() => {
-    fetchData(pagination.current, pagination.pageSize);
+    fetchData(pagination.current, pagination.pageSize, { refreshTotal: true });
   }, [fetchData, pagination.current, pagination.pageSize]);
   useEffect(() => {
     const handleRefreshActiveTable = () => {
@@ -960,7 +979,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
     }
     setSortInfo([{ columnKey: normalizedField, order: normalizedOrder, enabled: true }]);
   }, []);
-  const handlePageChange = useCallback((page: number, size: number) => fetchData(page, size), [fetchData]);
+  const handlePageChange = useCallback((page: number, size: number) => fetchData(page, size, { refreshTotal: true }), [fetchData]);
   const handleToggleFilter = useCallback(() => setShowFilter(prev => !prev), []);
   const handleApplyFilter = useCallback((conditions: FilterCondition[]) => setFilterConditions(conditions), []);
   const handleApplyQuickWhereCondition = useCallback((condition: string) => {
