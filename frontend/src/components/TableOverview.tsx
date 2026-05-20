@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
 import { Input, Spin, Empty, Dropdown, message, Tooltip, Modal, Button, Checkbox, Radio, Space } from 'antd';
 import type { MenuProps } from 'antd';
-import { TableOutlined, SearchOutlined, ReloadOutlined, SortAscendingOutlined, DatabaseOutlined, ConsoleSqlOutlined, EditOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, ExportOutlined, AppstoreOutlined, UnorderedListOutlined, WarningOutlined } from '@ant-design/icons';
+import { TableOutlined, SearchOutlined, ReloadOutlined, SortAscendingOutlined, DatabaseOutlined, ConsoleSqlOutlined, EditOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, ExportOutlined, AppstoreOutlined, UnorderedListOutlined, WarningOutlined, DownOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
-import { ClearTables, CopyTables, DBQuery, DBShowCreateTable, ExportTable, DropTable, RenameTable, TruncateTables } from '@compat/javanaviApp';
+import { ClearTables, CopyTables, DBQuery, DBShowCreateTable, ExportTable, ExportTablesDataSQL, ExportTablesSQL, DropTable, RenameTable, TruncateTables } from '@compat/javanaviApp';
 import type { ConnectionConfig, TabData } from '../types';
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
@@ -45,6 +45,7 @@ type SortField = TableOverviewSortField;
 type SortOrder = TableOverviewSortOrder;
 type ViewMode = 'card' | 'list';
 type CopyTableMode = 'structure' | 'structureData';
+type TableOverviewBulkActionKey = 'exportData' | 'truncate' | 'clear' | 'delete' | 'rename' | 'copyStructure' | 'backup' | 'copyTable';
 
 const formatSize = (bytes: number): string => {
     if (!bytes || bytes <= 0) return '—';
@@ -174,6 +175,14 @@ const parseTableStats = (dialect: string, rows: QueryRow[]): TableStatRow[] => {
     }).filter(t => t.name);
 };
 
+const normalizeStructureClipboardText = (structures: string[]): string => (
+    structures
+        .map(sql => String(sql || '').trim())
+        .filter(Boolean)
+        .map(sql => (sql.endsWith(';') ? sql : `${sql};`))
+        .join('\n\n')
+);
+
 const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const connections = useStore(state => state.connections);
     const theme = useStore(state => state.theme);
@@ -196,6 +205,8 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const [copyTableMode, setCopyTableMode] = useState<CopyTableMode>('structure');
     const [copyTablePrefix, setCopyTablePrefix] = useState('');
     const [copyTableSuffix, setCopyTableSuffix] = useState('_copy');
+    const [bulkRenameModalOpen, setBulkRenameModalOpen] = useState(false);
+    const [bulkRenameValues, setBulkRenameValues] = useState<Record<string, string>>({});
     const deferredSearchText = useDeferredValue(searchText);
     const isSearchPending = searchText !== deferredSearchText;
 
@@ -338,6 +349,78 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         }
     }, [buildConfig, language, tab.dbName]);
 
+    const handleBulkExportTableData = useCallback(async () => {
+        const config = buildConfig();
+        if (!config) return;
+        if (selectedTableNames.length === 0) {
+            message.warning(t('tableOverview.bulk.selectRequired'));
+            return;
+        }
+        const hide = message.loading(t('tableOverview.bulk.exportDataLoading', { count: selectedTableNames.length }), 0);
+        try {
+            const res = await ExportTablesDataSQL(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames);
+            hide();
+            if (res.success) {
+                message.success(exportSuccessMessage(res, language));
+            } else if (res.message !== '已取消') {
+                message.error(t('sidebar.msg.exportFailed', { message: res.message }));
+            }
+        } catch (e: unknown) {
+            hide();
+            message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
+        }
+    }, [buildConfig, language, selectedTableNames, tab.dbName, t]);
+
+    const handleBulkBackupTables = useCallback(async () => {
+        const config = buildConfig();
+        if (!config) return;
+        if (selectedTableNames.length === 0) {
+            message.warning(t('tableOverview.bulk.selectRequired'));
+            return;
+        }
+        const hide = message.loading(t('sidebar.msg.backingUpTables', { count: selectedTableNames.length }), 0);
+        try {
+            const res = await ExportTablesSQL(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames, true);
+            hide();
+            if (res.success) {
+                message.success(exportSuccessMessage(res, language));
+            } else if (res.message !== '已取消') {
+                message.error(t('sidebar.msg.exportFailed', { message: res.message }));
+            }
+        } catch (e: unknown) {
+            hide();
+            message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
+        }
+    }, [buildConfig, language, selectedTableNames, tab.dbName, t]);
+
+    const handleBulkCopyStructure = useCallback(async () => {
+        const config = buildConfig();
+        if (!config) return;
+        if (selectedTableNames.length === 0) {
+            message.warning(t('tableOverview.bulk.selectRequired'));
+            return;
+        }
+        const hide = message.loading(t('tableOverview.bulk.copyStructureLoading', { count: selectedTableNames.length }), 0);
+        try {
+            const structures: string[] = [];
+            for (const tableName of selectedTableNames) {
+                const res = await DBShowCreateTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
+                if (!res.success) {
+                    hide();
+                    message.error(t('tableOverview.bulk.copyStructureFailed', { name: tableName, message: res.message }));
+                    return;
+                }
+                structures.push(String(res.data || ''));
+            }
+            await navigator.clipboard.writeText(normalizeStructureClipboardText(structures));
+            hide();
+            message.success(t('tableOverview.bulk.copyStructureSuccess', { count: selectedTableNames.length }));
+        } catch (e: unknown) {
+            hide();
+            message.error(t('tableOverview.bulk.copyStructureFailed', { name: '', message: getErrorMessage(e) }));
+        }
+    }, [buildConfig, selectedTableNames, tab.dbName, t]);
+
     const handleDeleteTable = useCallback((tableName: string) => {
         const config = buildConfig();
         if (!config) return;
@@ -390,6 +473,80 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         });
     }, [buildConfig, tab.dbName, loadData]);
 
+    const handleBulkTableDataDangerAction = useCallback((action: TableDataDangerActionKind) => {
+        const config = buildConfig();
+        if (!config) return;
+        if (selectedTableNames.length === 0) {
+            message.warning(t('tableOverview.bulk.selectRequired'));
+            return;
+        }
+
+        const { label, progressLabel } = getTableDataDangerActionMeta(action);
+        Modal.confirm({
+            title: t('tableOverview.bulk.confirmDangerTitle', { label }),
+            content: t('tableOverview.bulk.confirmDangerContent', { label, count: selectedTableNames.length }),
+            okText: t('sidebar.modal.continue'),
+            cancelText: t('common.cancel'),
+            okButtonProps: { danger: true },
+            onOk: async () => {
+                const method = action === 'truncate' ? TruncateTables : ClearTables;
+                const hide = message.loading(t('tableOverview.bulk.dangerLoading', { label: progressLabel, count: selectedTableNames.length }), 0);
+                try {
+                    const res = await method(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames);
+                    hide();
+                    if (res.success) {
+                        message.success(t('tableOverview.bulk.dangerSuccess', { label: progressLabel }));
+                        setSelectedTableNames([]);
+                        loadData();
+                    } else {
+                        message.error(t('tableOverview.bulk.dangerFailed', { label: progressLabel, message: res.message }));
+                        return Promise.reject();
+                    }
+                } catch (e: unknown) {
+                    hide();
+                    message.error(t('tableOverview.bulk.dangerFailed', { label: progressLabel, message: getErrorMessage(e) }));
+                    return Promise.reject();
+                }
+            },
+        });
+    }, [buildConfig, loadData, selectedTableNames, tab.dbName, t]);
+
+    const handleBulkDeleteTables = useCallback(() => {
+        const config = buildConfig();
+        if (!config) return;
+        if (selectedTableNames.length === 0) {
+            message.warning(t('tableOverview.bulk.selectRequired'));
+            return;
+        }
+
+        Modal.confirm({
+            title: t('tableOverview.bulk.deleteTitle'),
+            content: t('tableOverview.bulk.deleteContent', { count: selectedTableNames.length }),
+            okButtonProps: { danger: true },
+            onOk: async () => {
+                const hide = message.loading(t('tableOverview.bulk.deleteLoading', { count: selectedTableNames.length }), 0);
+                try {
+                    for (const tableName of selectedTableNames) {
+                        const res = await DropTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
+                        if (!res.success) {
+                            hide();
+                            message.error(t('tableOverview.bulk.deleteFailed', { name: tableName, message: res.message }));
+                            return Promise.reject();
+                        }
+                    }
+                    hide();
+                    message.success(t('tableOverview.bulk.deleteSuccess', { count: selectedTableNames.length }));
+                    setSelectedTableNames([]);
+                    await loadData();
+                } catch (e: unknown) {
+                    hide();
+                    message.error(t('tableOverview.bulk.deleteFailed', { name: '', message: getErrorMessage(e) }));
+                    return Promise.reject();
+                }
+            },
+        });
+    }, [buildConfig, loadData, selectedTableNames, tab.dbName, t]);
+
     const handleRenameTable = useCallback((tableName: string) => {
         const config = buildConfig();
         if (!config) return;
@@ -420,6 +577,55 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             },
         });
     }, [buildConfig, tab.dbName, loadData]);
+
+    const openBulkRenameModal = useCallback(() => {
+        if (selectedTableNames.length === 0) {
+            message.warning(t('tableOverview.bulk.selectRequired'));
+            return;
+        }
+        setBulkRenameValues(Object.fromEntries(selectedTableNames.map(name => [name, name])));
+        setBulkRenameModalOpen(true);
+    }, [selectedTableNames, t]);
+
+    const handleBulkRenameTables = useCallback(async () => {
+        const config = buildConfig();
+        if (!config) return;
+        const renamePairs = selectedTableNames.map(name => ({
+            oldName: name,
+            newName: String(bulkRenameValues[name] || '').trim(),
+        }));
+        if (renamePairs.some(pair => !pair.newName)) {
+            message.error(t('tableOverview.bulk.renameNameRequired'));
+            return Promise.reject();
+        }
+        const changedPairs = renamePairs.filter(pair => pair.oldName !== pair.newName);
+        if (changedPairs.length === 0) {
+            message.warning(t('tableOverview.bulk.renameNoChange'));
+            return Promise.reject();
+        }
+
+        const hide = message.loading(t('tableOverview.bulk.renameLoading', { count: changedPairs.length }), 0);
+        try {
+            for (const pair of changedPairs) {
+                const res = await RenameTable(buildRpcConnectionConfig(config), tab.dbName || '', pair.oldName, pair.newName);
+                if (!res.success) {
+                    hide();
+                    message.error(t('tableOverview.bulk.renameFailed', { name: pair.oldName, message: res.message }));
+                    return Promise.reject();
+                }
+            }
+            hide();
+            message.success(t('tableOverview.bulk.renameSuccess', { count: changedPairs.length }));
+            setBulkRenameModalOpen(false);
+            setBulkRenameValues({});
+            setSelectedTableNames([]);
+            await loadData();
+        } catch (e: unknown) {
+            hide();
+            message.error(t('tableOverview.bulk.renameFailed', { name: '', message: getErrorMessage(e) }));
+            return Promise.reject();
+        }
+    }, [buildConfig, bulkRenameValues, loadData, selectedTableNames, tab.dbName, t]);
 
     const toggleSelectedTable = useCallback((tableName: string, checked: boolean) => {
         setSelectedTableNames(prev => {
@@ -532,6 +738,37 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         }
     }, [buildConfig, copyTableMode, copyTablePrefix, copyTableSuffix, loadData, selectedTableNames, tab.dbName, t]);
 
+    const handleBulkActionClick = useCallback((action: TableOverviewBulkActionKey) => {
+        switch (action) {
+            case 'exportData':
+                void handleBulkExportTableData();
+                break;
+            case 'truncate':
+                handleBulkTableDataDangerAction('truncate');
+                break;
+            case 'clear':
+                handleBulkTableDataDangerAction('clear');
+                break;
+            case 'delete':
+                handleBulkDeleteTables();
+                break;
+            case 'rename':
+                openBulkRenameModal();
+                break;
+            case 'copyStructure':
+                void handleBulkCopyStructure();
+                break;
+            case 'backup':
+                void handleBulkBackupTables();
+                break;
+            case 'copyTable':
+                openCopyTablesModal();
+                break;
+            default:
+                break;
+        }
+    }, [handleBulkBackupTables, handleBulkCopyStructure, handleBulkDeleteTables, handleBulkExportTableData, handleBulkTableDataDangerAction, openBulkRenameModal, openCopyTablesModal]);
+
     const openNewQueryForTable = useCallback((tableName: string) => {
         setActiveContext({ connectionId: tab.connectionId, dbName: tab.dbName || '' });
         addTab({
@@ -595,6 +832,66 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         { key: 'dataSize', label: `按大小${sortField === 'dataSize' ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : ''}`, onClick: () => toggleSort('dataSize') },
     ];
 
+    const bulkActionMenuItems = useMemo<MenuProps['items']>(() => [
+        {
+            key: 'exportData',
+            label: t('sidebar.menu.exportTableData'),
+            icon: <ExportOutlined />,
+            onClick: () => handleBulkActionClick('exportData'),
+        },
+        {
+            key: 'danger',
+            label: t('sidebar.menu.dangerOps'),
+            icon: <WarningOutlined />,
+            children: [
+                ...(allowTruncate ? [{
+                    key: 'truncate',
+                    label: t('sidebar.menu.truncateTable'),
+                    danger: true,
+                    onClick: () => handleBulkActionClick('truncate'),
+                }] : []),
+                {
+                    key: 'clear',
+                    label: t('sidebar.menu.clearTable'),
+                    danger: true,
+                    onClick: () => handleBulkActionClick('clear'),
+                },
+                {
+                    key: 'delete',
+                    label: t('sidebar.menu.deleteTable'),
+                    icon: <DeleteOutlined />,
+                    danger: true,
+                    onClick: () => handleBulkActionClick('delete'),
+                },
+            ],
+        },
+        {
+            key: 'rename',
+            label: t('sidebar.menu.renameTable'),
+            icon: <EditOutlined />,
+            onClick: () => handleBulkActionClick('rename'),
+        },
+        {
+            key: 'copyStructure',
+            label: t('sidebar.menu.copyTableSchema'),
+            icon: <CopyOutlined />,
+            onClick: () => handleBulkActionClick('copyStructure'),
+        },
+        {
+            key: 'backup',
+            label: t('sidebar.menu.backupTable'),
+            icon: <SaveOutlined />,
+            onClick: () => handleBulkActionClick('backup'),
+        },
+        { type: 'divider' },
+        {
+            key: 'copyTable',
+            label: t('tableOverview.copy.action'),
+            icon: <CopyOutlined />,
+            onClick: () => handleBulkActionClick('copyTable'),
+        },
+    ], [allowTruncate, handleBulkActionClick, t]);
+
     const totalRows = useMemo(() => tables.reduce((s, t) => s + t.rows, 0), [tables]);
     const totalSize = useMemo(() => tables.reduce((s, t) => s + t.dataSize + t.indexSize, 0), [tables]);
     const maxCombinedSize = useMemo(() => sortedFiltered.reduce((max, table) => {
@@ -642,9 +939,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                     </Checkbox>
                 )}
                 {selectedTableCount > 0 && (
-                    <Button size="small" icon={<CopyOutlined />} onClick={() => openCopyTablesModal()}>
-                        {t('tableOverview.copy.actionWithCount', { count: selectedTableCount })}
-                    </Button>
+                    <Dropdown menu={{ items: bulkActionMenuItems }} trigger={['click']}>
+                        <Button size="small" icon={<DownOutlined />}>
+                            {t('tableOverview.bulk.actionWithCount', { count: selectedTableCount })}
+                        </Button>
+                    </Dropdown>
                 )}
                 <div style={{ flex: 1 }} />
                 <Input
@@ -934,6 +1233,31 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                         <Radio value="structure">{t('tableOverview.copy.structureOnly')}</Radio>
                         <Radio value="structureData">{t('tableOverview.copy.structureAndData')}</Radio>
                     </Radio.Group>
+                </Space>
+            </Modal>
+            <Modal
+                title={t('tableOverview.bulk.renameTitle', { count: selectedTableCount })}
+                open={bulkRenameModalOpen}
+                okText={t('sidebar.menu.renameTable')}
+                cancelText={t('common.cancel')}
+                onOk={handleBulkRenameTables}
+                onCancel={() => {
+                    setBulkRenameModalOpen(false);
+                    setBulkRenameValues({});
+                }}
+            >
+                <Space direction="vertical" size={10} style={{ width: '100%', maxHeight: 360, overflowY: 'auto' }}>
+                    {selectedTableNames.map(name => (
+                        <div key={name}>
+                            <div style={{ color: textSecondary, fontSize: 12, marginBottom: 4 }}>{name}</div>
+                            <Input
+                                {...noAutoCapInputProps}
+                                value={bulkRenameValues[name] ?? name}
+                                onChange={e => setBulkRenameValues(prev => ({ ...prev, [name]: e.target.value }))}
+                                placeholder={name}
+                            />
+                        </div>
+                    ))}
                 </Space>
             </Modal>
         </div>
