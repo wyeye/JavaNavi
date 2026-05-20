@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useDeferredValue } from 'react';
 import { Input, Spin, Empty, Dropdown, message, Tooltip, Modal, Button, Checkbox, Radio, Space } from 'antd';
 import type { MenuProps } from 'antd';
-import { TableOutlined, SearchOutlined, ReloadOutlined, SortAscendingOutlined, DatabaseOutlined, ConsoleSqlOutlined, EditOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, ExportOutlined, AppstoreOutlined, UnorderedListOutlined, WarningOutlined, DownOutlined } from '@ant-design/icons';
+import { TableOutlined, SearchOutlined, ReloadOutlined, SortAscendingOutlined, DatabaseOutlined, ConsoleSqlOutlined, EditOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, ExportOutlined, WarningOutlined, DownOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
 import { ClearTables, CopyTables, DBQuery, DBShowCreateTable, ExportTable, ExportTablesDataSQL, ExportTablesSQL, DropTable, RenameTable, TruncateTables } from '@compat/javanaviApp';
 import type { ConnectionConfig, TabData } from '../types';
@@ -43,7 +43,6 @@ interface TableStatRow {
 
 type SortField = TableOverviewSortField;
 type SortOrder = TableOverviewSortOrder;
-type ViewMode = 'card' | 'list';
 type CopyTableMode = 'structure' | 'structureData';
 type TableOverviewBulkActionKey = 'exportData' | 'truncate' | 'clear' | 'delete' | 'rename' | 'copyStructure' | 'backup' | 'copyTable';
 
@@ -198,7 +197,6 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const [searchText, setSearchText] = useState('');
     const [sortField, setSortField] = useState<SortField>('name');
     const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
-    const [viewMode, setViewMode] = useState<ViewMode>('list');
     const [visibleTableLimit, setVisibleTableLimit] = useState(TABLE_OVERVIEW_RENDER_BATCH_SIZE);
     const [selectedTableNames, setSelectedTableNames] = useState<string[]>([]);
     const [copyModalOpen, setCopyModalOpen] = useState(false);
@@ -258,7 +256,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
 
     useEffect(() => {
         setVisibleTableLimit(TABLE_OVERVIEW_RENDER_BATCH_SIZE);
-    }, [deferredSearchText, sortField, sortOrder, viewMode, tables]);
+    }, [deferredSearchText, sortField, sortOrder, tables]);
 
     const visibleOverview = useMemo(() => (
         resolveTableOverviewVisibleRows(sortedFiltered, visibleTableLimit)
@@ -959,34 +957,6 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 <Dropdown menu={{ items: sortMenuItems }} trigger={['click']}>
                     <Tooltip title="排序"><SortAscendingOutlined style={{ fontSize: 16, color: textSecondary, cursor: 'pointer' }} /></Tooltip>
                 </Dropdown>
-                <div style={{ display: 'flex', gap: 2, padding: 2, borderRadius: 6, background: darkMode ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)' }}>
-                    <Tooltip title="卡片视图">
-                        <div
-                            onClick={() => setViewMode('card')}
-                            style={{
-                                padding: '3px 7px', borderRadius: 5, cursor: 'pointer', transition: 'all 0.15s',
-                                background: viewMode === 'card' ? (darkMode ? 'rgba(255,255,255,0.12)' : '#fff') : 'transparent',
-                                boxShadow: viewMode === 'card' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                                color: viewMode === 'card' ? accentColor : textMuted,
-                            }}
-                        >
-                            <AppstoreOutlined style={{ fontSize: 14 }} />
-                        </div>
-                    </Tooltip>
-                    <Tooltip title="列表视图">
-                        <div
-                            onClick={() => setViewMode('list')}
-                            style={{
-                                padding: '3px 7px', borderRadius: 5, cursor: 'pointer', transition: 'all 0.15s',
-                                background: viewMode === 'list' ? (darkMode ? 'rgba(255,255,255,0.12)' : '#fff') : 'transparent',
-                                boxShadow: viewMode === 'list' ? '0 1px 3px rgba(0,0,0,0.1)' : 'none',
-                                color: viewMode === 'list' ? accentColor : textMuted,
-                            }}
-                        >
-                            <UnorderedListOutlined style={{ fontSize: 14 }} />
-                        </div>
-                    </Tooltip>
-                </div>
                 <Tooltip title="刷新"><ReloadOutlined onClick={loadData} style={{ fontSize: 16, color: textSecondary, cursor: 'pointer' }} /></Tooltip>
             </div>
 
@@ -1019,67 +989,8 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 )}
                 {sortedFiltered.length === 0 ? (
                     <Empty description={searchText ? '无匹配结果' : '暂无表'} style={{ marginTop: 80 }} />
-                ) : viewMode === 'card' ? (
-                    /* ========== 卡片视图 ========== */
-                    <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))',
-                        gap: 12,
-                    }}>
-                        {visibleTables.map(t => (
-                            <Dropdown
-                                key={t.name}
-                                trigger={['contextMenu']}
-                                menu={{
-                                    items: buildTableMenuItems(t),
-                                }}
-                            >
-                                <div
-                                    onDoubleClick={() => openTable(t)}
-                                    style={{
-                                        background: cardBg,
-                                        border: `1px solid ${cardBorder}`,
-                                        borderRadius: 10,
-                                        padding: '14px 16px',
-                                        cursor: 'pointer',
-                                        transition: 'all 0.15s ease',
-                                        userSelect: 'none',
-                                    }}
-                                    onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = cardHoverBg; (e.currentTarget as HTMLDivElement).style.borderColor = accentColor; }}
-                                    onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = cardBg; (e.currentTarget as HTMLDivElement).style.borderColor = cardBorder; }}
-                                >
-                                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                                        <Checkbox
-                                            checked={selectedTableSet.has(t.name)}
-                                            onChange={e => toggleSelectedTable(t.name, e.target.checked)}
-                                            onClick={e => e.stopPropagation()}
-                                        />
-                                        <TableOutlined style={{ fontSize: 14, color: accentColor }} />
-                                        <Tooltip title={renderTableHoverTitle(t)} mouseEnterDelay={0.4}>
-                                            <span style={{ fontSize: 13, fontWeight: 600, color: textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flex: 1, display: 'block' }}>
-                                                {t.name}
-                                            </span>
-                                        </Tooltip>
-                                    </div>
-                                    {t.comment && (
-                                        <Tooltip title={t.comment} mouseEnterDelay={0.4}>
-                                            <div style={{ fontSize: 12, color: textSecondary, marginBottom: 10, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                                {t.comment}
-                                            </div>
-                                        </Tooltip>
-                                    )}
-                                    <div style={{ display: 'flex', gap: 16, fontSize: 12, color: textMuted }}>
-                                        <span title="行数" style={{ minWidth: 52 }}>📊 {formatRows(t.rows)}</span>
-                                        <span title="数据大小" style={{ minWidth: 72 }}>💾 {formatSize(t.dataSize)}</span>
-                                        {t.engine && <span title="引擎" style={{ marginLeft: 'auto', opacity: 0.7 }}>{t.engine}</span>}
-                                    </div>
-                                </div>
-                            </Dropdown>
-                        ))}
-                    </div>
                 ) : (
-                    /* ========== 行视图 ========== */
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                    <div className="table-overview-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         {visibleTables.map(t => {
                             const combinedSize = t.dataSize + t.indexSize;
                             const sizeRatio = maxCombinedSize > 0 ? combinedSize / maxCombinedSize : 0;
@@ -1096,11 +1007,12 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                     }}
                                 >
                                     <div
+                                        className="table-overview-row"
                                         onDoubleClick={() => openTable(t)}
                                         style={{
                                             position: 'relative',
                                             overflow: 'hidden',
-                                            borderRadius: 10,
+                                            borderRadius: 8,
                                             border: `1px solid ${cardBorder}`,
                                             background: cardBg,
                                             cursor: 'pointer',
@@ -1129,7 +1041,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                                                 alignItems: 'center',
                                                 justifyContent: 'space-between',
                                                 gap: 16,
-                                                padding: '14px 16px',
+                                                padding: '11px 14px',
                                                 flexWrap: 'wrap',
                                             }}
                                         >

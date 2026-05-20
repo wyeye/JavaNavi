@@ -56,25 +56,10 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
         ? t('dataGrid.footer.findPositionPrefix', { position: props.activePageFindPosition, total: props.pageFindMatchesLength })
         : '';
     return (
-    <>
-        <div
-            data-grid-secondary-actions="true"
-            style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                gap: 10,
-                flexWrap: 'wrap',
-                padding: '4px 0 0',
-            }}
-        >
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                <Button
-                    icon={<EditOutlined />}
-                    type={props.dataPanelOpen ? 'primary' : 'default'}
-                    disabled={props.viewMode !== 'table'}
-                    onClick={props.onToggleDataPanel}
-                >
+        <>
+        <div className="data-grid-footer-actions" data-grid-secondary-actions="true">
+            <div className="data-grid-footer-left">
+                <Button className="data-grid-footer-button" icon={<EditOutlined />} type={props.dataPanelOpen ? 'primary' : 'default'} disabled={props.viewMode !== 'table'} onClick={props.onToggleDataPanel}>
                     {t('dataGrid.footer.dataPreview')}
                 </Button>
                 <Popover
@@ -82,20 +67,15 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                     placement="bottomRight"
                     content={props.columnInfoSettingContent}
                 >
-                    <Button icon={<FileTextOutlined />}>{t('dataGrid.footer.columnInfo')}</Button>
+                    <Button className="data-grid-footer-button" icon={<FileTextOutlined />}>{t('dataGrid.footer.columnInfo')}</Button>
                 </Popover>
                 {props.canViewDdl && (
-                    <Button
-                        data-grid-ddl-action="true"
-                        icon={<FileTextOutlined />}
-                        loading={props.ddlLoading}
-                        onClick={props.onOpenTableDdl}
-                    >
+                    <Button className="data-grid-footer-button" data-grid-ddl-action="true" icon={<FileTextOutlined />} loading={props.ddlLoading} onClick={props.onOpenTableDdl}>
                         {t('dataGrid.footer.viewDdl')}
                     </Button>
                 )}
                 <Tooltip title={t('dataGrid.footer.findTooltip')}>
-                    <div data-grid-page-find="true" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="data-grid-footer-find" data-grid-page-find="true">
                         <Input
                             {...props.noAutoCapInputProps}
                             allowClear
@@ -104,28 +84,16 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                             placeholder={t('dataGrid.footer.findPlaceholder')}
                             value={props.pageFindText}
                             onChange={(event) => props.onPageFindTextChange(event.target.value)}
-                            style={{ width: 220 }}
+                            className="data-grid-footer-find-input"
                         />
-                        <Button
-                            data-grid-page-find-prev="true"
-                            size="small"
-                            icon={<LeftOutlined />}
-                            disabled={props.pageFindMatchesLength === 0}
-                            onClick={() => props.onNavigatePageFind('previous')}
-                        >
+                        <Button className="data-grid-footer-button" data-grid-page-find-prev="true" size="small" icon={<LeftOutlined />} disabled={props.pageFindMatchesLength === 0} onClick={() => props.onNavigatePageFind('previous')}>
                             {t('dataGrid.footer.previous')}
                         </Button>
-                        <Button
-                            data-grid-page-find-next="true"
-                            size="small"
-                            icon={<RightOutlined />}
-                            disabled={props.pageFindMatchesLength === 0}
-                            onClick={() => props.onNavigatePageFind('next')}
-                        >
+                        <Button className="data-grid-footer-button" data-grid-page-find-next="true" size="small" icon={<RightOutlined />} disabled={props.pageFindMatchesLength === 0} onClick={() => props.onNavigatePageFind('next')}>
                             {t('dataGrid.footer.next')}
                         </Button>
                         {props.normalizedPageFindText && (
-                            <span aria-live="polite" style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666', whiteSpace: 'nowrap' }}>
+                            <span className="data-grid-footer-find-summary" aria-live="polite">
                                 {t('dataGrid.footer.findSummary', {
                                     positionPrefix: findPositionPrefix,
                                     occurrenceCount: props.pageFindSummary.occurrenceCount,
@@ -136,8 +104,8 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                     </div>
                 </Tooltip>
             </div>
-            <div data-grid-view-switcher="true" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                <span style={{ fontSize: 12, color: props.darkMode ? '#999' : '#666' }}>{t('dataGrid.footer.resultView')}</span>
+            <div className="data-grid-footer-view" data-grid-view-switcher="true">
+                <span className="data-grid-footer-view-label">{t('dataGrid.footer.resultView')}</span>
                 <Segmented
                     size="small"
                     value={props.viewMode}
@@ -152,7 +120,7 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
         </div>
 
         {props.pagination && (
-            <div className="data-grid-pagination-wrap" style={{ padding: '12px 0 0', borderTop: 'none', display: 'flex', justifyContent: 'flex-end' }}>
+            <div className="data-grid-pagination-wrap">
                 <div className="data-grid-pagination-shell">
                     <div className="data-grid-pagination-summary" aria-live="polite">
                         <span className="data-grid-pagination-kicker">{t('dataGrid.footer.resultSet')}</span>
@@ -192,6 +160,6 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                 </div>
             </div>
         )}
-    </>
+        </>
     );
 };

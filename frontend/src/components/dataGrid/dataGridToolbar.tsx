@@ -75,23 +75,24 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
     const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
     return (
         <div className="data-grid-toolbar-scroll" data-grid-primary-actions="true" style={{ padding: props.showFilter ? `${props.panelPaddingY}px ${props.panelPaddingX}px ${props.toolbarBottomPadding}px ${props.panelPaddingX}px` : `${props.panelPaddingY}px ${props.panelPaddingX}px`, border: 'none', borderRadius: 0, background: 'transparent', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarGutter: 'stable', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box' }}>
-	            {props.onReload && <Button icon={<ReloadOutlined />} disabled={props.loading} onClick={props.onReloadClick}>{t('dataGrid.toolbar.reload')}</Button>}
+	            {props.onReload && <Button className="data-grid-toolbar-button" icon={<ReloadOutlined />} disabled={props.loading} onClick={props.onReloadClick}>{t('dataGrid.toolbar.reload')}</Button>}
 
 	           {props.onToggleFilter && (
 	               <>
-	                   <div style={{ width: 1, background: props.toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button icon={<FilterOutlined />} type={props.showFilter ? 'primary' : 'default'} onClick={() => { 
-	                       props.onToggleFilter?.(); 
-	                       if (props.filterConditionsLength === 0 && !props.showFilter) props.addFilter(); 
+	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
+	                   <Button className="data-grid-toolbar-button" icon={<FilterOutlined />} type={props.showFilter ? 'primary' : 'default'} onClick={() => {
+	                       props.onToggleFilter?.();
+	                       if (props.filterConditionsLength === 0 && !props.showFilter) props.addFilter();
 	                   }}>{t('dataGrid.toolbar.filter')}</Button>
 	               </>
 	           )}
-	           
+
 	           {props.canModifyData && (
 	               <>
-	                   <div style={{ width: 1, background: props.toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button icon={<PlusOutlined />} onClick={props.handleAddRow}>{t('dataGrid.toolbar.addRow')}</Button>
+	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
+	                   <Button className="data-grid-toolbar-button" icon={<PlusOutlined />} onClick={props.handleAddRow}>{t('dataGrid.toolbar.addRow')}</Button>
 	                   <Button
+	                       className="data-grid-toolbar-button"
 	                       data-grid-copy-row-action="true"
 	                       icon={<CopyOutlined />}
 	                       disabled={props.selectedRowCount === 0}
@@ -100,6 +101,7 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
 	                       {t('dataGrid.toolbar.copyRows')}
 	                   </Button>
 	                   <Button
+	                       className="data-grid-toolbar-button"
 	                       data-grid-paste-row-action="true"
 	                       icon={<VerticalAlignBottomOutlined />}
 	                       disabled={props.copiedRowsForPasteCount === 0}
@@ -107,10 +109,11 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
 	                   >
 	                       {props.copiedRowsForPasteCount > 0 ? t('dataGrid.toolbar.pasteRowsWithCount', { count: props.copiedRowsForPasteCount }) : t('dataGrid.toolbar.pasteRows')}
 	                   </Button>
-	                   <Button icon={<DeleteOutlined />} danger disabled={props.selectedRowCount === 0} onClick={props.handleDeleteSelected}>{t('dataGrid.toolbar.deleteSelected')}</Button>
+	                   <Button className="data-grid-toolbar-button" icon={<DeleteOutlined />} danger disabled={props.selectedRowCount === 0} onClick={props.handleDeleteSelected}>{t('dataGrid.toolbar.deleteSelected')}</Button>
 	                   {props.selectedRowCount > 0 && <span style={{ fontSize: '12px', color: '#888' }}>{t('dataGrid.toolbar.selectedCount', { count: props.selectedRowCount })}</span>}
-	                   <div style={{ width: 1, background: props.toolbarDividerColor, height: 20, margin: '0 8px' }} />
+	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
 	                   <Button
+                            className="data-grid-toolbar-button"
                             icon={<EditOutlined />}
                             type={props.cellEditMode ? 'primary' : 'default'}
                             onClick={props.toggleCellEditMode}
@@ -120,18 +123,21 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
                        {props.cellEditMode && props.selectedCellsCount > 0 && (
                            <>
                                <Button
+                                   className="data-grid-toolbar-button"
                                    icon={<CopyOutlined />}
                                    onClick={props.handleCopySelectedCellsToClipboard}
                                >
                                    {t('dataGrid.toolbar.copySelection', { count: props.selectedCellsCount })}
                                </Button>
                                <Button
+                                   className="data-grid-toolbar-button"
                                    icon={<CopyOutlined />}
                                    onClick={props.handleCopySelectedColumnsFromRow}
                                >
                                    {t('dataGrid.toolbar.copySelectionColumns', { count: props.selectedCellsCount })}
                                </Button>
                                 <Button
+                                    className="data-grid-toolbar-button"
                                     type="primary"
                                     onClick={() => {
                                         props.openBatchFillModal();
@@ -144,6 +150,7 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
                        {props.cellEditMode && props.hasCopiedCellPatch && (
                            <>
                                <Button
+                                   className="data-grid-toolbar-button"
                                    icon={<VerticalAlignBottomOutlined />}
                                    disabled={props.selectedRowCount === 0}
                                    onClick={() => props.handlePasteCopiedColumnsToSelectedRows()}
@@ -155,14 +162,14 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
                                </span>
                            </>
                        )}
-	                   <div style={{ width: 1, background: props.toolbarDividerColor, height: 20, margin: '0 8px' }} />
-	                   <Button icon={<SaveOutlined />} type="primary" disabled={!props.hasChanges || props.commitLoading} loading={props.commitLoading} onClick={props.handleCommit}>{t('dataGrid.toolbar.commit', { count: props.changeCount })}</Button>
+	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
+	                   <Button className="data-grid-toolbar-button" icon={<SaveOutlined />} type="primary" disabled={!props.hasChanges || props.commitLoading} loading={props.commitLoading} onClick={props.handleCommit}>{t('dataGrid.toolbar.commit', { count: props.changeCount })}</Button>
                        {props.hasChanges && (
                            <span style={{ fontSize: '12px', color: props.riskLevel === 'high' ? '#cf1322' : '#888' }}>
                                {props.pendingChangesLabel}{props.changeSummaryText || t('dataGrid.toolbar.changeCount', { count: props.changeCount })}
                            </span>
                        )}
-	                   {props.hasChanges && (<Button icon={<UndoOutlined />} onClick={() => {
+	                   {props.hasChanges && (<Button className="data-grid-toolbar-button" icon={<UndoOutlined />} onClick={() => {
 	                        props.onRollback();
                    }}>{t('dataGrid.toolbar.rollback')}</Button>)}
                </>
@@ -170,32 +177,18 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
 
            {(props.canImport || props.canExport) && (
                <>
-                   <div style={{ width: 1, background: props.toolbarDividerColor, height: 20, margin: '0 8px' }} />
-                   {props.canImport && <Button icon={<ImportOutlined />} onClick={props.handleImport}>{t('dataGrid.toolbar.import')}</Button>}
-                   {props.canExport && <Dropdown menu={{ items: props.exportMenu }}><Button icon={<ExportOutlined />}>{t('dataGrid.toolbar.export')} <DownOutlined /></Button></Dropdown>}
+                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
+                   {props.canImport && <Button className="data-grid-toolbar-button" icon={<ImportOutlined />} onClick={props.handleImport}>{t('dataGrid.toolbar.import')}</Button>}
+                   {props.canExport && <Dropdown menu={{ items: props.exportMenu }}><Button className="data-grid-toolbar-button" icon={<ExportOutlined />}>{t('dataGrid.toolbar.export')} <DownOutlined /></Button></Dropdown>}
                </>
            )}
 
            <>
-               <div style={{ width: 1, background: props.toolbarDividerColor, height: 20, margin: '0 8px' }} />
+               <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
                <Tooltip title={t('dataGrid.toolbar.aiInsightTooltip')}>
-                   <Button 
-                       icon={<RobotOutlined />} 
-                       style={{
-                           background: props.darkMode ? 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05))' : 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02))',
-                           borderColor: props.darkMode ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.4)',
-                           color: '#10b981',
-                           fontWeight: 500,
-                           boxShadow: props.darkMode ? '0 2px 8px rgba(16,185,129,0.1)' : '0 2px 6px rgba(16,185,129,0.05)',
-                       }}
-                       onMouseEnter={(e) => {
-                           e.currentTarget.style.background = props.darkMode ? 'linear-gradient(135deg, rgba(16,185,129,0.25), rgba(16,185,129,0.1))' : 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05))';
-                           e.currentTarget.style.borderColor = '#10b981';
-                       }}
-                       onMouseLeave={(e) => {
-                           e.currentTarget.style.background = props.darkMode ? 'linear-gradient(135deg, rgba(16,185,129,0.15), rgba(16,185,129,0.05))' : 'linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02))';
-                           e.currentTarget.style.borderColor = props.darkMode ? 'rgba(16,185,129,0.3)' : 'rgba(16,185,129,0.4)';
-                       }}
+                   <Button
+                       className="data-grid-toolbar-button data-grid-ai-insight-button"
+                       icon={<RobotOutlined />}
                        onClick={() => {
                            const sampleData = props.getAiSampleData();
                            const prompt = t('dataGrid.toolbar.aiInsightPrompt', {
@@ -218,9 +211,10 @@ export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
 
            {props.prefersManualTotalCount && props.onRequestTotalCount && (
                <>
-                   <div style={{ width: 1, background: props.toolbarDividerColor, height: 20, margin: '0 8px' }} />
+                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
                    <Tooltip title={props.totalCountLoading ? t('dataGrid.toolbar.cancelCountTooltip') : t('dataGrid.toolbar.countTotalTooltip')}>
                        <Button
+                           className="data-grid-toolbar-button"
                            icon={props.totalCountLoading ? <CloseOutlined /> : <VerticalAlignBottomOutlined />}
                            onClick={() => {
                                if (props.totalCountLoading) {

@@ -81,15 +81,15 @@ export const buildDataGridThemeStyles = ({ darkMode, opacity, blur }: BuildDataG
           rowModHover: darkMode ? _rowBg(29, 53, 94) : _rowBg(186, 231, 255),
           selectionAccentHex: darkMode ? '#f6c453' : '#1890ff',
           selectionAccentRgb: darkMode ? '246, 196, 83' : '24, 144, 255',
-          columnMetaHintColor: darkMode ? 'rgba(255, 236, 179, 0.98)' : '#595959',
+          columnMetaHintColor: darkMode ? 'rgba(226, 232, 240, 0.72)' : '#64748b',
           columnMetaTooltipColor: darkMode ? 'rgba(255, 236, 179, 0.98)' : '#262626',
-          panelFrameColor: darkMode ? 'rgba(0, 0, 0, 0.42)' : 'rgba(0, 0, 0, 0.18)',
+          panelFrameColor: darkMode ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.36)',
           floatingScrollbarThumbBg: darkMode ? 'rgba(255,255,255,0.68)' : 'rgba(0,0,0,0.44)',
           floatingScrollbarThumbBorderColor: darkMode ? 'rgba(255,255,255,0.26)' : 'rgba(255,255,255,0.52)',
           floatingScrollbarThumbShadow: darkMode ? '0 4px 14px rgba(0,0,0,0.42)' : '0 4px 10px rgba(0,0,0,0.20)',
           verticalScrollbarTrackBg: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)',
           horizontalScrollbarThumbBg: darkMode ? 'rgba(255,255,255,0.20)' : 'rgba(0,0,0,0.14)',
-          toolbarDividerColor: darkMode ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.10)',
+          toolbarDividerColor: darkMode ? 'rgba(148, 163, 184, 0.18)' : 'rgba(148, 163, 184, 0.34)',
           paginationShellBg: darkMode
               ? `linear-gradient(135deg, rgba(17,22,34,${_glassMode ? Math.max(0.22, opacity * 0.38) : 0.82}) 0%, rgba(10,14,24,${_glassMode ? Math.max(0.28, opacity * 0.46) : 0.9}) 100%)`
               : `linear-gradient(135deg, rgba(255,255,255,${_glassMode ? Math.max(0.24, opacity * 0.36) : 0.96}) 0%, rgba(246,248,252,${_glassMode ? Math.max(0.32, opacity * 0.44) : 0.99}) 100%)`,
@@ -246,7 +246,7 @@ export const buildDataGridCssText = ({
                 .${gridId} .ant-table-thead > tr > th .ant-table-column-sorter,
                 .${gridId} .ant-table-thead > tr > th .ant-table-column-sorter * { cursor: pointer !important; }
                 .${gridId} .ant-table-tbody > tr:hover > td,
-                .${gridId} .ant-table-tbody .ant-table-row:hover > .ant-table-cell { background-color: ${darkMode ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.02)'} !important; }
+                .${gridId} .ant-table-tbody .ant-table-row:hover > .ant-table-cell { background-color: ${darkMode ? 'rgba(148, 163, 184, 0.10)' : 'rgba(37, 99, 235, 0.035)'} !important; }
                 .${gridId} .ant-table-tbody > tr.ant-table-row-selected > td,
                 .${gridId} .ant-table-tbody .ant-table-row.ant-table-row-selected > .ant-table-cell { background-color: ${darkMode ? `rgba(${selectionAccentRgb}, 0.18)` : `rgba(${selectionAccentRgb}, 0.08)`} !important; }
                 .${gridId} .ant-table-tbody > tr.ant-table-row-selected:hover > td,
@@ -403,16 +403,92 @@ export const buildDataGridCssText = ({
                     border-radius: 999px;
                     box-shadow: ${floatingScrollbarThumbShadow};
                 }
+                .${gridId} .data-grid-toolbar-button {
+                    border-radius: 8px !important;
+                    box-shadow: none !important;
+                    font-weight: 500;
+                }
+                .${gridId} .data-grid-toolbar-divider {
+                    width: 1px;
+                    height: 20px;
+                    margin: 0 6px;
+                    flex: 0 0 auto;
+                }
+                .${gridId} .data-grid-ai-insight-button {
+                    background: ${darkMode ? 'rgba(16,185,129,0.12)' : 'rgba(236, 253, 245, 0.96)'} !important;
+                    border-color: ${darkMode ? 'rgba(16,185,129,0.32)' : 'rgba(16,185,129,0.36)'} !important;
+                    color: #059669 !important;
+                    font-weight: 700 !important;
+                }
+                .${gridId} .data-grid-ai-insight-button:hover {
+                    background: ${darkMode ? 'rgba(16,185,129,0.20)' : 'rgba(209, 250, 229, 0.98)'} !important;
+                    border-color: #10b981 !important;
+                }
+                .${gridId} .data-grid-footer-actions {
+                    display: grid;
+                    grid-template-columns: minmax(240px, auto) minmax(220px, 1fr) auto;
+                    align-items: center;
+                    gap: 10px 12px;
+                    padding: 8px 0 0;
+                }
+                .${gridId} .data-grid-footer-left,
+                .${gridId} .data-grid-footer-find,
+                .${gridId} .data-grid-footer-view {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    min-width: 0;
+                    flex-wrap: nowrap;
+                }
+                .${gridId} .data-grid-footer-find {
+                    justify-content: center;
+                }
+                .${gridId} .data-grid-footer-view {
+                    justify-content: flex-end;
+                    color: ${paginationSecondaryTextColor};
+                }
+                .${gridId} .data-grid-footer-button {
+                    border-radius: 8px !important;
+                    box-shadow: none !important;
+                }
+                .${gridId} .data-grid-footer-find-input {
+                    width: min(280px, 28vw);
+                }
+                .${gridId} .data-grid-footer-find-summary,
+                .${gridId} .data-grid-footer-view-label {
+                    color: ${paginationSecondaryTextColor};
+                    font-size: 12px;
+                    white-space: nowrap;
+                }
+                .${gridId} .data-grid-pagination-wrap {
+                    grid-column: 1 / -1;
+                    display: flex;
+                    justify-content: flex-end;
+                    min-width: 0;
+                }
+                @media (max-width: 1180px) {
+                    .${gridId} .data-grid-footer-actions {
+                        grid-template-columns: 1fr;
+                    }
+                    .${gridId} .data-grid-footer-find,
+                    .${gridId} .data-grid-footer-view,
+                    .${gridId} .data-grid-pagination-wrap {
+                        justify-content: flex-start;
+                    }
+                    .${gridId} .data-grid-footer-find-input {
+                        width: 220px;
+                    }
+                }
                 .${gridId} .data-grid-external-horizontal-scroll {
                     position: absolute;
                     left: ${floatingScrollbarInset}px;
                     right: ${floatingScrollbarInset}px;
                     bottom: ${floatingScrollbarBottomOffset}px;
-                    height: ${floatingScrollbarHeight + 4}px;
+                    height: ${floatingScrollbarHeight + 2}px;
                     overflow-x: auto;
                     overflow-y: hidden;
                     background: transparent;
-                    z-index: 24;
+                    z-index: 18;
                 }
                 .${gridId} .data-grid-external-horizontal-scroll::-webkit-scrollbar {
                     height: ${floatingScrollbarHeight}px;
@@ -439,11 +515,11 @@ export const buildDataGridCssText = ({
                     gap: 10px;
                     flex-wrap: wrap;
                     max-width: 100%;
-                    padding: 8px 10px;
-                    border-radius: 16px;
+                    padding: 6px 8px;
+                    border-radius: 12px;
                     border: 1px solid ${paginationShellBorderColor};
                     background: ${paginationShellBg};
-                    box-shadow: ${paginationShellShadow};
+                    box-shadow: none;
                     backdrop-filter: ${opacity < 0.999 ? 'blur(14px)' : 'none'};
                     -webkit-backdrop-filter: ${opacity < 0.999 ? 'blur(14px)' : 'none'};
                 }
