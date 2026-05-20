@@ -36,6 +36,17 @@ class AppCompatibilityServiceTest {
 
 
     @Test
+    void appInfoUsesPackagedProjectVersion() throws Exception {
+        AppCompatibilityService service = service();
+
+        AppContracts.AppInfoResponse info = service.appInfo();
+
+        assertThat(info.version()).isEqualTo(projectVersion());
+        assertThat(info.version()).doesNotContain("${");
+        assertThat(info.version()).isNotEqualTo("0.1.8");
+    }
+
+    @Test
     void persistsAndReloadsLanguageInAppDataDirectory() throws Exception {
         AppCompatibilityService service = service();
 
@@ -88,6 +99,15 @@ class AppCompatibilityServiceTest {
         assertThat(result.name()).endsWith(".sql");
         assertThat(result.size()).isGreaterThan(0);
         assertThat(result.webManaged()).isTrue();
+    }
+
+    private static String projectVersion() throws Exception {
+        String pom = Files.readString(Path.of("pom.xml"));
+        String artifactMarker = "<artifactId>javanavi-backend</artifactId>";
+        int artifactIndex = pom.indexOf(artifactMarker);
+        int versionStart = pom.indexOf("<version>", artifactIndex);
+        int versionEnd = pom.indexOf("</version>", versionStart);
+        return pom.substring(versionStart + "<version>".length(), versionEnd).trim();
     }
 
     private AppCompatibilityService service() {

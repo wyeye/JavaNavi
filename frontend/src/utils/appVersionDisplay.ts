@@ -5,10 +5,12 @@ export const resolveAboutDisplayVersion = (
   version: string | undefined,
 ): string => {
   const normalizedBuildType = String(buildType || '').trim().toLowerCase();
+  const normalizedVersion = String(version || '').trim();
+  if (normalizedVersion) {
+    return normalizedVersion;
+  }
   if (normalizedBuildType === 'development' || normalizedBuildType === 'dev') {
     return DEV_ABOUT_VERSION;
   }
-
-  const normalizedVersion = String(version || '').trim();
-  return normalizedVersion || 'Unknown';
+  return 'Unknown';
 };

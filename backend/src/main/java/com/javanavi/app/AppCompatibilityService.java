@@ -14,6 +14,7 @@ import org.springframework.web.multipart.MultipartFile;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,6 +25,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Properties;
 import java.util.stream.Stream;
 
 @Service
@@ -61,7 +63,7 @@ public class AppCompatibilityService {
     public AppContracts.AppInfoResponse appInfo() {
         return new AppContracts.AppInfoResponse(
                 "JavaNavi",
-                "0.1.8",
+                applicationVersion(),
                 "java-spring-boot",
                 "java-web",
                 dataDirectory.toString(),
@@ -71,6 +73,43 @@ public class AppCompatibilityService {
                 "",
                 "https://github.com/wyeye/JavaNavi"
         );
+    }
+
+    private static String applicationVersion() {
+        String implementationVersion = AppCompatibilityService.class.getPackage().getImplementationVersion();
+        if (hasResolvedVersion(implementationVersion)) {
+            return implementationVersion.trim();
+        }
+        String resourceVersion = versionFromResource("/javanavi-version.properties");
+        if (hasResolvedVersion(resourceVersion)) {
+            return resourceVersion.trim();
+        }
+        String pomVersion = versionFromResource("/META-INF/maven/com.javanavi/javanavi-backend/pom.properties");
+        if (hasResolvedVersion(pomVersion)) {
+            return pomVersion.trim();
+        }
+        return "0.0.1-dev";
+    }
+
+    private static String versionFromResource(String resourcePath) {
+        try (InputStream input = AppCompatibilityService.class.getResourceAsStream(resourcePath)) {
+            if (input == null) {
+                return "";
+            }
+            Properties properties = new Properties();
+            properties.load(input);
+            return properties.getProperty("version", "").trim();
+        } catch (IOException ignored) {
+            return "";
+        }
+    }
+
+    private static boolean hasResolvedVersion(String value) {
+        if (value == null || value.isBlank()) {
+            return false;
+        }
+        String trimmed = value.trim();
+        return !trimmed.contains("${") && !trimmed.contains("@project.");
     }
 
     public AppContracts.DataRootInfoResponse dataRootInfo() {
