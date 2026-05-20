@@ -75,6 +75,17 @@ export const buildDataGridCommitChangeSet = ({
         return filtered;
     };
 
+    const isRowIdLocator = (column: string) =>
+        editLocator.strategy === 'rowid' && String(column || '').trim().toUpperCase() === 'ROWID';
+
+    const filterInsertValues = (values: DataGridCommitRow) => {
+        const filtered: DataGridCommitRow = {};
+        Object.entries(values).forEach(([column, value]) => {
+            if (!isRowIdLocator(column)) filtered[column] = value;
+        });
+        return filtered;
+    };
+
     const inserts: DataGridCommitRow[] = [];
     const updates: DataGridCommitUpdate[] = [];
     const deletes: DataGridCommitRow[] = [];
@@ -82,7 +93,7 @@ export const buildDataGridCommitChangeSet = ({
     addedRows.forEach(row => {
         const key = row?.[JAVANAVI_ROW_KEY];
         if (key !== undefined && key !== null && deletedRowKeys.has(rowKeyToString(key as React.Key))) return;
-        const insertValues = filterWritableValues(normalizeValues(row, 'insert'));
+        const insertValues = filterInsertValues(normalizeValues(row, 'insert'));
         if (Object.keys(insertValues).length === 0) {
             return { ok: false, error: translate(language, 'dataGrid.commit.noWritableInsertFields') };
         }

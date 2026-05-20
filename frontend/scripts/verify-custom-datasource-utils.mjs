@@ -43,6 +43,20 @@ try {
   const aiProviderPresets = await transpileToModule('src/utils/aiProviderPresets.ts', 'aiProviderPresets.mjs');
   const providerSecretDraft = await transpileToModule('src/utils/providerSecretDraft.ts', 'providerSecretDraft.mjs');
   await transpileToModule('src/i18n/index.ts', 'i18n.mjs');
+  await writeFile(path.join(tempDir, 'dataGridCellsStub.mjs'), "export const JAVANAVI_ROW_KEY = '__javanavi_row_key__';\n", 'utf8');
+  await writeFile(path.join(tempDir, 'dataGridCopyInsertStub.mjs'), "export const resolveUniqueKeyGroupsFromIndexes = () => [];\n", 'utf8');
+  await transpileToModule('src/utils/rowLocator.ts', 'rowLocator.mjs', {
+    transformOutput: (output) => output
+      .replace("from '../i18n';", "from './i18n.mjs';")
+      .replace("from '../components/dataGrid/dataGridCopyInsert';", "from './dataGridCopyInsertStub.mjs';"),
+  });
+  const dataGridCommitChangeSet = await transpileToModule('src/components/dataGrid/dataGridCommitChangeSet.ts', 'dataGridCommitChangeSet.mjs', {
+    transformOutput: (output) => output
+      .replace("from '../../utils/rowLocator';", "from './rowLocator.mjs';")
+      .replace("from '../../i18n';", "from './i18n.mjs';")
+      .replace("from './dataGridCells';", "from './dataGridCellsStub.mjs';")
+      .replace("from './dataGridValue';", "from './dataGridValue.mjs';"),
+  });
   const dataModificationRisk = await transpileToModule('src/utils/dataModificationRisk.ts', 'dataModificationRisk.mjs', {
     transformOutput: (output) => output.replace("from '../i18n';", "from './i18n.mjs';"),
   });
@@ -120,6 +134,73 @@ try {
   assert.equal(dataGridValue.formatCellDisplayText({ id: 1, name: 'demo' }), '{"id":1,"name":"demo"}');
   assert.equal(dataGridValue.isCellValueEqualForDiff(null, undefined), true);
   assert.equal(dataGridValue.isCellValueEqualForDiff('2024-05-13T08:32:47Z', '2024-05-13 08:32:47'), true);
+
+  const commitChangeSet = dataGridCommitChangeSet.buildDataGridCommitChangeSet({
+    addedRows: [{
+      __javanavi_row_key__: 'new-1',
+      APPID: 'insert-appid-1',
+      ORGNAME: '展厅预约',
+      APPID_WEIXIN: '1000556',
+      MCHID_WEIXIN: 'merchant-id-1',
+      KEY_WEIXIN: null,
+      APPSECRET_WEIXIN: 'secret-value-1',
+      POSTTIME: null,
+    }],
+    modifiedRows: {},
+    deletedRowKeys: new Set(),
+    data: [],
+    editLocator: {
+      strategy: 'unique-key',
+      columns: ['APPID', 'APPID_WEIXIN', 'MCHID_WEIXIN'],
+      valueColumns: ['APPID', 'APPID_WEIXIN', 'MCHID_WEIXIN'],
+      readOnly: false,
+    },
+    columnNames: ['APPID', 'ORGNAME', 'APPID_WEIXIN', 'MCHID_WEIXIN', 'KEY_WEIXIN', 'APPSECRET_WEIXIN', 'POSTTIME'],
+    rowKeyToString: String,
+    normalizeCommitCellValue: (_columnName, value) => value,
+    language: 'zh',
+  });
+  assert.equal(commitChangeSet.ok, true, 'insert change set should be valid');
+  assert.deepEqual(
+    commitChangeSet.changes.inserts[0],
+    {
+      APPID: 'insert-appid-1',
+      ORGNAME: '展厅预约',
+      APPID_WEIXIN: '1000556',
+      MCHID_WEIXIN: 'merchant-id-1',
+      KEY_WEIXIN: null,
+      APPSECRET_WEIXIN: 'secret-value-1',
+      POSTTIME: null,
+    },
+    'new row inserts should keep locator columns because they are normal insert values',
+  );
+
+  const rowidInsertChangeSet = dataGridCommitChangeSet.buildDataGridCommitChangeSet({
+    addedRows: [{
+      __javanavi_row_key__: 'new-rowid-1',
+      ROWID: 'AAAR3sAAEAAAACXAAA',
+      ORGNAME: '展厅预约',
+    }],
+    modifiedRows: {},
+    deletedRowKeys: new Set(),
+    data: [],
+    editLocator: {
+      strategy: 'rowid',
+      columns: ['ROWID'],
+      valueColumns: ['ROWID'],
+      readOnly: false,
+    },
+    columnNames: ['ROWID', 'ORGNAME'],
+    rowKeyToString: String,
+    normalizeCommitCellValue: (_columnName, value) => value,
+    language: 'zh',
+  });
+  assert.equal(rowidInsertChangeSet.ok, true, 'ROWID insert change set should be valid');
+  assert.deepEqual(
+    rowidInsertChangeSet.changes.inserts[0],
+    { ORGNAME: '展厅预约' },
+    'Oracle ROWID locator should not be sent as an INSERT value',
+  );
 
   assert.equal(
     dataSyncRequest.validateDataSyncSelection({ sourceDatasetMode: 'query', selectedTables: [], sourceQuery: '', syncContent: 'data' }),
