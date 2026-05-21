@@ -36,6 +36,8 @@ frontend/*.tsbuildinfo
 # Root-level release/package artifacts
 /dist/
 /docs/superpowers/
+/.codex/
+/.superpowers/
 
 .worktrees/
 /AGENTS.md
