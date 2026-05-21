@@ -806,14 +806,12 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
 
 
     // --- Theme ---
-    const cardBg = darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)';
-    const cardHoverBg = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)';
-    const cardBorder = darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
     const textPrimary = darkMode ? 'rgba(255,255,255,0.88)' : 'rgba(0,0,0,0.88)';
     const textSecondary = darkMode ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.55)';
     const textMuted = darkMode ? 'rgba(255,255,255,0.35)' : 'rgba(0,0,0,0.35)';
     const accentColor = '#1677ff';
     const containerBg = darkMode ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.01)';
+    const tableOverviewGridTemplate = '28px minmax(0, 1.8fr) 92px 116px 116px 96px';
 
     const toggleSort = (field: SortField) => {
         if (sortField === field) {
@@ -990,120 +988,76 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 {sortedFiltered.length === 0 ? (
                     <Empty description={searchText ? '无匹配结果' : '暂无表'} style={{ marginTop: 80 }} />
                 ) : (
-                    <div className="table-overview-list" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                        {visibleTables.map(t => {
-                            const combinedSize = t.dataSize + t.indexSize;
-                            const sizeRatio = maxCombinedSize > 0 ? combinedSize / maxCombinedSize : 0;
-                            const fillWidth = maxCombinedSize > 0 ? `${Math.max(10, Math.round(sizeRatio * 100))}%` : '0%';
-                            const fillColor = darkMode ? 'rgba(22,119,255,0.18)' : 'rgba(22,119,255,0.12)';
-                            const rowSecondary = t.comment || (t.engine ? `${t.engine} 表` : '双击打开数据，右键查看更多操作');
+                    <div className="table-overview-list">
+                        <div className="table-overview-frame">
+                            <div className="table-overview-header" style={{ gridTemplateColumns: tableOverviewGridTemplate }}>
+                                <div />
+                                <div>表名</div>
+                                <div className="table-overview-header-cell">行数</div>
+                                <div className="table-overview-header-cell">数据大小</div>
+                                <div className="table-overview-header-cell">索引大小</div>
+                                <div className="table-overview-header-cell">相对大小</div>
+                            </div>
+                            <div className="table-overview-body">
+                            {visibleTables.map(t => {
+                                const combinedSize = t.dataSize + t.indexSize;
+                                const sizeRatio = maxCombinedSize > 0 ? combinedSize / maxCombinedSize : 0;
+                                const rowSecondary = t.comment || (t.engine ? `${t.engine} 表` : '双击打开数据，右键查看更多操作');
 
-                            return (
-                                <Dropdown
-                                    key={t.name}
-                                    trigger={['contextMenu']}
-                                    menu={{
-                                        items: buildTableMenuItems(t),
-                                    }}
-                                >
-                                    <div
-                                        className="table-overview-row"
-                                        onDoubleClick={() => openTable(t)}
-                                        style={{
-                                            position: 'relative',
-                                            overflow: 'hidden',
-                                            borderRadius: 8,
-                                            border: `1px solid ${cardBorder}`,
-                                            background: cardBg,
-                                            cursor: 'pointer',
-                                            transition: 'all 0.15s ease',
-                                            userSelect: 'none',
+                                return (
+                                    <Dropdown
+                                        key={t.name}
+                                        trigger={['contextMenu']}
+                                        menu={{
+                                            items: buildTableMenuItems(t),
                                         }}
-                                        onMouseEnter={e => { (e.currentTarget as HTMLDivElement).style.background = cardHoverBg; (e.currentTarget as HTMLDivElement).style.borderColor = accentColor; }}
-                                        onMouseLeave={e => { (e.currentTarget as HTMLDivElement).style.background = cardBg; (e.currentTarget as HTMLDivElement).style.borderColor = cardBorder; }}
                                     >
                                         <div
+                                            className={`table-overview-row${selectedTableSet.has(t.name) ? ' is-selected' : ''}`}
+                                            onDoubleClick={() => openTable(t)}
                                             style={{
-                                                position: 'absolute',
-                                                top: 0,
-                                                left: 0,
-                                                bottom: 0,
-                                                width: fillWidth,
-                                                background: fillColor,
-                                                pointerEvents: 'none',
-                                                transition: 'width 0.2s ease',
-                                            }}
-                                        />
-                                        <div
-                                            style={{
-                                                position: 'relative',
-                                                display: 'flex',
-                                                alignItems: 'center',
-                                                justifyContent: 'space-between',
-                                                gap: 16,
-                                                padding: '11px 14px',
-                                                flexWrap: 'wrap',
+                                                gridTemplateColumns: tableOverviewGridTemplate,
                                             }}
                                         >
-                                            <div style={{ minWidth: 0, flex: '1 1 320px' }}>
-                                                <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-                                                    <Checkbox
-                                                        checked={selectedTableSet.has(t.name)}
-                                                        onChange={e => toggleSelectedTable(t.name, e.target.checked)}
-                                                        onClick={e => e.stopPropagation()}
-                                                    />
-                                                    <TableOutlined style={{ fontSize: 13, color: accentColor, flexShrink: 0 }} />
+                                            <div className="table-overview-selection-cell">
+                                                <Checkbox
+                                                    checked={selectedTableSet.has(t.name)}
+                                                    onChange={e => toggleSelectedTable(t.name, e.target.checked)}
+                                                    onClick={e => e.stopPropagation()}
+                                                />
+                                            </div>
+                                            <div className="table-overview-object-cell">
+                                                <div className="table-overview-name-line">
+                                                    <TableOutlined className="table-overview-object-icon" />
                                                     <Tooltip title={renderTableHoverTitle(t)} mouseEnterDelay={0.4}>
-                                                        <span style={{ color: textPrimary, fontWeight: 600, fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                        <span className="table-overview-object-name">
                                                             {t.name}
                                                         </span>
                                                     </Tooltip>
                                                     {t.engine && (
-                                                        <span
-                                                            style={{
-                                                                flexShrink: 0,
-                                                                padding: '1px 6px',
-                                                                borderRadius: 999,
-                                                                fontSize: 11,
-                                                                color: textMuted,
-                                                                background: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)',
-                                                            }}
-                                                        >
+                                                        <span className="table-overview-engine-tag">
                                                             {t.engine}
                                                         </span>
                                                     )}
                                                 </div>
                                                 <Tooltip title={rowSecondary} mouseEnterDelay={0.4}>
-                                                    <div style={{ marginTop: 6, color: textSecondary, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                                    <div className="table-overview-object-meta">
                                                         {rowSecondary}
                                                     </div>
                                                 </Tooltip>
                                             </div>
-                                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, flexWrap: 'wrap', fontSize: 12 }}>
-                                                <div style={{ minWidth: 96, textAlign: 'right' }}>
-                                                    <div style={{ color: textMuted }}>行数</div>
-                                                    <div style={{ color: textPrimary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatRows(t.rows)}</div>
-                                                </div>
-                                                <div style={{ minWidth: 110, textAlign: 'right' }}>
-                                                    <div style={{ color: textMuted }}>数据大小</div>
-                                                    <div style={{ color: textPrimary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatSize(t.dataSize)}</div>
-                                                </div>
-                                                <div style={{ minWidth: 110, textAlign: 'right' }}>
-                                                    <div style={{ color: textMuted }}>索引大小</div>
-                                                    <div style={{ color: textPrimary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{formatSize(t.indexSize)}</div>
-                                                </div>
-                                                <div style={{ minWidth: 96, textAlign: 'right' }}>
-                                                    <div style={{ color: textMuted }}>相对大小</div>
-                                                    <div style={{ color: textPrimary, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>
-                                                        {maxCombinedSize > 0 ? `${Math.round(sizeRatio * 100)}%` : '—'}
-                                                    </div>
-                                                </div>
+                                            <div className="table-overview-metric">{formatRows(t.rows)}</div>
+                                            <div className="table-overview-metric">{formatSize(t.dataSize)}</div>
+                                            <div className="table-overview-metric">{formatSize(t.indexSize)}</div>
+                                            <div className="table-overview-metric">
+                                                {maxCombinedSize > 0 ? `${Math.round(sizeRatio * 100)}%` : '—'}
                                             </div>
                                         </div>
-                                    </div>
-                                </Dropdown>
-                            );
-                        })}
+                                    </Dropdown>
+                                );
+                            })}
+                            </div>
+                        </div>
                     </div>
                 )}
                 {sortedFiltered.length > 0 && visibleOverview.hiddenCount > 0 && (

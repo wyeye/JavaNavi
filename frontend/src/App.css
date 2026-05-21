@@ -407,12 +407,174 @@ body[data-theme='light'] .redis-viewer-workbench .ant-radio-button-wrapper-check
 }
 
 /* professional table overview */
+.table-overview-list {
+    display: grid;
+    gap: 4px;
+}
+
+.table-overview-frame {
+    overflow: hidden;
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.82);
+}
+
+body[data-theme='dark'] .table-overview-frame {
+    border-color: rgba(148, 163, 184, 0.12);
+    background: rgba(15, 23, 42, 0.28);
+}
+
+.table-overview-body {
+    display: grid;
+    gap: 4px;
+    padding: 4px;
+}
+
+.table-overview-header,
+.table-overview-row {
+    display: grid;
+    align-items: center;
+    column-gap: 12px;
+}
+
+.table-overview-header {
+    padding: 8px 14px;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 0;
+    background: rgba(248, 250, 252, 0.96);
+    color: rgba(100, 116, 139, 0.95);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+}
+
+body[data-theme='dark'] .table-overview-header {
+    border-bottom-color: rgba(148, 163, 184, 0.10);
+    background: rgba(15, 23, 42, 0.92);
+    color: rgba(226, 232, 240, 0.72);
+}
+
 .table-overview-list .table-overview-row {
+    position: relative;
+    overflow: hidden;
+    padding: 10px 10px 10px 14px;
+    border: none;
+    border-radius: 0;
+    background: transparent;
     box-shadow: none;
+    transition: border-color 150ms ease, background-color 150ms ease, transform 150ms ease;
+    cursor: pointer;
+}
+
+.table-overview-list .table-overview-row::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    border-left: 3px solid transparent;
+    pointer-events: none;
 }
 
 .table-overview-list .table-overview-row:hover {
-    box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04);
+    background: rgba(248, 250, 252, 0.98);
+    transform: translateY(-1px);
+}
+
+.table-overview-list .table-overview-row.is-selected {
+    background: rgba(239, 246, 255, 0.95);
+}
+
+.table-overview-list .table-overview-row.is-selected::before {
+    border-left-color: rgba(59, 130, 246, 0.72);
+}
+
+body[data-theme='dark'] .table-overview-list .table-overview-row {
+    background: rgba(15, 23, 42, 0.40);
+}
+
+body[data-theme='dark'] .table-overview-list .table-overview-row:hover {
+    background: rgba(15, 23, 42, 0.60);
+}
+
+body[data-theme='dark'] .table-overview-list .table-overview-row.is-selected {
+    background: rgba(30, 41, 59, 0.74);
+}
+
+.table-overview-selection-cell {
+    display: grid;
+    place-items: center;
+}
+
+.table-overview-object-cell {
+    min-width: 0;
+}
+
+.table-overview-name-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+}
+
+.table-overview-object-icon {
+    flex: 0 0 auto;
+    color: #1677ff;
+}
+
+.table-overview-object-name {
+    min-width: 0;
+    overflow: hidden;
+    color: rgba(15, 23, 42, 0.92);
+    font-size: 13px;
+    font-weight: 600;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-theme='dark'] .table-overview-object-name {
+    color: rgba(255, 255, 255, 0.88);
+}
+
+.table-overview-engine-tag {
+    flex: 0 0 auto;
+    padding: 1px 6px;
+    border-radius: 999px;
+    background: rgba(148, 163, 184, 0.16);
+    color: rgba(71, 85, 105, 0.95);
+    font-size: 11px;
+}
+
+body[data-theme='dark'] .table-overview-engine-tag {
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(226, 232, 240, 0.72);
+}
+
+.table-overview-object-meta {
+    margin-top: 4px;
+    overflow: hidden;
+    color: rgba(100, 116, 139, 0.96);
+    font-size: 12px;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-theme='dark'] .table-overview-object-meta {
+    color: rgba(226, 232, 240, 0.58);
+}
+
+.table-overview-metric {
+    overflow: hidden;
+    color: rgba(15, 23, 42, 0.9);
+    font-variant-numeric: tabular-nums;
+    font-size: 12px;
+    font-weight: 600;
+    text-align: right;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+body[data-theme='dark'] .table-overview-metric {
+    color: rgba(255, 255, 255, 0.82);
 }
 
 /* professional sidebar tree */
