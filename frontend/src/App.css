@@ -427,7 +427,7 @@ body[data-theme='dark'] .table-overview-frame {
 .table-overview-body {
     display: grid;
     gap: 4px;
-    padding: 4px;
+    padding: 0 4px 4px;
 }
 
 .table-overview-header,
@@ -438,7 +438,8 @@ body[data-theme='dark'] .table-overview-frame {
 }
 
 .table-overview-header {
-    padding: 8px 14px;
+    margin: 4px 4px 0;
+    padding: 8px 10px 8px 14px;
     border-bottom: 1px solid rgba(148, 163, 184, 0.18);
     border-radius: 0;
     background: rgba(248, 250, 252, 0.96);
@@ -446,6 +447,10 @@ body[data-theme='dark'] .table-overview-frame {
     font-size: 12px;
     font-weight: 600;
     letter-spacing: 0.02em;
+}
+
+.table-overview-header-cell {
+    text-align: right;
 }
 
 body[data-theme='dark'] .table-overview-header {
