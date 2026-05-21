@@ -7,9 +7,11 @@ export const resolveVirtualHorizontalElements = (tableContainer: HTMLElement) =>
 
 export const readVirtualHorizontalOffset = (tableContainer: HTMLElement): number => {
     const { innerEl, headerEl } = resolveVirtualHorizontalElements(tableContainer);
+    const holderEl = tableContainer.querySelector('.ant-table-tbody-virtual-holder') as HTMLElement | null;
     const marginLeft = innerEl ? Math.abs(parseFloat(innerEl.style.marginLeft) || 0) : 0;
     const headerLeft = headerEl ? Math.max(0, headerEl.scrollLeft) : 0;
-    return Math.max(marginLeft, headerLeft);
+    const holderLeft = holderEl ? Math.max(0, holderEl.scrollLeft) : 0;
+    return Math.max(marginLeft, headerLeft, holderLeft);
 };
 
 export const applyVirtualHorizontalOffset = ({
@@ -42,6 +44,51 @@ export const applyVirtualHorizontalOffset = ({
         cancelable: true,
     }));
     return true;
+};
+
+export const resolveDataGridHorizontalFocusOffset = ({
+    columnWidths,
+    columnIndex,
+    selectionColumnWidth,
+    viewportWidth,
+    currentOffset,
+    tableScrollX,
+    edgePadding = 8,
+}: {
+    columnWidths: number[];
+    columnIndex: number;
+    selectionColumnWidth: number;
+    viewportWidth: number;
+    currentOffset: number;
+    tableScrollX: number;
+    edgePadding?: number;
+}): number => {
+    const safeViewportWidth = Math.max(0, Math.floor(viewportWidth));
+    const maxScroll = Math.max(0, Math.ceil(tableScrollX) - safeViewportWidth);
+    const safeCurrentOffset = Math.max(0, Math.min(maxScroll, currentOffset));
+    if (safeViewportWidth <= 0 || columnWidths.length === 0) {
+        return safeCurrentOffset;
+    }
+
+    const safeColumnIndex = Math.max(0, Math.min(columnWidths.length - 1, Math.floor(columnIndex)));
+    const safeSelectionColumnWidth = Math.max(0, selectionColumnWidth);
+    const safeEdgePadding = Math.max(0, Math.min(Math.floor(edgePadding), Math.floor(safeViewportWidth / 3)));
+    const columnLeft = columnWidths
+        .slice(0, safeColumnIndex)
+        .reduce((sum, width) => sum + Math.max(0, Math.ceil(width)), safeSelectionColumnWidth);
+    const columnWidth = Math.max(1, Math.ceil(columnWidths[safeColumnIndex] || 0));
+    const columnRight = columnLeft + columnWidth;
+    const visibleLeft = safeCurrentOffset + safeEdgePadding;
+    const visibleRight = safeCurrentOffset + safeViewportWidth - safeEdgePadding;
+
+    let nextOffset = safeCurrentOffset;
+    if (columnLeft < visibleLeft) {
+        nextOffset = columnLeft - safeEdgePadding;
+    } else if (columnRight > visibleRight) {
+        nextOffset = columnRight - safeViewportWidth + safeEdgePadding;
+    }
+
+    return Math.max(0, Math.min(maxScroll, Math.round(nextOffset)));
 };
 
 export const pickHorizontalScrollTargets = (tableContainer: HTMLElement): HTMLElement[] => {

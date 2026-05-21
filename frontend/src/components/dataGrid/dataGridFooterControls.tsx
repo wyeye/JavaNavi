@@ -52,6 +52,8 @@ export type DataGridFooterControlsProps = {
 export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (props) => {
     const language = useStore(state => state.language);
     const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
+    const hasPageFindText = props.normalizedPageFindText.length > 0;
+    const hasPageFindMatches = hasPageFindText && props.pageFindMatchesLength > 0;
     const findPositionPrefix = props.pageFindMatchesLength > 0
         ? t('dataGrid.footer.findPositionPrefix', { position: props.activePageFindPosition, total: props.pageFindMatchesLength })
         : '';
@@ -74,35 +76,44 @@ export const DataGridFooterControls: React.FC<DataGridFooterControlsProps> = (pr
                         {t('dataGrid.footer.viewDdl')}
                     </Button>
                 )}
-                <Tooltip title={t('dataGrid.footer.findTooltip')}>
-                    <div className="data-grid-footer-find" data-grid-page-find="true">
-                        <Input
-                            {...props.noAutoCapInputProps}
-                            allowClear
-                            size="small"
-                            prefix={<SearchOutlined />}
-                            placeholder={t('dataGrid.footer.findPlaceholder')}
-                            value={props.pageFindText}
-                            onChange={(event) => props.onPageFindTextChange(event.target.value)}
-                            className="data-grid-footer-find-input"
-                        />
-                        <Button className="data-grid-footer-button" data-grid-page-find-prev="true" size="small" icon={<LeftOutlined />} disabled={props.pageFindMatchesLength === 0} onClick={() => props.onNavigatePageFind('previous')}>
-                            {t('dataGrid.footer.previous')}
-                        </Button>
-                        <Button className="data-grid-footer-button" data-grid-page-find-next="true" size="small" icon={<RightOutlined />} disabled={props.pageFindMatchesLength === 0} onClick={() => props.onNavigatePageFind('next')}>
-                            {t('dataGrid.footer.next')}
-                        </Button>
-                        {props.normalizedPageFindText && (
-                            <span className="data-grid-footer-find-summary" aria-live="polite">
-                                {t('dataGrid.footer.findSummary', {
-                                    positionPrefix: findPositionPrefix,
-                                    occurrenceCount: props.pageFindSummary.occurrenceCount,
-                                    cellCount: props.pageFindSummary.matchedCellCount,
-                                })}
-                            </span>
-                        )}
-                    </div>
-                </Tooltip>
+                <div className="data-grid-footer-find" data-grid-page-find="true">
+                    <Tooltip title={t('dataGrid.footer.findTooltip')}>
+                        <div className="data-grid-footer-find-shell">
+                            <div className="data-grid-footer-find-field">
+                                <SearchOutlined className="data-grid-footer-find-icon" aria-hidden="true" />
+                                <Input
+                                    {...props.noAutoCapInputProps}
+                                    allowClear
+                                    bordered={false}
+                                    size="small"
+                                    placeholder={t('dataGrid.footer.findPlaceholder')}
+                                    value={props.pageFindText}
+                                    onChange={(event) => props.onPageFindTextChange(event.target.value)}
+                                    className="data-grid-footer-find-input"
+                                />
+                            </div>
+                            {hasPageFindMatches && (
+                                <div className="data-grid-footer-find-nav">
+                                    <Button className="data-grid-footer-button" data-grid-page-find-prev="true" size="small" icon={<LeftOutlined />} onClick={() => props.onNavigatePageFind('previous')}>
+                                        {t('dataGrid.footer.previous')}
+                                    </Button>
+                                    <Button className="data-grid-footer-button" data-grid-page-find-next="true" size="small" icon={<RightOutlined />} onClick={() => props.onNavigatePageFind('next')}>
+                                        {t('dataGrid.footer.next')}
+                                    </Button>
+                                </div>
+                            )}
+                        </div>
+                    </Tooltip>
+                    {hasPageFindText && (
+                        <span className="data-grid-footer-find-summary" aria-live="polite">
+                            {t('dataGrid.footer.findSummary', {
+                                positionPrefix: findPositionPrefix,
+                                occurrenceCount: props.pageFindSummary.occurrenceCount,
+                                cellCount: props.pageFindSummary.matchedCellCount,
+                            })}
+                        </span>
+                    )}
+                </div>
             </div>
             <div className="data-grid-footer-view" data-grid-view-switcher="true">
                 <span className="data-grid-footer-view-label">{t('dataGrid.footer.resultView')}</span>

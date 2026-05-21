@@ -2,6 +2,7 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, useDeferredValue } from 'react';
 import { Table, message, Input, Button, MenuProps, Form, Modal, Checkbox, Tooltip, DatePicker, TimePicker } from 'antd';
 import type { ModalFunc } from 'antd/es/modal/confirm';
+import type { TableRef } from 'antd/es/table';
 import dayjs from 'dayjs';
 import type { FilterValue, SorterResult, SortOrder, TablePaginationConfig, ColumnType } from 'antd/es/table/interface';
 import { ExportOutlined, CopyOutlined } from '@ant-design/icons';
@@ -148,6 +149,7 @@ import {
     pickVerticalScrollTarget,
     pickVirtualHorizontalFallbackTargets,
     readVirtualHorizontalOffset,
+    resolveDataGridHorizontalFocusOffset,
     resolveHorizontalWheelDelta,
 } from './dataGrid/dataGridScrollSync';
 import { translate, type I18nKey } from '../i18n';
@@ -266,6 +268,7 @@ const VIRTUAL_CELL_WRAPPER_STYLE: React.CSSProperties = {
   padding: '8px 8px 8px 8px',
   fontWeight: DATA_GRID_BODY_FONT_WEIGHT,
 };
+const PAGE_FIND_VERTICAL_OFFSET_ROWS = 1;
 
 const DataGrid: React.FC<DataGridProps> = ({
     data, columnNames, loading, tableName, exportScope = 'table', resultSql, dbName, connectionId, pkColumns = [], editLocator, readOnly = false,
@@ -532,6 +535,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   }, []);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const tableRef = useRef<TableRef | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
   const tableScrollTargetsRef = useRef<HTMLElement[]>([]);
   const externalHorizontalScrollRef = useRef<HTMLDivElement | null>(null);
@@ -2549,6 +2553,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                       <div
                           className="data-grid-cell-virtual-wrap"
                           style={VIRTUAL_CELL_WRAPPER_STYLE}
+                          onDoubleClick={() => handleVirtualCellActivate(record, dataIndex, dataIndex)}
                           onContextMenu={(e) => {
                               e.preventDefault();
                               e.stopPropagation();
@@ -3588,7 +3593,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const tableScrollConfig = useMemo(() => ({ x: tableScrollX, y: tableHeight }), [tableScrollX, tableHeight]);
   const tableComponents = useMemo(() => {
       const body: NonNullable<DataGridTableComponents['body']> = {};
-      if (enableInlineEditableCell) {
+      if (!enableVirtual && enableInlineEditableCell) {
           body.cell = EditableCell;
       }
       if (useContextMenuRow) {
@@ -3597,12 +3602,85 @@ const DataGrid: React.FC<DataGridProps> = ({
       return Object.keys(body).length > 0
           ? { body, header: { cell: SortableHeaderCell } }
           : { header: { cell: SortableHeaderCell } };
-  }, [enableInlineEditableCell, useContextMenuRow]);
+  }, [enableInlineEditableCell, enableVirtual, useContextMenuRow]);
   const tableOnRow = useMemo(() => (useContextMenuRow ? rowPropsFactory : undefined), [useContextMenuRow, rowPropsFactory]);
 
   const applyVirtualHorizontalOffset = useCallback((tableContainer: HTMLElement, nextOffset: number) => {
       return applyVirtualHorizontalOffsetHelper({ tableContainer, nextOffset, tableScrollX });
   }, [tableScrollX]);
+
+  const syncExternalHorizontalScrollPosition = useCallback((nextScrollLeft: number) => {
+      const tableContainer = tableContainerRef.current;
+      const externalScroll = externalHorizontalScrollRef.current;
+      if (!(tableContainer instanceof HTMLElement)) return;
+
+      if (enableVirtual) {
+          const fallbackTargets = pickVirtualHorizontalFallbackTargets(tableContainer);
+          fallbackTargets.forEach((target) => {
+              if (Math.abs(target.scrollLeft - nextScrollLeft) > 1) {
+                  target.scrollLeft = nextScrollLeft;
+              }
+          });
+      } else {
+          pickHorizontalScrollTargets(tableContainer).forEach((target) => {
+              if (Math.abs(target.scrollLeft - nextScrollLeft) > 1) {
+                  target.scrollLeft = nextScrollLeft;
+              }
+          });
+      }
+
+      lastTableScrollLeftRef.current = nextScrollLeft;
+      if (externalScroll instanceof HTMLDivElement && Math.abs(externalScroll.scrollLeft - nextScrollLeft) > 1) {
+          externalScroll.scrollLeft = nextScrollLeft;
+      }
+      lastExternalScrollLeftRef.current = nextScrollLeft;
+      const nextSnapshot = { ...lastReportedScrollRef.current, left: nextScrollLeft };
+      lastReportedScrollRef.current = nextSnapshot;
+      onScrollSnapshotChange?.(nextSnapshot);
+  }, [enableVirtual, onScrollSnapshotChange, pickHorizontalScrollTargets]);
+
+  const focusPageFindHorizontalPosition = useCallback((match: DataGridFindMatch): number | null => {
+      const tableContainer = tableContainerRef.current;
+      if (!(tableContainer instanceof HTMLElement)) return null;
+
+      const horizontalViewport = (
+          tableContainer.querySelector('.ant-table-tbody-virtual-holder') ||
+          tableContainer.querySelector('.rc-virtual-list-holder') ||
+          tableContainer.querySelector('.ant-table-body') ||
+          tableContainer.querySelector('.ant-table-content') ||
+          tableContainer
+      ) as HTMLElement;
+      const viewportWidth = horizontalViewport.clientWidth || tableViewportWidth;
+      const columnWidths = columns.map((col) => Number(col.width) || defaultColumnWidth);
+      const currentOffset = enableVirtual
+          ? readVirtualHorizontalOffset(tableContainer)
+          : (pickHorizontalScrollTargets(tableContainer)[0]?.scrollLeft ?? 0);
+      const nextScrollLeft = resolveDataGridHorizontalFocusOffset({
+          columnWidths,
+          columnIndex: match.columnIndex,
+          selectionColumnWidth,
+          viewportWidth: viewportWidth || tableViewportWidth,
+          currentOffset,
+          tableScrollX,
+      });
+
+      if (enableVirtual) {
+          applyVirtualHorizontalOffset(tableContainer, nextScrollLeft);
+      }
+      syncExternalHorizontalScrollPosition(nextScrollLeft);
+      return nextScrollLeft;
+  }, [
+      applyVirtualHorizontalOffset,
+      columns,
+      defaultColumnWidth,
+      enableVirtual,
+      pickHorizontalScrollTargets,
+      readVirtualHorizontalOffset,
+      selectionColumnWidth,
+      syncExternalHorizontalScrollPosition,
+      tableScrollX,
+      tableViewportWidth,
+  ]);
 
   const focusPageFindMatch = useCallback((match: DataGridFindMatch) => {
       if (!match) return;
@@ -3624,6 +3702,8 @@ const DataGrid: React.FC<DataGridProps> = ({
           updateFocusedCell(targetRow, match.columnName);
       }
 
+      const nextScrollLeft = focusPageFindHorizontalPosition(match);
+
       const applyVisibleFocus = () => {
           const root = containerRef.current;
           if (!root) return false;
@@ -3633,11 +3713,11 @@ const DataGrid: React.FC<DataGridProps> = ({
           }) as HTMLElement | undefined;
           updateCellSelection(nextSelection);
           if (!cell) return false;
-          cell.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
+          if (nextScrollLeft !== null) {
+              syncExternalHorizontalScrollPosition(nextScrollLeft);
+          }
           return true;
       };
-
-      if (applyVisibleFocus()) return;
 
       const tableContainer = tableContainerRef.current;
       if (tableContainer instanceof HTMLElement) {
@@ -3645,9 +3725,16 @@ const DataGrid: React.FC<DataGridProps> = ({
           if (verticalTarget) {
               const firstCell = tableContainer.querySelector('.ant-table-cell[data-row-key]') as HTMLElement | null;
               const rowHeight = Math.max(24, Math.ceil(firstCell?.getBoundingClientRect().height || 38));
-              verticalTarget.scrollTop = Math.max(0, (match.rowIndex - 1) * rowHeight);
+              const nextScrollTop = Math.max(0, (match.rowIndex - PAGE_FIND_VERTICAL_OFFSET_ROWS) * rowHeight);
+              verticalTarget.scrollTop = nextScrollTop;
+              const nextSnapshot = { top: nextScrollTop, left: lastReportedScrollRef.current.left };
+              lastReportedScrollRef.current = nextSnapshot;
+              onScrollSnapshotChange?.(nextSnapshot);
           }
       }
+      tableRef.current?.scrollTo({ index: match.rowIndex });
+
+      if (applyVisibleFocus()) return;
 
       requestAnimationFrame(() => {
           if (applyVisibleFocus()) return;
@@ -3655,7 +3742,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               applyVisibleFocus();
           });
       });
-  }, [mergedDisplayData, pickVerticalScrollTarget, rowKeyStr, updateCellSelection, updateFocusedCell]);
+  }, [focusPageFindHorizontalPosition, mergedDisplayData, onScrollSnapshotChange, pickVerticalScrollTarget, rowKeyStr, syncExternalHorizontalScrollPosition, updateCellSelection, updateFocusedCell]);
 
   const handleNavigatePageFind = useCallback((direction: DataGridFindNavigationDirection) => {
       const nextIndex = resolveDataGridFindNavigationIndex(activePageFindMatchIndex, pageFindMatches.length, direction);
@@ -4131,6 +4218,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                 void message.info(next ? t('dataGrid.cellEdit.entered') : t('dataGrid.cellEdit.exited')).then();
             }}
             selectedCellsCount={selectedCells.size}
+            cellEditPasteTargetRowCount={copiedCellPatch ? selectedRowKeys.filter((key) => rowKeyStr(key) !== copiedCellPatch.sourceRowKey).length : 0}
             handleCopySelectedCellsToClipboard={handleCopySelectedCellsToClipboard}
             handleCopySelectedColumnsFromRow={handleCopySelectedColumnsFromRow}
             openBatchFillModal={() => {
@@ -4157,7 +4245,6 @@ const DataGrid: React.FC<DataGridProps> = ({
             canExport={canExport}
             handleImport={handleImport}
             exportMenu={exportMenu}
-            darkMode={darkMode}
             getAiSampleData={() => toJsonViewRows(mergedDisplayData.slice(0, 10))}
             getStoreState={() => useStore.getState()}
             prefersManualTotalCount={prefersManualTotalCount}
@@ -4434,6 +4521,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                                     <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
                                         <SortableContext items={displayColumnNames} strategy={horizontalListSortingStrategy}>
                                             <Table
+                                                ref={tableRef}
                                                 components={tableComponents}
                                                 dataSource={tableRenderData}
                                                 columns={mergedColumns}

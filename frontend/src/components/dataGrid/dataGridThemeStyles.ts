@@ -153,7 +153,6 @@ export const buildDataGridCssText = ({
         floatingScrollbarThumbShadow,
         verticalScrollbarTrackBg,
         horizontalScrollbarThumbBg,
-        toolbarDividerColor,
         paginationShellBg,
         paginationShellBorderColor,
         paginationShellShadow,
@@ -170,18 +169,27 @@ export const buildDataGridCssText = ({
     } = themeStyles;
 
     return `
-                .${gridId} .data-grid-toolbar-scroll > * {
-                    flex-shrink: 0;
-                }
-                .${gridId} .data-grid-toolbar-scroll::-webkit-scrollbar {
-                    height: 7px;
-                }
-                .${gridId} .data-grid-toolbar-scroll::-webkit-scrollbar-thumb {
-                    background: ${darkMode ? 'rgba(255,255,255,0.28)' : 'rgba(0,0,0,0.22)'};
-                    border-radius: 999px;
-                }
-                .${gridId} .data-grid-toolbar-scroll::-webkit-scrollbar-track {
+                .${gridId} .data-grid-toolbar-scroll {
+                    display: grid;
+                    grid-template-columns: minmax(0, auto) minmax(0, 1fr) auto;
+                    align-items: center;
+                    gap: 10px;
+                    min-width: 0;
+                    border: none;
+                    border-radius: 0;
                     background: transparent;
+                    overflow: visible;
+                    box-sizing: border-box;
+                }
+                .${gridId} .data-grid-toolbar-scroll > * {
+                    min-width: 0;
+                }
+                .${gridId} .data-grid-toolbar-main {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    min-width: 0;
+                    flex-wrap: wrap;
                 }
                 .${gridId} .ant-table,
                 .${gridId} .ant-table-wrapper,
@@ -404,25 +412,67 @@ export const buildDataGridCssText = ({
                     box-shadow: ${floatingScrollbarThumbShadow};
                 }
                 .${gridId} .data-grid-toolbar-button {
-                    border-radius: 8px !important;
+                    min-height: 32px;
+                    border-radius: 9px !important;
                     box-shadow: none !important;
-                    font-weight: 500;
+                    font-weight: 600;
+                }
+                .${gridId} .data-grid-toolbar-button-strong {
+                    border-color: ${darkMode ? 'rgba(96, 165, 250, 0.50)' : 'rgba(37, 99, 235, 0.42)'} !important;
+                }
+                .${gridId} .data-grid-toolbar-button-danger-soft:not(:hover) {
+                    background: ${darkMode ? 'rgba(239, 68, 68, 0.10)' : 'rgba(254, 242, 242, 0.96)'} !important;
+                    border-color: ${darkMode ? 'rgba(248, 113, 113, 0.28)' : 'rgba(252, 165, 165, 0.58)'} !important;
                 }
                 .${gridId} .data-grid-toolbar-divider {
                     width: 1px;
-                    height: 20px;
-                    margin: 0 6px;
+                    height: 18px;
+                    margin: 0 2px;
                     flex: 0 0 auto;
                 }
-                .${gridId} .data-grid-ai-insight-button {
-                    background: ${darkMode ? 'rgba(16,185,129,0.12)' : 'rgba(236, 253, 245, 0.96)'} !important;
-                    border-color: ${darkMode ? 'rgba(16,185,129,0.32)' : 'rgba(16,185,129,0.36)'} !important;
-                    color: #059669 !important;
-                    font-weight: 700 !important;
+                .${gridId} .data-grid-toolbar-status {
+                    overflow: hidden;
+                    color: ${paginationSecondaryTextColor};
+                    font-size: 12px;
+                    line-height: 1.4;
+                    white-space: nowrap;
+                    text-overflow: ellipsis;
                 }
-                .${gridId} .data-grid-ai-insight-button:hover {
-                    background: ${darkMode ? 'rgba(16,185,129,0.20)' : 'rgba(209, 250, 229, 0.98)'} !important;
-                    border-color: #10b981 !important;
+                .${gridId} .data-grid-toolbar-status-danger {
+                    color: ${darkMode ? '#fca5a5' : '#b91c1c'};
+                    font-weight: 600;
+                }
+                .${gridId} .data-grid-toolbar-more-button {
+                    justify-self: end;
+                }
+                .data-grid-toolbar-more-panel {
+                    display: flex;
+                    flex-direction: column;
+                    gap: 2px;
+                    min-width: 176px;
+                    padding: 4px;
+                }
+                .data-grid-toolbar-menu-button {
+                    justify-content: flex-start !important;
+                    height: 32px;
+                    padding: 0 10px !important;
+                    border-radius: 8px !important;
+                    font-weight: 500;
+                    text-align: left;
+                }
+                .data-grid-toolbar-menu-button > span:not(.anticon) {
+                    flex: 1 1 auto;
+                    min-width: 0;
+                    text-align: left;
+                }
+                .data-grid-toolbar-menu-caret {
+                    margin-left: auto;
+                    font-size: 10px;
+                    color: ${paginationSecondaryTextColor};
+                }
+                .data-grid-toolbar-menu-ai {
+                    color: #059669 !important;
+                    font-weight: 700;
                 }
                 .${gridId} .data-grid-footer-actions {
                     display: grid;
@@ -443,16 +493,63 @@ export const buildDataGridCssText = ({
                 .${gridId} .data-grid-footer-find {
                     justify-content: center;
                 }
+                .${gridId} .data-grid-footer-find-shell {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    min-width: 0;
+                    padding: 4px 8px 4px 10px;
+                    border: 1px solid ${paginationChipBorderColor};
+                    border-radius: 999px;
+                    background: ${paginationChipBg};
+                    box-shadow: ${paginationShellShadow};
+                    transition: border-color 0.15s ease, background 0.15s ease, box-shadow 0.15s ease;
+                }
+                .${gridId} .data-grid-footer-find-shell:focus-within {
+                    border-color: ${paginationAccentBorderColor};
+                    background: ${paginationHoverBg};
+                    box-shadow: 0 0 0 2px ${paginationAccentBg}, ${paginationShellShadow};
+                }
+                .${gridId} .data-grid-footer-find-field {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    min-width: 0;
+                }
+                .${gridId} .data-grid-footer-find-icon {
+                    color: ${paginationSecondaryTextColor};
+                    font-size: 13px;
+                    flex: 0 0 auto;
+                }
                 .${gridId} .data-grid-footer-view {
                     justify-content: flex-end;
                     color: ${paginationSecondaryTextColor};
                 }
                 .${gridId} .data-grid-footer-button {
-                    border-radius: 8px !important;
+                    border-radius: 999px !important;
                     box-shadow: none !important;
                 }
+                .${gridId} .data-grid-footer-find-shell .ant-input-affix-wrapper {
+                    padding: 0;
+                    border: 0;
+                    background: transparent;
+                    box-shadow: none;
+                }
+                .${gridId} .data-grid-footer-find-shell .ant-input,
+                .${gridId} .data-grid-footer-find-shell .ant-input-affix-wrapper input {
+                    height: 24px;
+                    padding: 0;
+                    background: transparent;
+                    color: ${paginationPrimaryTextColor};
+                }
                 .${gridId} .data-grid-footer-find-input {
-                    width: min(280px, 28vw);
+                    width: min(240px, 24vw);
+                }
+                .${gridId} .data-grid-footer-find-nav {
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 6px;
+                    flex: 0 0 auto;
                 }
                 .${gridId} .data-grid-footer-find-summary,
                 .${gridId} .data-grid-footer-view-label {
@@ -467,16 +564,24 @@ export const buildDataGridCssText = ({
                     min-width: 0;
                 }
                 @media (max-width: 1180px) {
+                    .${gridId} .data-grid-toolbar-scroll,
                     .${gridId} .data-grid-footer-actions {
                         grid-template-columns: 1fr;
+                    }
+                    .${gridId} .data-grid-toolbar-more-button {
+                        justify-self: start;
                     }
                     .${gridId} .data-grid-footer-find,
                     .${gridId} .data-grid-footer-view,
                     .${gridId} .data-grid-pagination-wrap {
                         justify-content: flex-start;
                     }
+                    .${gridId} .data-grid-footer-find-shell {
+                        width: 100%;
+                        max-width: 100%;
+                    }
                     .${gridId} .data-grid-footer-find-input {
-                        width: 220px;
+                        width: 100%;
                     }
                 }
                 .${gridId} .data-grid-external-horizontal-scroll {

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import type { MenuProps } from 'antd';
 import type { DataGridJsonValue } from './dataGridValue';
-import { Button, Dropdown, Tooltip } from 'antd';
+import { Button, Dropdown, Popover, Tooltip } from 'antd';
 import {
     CloseOutlined,
     CopyOutlined,
@@ -11,6 +11,7 @@ import {
     ExportOutlined,
     FilterOutlined,
     ImportOutlined,
+    MoreOutlined,
     PlusOutlined,
     ReloadOutlined,
     RobotOutlined,
@@ -39,6 +40,7 @@ export type DataGridToolbarProps = {
     cellEditMode: boolean;
     toggleCellEditMode: () => void;
     selectedCellsCount: number;
+    cellEditPasteTargetRowCount: number;
     handleCopySelectedCellsToClipboard: () => void;
     handleCopySelectedColumnsFromRow: () => void;
     openBatchFillModal: () => void;
@@ -57,7 +59,6 @@ export type DataGridToolbarProps = {
     canExport: boolean;
     handleImport: () => void;
     exportMenu: MenuProps['items'];
-    darkMode: boolean;
     getAiSampleData: () => DataGridJsonValue[];
     getStoreState: () => { aiPanelVisible: boolean; setAIPanelVisible: (visible: boolean) => void };
     prefersManualTotalCount: boolean;
@@ -70,167 +71,243 @@ export type DataGridToolbarProps = {
     toolbarDividerColor: string;
 };
 
+type ToolbarMode = 'counting' | 'changed' | 'cell-edit' | 'table';
+
+type ToolbarAction = {
+    key: string;
+    node: React.ReactNode;
+};
+
+const createDivider = (key: string, color: string) => (
+    <div key={key} className="data-grid-toolbar-divider" style={{ background: color }} />
+);
+
 export const DataGridToolbar: React.FC<DataGridToolbarProps> = (props) => {
     const language = useStore(state => state.language);
     const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
+
+    const toolbarMode: ToolbarMode = props.totalCountLoading
+        ? 'counting'
+        : props.hasChanges
+            ? 'changed'
+            : props.cellEditMode
+                ? 'cell-edit'
+                : 'table';
+
+    const hasSelectedRows = props.selectedRowCount > 0;
+    const hasCopiedRows = props.copiedRowsForPasteCount > 0;
+    const hasSelectedCells = props.selectedCellsCount > 0;
+    const canPasteCopiedColumns = props.hasCopiedCellPatch && props.cellEditPasteTargetRowCount > 0;
+
+    const runAiInsight = () => {
+        const sampleData = props.getAiSampleData();
+        const prompt = t('dataGrid.toolbar.aiInsightPrompt', {
+            count: sampleData.length,
+            json: JSON.stringify(sampleData, null, 2),
+        });
+        const store = props.getStoreState();
+        const wasClosed = !store.aiPanelVisible;
+        if (wasClosed) store.setAIPanelVisible(true);
+        // 如果面板刚打开，需要等待组件挂载完成后再注入 prompt
+        setTimeout(() => {
+            window.dispatchEvent(new CustomEvent('javanavi:ai:inject-prompt', { detail: { prompt } }));
+        }, wasClosed ? 350 : 0);
+    };
+
+    const primaryActions: ToolbarAction[] = [];
+
+    if (props.onReload) {
+        primaryActions.push({
+            key: 'reload',
+            node: <Button className="data-grid-toolbar-button" icon={<ReloadOutlined />} disabled={props.loading} onClick={props.onReloadClick}>{t('dataGrid.toolbar.reload')}</Button>,
+        });
+    }
+
+    if (props.onToggleFilter) {
+        primaryActions.push({
+            key: 'filter',
+            node: (
+                <Button
+                    className="data-grid-toolbar-button"
+                    icon={<FilterOutlined />}
+                    type={props.showFilter ? 'primary' : 'default'}
+                    onClick={() => {
+                        props.onToggleFilter?.();
+                        if (props.filterConditionsLength === 0 && !props.showFilter) props.addFilter();
+                    }}
+                >
+                    {t('dataGrid.toolbar.filter')}
+                </Button>
+            ),
+        });
+    }
+
+    if (toolbarMode === 'counting') {
+        primaryActions.push({
+            key: 'cancel-count',
+            node: (
+                <Tooltip title={t('dataGrid.toolbar.cancelCountTooltip')}>
+                    <Button
+                        className="data-grid-toolbar-button data-grid-toolbar-button-strong"
+                        icon={<CloseOutlined />}
+                        onClick={() => props.onCancelTotalCount?.()}
+                    >
+                        {t('dataGrid.toolbar.cancelCount')}
+                    </Button>
+                </Tooltip>
+            ),
+        });
+    }
+
+    if (toolbarMode === 'changed') {
+        primaryActions.push({
+            key: 'commit',
+            node: <Button className="data-grid-toolbar-button data-grid-toolbar-button-strong" icon={<SaveOutlined />} type="primary" disabled={!props.hasChanges || props.commitLoading} loading={props.commitLoading} onClick={props.handleCommit}>{t('dataGrid.toolbar.commit', { count: props.changeCount })}</Button>,
+        });
+        primaryActions.push({
+            key: 'rollback',
+            node: <Button className="data-grid-toolbar-button data-grid-toolbar-button-danger-soft" icon={<UndoOutlined />} onClick={props.onRollback}>{t('dataGrid.toolbar.rollback')}</Button>,
+        });
+    }
+
+    if (toolbarMode === 'cell-edit') {
+        if (canPasteCopiedColumns) {
+            primaryActions.push({
+                key: 'paste-cell-patch',
+                node: (
+                    <Button
+                        className="data-grid-toolbar-button data-grid-toolbar-button-strong"
+                        icon={<VerticalAlignBottomOutlined />}
+                        onClick={props.handlePasteCopiedColumnsToSelectedRows}
+                    >
+                        {t('dataGrid.toolbar.pasteToSelectedRows', { count: props.cellEditPasteTargetRowCount })}
+                    </Button>
+                ),
+            });
+        } else if (hasSelectedCells) {
+            primaryActions.push({
+                key: 'copy-cells',
+                node: <Button className="data-grid-toolbar-button" icon={<CopyOutlined />} onClick={props.handleCopySelectedCellsToClipboard}>{t('dataGrid.toolbar.copySelection', { count: props.selectedCellsCount })}</Button>,
+            });
+            primaryActions.push({
+                key: 'copy-column-values',
+                node: <Button className="data-grid-toolbar-button" icon={<CopyOutlined />} onClick={props.handleCopySelectedColumnsFromRow}>{t('dataGrid.toolbar.copySelectionColumns', { count: props.selectedCellsCount })}</Button>,
+            });
+            primaryActions.push({
+                key: 'batch-fill',
+                node: <Button className="data-grid-toolbar-button" type="primary" onClick={props.openBatchFillModal}>{t('dataGrid.toolbar.batchFill', { count: props.selectedCellsCount })}</Button>,
+            });
+        }
+
+        primaryActions.push({
+            key: 'commit',
+            node: <Button className="data-grid-toolbar-button data-grid-toolbar-button-strong" icon={<SaveOutlined />} type="primary" disabled={!props.hasChanges || props.commitLoading} loading={props.commitLoading} onClick={props.handleCommit}>{t('dataGrid.toolbar.commit', { count: props.changeCount })}</Button>,
+        });
+    }
+
+    if (toolbarMode === 'table' && props.canModifyData) {
+        if (hasSelectedRows) {
+            primaryActions.push({
+                key: 'copy-rows',
+                node: <Button className="data-grid-toolbar-button" data-grid-copy-row-action="true" icon={<CopyOutlined />} onClick={props.handleCopySelectedRowsForPaste}>{t('dataGrid.toolbar.copyRows')}</Button>,
+            });
+        }
+
+        if (hasCopiedRows) {
+            primaryActions.push({
+                key: 'paste-rows',
+                node: <Button className="data-grid-toolbar-button data-grid-toolbar-button-strong" data-grid-paste-row-action="true" icon={<VerticalAlignBottomOutlined />} onClick={props.handlePasteCopiedRowsAsNew}>{t('dataGrid.toolbar.pasteRows')}</Button>,
+            });
+        }
+
+        if (hasSelectedRows) {
+            primaryActions.push({
+                key: 'delete-selected',
+                node: <Button className="data-grid-toolbar-button data-grid-toolbar-button-danger-soft" icon={<DeleteOutlined />} danger onClick={props.handleDeleteSelected}>{t('dataGrid.toolbar.deleteSelected')}</Button>,
+            });
+        }
+
+        primaryActions.push({
+            key: 'cell-editor',
+            node: <Button className="data-grid-toolbar-button" icon={<EditOutlined />} type={props.cellEditMode ? 'primary' : 'default'} onClick={props.toggleCellEditMode}>{t('dataGrid.toolbar.cellEditor')}</Button>,
+        });
+    }
+
+    const moreContent = (
+        <div className="data-grid-toolbar-more-panel">
+            {props.canModifyData && (
+                <Button type="text" block className="data-grid-toolbar-menu-button" icon={<PlusOutlined />} onClick={props.handleAddRow}>{t('dataGrid.toolbar.addRow')}</Button>
+            )}
+            {props.cellEditMode && props.canModifyData && (
+                <Button type="text" block className="data-grid-toolbar-menu-button" icon={<EditOutlined />} onClick={props.toggleCellEditMode}>{t('dataGrid.toolbar.exitCellEditor')}</Button>
+            )}
+            {props.canImport && (
+                <Button type="text" block className="data-grid-toolbar-menu-button" icon={<ImportOutlined />} onClick={props.handleImport}>{t('dataGrid.toolbar.import')}</Button>
+            )}
+            {props.canExport && (
+                <Dropdown menu={{ items: props.exportMenu }} trigger={['click']} placement="bottomRight">
+                    <Button type="text" block className="data-grid-toolbar-menu-button" icon={<ExportOutlined />}>
+                        <span>{t('dataGrid.toolbar.export')}</span>
+                        <DownOutlined className="data-grid-toolbar-menu-caret" />
+                    </Button>
+                </Dropdown>
+            )}
+            <Button type="text" block className="data-grid-toolbar-menu-button data-grid-toolbar-menu-ai" icon={<RobotOutlined />} onClick={runAiInsight}>{t('dataGrid.toolbar.aiInsight')}</Button>
+            {props.prefersManualTotalCount && props.onRequestTotalCount && (
+                <Button
+                    type="text"
+                    block
+                    className="data-grid-toolbar-menu-button"
+                    icon={<VerticalAlignBottomOutlined />}
+                    disabled={!!props.totalCountLoading}
+                    onClick={props.onRequestTotalCount}
+                >
+                    {t('dataGrid.toolbar.countTotal')}
+                </Button>
+            )}
+        </div>
+    );
+
+    const showChangeSummary = toolbarMode === 'changed' && props.hasChanges;
+    const showSelectedRowsSummary = toolbarMode === 'table' && hasSelectedRows;
+    const showCopiedColumnSummary = toolbarMode === 'cell-edit' && props.hasCopiedCellPatch && !canPasteCopiedColumns;
+    const statusText = showChangeSummary
+        ? `${props.pendingChangesLabel}${props.changeSummaryText || t('dataGrid.toolbar.changeCount', { count: props.changeCount })}`
+        : showSelectedRowsSummary
+            ? t('dataGrid.toolbar.selectedCount', { count: props.selectedRowCount })
+            : showCopiedColumnSummary
+                ? t('dataGrid.toolbar.copiedColumns', { count: props.copiedCellPatchColumnCount })
+                : '';
+
     return (
-        <div className="data-grid-toolbar-scroll" data-grid-primary-actions="true" style={{ padding: props.showFilter ? `${props.panelPaddingY}px ${props.panelPaddingX}px ${props.toolbarBottomPadding}px ${props.panelPaddingX}px` : `${props.panelPaddingY}px ${props.panelPaddingX}px`, border: 'none', borderRadius: 0, background: 'transparent', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'nowrap', minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollbarGutter: 'stable', WebkitOverflowScrolling: 'touch', boxSizing: 'border-box' }}>
-	            {props.onReload && <Button className="data-grid-toolbar-button" icon={<ReloadOutlined />} disabled={props.loading} onClick={props.onReloadClick}>{t('dataGrid.toolbar.reload')}</Button>}
+        <div
+            className="data-grid-toolbar-scroll"
+            data-grid-primary-actions="true"
+            data-grid-toolbar-mode={toolbarMode}
+            style={{
+                padding: props.showFilter ? `${props.panelPaddingY}px ${props.panelPaddingX}px ${props.toolbarBottomPadding}px ${props.panelPaddingX}px` : `${props.panelPaddingY}px ${props.panelPaddingX}px`,
+            }}
+        >
+            <div className="data-grid-toolbar-main">
+                {primaryActions.map((action, index) => (
+                    <React.Fragment key={action.key}>
+                        {index > 0 && createDivider(`${action.key}-divider`, props.toolbarDividerColor)}
+                        {action.node}
+                    </React.Fragment>
+                ))}
+            </div>
 
-	           {props.onToggleFilter && (
-	               <>
-	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
-	                   <Button className="data-grid-toolbar-button" icon={<FilterOutlined />} type={props.showFilter ? 'primary' : 'default'} onClick={() => {
-	                       props.onToggleFilter?.();
-	                       if (props.filterConditionsLength === 0 && !props.showFilter) props.addFilter();
-	                   }}>{t('dataGrid.toolbar.filter')}</Button>
-	               </>
-	           )}
+            {statusText && (
+                <span className={props.riskLevel === 'high' && showChangeSummary ? 'data-grid-toolbar-status data-grid-toolbar-status-danger' : 'data-grid-toolbar-status'} title={statusText}>
+                    {statusText}
+                </span>
+            )}
 
-	           {props.canModifyData && (
-	               <>
-	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
-	                   <Button className="data-grid-toolbar-button" icon={<PlusOutlined />} onClick={props.handleAddRow}>{t('dataGrid.toolbar.addRow')}</Button>
-	                   <Button
-	                       className="data-grid-toolbar-button"
-	                       data-grid-copy-row-action="true"
-	                       icon={<CopyOutlined />}
-	                       disabled={props.selectedRowCount === 0}
-	                       onClick={props.handleCopySelectedRowsForPaste}
-	                   >
-	                       {t('dataGrid.toolbar.copyRows')}
-	                   </Button>
-	                   <Button
-	                       className="data-grid-toolbar-button"
-	                       data-grid-paste-row-action="true"
-	                       icon={<VerticalAlignBottomOutlined />}
-	                       disabled={props.copiedRowsForPasteCount === 0}
-	                       onClick={props.handlePasteCopiedRowsAsNew}
-	                   >
-	                       {props.copiedRowsForPasteCount > 0 ? t('dataGrid.toolbar.pasteRowsWithCount', { count: props.copiedRowsForPasteCount }) : t('dataGrid.toolbar.pasteRows')}
-	                   </Button>
-	                   <Button className="data-grid-toolbar-button" icon={<DeleteOutlined />} danger disabled={props.selectedRowCount === 0} onClick={props.handleDeleteSelected}>{t('dataGrid.toolbar.deleteSelected')}</Button>
-	                   {props.selectedRowCount > 0 && <span style={{ fontSize: '12px', color: '#888' }}>{t('dataGrid.toolbar.selectedCount', { count: props.selectedRowCount })}</span>}
-	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
-	                   <Button
-                            className="data-grid-toolbar-button"
-                            icon={<EditOutlined />}
-                            type={props.cellEditMode ? 'primary' : 'default'}
-                            onClick={props.toggleCellEditMode}
-                        >
-                            {t('dataGrid.toolbar.cellEditor')}
-                        </Button>
-                       {props.cellEditMode && props.selectedCellsCount > 0 && (
-                           <>
-                               <Button
-                                   className="data-grid-toolbar-button"
-                                   icon={<CopyOutlined />}
-                                   onClick={props.handleCopySelectedCellsToClipboard}
-                               >
-                                   {t('dataGrid.toolbar.copySelection', { count: props.selectedCellsCount })}
-                               </Button>
-                               <Button
-                                   className="data-grid-toolbar-button"
-                                   icon={<CopyOutlined />}
-                                   onClick={props.handleCopySelectedColumnsFromRow}
-                               >
-                                   {t('dataGrid.toolbar.copySelectionColumns', { count: props.selectedCellsCount })}
-                               </Button>
-                                <Button
-                                    className="data-grid-toolbar-button"
-                                    type="primary"
-                                    onClick={() => {
-                                        props.openBatchFillModal();
-                                   }}
-                                >
-                                    {t('dataGrid.toolbar.batchFill', { count: props.selectedCellsCount })}
-                                </Button>
-                            </>
-                        )}
-                       {props.cellEditMode && props.hasCopiedCellPatch && (
-                           <>
-                               <Button
-                                   className="data-grid-toolbar-button"
-                                   icon={<VerticalAlignBottomOutlined />}
-                                   disabled={props.selectedRowCount === 0}
-                                   onClick={() => props.handlePasteCopiedColumnsToSelectedRows()}
-                               >
-                                   {t('dataGrid.toolbar.pasteToSelectedRows', { count: props.selectedRowCount })}
-                               </Button>
-                               <span style={{ fontSize: '12px', color: '#888' }}>
-                                   {t('dataGrid.toolbar.copiedColumns', { count: props.copiedCellPatchColumnCount })}
-                               </span>
-                           </>
-                       )}
-	                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
-	                   <Button className="data-grid-toolbar-button" icon={<SaveOutlined />} type="primary" disabled={!props.hasChanges || props.commitLoading} loading={props.commitLoading} onClick={props.handleCommit}>{t('dataGrid.toolbar.commit', { count: props.changeCount })}</Button>
-                       {props.hasChanges && (
-                           <span style={{ fontSize: '12px', color: props.riskLevel === 'high' ? '#cf1322' : '#888' }}>
-                               {props.pendingChangesLabel}{props.changeSummaryText || t('dataGrid.toolbar.changeCount', { count: props.changeCount })}
-                           </span>
-                       )}
-	                   {props.hasChanges && (<Button className="data-grid-toolbar-button" icon={<UndoOutlined />} onClick={() => {
-	                        props.onRollback();
-                   }}>{t('dataGrid.toolbar.rollback')}</Button>)}
-               </>
-           )}
-
-           {(props.canImport || props.canExport) && (
-               <>
-                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
-                   {props.canImport && <Button className="data-grid-toolbar-button" icon={<ImportOutlined />} onClick={props.handleImport}>{t('dataGrid.toolbar.import')}</Button>}
-                   {props.canExport && <Dropdown menu={{ items: props.exportMenu }}><Button className="data-grid-toolbar-button" icon={<ExportOutlined />}>{t('dataGrid.toolbar.export')} <DownOutlined /></Button></Dropdown>}
-               </>
-           )}
-
-           <>
-               <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
-               <Tooltip title={t('dataGrid.toolbar.aiInsightTooltip')}>
-                   <Button
-                       className="data-grid-toolbar-button data-grid-ai-insight-button"
-                       icon={<RobotOutlined />}
-                       onClick={() => {
-                           const sampleData = props.getAiSampleData();
-                           const prompt = t('dataGrid.toolbar.aiInsightPrompt', {
-                               count: sampleData.length,
-                               json: JSON.stringify(sampleData, null, 2),
-                           });
-                           const store = props.getStoreState();
-                           const wasClosed = !store.aiPanelVisible;
-                           if (wasClosed) store.setAIPanelVisible(true);
-                           // 如果面板刚打开，需要等待组件挂载完成后再注入 prompt
-                           setTimeout(() => {
-                               window.dispatchEvent(new CustomEvent('javanavi:ai:inject-prompt', { detail: { prompt } }));
-                           }, wasClosed ? 350 : 0);
-                       }}
-                   >
-                       {t('dataGrid.toolbar.aiInsight')}
-                   </Button>
-               </Tooltip>
-           </>
-
-           {props.prefersManualTotalCount && props.onRequestTotalCount && (
-               <>
-                   <div className="data-grid-toolbar-divider" style={{ background: props.toolbarDividerColor }} />
-                   <Tooltip title={props.totalCountLoading ? t('dataGrid.toolbar.cancelCountTooltip') : t('dataGrid.toolbar.countTotalTooltip')}>
-                       <Button
-                           className="data-grid-toolbar-button"
-                           icon={props.totalCountLoading ? <CloseOutlined /> : <VerticalAlignBottomOutlined />}
-                           onClick={() => {
-                               if (props.totalCountLoading) {
-                                   if (props.onCancelTotalCount) props.onCancelTotalCount();
-                                   return;
-                               }
-                               props.onRequestTotalCount?.();
-                           }}
-                       >
-                           {props.totalCountLoading ? t('dataGrid.toolbar.cancelCount') : t('dataGrid.toolbar.countTotal')}
-                       </Button>
-                   </Tooltip>
-               </>
-           )}
-
-           <div style={{ marginLeft: 'auto' }} />
-	          </div>
+            <Popover content={moreContent} trigger="click" placement="bottomRight">
+                <Button className="data-grid-toolbar-button data-grid-toolbar-more-button" icon={<MoreOutlined />}>
+                    {t('dataGrid.toolbar.more')} <DownOutlined />
+                </Button>
+            </Popover>
+        </div>
     );
 };
