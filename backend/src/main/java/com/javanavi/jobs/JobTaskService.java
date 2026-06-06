@@ -152,29 +152,21 @@ public class JobTaskService {
             body.put("jobId", jobId);
             String sql = sqlText(body);
             String filePath = text(first(body, "filePath", "path"));
-            String current = filePath.isBlank() ? "SQL" : filePath;
             sink.throwIfCancelled();
-            sink.progress(0, 1, current, "Executing SQL file");
-            List<ResultSetDataDto> resultSets;
-            try {
-                resultSets = databaseCompatibility.executeMulti(new QueryRequestDto(
-                        connection(body),
-                        text(body.get("database")),
-                        sql,
-                        null,
-                        null,
-                        jobId
-                ));
-            } catch (RuntimeException error) {
-                sink.throwIfCancelled();
-                throw error;
-            }
+            List<ResultSetDataDto> resultSets = databaseCompatibility.executeMultiWithProgress(new QueryRequestDto(
+                    connection(body),
+                    text(body.get("database")),
+                    sql,
+                    null,
+                    null,
+                    jobId,
+                    false
+            ), sink);
             sink.throwIfCancelled();
             long failed = resultSets.stream().filter(JobTaskService::isFailedStatement).count();
             if (failed > 0) {
                 throw new IllegalStateException(firstFailedMessage(resultSets));
             }
-            sink.progress(1, 1, current, "SQL file executed");
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("operation", "run-sql-file");
             map.put("count", resultSets.size());

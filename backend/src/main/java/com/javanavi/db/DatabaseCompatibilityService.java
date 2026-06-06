@@ -314,6 +314,29 @@ public class DatabaseCompatibilityService {
         }
     }
 
+    public List<ResultSetDataDto> executeMultiWithProgress(QueryRequestDto request, JobProgressSink progress) {
+        rejectUnsupportedNetworkTunnel(request == null ? null : request.connection());
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
+        if (isMongo(request.connection())) {
+            sink.progress(0, 1, "MongoDB", "Executing SQL file");
+            List<ResultSetDataDto> result = requireMongoCompatibilityService().executeMulti(
+                    resolveSavedConnectionSecret(connectionWithRequestedDatabase(request.connection(), request.database())),
+                    request.database(),
+                    request.sql()
+            );
+            sink.progress(1, 1, "MongoDB", messages.message("common.operationSucceeded"));
+            return result;
+        }
+        String queryId = normalizedQueryId(request.queryId());
+        RunningQuery running = registerQuery(queryId);
+        ConnectionConfigDto connectionConfig = connectionWithRequestedDatabase(request.connection(), request.database());
+        try {
+            return withRedactedSqlErrors(() -> withDatabaseConnection(connectionConfig, request.database(), connection -> executeMultiWithProgressOnConnection(connection, request, running, sink)));
+        } finally {
+            runningQueries.remove(queryId, running);
+        }
+    }
+
     public boolean cancelQuery(String queryId) {
         String id = requireText(queryId, "queryId");
         RunningQuery running = runningQueries.remove(id);
@@ -770,6 +793,52 @@ public class DatabaseCompatibilityService {
             }
         }
         return resultSets;
+    }
+
+    private List<ResultSetDataDto> executeMultiWithProgressOnConnection(Connection connection, QueryRequestDto request, RunningQuery running, JobProgressSink progress) throws SQLException {
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
+        List<SqlStatementSlice> statements = splitSQLStatementSlices(request.sql());
+        int total = Math.max(statements.size(), 1);
+        sink.progress(0, total, "", "Preparing SQL file execution");
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        List<ResultSetDataDto> resultSets = new ArrayList<>();
+        int executed = 0;
+        try {
+            for (int index = 0; index < statements.size(); index++) {
+                SqlStatementSlice statementSlice = statements.get(index);
+                String statementSql = statementSlice.sql().trim();
+                if (statementSql.isEmpty()) {
+                    continue;
+                }
+                sink.throwIfCancelled();
+                String current = "Statement " + (index + 1) + " lines " + statementSlice.startLine() + "-" + statementSlice.endLine();
+                sink.progress(executed, total, current, "Executing SQL statement " + (index + 1) + " / " + total);
+                try (Statement statement = connection.createStatement()) {
+                    configureStatement(statement, request.connection(), running);
+                    ResultSetDataDto resultSet = executeStatement(statement, statementSql, running);
+                    resultSets.add(withStatementExecutionMetadata(resultSet, statementSlice, index + 1, "success", messages.message("common.operationSucceeded")));
+                    executed++;
+                    sink.progress(executed, total, current, "Executed SQL statement " + executed + " / " + total);
+                } catch (SQLException error) {
+                    if (isQueryCancellation(error)) {
+                        throw error;
+                    }
+                    resultSets.add(statementFailureResult(statementSlice, index + 1, error, true));
+                    connection.rollback();
+                    return resultSets;
+                }
+            }
+            sink.throwIfCancelled();
+            connection.commit();
+            sink.progress(total, total, "", "SQL file executed");
+            return resultSets;
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
     }
 
     private <T> T executeWithRequestedTransactionMode(Connection connection, QueryRequestDto request, SqlWork<T> work) throws SQLException {
