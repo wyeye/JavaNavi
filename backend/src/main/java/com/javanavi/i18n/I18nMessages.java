@@ -195,6 +195,35 @@ public class I18nMessages {
         put("ai.prompt.optimizeSql", "Optimize the SQL without changing semantics and include index recommendations.", "在不改变语义的前提下优化 SQL，并说明索引建议。");
         put("ai.prompt.generateQuery", "Generate a read-only query from the current database schema and avoid destructive statements by default.", "根据当前数据库结构生成只读查询，默认避免破坏性语句。");
         put("ai.prompt.summarizeResult", "Summarize key patterns, outliers, and recommended follow-up analysis for the result set.", "总结结果集的关键模式、异常值和后续分析建议。");
+        put("job.stage.preparing", "Preparing", "准备中");
+        put("job.stage.executingSqlFile", "Executing SQL file", "正在执行 SQL 文件");
+        put("job.stage.preparingSqlFileExecution", "Preparing SQL file execution", "正在准备 SQL 文件执行");
+        put("job.stage.executingSqlStatement", "Executing SQL statement {current} / {total}", "正在执行 SQL 语句 {current} / {total}");
+        put("job.stage.executedSqlStatement", "Executed SQL statement {current} / {total}", "已执行 SQL 语句 {current} / {total}");
+        put("job.stage.sqlFileExecuted", "SQL file executed", "SQL 文件执行完成");
+        put("job.stage.cancelRequested", "Cancel requested", "已请求取消");
+        put("job.stage.taskCancelled", "Task cancelled.", "任务已取消。");
+        put("job.stage.exportCompleted", "Export completed", "导出完成");
+        put("job.stage.preparingQueryExport", "Preparing query export", "正在准备查询导出");
+        put("job.stage.runningQuery", "Running query", "正在执行查询");
+        put("job.stage.writingFile", "Writing file", "正在写入文件");
+        put("job.stage.preparingTableExport", "Preparing table export", "正在准备表导出");
+        put("job.stage.preparingDataExport", "Preparing data export", "正在准备数据导出");
+        put("job.stage.preparingSqlExport", "Preparing SQL export", "正在准备 SQL 导出");
+        put("job.stage.preparingTableBackup", "Preparing table backup", "正在准备表备份");
+        put("job.stage.preparingTableStructureCopy", "Preparing table structure copy", "正在准备复制表结构");
+        put("job.stage.exportingTableSchemaAndData", "Exporting table schema and data", "正在导出表结构和数据");
+        put("job.stage.exportingTableSchema", "Exporting table schema", "正在导出表结构");
+        put("job.stage.tableExported", "Table exported", "表已导出");
+        put("job.stage.tableCopied", "Table copied", "表已复制");
+        put("job.error.applicationInterrupted", "Application exited before the task finished.", "应用退出，任务未完成。");
+        put("job.error.sqlPathOrContentRequired", "SQL file path or SQL content is required.", "SQL 文件路径或 SQL 内容不能为空。");
+        put("job.error.sqlFileMissing", "Selected SQL file does not exist.", "所选 SQL 文件不存在。");
+        put("job.error.sqlFileOnly", "Only SQL files can be executed through this action.", "此操作仅支持执行 SQL 文件。");
+        put("job.error.sqlFileReadFailed", "Unable to read selected SQL file.", "无法读取所选 SQL 文件。");
+        put("job.error.sqlFileExecutionFailed", "SQL file execution failed.", "SQL 文件执行失败。");
+        put("job.error.notFound", "Job not found: {jobId}", "任务不存在：{jobId}");
+        put("job.error.cancelled", "Job cancelled: {jobId}", "任务已取消：{jobId}");
         put("backend.localizedFallback", "{message}", "{message}");
     }
 
@@ -243,6 +272,56 @@ public class I18nMessages {
                 Map.entry("Selected path is a directory, not a SQL file.", "request.invalid"),
                 Map.entry("SQL workspace path must not be empty.", "request.invalid"),
                 Map.entry("SQL file names must not contain path separators.", "request.invalid"),
+                Map.entry("Preparing", "job.stage.preparing"),
+                Map.entry("准备中", "job.stage.preparing"),
+                Map.entry("Executing SQL file", "job.stage.executingSqlFile"),
+                Map.entry("正在执行 SQL 文件", "job.stage.executingSqlFile"),
+                Map.entry("Preparing SQL file execution", "job.stage.preparingSqlFileExecution"),
+                Map.entry("正在准备 SQL 文件执行", "job.stage.preparingSqlFileExecution"),
+                Map.entry("SQL file executed", "job.stage.sqlFileExecuted"),
+                Map.entry("SQL 文件执行完成", "job.stage.sqlFileExecuted"),
+                Map.entry("Cancel requested", "job.stage.cancelRequested"),
+                Map.entry("已请求取消", "job.stage.cancelRequested"),
+                Map.entry("Task cancelled.", "job.stage.taskCancelled"),
+                Map.entry("任务已取消。", "job.stage.taskCancelled"),
+                Map.entry("Export completed", "job.stage.exportCompleted"),
+                Map.entry("导出完成", "job.stage.exportCompleted"),
+                Map.entry("Preparing query export", "job.stage.preparingQueryExport"),
+                Map.entry("正在准备查询导出", "job.stage.preparingQueryExport"),
+                Map.entry("Running query", "job.stage.runningQuery"),
+                Map.entry("正在执行查询", "job.stage.runningQuery"),
+                Map.entry("Writing file", "job.stage.writingFile"),
+                Map.entry("正在写入文件", "job.stage.writingFile"),
+                Map.entry("Preparing table export", "job.stage.preparingTableExport"),
+                Map.entry("正在准备表导出", "job.stage.preparingTableExport"),
+                Map.entry("Preparing data export", "job.stage.preparingDataExport"),
+                Map.entry("正在准备数据导出", "job.stage.preparingDataExport"),
+                Map.entry("Preparing SQL export", "job.stage.preparingSqlExport"),
+                Map.entry("正在准备 SQL 导出", "job.stage.preparingSqlExport"),
+                Map.entry("Preparing table backup", "job.stage.preparingTableBackup"),
+                Map.entry("正在准备表备份", "job.stage.preparingTableBackup"),
+                Map.entry("Preparing table structure copy", "job.stage.preparingTableStructureCopy"),
+                Map.entry("正在准备复制表结构", "job.stage.preparingTableStructureCopy"),
+                Map.entry("Exporting table schema and data", "job.stage.exportingTableSchemaAndData"),
+                Map.entry("正在导出表结构和数据", "job.stage.exportingTableSchemaAndData"),
+                Map.entry("Exporting table schema", "job.stage.exportingTableSchema"),
+                Map.entry("正在导出表结构", "job.stage.exportingTableSchema"),
+                Map.entry("Table exported", "job.stage.tableExported"),
+                Map.entry("表已导出", "job.stage.tableExported"),
+                Map.entry("Table copied", "job.stage.tableCopied"),
+                Map.entry("表已复制", "job.stage.tableCopied"),
+                Map.entry("Application exited before the task finished.", "job.error.applicationInterrupted"),
+                Map.entry("应用退出，任务未完成。", "job.error.applicationInterrupted"),
+                Map.entry("SQL file path or SQL content is required.", "job.error.sqlPathOrContentRequired"),
+                Map.entry("SQL 文件路径或 SQL 内容不能为空。", "job.error.sqlPathOrContentRequired"),
+                Map.entry("Selected SQL file does not exist.", "job.error.sqlFileMissing"),
+                Map.entry("所选 SQL 文件不存在。", "job.error.sqlFileMissing"),
+                Map.entry("Only SQL files can be executed through this action.", "job.error.sqlFileOnly"),
+                Map.entry("此操作仅支持执行 SQL 文件。", "job.error.sqlFileOnly"),
+                Map.entry("Unable to read selected SQL file.", "job.error.sqlFileReadFailed"),
+                Map.entry("无法读取所选 SQL 文件。", "job.error.sqlFileReadFailed"),
+                Map.entry("SQL file execution failed.", "job.error.sqlFileExecutionFailed"),
+                Map.entry("SQL 文件执行失败。", "job.error.sqlFileExecutionFailed"),
                 Map.entry("Workspace name must not be empty.", "request.invalid"),
                 Map.entry("Workspace names must not contain path separators.", "request.invalid"),
                 Map.entry("Connection payload is required.", "request.invalid"),
@@ -409,6 +488,26 @@ public class I18nMessages {
         }
         if (normalized.contains("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.")) {
             return message("request.invalid", "message", "SQL 工作区路径必须位于 JavaNavi 管理的 SQL 工作区内。");
+        }
+        if (normalized.startsWith("Executing SQL statement ")) {
+            String progress = normalized.substring("Executing SQL statement ".length()).trim();
+            int split = progress.indexOf("/");
+            if (split >= 0) {
+                return message("job.stage.executingSqlStatement", "current", progress.substring(0, split).trim(), "total", progress.substring(split + 1).trim());
+            }
+        }
+        if (normalized.startsWith("Executed SQL statement ")) {
+            String progress = normalized.substring("Executed SQL statement ".length()).trim();
+            int split = progress.indexOf("/");
+            if (split >= 0) {
+                return message("job.stage.executedSqlStatement", "current", progress.substring(0, split).trim(), "total", progress.substring(split + 1).trim());
+            }
+        }
+        if (normalized.startsWith("Job not found:")) {
+            return message("job.error.notFound", "jobId", normalized.substring("Job not found:".length()).trim());
+        }
+        if (normalized.startsWith("Job cancelled:")) {
+            return message("job.error.cancelled", "jobId", normalized.substring("Job cancelled:".length()).trim());
         }
         if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi app state")) {
             return message("app.state", "message", "无法读写 JavaNavi 应用状态。");

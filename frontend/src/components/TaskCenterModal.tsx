@@ -5,7 +5,7 @@ import { BrowserOpenURL, EventsOn } from '@compat/runtime';
 import { CancelJob, GetJobs, normalizeJob } from '@compat/javanaviApp';
 import { useStore } from '../store';
 import type { AppJob, AppJobStatus } from '../types';
-import { translate, type I18nKey } from '../i18n';
+import { translate, type I18nKey, type I18nParams } from '../i18n';
 
 const { Text } = Typography;
 
@@ -42,10 +42,163 @@ const fileUrl = (path: string): string => {
   return normalized.startsWith('/') ? `file://${normalized}` : `file:///${normalized}`;
 };
 
+
+type TaskTranslator = (key: I18nKey, params?: I18nParams) => string;
+
+const taskJobTypeKeys: Record<string, I18nKey> = {
+  'run-sql-file': 'taskCenter.jobType.runSqlFile',
+  'export-data': 'taskCenter.jobType.exportData',
+  'export-query': 'taskCenter.jobType.exportQuery',
+  'export-table': 'taskCenter.jobType.exportTable',
+  'export-tables-backup': 'taskCenter.jobType.exportTablesBackup',
+  'export-tables-schema': 'taskCenter.jobType.exportTablesSchema',
+  'export-tables-data': 'taskCenter.jobType.exportTablesData',
+  'export-database-backup': 'taskCenter.jobType.exportDatabaseBackup',
+  'export-database-schema': 'taskCenter.jobType.exportDatabaseSchema',
+  'copy-tables': 'taskCenter.jobType.copyTables',
+};
+
+const exactStageKeys: Record<string, I18nKey> = {
+  Preparing: 'taskCenter.stage.preparing',
+  '准备中': 'taskCenter.stage.preparing',
+  'Executing SQL file': 'taskCenter.stage.executingSqlFile',
+  '正在执行 SQL 文件': 'taskCenter.stage.executingSqlFile',
+  'Preparing SQL file execution': 'taskCenter.stage.preparingSqlFileExecution',
+  '正在准备 SQL 文件执行': 'taskCenter.stage.preparingSqlFileExecution',
+  'SQL file executed': 'taskCenter.stage.sqlFileExecuted',
+  'SQL 文件执行完成': 'taskCenter.stage.sqlFileExecuted',
+  'Cancel requested': 'taskCenter.stage.cancelRequested',
+  '已请求取消': 'taskCenter.stage.cancelRequested',
+  'Task cancelled.': 'taskCenter.stage.taskCancelled',
+  '任务已取消。': 'taskCenter.stage.taskCancelled',
+  'Export completed': 'taskCenter.stage.exportCompleted',
+  '导出完成': 'taskCenter.stage.exportCompleted',
+  'Preparing query export': 'taskCenter.stage.preparingQueryExport',
+  '正在准备查询导出': 'taskCenter.stage.preparingQueryExport',
+  'Running query': 'taskCenter.stage.runningQuery',
+  '正在执行查询': 'taskCenter.stage.runningQuery',
+  'Writing file': 'taskCenter.stage.writingFile',
+  '正在写入文件': 'taskCenter.stage.writingFile',
+  'Preparing table export': 'taskCenter.stage.preparingTableExport',
+  '正在准备表导出': 'taskCenter.stage.preparingTableExport',
+  'Preparing data export': 'taskCenter.stage.preparingDataExport',
+  '正在准备数据导出': 'taskCenter.stage.preparingDataExport',
+  'Preparing SQL export': 'taskCenter.stage.preparingSqlExport',
+  '正在准备 SQL 导出': 'taskCenter.stage.preparingSqlExport',
+  'Preparing table backup': 'taskCenter.stage.preparingTableBackup',
+  '正在准备表备份': 'taskCenter.stage.preparingTableBackup',
+  'Preparing table structure copy': 'taskCenter.stage.preparingTableStructureCopy',
+  '正在准备复制表结构': 'taskCenter.stage.preparingTableStructureCopy',
+  'Exporting table schema and data': 'taskCenter.stage.exportingTableSchemaAndData',
+  '正在导出表结构和数据': 'taskCenter.stage.exportingTableSchemaAndData',
+  'Exporting table schema': 'taskCenter.stage.exportingTableSchema',
+  '正在导出表结构': 'taskCenter.stage.exportingTableSchema',
+  'Table exported': 'taskCenter.stage.tableExported',
+  '表已导出': 'taskCenter.stage.tableExported',
+  'Table copied': 'taskCenter.stage.tableCopied',
+  '表已复制': 'taskCenter.stage.tableCopied',
+};
+
+const exactErrorKeys: Record<string, I18nKey> = {
+  'Application exited before the task finished.': 'taskCenter.error.appInterrupted',
+  '应用退出，任务未完成。': 'taskCenter.error.appInterrupted',
+  'SQL file path or SQL content is required.': 'taskCenter.error.sqlPathOrContentRequired',
+  'SQL 文件路径或 SQL 内容不能为空。': 'taskCenter.error.sqlPathOrContentRequired',
+  'Selected SQL file does not exist.': 'taskCenter.error.sqlFileMissing',
+  '所选 SQL 文件不存在。': 'taskCenter.error.sqlFileMissing',
+  'Only SQL files can be executed through this action.': 'taskCenter.error.sqlFileOnly',
+  '此操作仅支持执行 SQL 文件。': 'taskCenter.error.sqlFileOnly',
+  'Unable to read selected SQL file.': 'taskCenter.error.sqlFileReadFailed',
+  '无法读取所选 SQL 文件。': 'taskCenter.error.sqlFileReadFailed',
+  'SQL file execution failed.': 'taskCenter.error.sqlFileExecutionFailed',
+  'SQL 文件执行失败。': 'taskCenter.error.sqlFileExecutionFailed',
+  'Task cancelled.': 'taskCenter.error.taskCancelled',
+  '任务已取消。': 'taskCenter.error.taskCancelled',
+};
+
+const afterPrefix = (value: string, prefix: RegExp): string => value.replace(prefix, '').trim();
+
+const firstCount = (value: string): string => value.match(/\b(\d+)\b/)?.[1] || '';
+
+const resolveTaskTitle = (job: AppJob, t: TaskTranslator): string => {
+  const title = String(job.title || '').trim();
+  const type = String(job.type || '').trim();
+  const genericKey = taskJobTypeKeys[type];
+
+  if (type === 'run-sql-file') {
+    const name = afterPrefix(title, /^Run SQL file\s*/i);
+    return name && name !== title ? t('taskCenter.jobType.runSqlFileWithName', { name }) : t('taskCenter.jobType.runSqlFile');
+  }
+  if (type === 'export-data') {
+    const name = afterPrefix(title, /^Export\s*/i);
+    return name && !/^data$/i.test(name) && name !== title ? t('taskCenter.jobType.exportDataWithName', { name }) : t('taskCenter.jobType.exportData');
+  }
+  if (type === 'export-query') {
+    const name = afterPrefix(title, /^Export query\s*/i);
+    return name && name !== title ? t('taskCenter.jobType.exportQueryWithName', { name }) : t('taskCenter.jobType.exportQuery');
+  }
+  if (type === 'export-table') {
+    const name = afterPrefix(title, /^Export table\s*/i);
+    return name && name !== title ? t('taskCenter.jobType.exportTableWithName', { name }) : t('taskCenter.jobType.exportTable');
+  }
+  if (type === 'export-tables-backup') {
+    const count = firstCount(title);
+    return count ? t('taskCenter.jobType.exportTablesBackupWithCount', { count }) : t('taskCenter.jobType.exportTablesBackup');
+  }
+  if (type === 'export-tables-schema') {
+    const count = firstCount(title);
+    return count ? t('taskCenter.jobType.exportTablesSchemaWithCount', { count }) : t('taskCenter.jobType.exportTablesSchema');
+  }
+  if (type === 'export-tables-data') {
+    const count = firstCount(title);
+    return count ? t('taskCenter.jobType.exportTablesDataWithCount', { count }) : t('taskCenter.jobType.exportTablesData');
+  }
+  if (type === 'export-database-backup') {
+    const name = afterPrefix(title, /^Backup database\s*/i);
+    return name && name !== title ? t('taskCenter.jobType.exportDatabaseBackupWithName', { name }) : t('taskCenter.jobType.exportDatabaseBackup');
+  }
+  if (type === 'export-database-schema') {
+    const name = afterPrefix(title, /^Export database schema\s*/i);
+    return name && name !== title ? t('taskCenter.jobType.exportDatabaseSchemaWithName', { name }) : t('taskCenter.jobType.exportDatabaseSchema');
+  }
+  if (type === 'copy-tables') {
+    const count = firstCount(title);
+    return count ? t('taskCenter.jobType.copyTablesWithCount', { count }) : t('taskCenter.jobType.copyTables');
+  }
+  return genericKey ? t(genericKey) : (title || type || t('common.unknown'));
+};
+
+const resolveTaskStage = (stage: string, t: TaskTranslator): string => {
+  const normalized = String(stage || '').trim();
+  if (!normalized) return '-';
+
+  const executing = normalized.match(/^Executing SQL statement\s+(\d+)\s*\/\s*(\d+)$/i)
+    || normalized.match(/^正在执行 SQL 语句\s+(\d+)\s*\/\s*(\d+)$/);
+  if (executing) {
+    return t('taskCenter.stage.executingSqlStatement', { current: executing[1], total: executing[2] });
+  }
+
+  const executed = normalized.match(/^Executed SQL statement\s+(\d+)\s*\/\s*(\d+)$/i)
+    || normalized.match(/^已执行 SQL 语句\s+(\d+)\s*\/\s*(\d+)$/);
+  if (executed) {
+    return t('taskCenter.stage.executedSqlStatement', { current: executed[1], total: executed[2] });
+  }
+
+  const key = exactStageKeys[normalized];
+  return key ? t(key) : normalized;
+};
+
+const resolveTaskError = (errorMessage: string, t: TaskTranslator): string => {
+  const normalized = String(errorMessage || '').trim();
+  if (!normalized) return '';
+  const key = exactErrorKeys[normalized];
+  return key ? t(key) : normalized;
+};
+
 export default function TaskCenterModal({ open, onClose, onRunningCountChange }: TaskCenterModalProps) {
   const language = useStore(state => state.language);
   const theme = useStore(state => state.theme);
-  const t = useMemo(() => (key: I18nKey) => translate(language, key), [language]);
+  const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
   const darkMode = theme === 'dark';
   const [jobs, setJobs] = useState<AppJob[]>([]);
   const [selectedJobId, setSelectedJobId] = useState('');
@@ -156,12 +309,12 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
-                      <Text strong ellipsis style={{ color: titleColor, maxWidth: 190 }}>{job.title || job.type}</Text>
+                      <Text strong ellipsis style={{ color: titleColor, maxWidth: 190 }}>{resolveTaskTitle(job, t)}</Text>
                       <Tag icon={statusIcon[job.status]} color={statusColor[job.status]} style={{ marginInlineEnd: 0 }}>{t(`taskCenter.status.${job.status}` as I18nKey)}</Tag>
                     </div>
                     <Progress percent={job.percent || 0} size="small" status={job.status === 'failed' ? 'exception' : undefined} showInfo={false} style={{ marginTop: 8 }} />
                     <div style={{ marginTop: 6, color: muted, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {job.current}/{job.total} · {job.currentTable || job.stage || '-'}
+                      {job.current}/{job.total} · {job.currentTable || resolveTaskStage(job.stage, t)}
                     </div>
                   </button>
                 );
@@ -174,7 +327,7 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
               <Space direction="vertical" size={14} style={{ width: '100%' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 18, fontWeight: 800, color: titleColor }}>{selectedJob.title || selectedJob.type}</div>
+                    <div style={{ fontSize: 18, fontWeight: 800, color: titleColor }}>{resolveTaskTitle(selectedJob, t)}</div>
                     <div style={{ marginTop: 4, color: muted, fontSize: 12 }}>{selectedJob.jobId}</div>
                   </div>
                   <Tag icon={statusIcon[selectedJob.status]} color={statusColor[selectedJob.status]}>{t(`taskCenter.status.${selectedJob.status}` as I18nKey)}</Tag>
@@ -188,7 +341,7 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
                 </div>
                 <div style={{ padding: 14, borderRadius: 12, border, background: panelBg }}>
                   <div style={{ color: muted, fontSize: 12 }}>{t('taskCenter.stage')}</div>
-                  <div style={{ marginTop: 6, color: titleColor }}>{selectedJob.stage || '-'}</div>
+                  <div style={{ marginTop: 6, color: titleColor }}>{resolveTaskStage(selectedJob.stage, t)}</div>
                 </div>
                 {selectedJob.filePath ? (
                   <div style={{ padding: 14, borderRadius: 12, border, background: panelBg }}>
@@ -201,7 +354,7 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
                 ) : null}
                 {selectedJob.errorMessage ? (
                   <div style={{ padding: 14, borderRadius: 12, border: '1px solid rgba(239,68,68,0.35)', background: darkMode ? 'rgba(127,29,29,0.18)' : 'rgba(254,242,242,0.95)', color: darkMode ? '#fecaca' : '#991b1b' }}>
-                    {selectedJob.errorMessage}
+                    {resolveTaskError(selectedJob.errorMessage, t)}
                   </div>
                 ) : null}
                 <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
