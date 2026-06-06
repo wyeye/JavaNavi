@@ -7,6 +7,8 @@ import com.javanavi.db.DatabaseCompatibilityService;
 import com.javanavi.events.CompatEventFixtures;
 import com.javanavi.events.CompatEventPublisher;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.jobs.JobCancellationException;
+import com.javanavi.jobs.JobProgressSink;
 import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
 import com.javanavi.model.ColumnDefinitionDto;
@@ -635,26 +637,65 @@ public class FileWorkflowCompatibilityService {
     }
 
     public Map<String, Object> exportQuery(Map<String, Object> input) {
+        return exportQueryWithProgress(input, JobProgressSink.NOOP);
+    }
+
+    public Map<String, Object> exportQueryWithProgress(Map<String, Object> input, JobProgressSink progress) {
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
+        sink.progress(0, 4, "", "Preparing query export");
         String sql = stringValue(input, "query", "sql").trim();
         if (!isReadOnlyQuery(sql)) {
             throw new IllegalArgumentException(messages.message("files.selectOnlyExport"));
         }
         ConnectionConfigDto connection = connectionConfig(input);
         String database = stringValue(input, "database", "dbName");
-        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, sql, null, null, "export-" + Instant.now().toEpochMilli()));
+        String jobId = textOrDefault(stringValue(input, "jobId", "queryId"), "export-" + Instant.now().toEpochMilli());
+        sink.throwIfCancelled();
+        sink.progress(1, 4, "", "Running query");
+        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, sql, null, null, jobId));
+        sink.throwIfCancelled();
+        sink.progress(3, 4, "", "Writing file");
         Path file = writeRowsExport(result.rows(), result.columns(), stringValue(input, "defaultName", "name"), stringValue(input, "format"), "query-export", stringValue(input, "targetPath", "exportPath", "path"));
-        return exportResult(file, result.rowCount(), result.columns(), stringValue(input, "format"), false);
+        Map<String, Object> exportResult = exportResult(file, result.rowCount(), result.columns(), stringValue(input, "format"), false);
+        sink.progress(4, 4, "", "Export completed");
+        return exportResult;
     }
 
     public Map<String, Object> exportTable(Map<String, Object> input) {
+        return exportTableWithProgress(input, JobProgressSink.NOOP);
+    }
+
+    public Map<String, Object> exportTableWithProgress(Map<String, Object> input, JobProgressSink progress) {
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
         String table = requireSafeTableName(stringValue(input, "table", "tableName"));
-        input = new LinkedHashMap<>(input == null ? Map.of() : input);
-        input.put("query", "select * from " + table);
-        input.putIfAbsent("defaultName", table);
-        return exportQuery(input);
+        sink.progress(0, 4, table, "Preparing table export");
+        Map<String, Object> payload = new LinkedHashMap<>(input == null ? Map.of() : input);
+        String driver = importDriverType(connectionConfig(input));
+        payload.put("query", "select * from " + quoteQualifiedIdentifier(driver, table));
+        payload.putIfAbsent("defaultName", table);
+        sink.throwIfCancelled();
+        return exportQueryWithProgress(payload, sink);
+    }
+
+    public Map<String, Object> exportDataWithProgress(Map<String, Object> input, JobProgressSink progress) {
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
+        sink.progress(0, 4, "", "Preparing data export");
+        List<Map<String, Object>> rows = rowsFromInput(input == null ? null : input.get("rows"));
+        List<String> columns = stringList(input == null ? null : input.get("columns"));
+        sink.throwIfCancelled();
+        sink.progress(2, 4, "", "Writing file");
+        Map<String, Object> result = exportData(rows, columns, stringValue(input, "defaultName", "name"), stringValue(input, "format"), stringValue(input, "targetPath", "exportPath", "path"));
+        sink.throwIfCancelled();
+        sink.progress(4, 4, "", "Export completed");
+        return result;
     }
 
     public Map<String, Object> exportTablesSql(Map<String, Object> input, boolean includeSchema, boolean includeData) {
+        return exportTablesSqlWithProgress(input, includeSchema, includeData, JobProgressSink.NOOP);
+    }
+
+    public Map<String, Object> exportTablesSqlWithProgress(Map<String, Object> input, boolean includeSchema, boolean includeData, JobProgressSink progress) {
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
         ConnectionConfigDto connection = connectionConfig(input);
         String database = stringValue(input, "database", "dbName");
         List<String> tableNames = tableNames(input);
@@ -664,6 +705,8 @@ public class FileWorkflowCompatibilityService {
                     .filter(value -> value != null && !value.isBlank())
                     .toList();
         }
+        int total = Math.max(tableNames.size(), 1);
+        sink.progress(0, total, "", "Preparing SQL export");
         String fallbackBaseName = normalizeFileToken(database, "database") + "-" + (includeSchema && includeData ? "backup" : includeSchema ? "schema" : "data");
         String baseName = normalizeFileToken(stringValue(input, "defaultName", "name"), fallbackBaseName);
         Path file = resolveExportFile(baseName, "sql", stringValue(input, "targetPath", "exportPath", "path"));
@@ -673,37 +716,57 @@ public class FileWorkflowCompatibilityService {
             sql.append("-- JavaNavi SQL export compatibility file\n");
             sql.append("-- database: ").append(database.isBlank() ? "<default>" : database).append("\n");
             String driver = importDriverType(connection);
-            for (String table : tableNames) {
-                String safeTable = requireSafeTableName(table);
+            for (int index = 0; index < tableNames.size(); index++) {
+                String safeTable = requireSafeTableName(tableNames.get(index));
                 String tableSql = quoteQualifiedIdentifier(driver, safeTable);
+                sink.throwIfCancelled();
+                sink.progress(index, total, safeTable, includeData ? "Exporting table schema and data" : "Exporting table schema");
                 if (includeSchema) {
                     sql.append("\n-- Schema for ").append(safeTable).append("\n");
                     try {
                         appendSqlStatement(sql, databaseCompatibilityService.showCreateTable(connection, database, safeTable));
                     } catch (RuntimeException error) {
+                        if (error instanceof JobCancellationException) {
+                            throw error;
+                        }
+                        sink.throwIfCancelled();
                         sql.append("-- Schema unavailable in JavaNavi Web export smoke: ").append(SecretRedactor.redact(error.getMessage())).append("\n");
                     }
                 }
+                sink.throwIfCancelled();
                 if (includeData) {
                     sql.append("\n-- Data for ").append(safeTable).append("\n");
                     try {
-                        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, "select * from " + tableSql, null, null, "export-" + Instant.now().toEpochMilli()));
+                        String jobId = textOrDefault(stringValue(input, "jobId", "queryId"), "export-" + Instant.now().toEpochMilli());
+                        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, "select * from " + tableSql, null, null, jobId));
                         appendInsertStatements(sql, driver, tableSql, result.rows(), result.columns());
                     } catch (RuntimeException error) {
+                        if (error instanceof JobCancellationException) {
+                            throw error;
+                        }
+                        sink.throwIfCancelled();
                         sql.append("-- Data unavailable in JavaNavi Web export smoke: ").append(SecretRedactor.redact(error.getMessage())).append("\n");
                     }
                 }
+                sink.progress(index + 1, total, safeTable, "Table exported");
             }
+            sink.throwIfCancelled();
             Files.writeString(file, sql.toString(), StandardCharsets.UTF_8);
         } catch (IOException error) {
             throw new IllegalStateException("Unable to write JavaNavi SQL export.", error);
         }
+        sink.progress(total, total, "", "Export completed");
         return exportResult(file, tableNames.size(), List.of("sql"), "sql", false);
     }
 
     public Map<String, Object> exportDatabaseSql(Map<String, Object> input) {
         boolean includeData = Boolean.TRUE.equals(input == null ? null : input.get("includeData"));
         return exportTablesSql(input, true, includeData);
+    }
+
+    public Map<String, Object> exportDatabaseSqlWithProgress(Map<String, Object> input, JobProgressSink progress) {
+        boolean includeData = Boolean.TRUE.equals(input == null ? null : input.get("includeData"));
+        return exportTablesSqlWithProgress(input, true, includeData, progress);
     }
 
     private Path writeRowsExport(List<Map<String, Object>> rows, List<String> columns, String defaultName, String format, String fallbackName, String targetPath) {
@@ -1138,6 +1201,32 @@ public class FileWorkflowCompatibilityService {
             return objectMapper.convertValue(map, ConnectionConfigDto.class);
         }
         return new ConnectionConfigDto("demo-h2", "Demo", "h2", null, null, "", null, null, Map.of(), null);
+    }
+
+
+    @SuppressWarnings("unchecked")
+    private List<Map<String, Object>> rowsFromInput(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        List<Map<String, Object>> rows = new ArrayList<>();
+        for (Object item : list) {
+            if (item instanceof Map<?, ?> map) {
+                rows.add(new LinkedHashMap<>((Map<String, Object>) map));
+            }
+        }
+        return rows;
+    }
+
+    private static List<String> stringList(Object raw) {
+        if (!(raw instanceof List<?> list)) {
+            return List.of();
+        }
+        return list.stream()
+                .map(FileWorkflowCompatibilityService::text)
+                .filter(value -> !value.isBlank())
+                .distinct()
+                .toList();
     }
 
     private List<String> tableNames(Map<String, Object> input) {

@@ -42,8 +42,15 @@ public class CompatEventPublisher {
     public CompatEventDto publish(CompatEventDto event) {
         String localSessionId = localSessionService.currentSessionId()
                 .orElse(LocalSessionService.SECURITY_DISABLED_SESSION_ID);
+        return publishToSession(localSessionId, event);
+    }
+
+    public CompatEventDto publishToSession(String localSessionId, CompatEventDto event) {
+        String sessionId = localSessionId == null || localSessionId.isBlank()
+                ? LocalSessionService.SECURITY_DISABLED_SESSION_ID
+                : localSessionId;
         emitters.forEach((emitter, subscriberSessionId) -> {
-            if (subscriberSessionId.equals(localSessionId)) {
+            if (subscriberSessionId.equals(sessionId)) {
                 send(emitter, event);
             }
         });

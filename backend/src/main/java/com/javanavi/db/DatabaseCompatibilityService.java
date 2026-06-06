@@ -6,6 +6,7 @@ import com.javanavi.connections.SavedConnectionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.i18n.LocalizedException;
+import com.javanavi.jobs.JobProgressSink;
 import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
 import com.javanavi.model.ColumnDefinitionDto;
@@ -371,6 +372,19 @@ public class DatabaseCompatibilityService {
     }
 
     public DatabaseOperationResultDto copyTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames, String targetPrefix, String targetSuffix, boolean includeData) {
+        return copyTablesWithProgress(config, requestedDatabase, tableNames, targetPrefix, targetSuffix, includeData, JobProgressSink.NOOP);
+    }
+
+    public DatabaseOperationResultDto copyTablesWithProgress(
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            List<String> tableNames,
+            String targetPrefix,
+            String targetSuffix,
+            boolean includeData,
+            JobProgressSink progress
+    ) {
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
         return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> copyTablesOnConnection(
                 connection,
                 config,
@@ -378,7 +392,8 @@ public class DatabaseCompatibilityService {
                 tableNames,
                 targetPrefix,
                 targetSuffix,
-                includeData
+                includeData,
+                sink
         )));
     }
 
@@ -1083,9 +1098,13 @@ public class DatabaseCompatibilityService {
             List<String> tableNames,
             String targetPrefix,
             String targetSuffix,
-            boolean includeData
+            boolean includeData,
+            JobProgressSink progress
     ) throws SQLException {
+        JobProgressSink sink = progress == null ? JobProgressSink.NOOP : progress;
         List<String> names = normalizedTableNames(tableNames);
+        int total = names.size();
+        sink.progress(0, total, "", includeData ? "Preparing table backup" : "Preparing table structure copy");
         String prefix = targetPrefix == null ? "" : targetPrefix.trim();
         String suffix = targetSuffix == null ? "_copy" : targetSuffix.trim();
         if (prefix.isBlank() && suffix.isBlank()) {
@@ -1099,7 +1118,10 @@ public class DatabaseCompatibilityService {
         boolean previousAutoCommit = connection.getAutoCommit();
         connection.setAutoCommit(false);
         try (Statement statement = connection.createStatement()) {
-            for (String sourceName : names) {
+            for (int index = 0; index < names.size(); index++) {
+                String sourceName = names.get(index);
+                sink.throwIfCancelled();
+                sink.progress(index, total, sourceName, includeData ? "Copying table and data" : "Copying table structure");
                 TableRef sourceRef = tableRef(config, requestedDatabase, sourceName);
                 String targetTable = prefixedTableName(sourceRef.table(), prefix, suffix);
                 TableRef targetRef = sourceRef.withTable(targetTable);
@@ -1111,13 +1133,16 @@ public class DatabaseCompatibilityService {
                 statement.execute(createSql);
                 executed.add(createSql);
 
+                sink.throwIfCancelled();
                 if (includeData && !copyTableStructureSqlIncludesData(driver)) {
                     String insertSql = copyTableDataSql(driver, sourceRef, targetRef);
                     affected += Math.max(statement.executeUpdate(insertSql), 0);
                     executed.add(insertSql);
                 }
                 copiedTables.add(targetTable);
+                sink.progress(index + 1, total, sourceName, "Table copied");
             }
+            sink.throwIfCancelled();
             connection.commit();
         } catch (SQLException | RuntimeException error) {
             connection.rollback();
@@ -1125,6 +1150,7 @@ public class DatabaseCompatibilityService {
         } finally {
             connection.setAutoCommit(previousAutoCommit);
         }
+        sink.progress(total, total, "", "Copy completed");
         return new DatabaseOperationResultDto(includeData ? "copy-tables-with-data" : "copy-tables", copiedTables.size(), affected, copiedTables, executed);
     }
 
