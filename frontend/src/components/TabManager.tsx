@@ -104,6 +104,8 @@ const DraggableTabNode: React.FC<DraggableTabNodeProps> = ({ node }) => {
   });
 };
 
+const shouldShowConnectionAccent = (tab: TabData): boolean => tab.type !== 'table';
+
 const buildTabHoverTitle = (
   tab: TabData,
   displayTitle: string,
@@ -272,7 +274,7 @@ const TabManager: React.FC = () => {
     const connection = connections.find((conn) => conn.id === tab.connectionId);
     const displayTitle = buildTabDisplayTitle(tab, connection, language);
     const hoverTitle = buildTabHoverTitle(tab, displayTitle, t);
-    const accentColor = connection ? resolveConnectionAccentColor(connection) : undefined;
+    const accentColor = connection && shouldShowConnectionAccent(tab) ? resolveConnectionAccentColor(connection) : undefined;
     const tabIsActive = tab.id === activeTabId;
     let content: React.ReactNode = null;
     if (tab.type === 'query') {
