@@ -117,6 +117,7 @@ type DataRootInfo = {
   path?: string;
   defaultPath?: string;
   driverPath?: string;
+  bootstrapPath?: string;
 };
 
 type DraggableResizeHandleStyle = CSSProperties & {
@@ -1494,6 +1495,37 @@ function App() {
       void loadDataRootInfo();
   }, [isDataRootModalOpen, loadDataRootInfo]);
 
+  const copyDataRootPath = useCallback(async (value?: string) => {
+      const text = String(value || '').trim();
+      if (!text) {
+          return;
+      }
+      try {
+          await navigator.clipboard.writeText(text);
+          void message.success(t('settings.dataRoot.copied'));
+      } catch {
+          void message.error(t('settings.dataRoot.copyFailed'));
+      }
+  }, [t]);
+
+  const renderDataRootPathRow = (label: string, value?: string) => {
+      const text = String(value || '-');
+      const canCopy = Boolean(value && value.trim());
+      return (
+          <div style={{ display: 'grid', gap: 6 }}>
+              <div style={{ fontWeight: 500 }}>{label}</div>
+              <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                  <div style={{ ...utilityMutedTextStyle, flex: 1, minWidth: 0, padding: '8px 10px', borderRadius: 8, border: overlayTheme.sectionBorder, wordBreak: 'break-all' }}>
+                      {text}
+                  </div>
+                  <Button disabled={!canCopy} onClick={() => void copyDataRootPath(value)}>
+                      {t('settings.dataRoot.copy')}
+                  </Button>
+              </div>
+          </div>
+      );
+  };
+
   const loadErrorLogs = useCallback(async (query = errorLogSearch) => {
       setErrorLogLoading(true);
       try {
@@ -2532,18 +2564,11 @@ function App() {
               <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
                 <div style={utilityPanelStyle}>
                   <div style={{ marginBottom: 10, fontWeight: 600 }}>{t('settings.dataRoot.currentDirectory')}</div>
-                  <div style={{ display: 'grid', gap: 10 }}>
-                    <Input readOnly value={dataRootInfo?.path || ''} />
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-                      <div>
-                        <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('settings.dataRoot.defaultDirectory')}</div>
-                        <div style={utilityMutedTextStyle}>{dataRootInfo?.defaultPath || '-'}</div>
-                      </div>
-                      <div>
-                        <div style={{ marginBottom: 6, fontWeight: 500 }}>{t('settings.dataRoot.driverDirectory')}</div>
-                        <div style={utilityMutedTextStyle}>{dataRootInfo?.driverPath || '-'}</div>
-                      </div>
-                    </div>
+                  <div style={{ display: 'grid', gap: 12 }}>
+                    {renderDataRootPathRow(t('settings.dataRoot.currentDirectory'), dataRootInfo?.path)}
+                    {renderDataRootPathRow(t('settings.dataRoot.defaultDirectory'), dataRootInfo?.defaultPath)}
+                    {renderDataRootPathRow(t('settings.dataRoot.driverDirectory'), dataRootInfo?.driverPath)}
+                    {renderDataRootPathRow(t('settings.dataRoot.appDatabase'), dataRootInfo?.bootstrapPath)}
                   </div>
                 </div>
               </div>
