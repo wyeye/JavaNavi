@@ -42,7 +42,7 @@ import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 	import { SavedConnection, ExternalSQLTreeEntry, type ConnectionTag, type TabData } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBGetColumns, DBGetIndexes, DBGetForeignKeys, DBGetTriggers, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, isJavaNaviDesktopRuntime, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBGetColumns, DBGetIndexes, DBGetForeignKeys, DBGetTriggers, DBQuery, DBShowCreateTable, ExportTable, SelectLocalFile, isJavaNaviDesktopRuntime, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
   import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
@@ -77,6 +77,7 @@ import { resolveConnectionAccentColor, resolveConnectionIconType } from '../util
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
 import { buildExternalSQLRootNode, buildExternalSQLTabId, type ExternalSQLTreeNode } from '../utils/externalSqlTree';
+import { resolveSelectedSqlFilePath } from '../compat/sqlFileSelection';
 import { exportSuccessMessage } from '../utils/exportResultMessage';
 import { formatConnectionTagOptionText } from '../utils/connectionTagDisplay';
 import { filterSidebarTree, normalizeMySQLViewDDLForEditing, resolveCopyableSidebarNodeName, type SearchScope, type TreeNode } from './sidebarSearch';
@@ -2021,37 +2022,32 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
 
   const openSQLFileForContext = async (context: { connectionId: string; dbName?: string }) => {
+      const conn = connections.find(c => c.id === context.connectionId);
+      if (!conn) {
+          message.error(t('sidebar.msg.connConfigNotFound'));
+          return;
+      }
+
       if (isJavaNaviDesktopRuntime()) {
-          const res = await OpenSQLFile();
-          if (res.success) {
-              const data = res.data;
-              if (data && typeof data === 'object' && (data as SidebarLargeFilePayload).isLargeFile) {
-                  const payload = data as SidebarLargeFilePayload;
-                  const conn = connections.find(c => c.id === context.connectionId);
-                  if (!conn) {
-                      message.error(t('sidebar.msg.connConfigNotFound'));
-                      return;
-                  }
-                  startSQLFileExecution(conn.config, context.dbName || '', String(payload.filePath || payload.path || ''), String(payload.fileSizeMB || ''));
-                  return;
+          const selected = await SelectLocalFile('sql');
+          if (!selected.success) {
+              if (!isCancelledMessage(selected.message)) {
+                  message.error(t('sidebar.msg.readFileFailed', { message: selected.message }));
               }
-              const payload = data && typeof data === 'object' ? data as { name?: unknown; content?: unknown } : {};
-              addTab({
-                  id: `query-${Date.now()}`,
-                  title: String(payload.name || t('sidebar.menu.runExternalSql')),
-                  type: 'query',
-                  connectionId: context.connectionId,
-                  dbName: context.dbName,
-                  query: String(payload.content ?? data ?? '')
-              });
-          } else if (!isCancelledMessage(res.message)) {
-              message.error(t('sidebar.msg.readFileFailed', { message: res.message }));
+              return;
           }
+          const selectedData = selected.data && typeof selected.data === 'object' ? selected.data as { selected?: boolean; path?: unknown; filePath?: unknown } : {};
+          const selectedPath = resolveSelectedSqlFilePath(selectedData);
+          if (!selectedPath) {
+              return;
+          }
+          startSQLFileExecution(conn.config, context.dbName || '', selectedPath, '');
           return;
       }
       pendingOpenSqlContextRef.current = context;
       openSqlUploadInputRef.current?.click();
   };
+
 
   const handleOpenSQLUploadSelected = async (event: React.ChangeEvent<HTMLInputElement>) => {
       const context = pendingOpenSqlContextRef.current;
@@ -2063,15 +2059,13 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           message.error(t('sidebar.msg.readSqlFailed', { message: '请选择 .sql 文件' }));
           return;
       }
+      const conn = connections.find(c => c.id === context.connectionId);
+      if (!conn) {
+          message.error(t('sidebar.msg.connConfigNotFound'));
+          return;
+      }
       const text = await file.text();
-      addTab({
-          id: `query-${Date.now()}`,
-          title: file.name || t('sidebar.menu.runExternalSql'),
-          type: 'query',
-          connectionId: context.connectionId,
-          dbName: context.dbName,
-          query: text
-      });
+      startSQLFileExecution(conn.config, context.dbName || '', text, (file.size / 1024 / 1024).toFixed(1));
   };
 
   // SQL 文件流式执行状态
