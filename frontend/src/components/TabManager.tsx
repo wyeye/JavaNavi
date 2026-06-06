@@ -104,7 +104,7 @@ const DraggableTabNode: React.FC<DraggableTabNodeProps> = ({ node }) => {
   });
 };
 
-const shouldShowConnectionAccent = (tab: TabData): boolean => tab.type !== 'table';
+const shouldShowConnectionAccent = (tab: TabData): boolean => tab.type !== 'table' && tab.type !== 'table-overview';
 
 const buildTabHoverTitle = (
   tab: TabData,
