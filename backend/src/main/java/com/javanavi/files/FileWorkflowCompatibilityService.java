@@ -26,6 +26,10 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.LocalTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -46,6 +50,8 @@ public class FileWorkflowCompatibilityService {
     private static final Duration IMPORT_FILE_RETENTION = Duration.ofDays(7);
     private static final int IMPORT_DUPLICATE_QUERY_CHUNK_SIZE = 100;
     private static final int MAX_DUPLICATE_LOGS = 200;
+    private static final DateTimeFormatter SQL_DATE_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter SQL_TIME_FORMATTER = DateTimeFormatter.ofPattern("HH:mm:ss");
     private static final Set<String> SUPPORTED_IMPORT_DRIVERS = Set.of(
             "demo",
             "mysql",
@@ -666,12 +672,14 @@ public class FileWorkflowCompatibilityService {
             StringBuilder sql = new StringBuilder();
             sql.append("-- JavaNavi SQL export compatibility file\n");
             sql.append("-- database: ").append(database.isBlank() ? "<default>" : database).append("\n");
+            String driver = importDriverType(connection);
             for (String table : tableNames) {
                 String safeTable = requireSafeTableName(table);
+                String tableSql = quoteQualifiedIdentifier(driver, safeTable);
                 if (includeSchema) {
                     sql.append("\n-- Schema for ").append(safeTable).append("\n");
                     try {
-                        sql.append(databaseCompatibilityService.showCreateTable(connection, database, safeTable)).append(";\n");
+                        appendSqlStatement(sql, databaseCompatibilityService.showCreateTable(connection, database, safeTable));
                     } catch (RuntimeException error) {
                         sql.append("-- Schema unavailable in JavaNavi Web export smoke: ").append(SecretRedactor.redact(error.getMessage())).append("\n");
                     }
@@ -679,8 +687,8 @@ public class FileWorkflowCompatibilityService {
                 if (includeData) {
                     sql.append("\n-- Data for ").append(safeTable).append("\n");
                     try {
-                        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, "select * from " + safeTable, null, null, "export-" + Instant.now().toEpochMilli()));
-                        appendInsertStatements(sql, safeTable, result.rows(), result.columns());
+                        QueryResultDto result = databaseCompatibilityService.execute(new QueryRequestDto(connection, database, "select * from " + tableSql, null, null, "export-" + Instant.now().toEpochMilli()));
+                        appendInsertStatements(sql, driver, tableSql, result.rows(), result.columns());
                     } catch (RuntimeException error) {
                         sql.append("-- Data unavailable in JavaNavi Web export smoke: ").append(SecretRedactor.redact(error.getMessage())).append("\n");
                     }
@@ -1040,11 +1048,11 @@ public class FileWorkflowCompatibilityService {
     private String toSqlInserts(String tableName, List<Map<String, Object>> rows, List<String> columns) {
         StringBuilder builder = new StringBuilder();
         builder.append("-- JavaNavi data export compatibility SQL\n");
-        appendInsertStatements(builder, quoteIdentifier(normalizeFileToken(tableName, "export_table")), rows, columns);
+        appendInsertStatements(builder, "", quoteIdentifier(normalizeFileToken(tableName, "export_table")), rows, columns);
         return builder.toString();
     }
 
-    private void appendInsertStatements(StringBuilder builder, String tableName, List<Map<String, Object>> rows, List<String> columns) {
+    private void appendInsertStatements(StringBuilder builder, String driver, String tableName, List<Map<String, Object>> rows, List<String> columns) {
         if (columns == null || columns.isEmpty()) {
             builder.append("-- (no columns)\n");
             return;
@@ -1053,11 +1061,26 @@ public class FileWorkflowCompatibilityService {
             builder.append("-- (0 rows)\n");
             return;
         }
-        String columnSql = columns.stream().map(FileWorkflowCompatibilityService::quoteIdentifier).reduce((left, right) -> left + ", " + right).orElse("");
+        String columnSql = columns.stream().map(column -> quoteIdentifier(driver, column)).reduce((left, right) -> left + ", " + right).orElse("");
         for (Map<String, Object> row : rows) {
             String values = columns.stream().map(column -> sqlLiteral(row.get(column))).reduce((left, right) -> left + ", " + right).orElse("");
             builder.append("INSERT INTO ").append(tableName).append(" (").append(columnSql).append(") VALUES (").append(values).append(");\n");
         }
+    }
+
+    private static void appendSqlStatement(StringBuilder builder, String statement) {
+        String sql = stripTrailingSemicolons(statement);
+        if (!sql.isBlank()) {
+            builder.append(sql).append(";\n");
+        }
+    }
+
+    private static String stripTrailingSemicolons(String statement) {
+        String sql = statement == null ? "" : statement.stripTrailing();
+        while (sql.endsWith(";")) {
+            sql = sql.substring(0, sql.length() - 1).stripTrailing();
+        }
+        return sql;
     }
 
     private String normalizeImportFileName(String originalName) {
@@ -1254,6 +1277,15 @@ public class FileWorkflowCompatibilityService {
         return schema.isBlank() ? quoteIdentifier(driver, table) : quoteIdentifier(driver, schema) + "." + quoteIdentifier(driver, table);
     }
 
+    private static String quoteQualifiedIdentifier(String driver, String identifier) {
+        QualifiedName qualified = splitQualifiedName(identifier);
+        String qualifier = text(qualified.qualifier());
+        String table = textOrDefault(qualified.name(), identifier);
+        return qualifier.isBlank()
+                ? quoteIdentifier(driver, table)
+                : quoteIdentifier(driver, qualifier) + "." + quoteIdentifier(driver, table);
+    }
+
     private static QualifiedName splitQualifiedName(String tableName) {
         String value = text(tableName);
         int separator = value.lastIndexOf('.');
@@ -1317,7 +1349,47 @@ public class FileWorkflowCompatibilityService {
         if (value instanceof Number || value instanceof Boolean) {
             return String.valueOf(value);
         }
+        if (value instanceof LocalDateTime dateTime) {
+            return quotedSqlText(formatSqlDateTime(dateTime));
+        }
+        if (value instanceof LocalDate date) {
+            return quotedSqlText(date.toString());
+        }
+        if (value instanceof LocalTime time) {
+            return quotedSqlText(formatSqlTime(time));
+        }
+        if (value instanceof java.sql.Timestamp timestamp) {
+            return quotedSqlText(formatSqlDateTime(timestamp.toLocalDateTime()));
+        }
+        if (value instanceof java.sql.Date date) {
+            return quotedSqlText(date.toLocalDate().toString());
+        }
+        if (value instanceof java.sql.Time time) {
+            return quotedSqlText(formatSqlTime(time.toLocalTime()));
+        }
+        return quotedSqlText(String.valueOf(value));
+    }
+
+    private static String quotedSqlText(String value) {
         return "'" + String.valueOf(value).replace("'", "''") + "'";
+    }
+
+    private static String formatSqlDateTime(LocalDateTime dateTime) {
+        String formatted = dateTime.format(SQL_DATE_TIME_FORMATTER);
+        return appendFraction(formatted, dateTime.getNano());
+    }
+
+    private static String formatSqlTime(LocalTime time) {
+        String formatted = time.format(SQL_TIME_FORMATTER);
+        return appendFraction(formatted, time.getNano());
+    }
+
+    private static String appendFraction(String formatted, int nano) {
+        if (nano <= 0) {
+            return formatted;
+        }
+        String fraction = String.format(Locale.ROOT, "%09d", nano).replaceFirst("0+$", "");
+        return formatted + "." + fraction;
     }
 
     private String exportCellText(Object value) {
