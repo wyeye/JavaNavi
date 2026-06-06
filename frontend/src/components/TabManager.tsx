@@ -179,7 +179,7 @@ const TabManager: React.FC = () => {
   const activeTab = useMemo(() => tabs.find(tab => tab.id === activeTabId), [activeTabId, tabs]);
 
   useEffect(() => {
-    window.__JAVANAVI_ALLOW_F5__ = activeTab?.type === 'table' || activeTab?.type === 'design';
+    window.__JAVANAVI_ALLOW_F5__ = activeTab?.type === 'table' || activeTab?.type === 'design' || activeTab?.type === 'table-overview';
     return () => {
       window.__JAVANAVI_ALLOW_F5__ = false;
     };
@@ -200,6 +200,12 @@ const TabManager: React.FC = () => {
         event.preventDefault();
         event.stopPropagation();
         window.dispatchEvent(new CustomEvent('javanavi:refresh-active-design'));
+        return;
+      }
+      if (activeTab?.type === 'table-overview') {
+        event.preventDefault();
+        event.stopPropagation();
+        window.dispatchEvent(new CustomEvent('javanavi:refresh-active-table-overview'));
       }
     };
 

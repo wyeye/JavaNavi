@@ -248,6 +248,20 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         void loadData();
     }, [autoFetchVisible, loadData]);
 
+    useEffect(() => {
+        const handleRefreshActiveTableOverview = () => {
+            if (useStore.getState().activeTabId !== tab.id) {
+                return;
+            }
+            void loadData();
+        };
+
+        window.addEventListener('javanavi:refresh-active-table-overview', handleRefreshActiveTableOverview as EventListener);
+        return () => {
+            window.removeEventListener('javanavi:refresh-active-table-overview', handleRefreshActiveTableOverview as EventListener);
+        };
+    }, [loadData, tab.id]);
+
     const tableSearchIndex = useMemo(() => buildTableOverviewSearchIndex(tables), [tables]);
 
     const sortedFiltered = useMemo(() => (
