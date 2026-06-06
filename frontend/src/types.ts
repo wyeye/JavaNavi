@@ -90,6 +90,29 @@ export interface SavedConnection {
   iconColor?: string; // 自定义图标颜色（十六进制），不填则取类型默认色
 }
 
+
+export type AppJobStatus = 'running' | 'completed' | 'failed' | 'cancelled';
+
+export interface AppJob {
+  jobId: string;
+  type: string;
+  title: string;
+  status: AppJobStatus;
+  percent: number;
+  total: number;
+  current: number;
+  currentTable: string;
+  table?: string;
+  stage: string;
+  filePath: string;
+  errorMessage: string;
+  result?: Record<string, unknown>;
+  cancelRequested: boolean;
+  createdAt: string;
+  updatedAt: string;
+  finishedAt: string;
+}
+
 export interface GlobalProxyConfig extends ProxyConfig {
   enabled: boolean;
   hasPassword?: boolean;

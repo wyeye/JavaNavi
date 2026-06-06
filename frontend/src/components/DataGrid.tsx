@@ -327,9 +327,10 @@ const DataGrid: React.FC<DataGridProps> = ({
   const canImport = exportScope === 'table' && !!tableName && supportsImport;
   const canExport = !!connectionId && (isQueryResultExport || !!tableName);
   const canViewDdl = exportScope === 'table' && !!connectionId && !!dbName && !!tableName;
-  const showExportSuccess = useCallback((res: unknown) => {
-      void message.success(exportSuccessMessage(res, language));
-  }, [language]);
+  const showTaskCreated = useCallback(() => {
+      void message.success(t('taskCenter.created'));
+      window.dispatchEvent(new CustomEvent('javanavi:open-task-center'));
+  }, [t]);
   const filteredExportSql = useMemo(() => String(exportSqlWithFilter || '').trim(), [exportSqlWithFilter]);
   const hasFilteredExportSql = exportScope === 'table' && filteredExportSql.length > 0;
   const selectionColumnWidth = 46;
@@ -620,20 +621,17 @@ const DataGrid: React.FC<DataGridProps> = ({
 
   // Helper to export specific data
   const exportData = async (rows: Item[], format: string) => {
-      const hide = message.loading(t('dataGrid.export.loadingRows', { count: rows.length }), 0);
       try {
           const cleanRows = rows.map(({ [JAVANAVI_ROW_KEY]: _rowKey, ...rest }) => rest);
           // Pass tableName (or 'export') as default filename
           const res = await ExportData(cleanRows, displayColumnNames, tableName || 'export', format);
           if (res.success) {
-              showExportSuccess(res);
+              showTaskCreated();
           } else if (res.message !== t('dataGrid.export.cancelledMessage')) {
               void message.error(t('dataGrid.export.failed', { message: res.message }));
           }
       } catch (e: unknown) {
           void message.error(t('dataGrid.export.failed', { message: getErrorMessage(e) }));
-      } finally {
-          hide();
       }
   };
 
@@ -3087,20 +3085,17 @@ const DataGrid: React.FC<DataGridProps> = ({
   const exportByQuery = useCallback(async (sql: string, format: string, defaultName: string) => {
       const config = buildConnConfig();
       if (!config) return;
-      const hide = message.loading(t('dataGrid.export.loading'), 0);
       try {
           const res = await ExportQuery(buildRpcConnectionConfig(config), dbName || '', sql, defaultName || 'export', format);
           if (res.success) {
-              showExportSuccess(res);
+              showTaskCreated();
           } else if (res.message !== t('dataGrid.export.cancelledMessage')) {
               void message.error(t('dataGrid.export.failed', { message: res.message }));
           }
       } catch (e: unknown) {
           void message.error(t('dataGrid.export.failed', { message: getErrorMessage(e) }));
-      } finally {
-          hide();
       }
-  }, [buildConnConfig, dbName, showExportSuccess]);
+  }, [buildConnConfig, dbName, showTaskCreated]);
 
   const buildPkWhereSql = useCallback((rows: Item[], dbType: string) => {
       if (!tableName || pkColumns.length === 0) return '';
@@ -3232,18 +3227,15 @@ const DataGrid: React.FC<DataGridProps> = ({
           if (!tableName) return;
           const config = buildConnConfig();
           if (!config) return;
-          const hide = message.loading(t('dataGrid.export.loadingAll'), 0);
           try {
               const res = await ExportTable(buildRpcConnectionConfig(config), dbName || '', tableName, format);
               if (res.success) {
-                  showExportSuccess(res);
+                  showTaskCreated();
               } else if (res.message !== t('dataGrid.export.cancelledMessage')) {
                   void message.error(t('dataGrid.export.failed', { message: res.message }));
               }
           } catch (e: unknown) {
               void message.error(t('dataGrid.export.failed', { message: getErrorMessage(e) }));
-          } finally {
-              hide();
           }
       };
       const handlePage = async () => {
@@ -3353,8 +3345,6 @@ const DataGrid: React.FC<DataGridProps> = ({
               }
           } catch (e: unknown) {
               void message.error(t('dataGrid.import.uploadFailed', { message: getErrorMessage(e) }));
-          } finally {
-              hide();
           }
       };
       input.oncancel = cleanupInput;

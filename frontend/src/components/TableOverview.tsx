@@ -11,7 +11,6 @@ import { noAutoCapInputProps } from '../utils/inputAutoCap';
 import { getTableDataDangerActionMeta, supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
 import { buildTableSelectQuery } from '../utils/objectQueryTemplates';
 import { buildTableHoverTitle } from '../utils/tableHoverTitle';
-import { exportSuccessMessage } from '../utils/exportResultMessage';
 import { isEditableElement } from '../utils/shortcuts';
 import { translate, type I18nKey, type I18nParams } from '../i18n';
 import {
@@ -287,6 +286,11 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         [selectedTableSet, visibleTableNames]
     );
 
+    const showTaskCreated = useCallback(() => {
+        message.success(t('taskCenter.created'));
+        window.dispatchEvent(new CustomEvent('javanavi:open-task-center'));
+    }, [t]);
+
     useEffect(() => {
         const existingNames = new Set(tables.map(table => table.name));
         setSelectedTableNames(prev => prev.filter(name => existingNames.has(name)));
@@ -351,15 +355,13 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const handleExport = useCallback(async (tableName: string, format: string) => {
         const config = buildConfig();
         if (!config) return;
-        const hide = message.loading(`正在导出 ${tableName} 为 ${format.toUpperCase()}...`, 0);
         const res = await ExportTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName, format);
-        hide();
         if (res.success) {
-            message.success(exportSuccessMessage(res, language));
+            showTaskCreated();
         } else if (res.message !== '已取消') {
-            message.error('导出失败: ' + res.message);
+            message.error(t('sidebar.msg.exportFailed', { message: res.message }));
         }
-    }, [buildConfig, language, tab.dbName]);
+    }, [buildConfig, showTaskCreated, tab.dbName, t]);
 
     const handleBulkExportTableData = useCallback(async () => {
         const config = buildConfig();
@@ -368,20 +370,17 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             message.warning(t('tableOverview.bulk.selectRequired'));
             return;
         }
-        const hide = message.loading(t('tableOverview.bulk.exportDataLoading', { count: selectedTableNames.length }), 0);
         try {
             const res = await ExportTablesDataSQL(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames);
-            hide();
             if (res.success) {
-                message.success(exportSuccessMessage(res, language));
+                showTaskCreated();
             } else if (res.message !== '已取消') {
                 message.error(t('sidebar.msg.exportFailed', { message: res.message }));
             }
         } catch (e: unknown) {
-            hide();
             message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
         }
-    }, [buildConfig, language, selectedTableNames, tab.dbName, t]);
+    }, [buildConfig, selectedTableNames, showTaskCreated, tab.dbName, t]);
 
     const handleBulkBackupTables = useCallback(async () => {
         const config = buildConfig();
@@ -390,20 +389,17 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             message.warning(t('tableOverview.bulk.selectRequired'));
             return;
         }
-        const hide = message.loading(t('sidebar.msg.backingUpTables', { count: selectedTableNames.length }), 0);
         try {
             const res = await ExportTablesSQL(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames, true);
-            hide();
             if (res.success) {
-                message.success(exportSuccessMessage(res, language));
+                showTaskCreated();
             } else if (res.message !== '已取消') {
                 message.error(t('sidebar.msg.exportFailed', { message: res.message }));
             }
         } catch (e: unknown) {
-            hide();
             message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
         }
-    }, [buildConfig, language, selectedTableNames, tab.dbName, t]);
+    }, [buildConfig, selectedTableNames, showTaskCreated, tab.dbName, t]);
 
     const handleBulkCopyStructure = useCallback(async () => {
         const config = buildConfig();
@@ -723,7 +719,6 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             message.error(t('tableOverview.copy.nameRequired'));
             return Promise.reject();
         }
-        const hide = message.loading(t('tableOverview.copy.loading', { count: selectedTableNames.length }), 0);
         try {
             const res = await CopyTables(
                 buildRpcConnectionConfig(config),
@@ -733,22 +728,19 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 targetSuffix,
                 copyTableMode === 'structureData'
             );
-            hide();
             if (res.success) {
-                message.success(t('tableOverview.copy.success', { count: selectedTableNames.length }));
+                showTaskCreated();
                 setCopyModalOpen(false);
                 setSelectedTableNames([]);
-                await loadData();
                 return;
             }
             message.error(t('tableOverview.copy.failed', { message: res.message }));
             return Promise.reject();
         } catch (e: unknown) {
-            hide();
             message.error(t('tableOverview.copy.failed', { message: getErrorMessage(e) }));
             return Promise.reject();
         }
-    }, [buildConfig, copyTableMode, copyTablePrefix, copyTableSuffix, loadData, selectedTableNames, tab.dbName, t]);
+    }, [buildConfig, copyTableMode, copyTablePrefix, copyTableSuffix, selectedTableNames, showTaskCreated, tab.dbName, t]);
 
     const handleBulkActionClick = useCallback((action: TableOverviewBulkActionKey) => {
         switch (action) {

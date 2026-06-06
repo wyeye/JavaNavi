@@ -1,6 +1,7 @@
 import { resolveEffectiveSSLMode } from '../utils/sslMode';
 import { connection, sync, app, redis, schemaSync } from './models';
 import type { ApiPayload, DataRow, RedisCursor, RedisHashFieldsInput, RedisListPushOptions, UnknownRecord } from './contracts';
+import type { AppJob, AppJobStatus } from '../types';
 import { isLocalSessionAuthFailure, localSessionHeaders as baseLocalSessionHeaders } from './localSession';
 import { resolveSelectedSqlFilePath } from './sqlFileSelection';
 import { DEFAULT_LANGUAGE, currentLanguageHeaderValue, getRuntimeLanguage, sanitizeLanguage, translate, translateBackendFallback, type AppLanguage, type I18nKey } from '../i18n';
@@ -135,6 +136,63 @@ function stringArrayField(source: unknown, key: string): string[] | undefined {
   const value = fieldValue(source, key);
   return Array.isArray(value) ? value.map((item) => String(item)).filter(Boolean) : undefined;
 }
+
+function normalizeJobStatus(value: unknown): AppJobStatus {
+  const status = String(value || '').trim().toLowerCase();
+  return status === 'completed' || status === 'failed' || status === 'cancelled' ? status : 'running';
+}
+
+function numericJobField(source: unknown, key: string): number {
+  const value = fieldValue(source, key);
+  const numeric = typeof value === 'number' ? value : Number(value ?? 0);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+export function normalizeJob(raw: unknown): AppJob {
+  const result = recordValue(fieldValue(raw, 'result'));
+  return {
+    jobId: String(fieldValue(raw, 'jobId') || fieldValue(raw, 'job_id') || ''),
+    type: String(fieldValue(raw, 'type') || ''),
+    title: String(fieldValue(raw, 'title') || fieldValue(raw, 'type') || 'Task'),
+    status: normalizeJobStatus(fieldValue(raw, 'status')),
+    percent: Math.max(0, Math.min(100, Math.round(numericJobField(raw, 'percent')))),
+    total: Math.max(0, Math.round(numericJobField(raw, 'total'))),
+    current: Math.max(0, Math.round(numericJobField(raw, 'current'))),
+    currentTable: String(fieldValue(raw, 'currentTable') || fieldValue(raw, 'table') || ''),
+    table: String(fieldValue(raw, 'table') || fieldValue(raw, 'currentTable') || ''),
+    stage: String(fieldValue(raw, 'stage') || ''),
+    filePath: String(fieldValue(raw, 'filePath') || fieldValue(raw, 'path') || fieldValue(result, 'filePath') || fieldValue(result, 'path') || fieldValue(result, 'revealTargetPath') || ''),
+    errorMessage: String(fieldValue(raw, 'errorMessage') || ''),
+    result,
+    cancelRequested: Boolean(fieldValue(raw, 'cancelRequested')),
+    createdAt: String(fieldValue(raw, 'createdAt') || ''),
+    updatedAt: String(fieldValue(raw, 'updatedAt') || ''),
+    finishedAt: String(fieldValue(raw, 'finishedAt') || ''),
+  };
+}
+
+export function jobQueryResult(payload: unknown, fallbackMessage = 'Task created'): QueryResult {
+  const result = apiEnvelopeToQueryResult(payload, fallbackMessage);
+  if (result.success) {
+    result.data = normalizeJob(result.data);
+  }
+  return result;
+}
+
+export async function GetJobs(limit = 100): Promise<AppJob[]> {
+  const safeLimit = Math.max(1, Math.min(500, Math.round(Number(limit) || 100)));
+  const payload = await getJson(`/jobs?limit=${encodeURIComponent(String(safeLimit))}`);
+  assertSuccessPayload(payload, 'Failed to load tasks.');
+  return payloadArrayData<unknown>(payload).map(normalizeJob);
+}
+
+export async function CancelJob(jobId: string): Promise<AppJob> {
+  const id = String(jobId || '').trim();
+  if (!id) throw new Error('Job ID is required.');
+  const payload = await postJson(`/jobs/${encodeURIComponent(id)}/cancel`, {});
+  return normalizeJob(dataOrThrow(payload, 'Failed to cancel task.'));
+}
+
 
 function requestSourceHeaders(source?: string): Record<string, string> {
   if (!source) return {};
@@ -436,15 +494,17 @@ export async function ClearTables(arg1:connection.ConnectionConfig,arg2:string,a
 }
 
 export async function CopyTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>,arg4:string,arg5:string,arg6:boolean): Promise<connection.QueryResult> {
-  const payload = await postJson('/ddl/copy-tables', {
+  const tableNames = arg3 || [];
+  const payload = await postJson('/jobs/copy-tables', {
+    title: `Backup ${tableNames.length || 1} table${tableNames.length === 1 ? '' : 's'}`,
     connection: toConnectionPayload(arg1),
     database: arg2,
-    tables: arg3,
+    tables: tableNames,
     targetPrefix: arg4,
     targetSuffix: arg5,
     includeData: arg6,
   });
-  return apiEnvelopeToQueryResult(payload, 'Tables copied');
+  return jobQueryResult(payload, 'Table backup task created');
 }
 
 export async function ConfigureDriverRuntimeDirectory(arg1:string): Promise<connection.QueryResult> {
@@ -760,8 +820,8 @@ export async function ExportData(arg1:DataRow[],arg2:Array<string>,arg3:string,a
     extension,
   });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Data exported');
-  const payload = await postJson('/files/export/data', { rows: arg1 || [], columns: arg2 || [], defaultName: arg3, format: arg4, targetPath });
-  return apiEnvelopeToQueryResult(payload, 'Data exported');
+  const payload = await postJson('/jobs/export-data', { title: `Export ${arg3 || 'data'}`, rows: arg1 || [], columns: arg2 || [], defaultName: arg3, format: arg4, targetPath });
+  return jobQueryResult(payload, 'Data export task created');
 }
 
 export async function ExportDatabaseSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:boolean): Promise<connection.QueryResult> {
@@ -770,8 +830,8 @@ export async function ExportDatabaseSQL(arg1:connection.ConnectionConfig,arg2:st
   const defaultName = exportDefaultName(defaultBaseName, 'sql');
   const targetPath = await prepareExportDestination({ kind: 'database-sql', defaultName, extension: 'sql' });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Database SQL exported');
-  const payload = await postJson('/files/export/database-sql', { connection: toConnectionPayload(arg1), database: arg2, includeData: arg3, defaultName: defaultBaseName, targetPath });
-  return apiEnvelopeToQueryResult(payload, 'Database SQL exported');
+  const payload = await postJson('/jobs/export-database', { title: arg3 ? `Backup database ${arg2 || ''}` : `Export database schema ${arg2 || ''}`, connection: toConnectionPayload(arg1), database: arg2, includeData: arg3, defaultName: defaultBaseName, targetPath });
+  return jobQueryResult(payload, 'Database SQL export task created');
 }
 
 export async function ExportQuery(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string,arg5:string): Promise<connection.QueryResult> {
@@ -782,8 +842,8 @@ export async function ExportQuery(arg1:connection.ConnectionConfig,arg2:string,a
     extension,
   });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Query exported');
-  const payload = await postJson('/files/export/query', { connection: toConnectionPayload(arg1), database: arg2, query: arg3, defaultName: arg4, format: arg5, targetPath });
-  return apiEnvelopeToQueryResult(payload, 'Query exported');
+  const payload = await postJson('/jobs/export-query', { title: `Export query ${arg4 || ''}`.trim(), connection: toConnectionPayload(arg1), database: arg2, query: arg3, defaultName: arg4, format: arg5, targetPath });
+  return jobQueryResult(payload, 'Query export task created');
 }
 
 export async function ExportTable(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
@@ -794,8 +854,8 @@ export async function ExportTable(arg1:connection.ConnectionConfig,arg2:string,a
     extension,
   });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Table exported');
-  const payload = await postJson('/files/export/table', { connection: toConnectionPayload(arg1), database: arg2, table: arg3, format: arg4, targetPath });
-  return apiEnvelopeToQueryResult(payload, 'Table exported');
+  const payload = await postJson('/jobs/export-table', { title: `Export table ${arg3 || ''}`.trim(), connection: toConnectionPayload(arg1), database: arg2, table: arg3, format: arg4, targetPath });
+  return jobQueryResult(payload, 'Table export task created');
 }
 
 export async function ExportTablesDataSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {
@@ -804,8 +864,8 @@ export async function ExportTablesDataSQL(arg1:connection.ConnectionConfig,arg2:
   const defaultName = exportDefaultName(defaultBaseName, 'sql');
   const targetPath = await prepareExportDestination({ kind: 'tables-sql', defaultName, extension: 'sql' });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Tables data SQL exported');
-  const payload = await postJson('/files/export/tables-data-sql', { connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, defaultName: defaultBaseName, targetPath });
-  return apiEnvelopeToQueryResult(payload, 'Tables data SQL exported');
+  const payload = await postJson('/jobs/export-tables', { title: `Export data for ${tableNames.length || 1} table${tableNames.length === 1 ? '' : 's'}`, connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, includeSchema: false, includeData: true, defaultName: defaultBaseName, targetPath });
+  return jobQueryResult(payload, 'Tables data SQL export task created');
 }
 
 export async function ExportTablesSQL(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>,arg4:boolean): Promise<connection.QueryResult> {
@@ -815,8 +875,8 @@ export async function ExportTablesSQL(arg1:connection.ConnectionConfig,arg2:stri
   const defaultName = exportDefaultName(defaultBaseName, 'sql');
   const targetPath = await prepareExportDestination({ kind: 'tables-sql', defaultName, extension: 'sql' });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Tables SQL exported');
-  const payload = await postJson('/files/export/tables-sql', { connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, includeData: arg4, defaultName: defaultBaseName, targetPath });
-  return apiEnvelopeToQueryResult(payload, 'Tables SQL exported');
+  const payload = await postJson('/jobs/export-tables', { title: arg4 ? `Backup ${tableNames.length || 1} table${tableNames.length === 1 ? '' : 's'}` : `Export schema for ${tableNames.length || 1} table${tableNames.length === 1 ? '' : 's'}`, connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, includeSchema: true, includeData: arg4, defaultName: defaultBaseName, targetPath });
+  return jobQueryResult(payload, 'Tables SQL export task created');
 }
 
 

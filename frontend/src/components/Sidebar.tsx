@@ -257,6 +257,10 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               successLabel: t('sidebar.action.cleared'),
           }
   );
+  const showTaskCreated = () => {
+      message.success(t('taskCenter.created'));
+      window.dispatchEvent(new CustomEvent('javanavi:open-task-center'));
+  };
   const showExportSuccess = (res: unknown, fallback?: string) => {
       message.success(exportSuccessMessage(res, language, fallback));
   };
@@ -1512,11 +1516,9 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 
   const handleExport = async (node: TreeNode, format: string) => {
       const { config, dbName, tableName } = getSidebarDataRef<SidebarRuntimeNodeData>(node);
-      const hide = message.loading(t('sidebar.msg.exportingTable', { name: tableName || '', format: format.toUpperCase() }), 0);
       const res = await ExportTable(buildRpcConnectionConfig(config), dbName, tableName || '', format);
-      hide();
       if (res.success) {
-          showExportSuccess(res);
+          showTaskCreated();
       } else if (!isCancelledMessage(res.message)) {
           message.error(t('sidebar.msg.exportFailed', { message: res.message }));
       }
@@ -1529,17 +1531,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const handleExportDatabaseSQL = async (node: TreeNode, includeData: boolean) => {
       const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
       const dbName = conn.dbName || String(node.title || '');
-      const hide = message.loading(includeData ? t('sidebar.msg.backingUpDb', { name: dbName }) : t('sidebar.msg.exportingDbSchema', { name: dbName }), 0);
       try {
           const res = await ExportDatabaseSQL(normalizeConnConfig(conn.config), dbName, includeData);
-          hide();
           if (res.success) {
-              showExportSuccess(res);
+              showTaskCreated();
           } else if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.exportFailed', { message: res.message }));
           }
       } catch (e: unknown) {
-          hide();
           message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
       }
   };
@@ -1559,17 +1558,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       }
 
       const tableNames = nodes.map((node) => getSidebarDataRef<SidebarRuntimeNodeData>(node).tableName).filter((name): name is string => Boolean(name));
-      const hide = message.loading(includeData ? t('sidebar.msg.backingUpTables', { count: tableNames.length }) : t('sidebar.msg.exportingTableSchema', { count: tableNames.length }), 0);
       try {
           const res = await ExportTablesSQL(normalizeConnConfig(first.config), dbName, tableNames, includeData);
-          hide();
           if (res.success) {
-              showExportSuccess(res);
+              showTaskCreated();
           } else if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.exportFailed', { message: res.message }));
           }
       } catch (e: unknown) {
-          hide();
           message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
       }
   };
@@ -1745,28 +1741,16 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       const objectNames = selectedObjects.map(t => t.objectName);
       const selectedViewCount = selectedObjects.filter(item => item.objectType === 'view').length;
 
-      const loadingText = mode === 'backup'
-          ? t('sidebar.msg.backingUpTables', { count: objectNames.length })
-          : mode === 'dataOnly'
-              ? t('sidebar.msg.exportingSelectedDataOnly', { count: objectNames.length })
-              : t('sidebar.msg.exportingTableSchema', { count: objectNames.length });
-      const hide = message.loading(loadingText, 0);
       try {
           const res = mode === 'dataOnly'
               ? await ExportTablesDataSQL(normalizeConnConfig(conn.config), dbName, objectNames)
               : await ExportTablesSQL(normalizeConnConfig(conn.config), dbName, objectNames, mode === 'backup');
-          hide();
           if (res.success) {
-              if (mode !== 'schema' && selectedViewCount > 0) {
-                  showExportSuccess(res, t('sidebar.msg.exportSuccessSkippedViews', { count: selectedViewCount }));
-              } else {
-                  showExportSuccess(res);
-              }
+              showTaskCreated();
           } else if (!isCancelledMessage(res.message)) {
               message.error(t('sidebar.msg.exportFailed', { message: res.message }));
           }
       } catch (e: unknown) {
-          hide();
           message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
       }
   };
@@ -1990,21 +1974,18 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       setIsBatchDbModalOpen(false);
 
       for (const db of selectedDbs) {
-          const hide = message.loading(includeData ? t('sidebar.msg.backingUpDb', { name: db.dbName }) : t('sidebar.msg.exportingDbSchema', { name: db.dbName }), 0);
           try {
               if (!batchConnContext) return;
               const res = await ExportDatabaseSQL(normalizeConnConfig(batchConnContext.config), db.dbName, includeData);
-              hide();
               if (res.success) {
-                  showExportSuccess(res, t('sidebar.msg.dbExportSuccess', { name: db.dbName }));
+                  showTaskCreated();
               } else if (!isCancelledMessage(res.message)) {
                   message.error(t('sidebar.msg.dbExportFailed', { name: db.dbName, message: res.message }));
                   break;
               } else {
-                  break; // User cancelled
+                  break;
               }
           } catch (e: unknown) {
-              hide();
               message.error(t('sidebar.msg.dbExportFailed', { name: db.dbName, message: getErrorMessage(e) }));
               break;
           }

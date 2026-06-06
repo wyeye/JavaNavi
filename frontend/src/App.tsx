@@ -1,13 +1,13 @@
 import React, { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Switch, Input, InputNumber, Select, Segmented, Tooltip } from 'antd';
+import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Switch, Input, InputNumber, Select, Segmented, Tooltip, Badge } from 'antd';
 import type { Locale } from 'antd/es/locale';
 import type { CSSProperties } from 'react';
 import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
-import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TableOutlined } from '@ant-design/icons';
-import { BrowserOpenURL, Environment, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
+import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TableOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { BrowserOpenURL, Environment, EventsOn, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
 import { DEFAULT_APPEARANCE, replaceConnectionTagsFromBackend, replaceSavedQueriesFromBackend, replaceSqlLogsFromBackend, useStore } from './store';
 import type { GlobalProxyConfig, SavedConnection } from './types';
 import { blurToFilter, isMacLikePlatform, normalizeBlurForPlatform, normalizeOpacityForPlatform, isWindowsPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from './utils/appearance';
@@ -48,7 +48,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetErrorLog, GetErrorLogs, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, GetSavedQueries, GetSqlLogs, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SaveSqlLogs, SetErrorLogResolved, SetMacNativeWindowControls, SetWindowTranslucency, type ErrorLogPayload } from '@compat/javanaviApp';
+import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetErrorLog, GetErrorLogs, GetGlobalProxyConfig, GetJobs, normalizeJob, GetLanguage, GetSavedConnections, GetSavedQueries, GetSqlLogs, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SaveSqlLogs, SetErrorLogResolved, SetMacNativeWindowControls, SetWindowTranslucency, type ErrorLogPayload } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -61,6 +61,7 @@ const AIChatPanel = lazy(() => import('./components/AIChatPanel'));
 const AISettingsModal = lazy(() => import('./components/AISettingsModal'));
 const Sidebar = lazy(() => import('./components/Sidebar'));
 const TabManager = lazy(() => import('./components/TabManager'));
+const TaskCenterModal = lazy(() => import('./components/TaskCenterModal'));
 
 const { Sider, Content } = Layout;
 const MIN_UI_SCALE = 0.8;
@@ -157,6 +158,8 @@ function App() {
   const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
   const [syncModalDomain, setSyncModalDomain] = useState<'data' | 'schema'>('data');
   const [isDriverModalOpen, setIsDriverModalOpen] = useState(false);
+  const [isTaskCenterOpen, setIsTaskCenterOpen] = useState(false);
+  const [runningJobCount, setRunningJobCount] = useState(0);
   const [editingConnection, setEditingConnection] = useState<SavedConnection | null>(null);
   const windowState = useStore(state => state.windowState);
   const themeMode = useStore(state => state.theme);
@@ -203,6 +206,7 @@ function App() {
   const [connectionPackageDialog, setConnectionPackageDialog] = useState<ConnectionPackageDialogState>(() => createClosedConnectionPackageDialogState());
   const [pendingConnectionImportPayload, setPendingConnectionImportPayload] = useState<string | null>(null);
   const connectionImportFileInputRef = useRef<HTMLInputElement | null>(null);
+  const taskJobStatusRef = useRef<Map<string, string>>(new Map());
   const sidebarWidth = useStore(state => state.sidebarWidth);
   const setSidebarWidth = useStore(state => state.setSidebarWidth);
   const aiPanelVisible = useStore(state => state.aiPanelVisible);
@@ -217,6 +221,34 @@ function App() {
   const windowCornerRadius = 14;
   useEffect(() => {
     installCompatibilityI18nFallback();
+  }, []);
+
+  useEffect(() => {
+      let cancelled = false;
+      const updateRunningCount = () => {
+          setRunningJobCount(Array.from(taskJobStatusRef.current.values()).filter((status) => status === 'running').length);
+      };
+      GetJobs(100)
+          .then((jobs) => {
+              if (!cancelled) {
+                  taskJobStatusRef.current = new Map(jobs.map((job) => [job.jobId, job.status]));
+                  updateRunningCount();
+              }
+          })
+          .catch(() => undefined);
+      const unsubscribeJobProgress = EventsOn<[unknown]>('job:progress', (payload) => {
+          const job = normalizeJob(payload);
+          if (!job.jobId) return;
+          taskJobStatusRef.current.set(job.jobId, job.status);
+          updateRunningCount();
+      });
+      const handleOpenTaskCenter = () => setIsTaskCenterOpen(true);
+      window.addEventListener('javanavi:open-task-center', handleOpenTaskCenter as EventListener);
+      return () => {
+          cancelled = true;
+          unsubscribeJobProgress();
+          window.removeEventListener('javanavi:open-task-center', handleOpenTaskCenter as EventListener);
+      };
   }, []);
 
   useEffect(() => {
@@ -2022,6 +2054,36 @@ function App() {
             backdropFilter: textInputSafeBackdropFilter,
             WebkitBackdropFilter: textInputSafeBackdropFilter,
         }}>
+          <div
+            style={{
+              position: 'fixed',
+              top: 12,
+              right: 16,
+              zIndex: 90,
+              pointerEvents: 'auto',
+            }}
+          >
+            <Badge count={runningJobCount} size="small">
+              <Tooltip title={t('taskCenter.title')}>
+                <Button
+                  type="text"
+                  icon={<ClockCircleOutlined />}
+                  onClick={() => setIsTaskCenterOpen(true)}
+                  style={{
+                    borderRadius: 999,
+                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.10)'}`,
+                    background: darkMode ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.88)',
+                    boxShadow: darkMode ? '0 10px 26px rgba(0,0,0,0.28)' : '0 10px 26px rgba(15,23,42,0.10)',
+                    backdropFilter: blurFilter,
+                    WebkitBackdropFilter: blurFilter,
+                    fontWeight: 700,
+                  }}
+                >
+                  {t('taskCenter.shortTitle')}
+                </Button>
+              </Tooltip>
+            </Badge>
+          </div>
           <Layout style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
           <Sider
             width={visibleSidebarWidth}
@@ -3151,7 +3213,13 @@ function App() {
               </div>
           </Modal>
 
-
+          <Suspense fallback={null}>
+              <TaskCenterModal
+                  open={isTaskCenterOpen}
+                  onClose={() => setIsTaskCenterOpen(false)}
+                  onRunningCountChange={setRunningJobCount}
+              />
+          </Suspense>
 
           {showLinuxResizeHandles && (
               <>
