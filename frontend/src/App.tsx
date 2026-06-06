@@ -1474,6 +1474,12 @@ function App() {
   ), [aiPanelVisible, darkMode, effectiveUiScale]);
   const sidebarUtilityItems = useMemo(() => {
       const itemMap = {
+          tasks: {
+              key: 'tasks',
+              title: t('taskCenter.title'),
+              icon: <Badge count={runningJobCount} size="small"><ClockCircleOutlined /></Badge>,
+              onClick: () => setIsTaskCenterOpen(true),
+          },
           tools: {
               key: 'tools',
               title: t('sidebar.tools'),
@@ -1489,7 +1495,7 @@ function App() {
       } as const;
 
       return SIDEBAR_UTILITY_ITEM_KEYS.map((key) => itemMap[key]);
-  }, [t]);
+  }, [runningJobCount, t]);
   const renderAIEdgeHandle = () => (
       <Tooltip title={t('ai.assistant')}>
           <Button
@@ -2054,36 +2060,6 @@ function App() {
             backdropFilter: textInputSafeBackdropFilter,
             WebkitBackdropFilter: textInputSafeBackdropFilter,
         }}>
-          <div
-            style={{
-              position: 'fixed',
-              top: 52,
-              right: 16,
-              zIndex: 90,
-              pointerEvents: 'auto',
-            }}
-          >
-            <Badge count={runningJobCount} size="small">
-              <Tooltip title={t('taskCenter.title')}>
-                <Button
-                  type="text"
-                  icon={<ClockCircleOutlined />}
-                  onClick={() => setIsTaskCenterOpen(true)}
-                  style={{
-                    borderRadius: 999,
-                    border: `1px solid ${darkMode ? 'rgba(255,255,255,0.14)' : 'rgba(15,23,42,0.10)'}`,
-                    background: darkMode ? 'rgba(15,23,42,0.72)' : 'rgba(255,255,255,0.88)',
-                    boxShadow: darkMode ? '0 10px 26px rgba(0,0,0,0.28)' : '0 10px 26px rgba(15,23,42,0.10)',
-                    backdropFilter: blurFilter,
-                    WebkitBackdropFilter: blurFilter,
-                    fontWeight: 700,
-                  }}
-                >
-                  {t('taskCenter.shortTitle')}
-                </Button>
-              </Tooltip>
-            </Badge>
-          </div>
           <Layout style={{ flex: 1, minHeight: 0, minWidth: 0 }}>
           <Sider
             width={visibleSidebarWidth}
@@ -2123,6 +2099,11 @@ function App() {
                     </Tooltip>
                     <Tooltip title={t('sidebar.newQuery')}>
                         <Button type="text" aria-label={t('sidebar.newQuery')} icon={<ConsoleSqlOutlined />} onClick={handleNewQuery} style={{ ...utilityButtonStyle, width: 32, paddingInline: 0, flexShrink: 0 }} />
+                    </Tooltip>
+                    <Tooltip title={t('taskCenter.title')}>
+                        <Badge count={runningJobCount} size="small">
+                            <Button type="text" aria-label={t('taskCenter.title')} icon={<ClockCircleOutlined />} onClick={() => setIsTaskCenterOpen(true)} style={{ ...utilityButtonStyle, width: 32, paddingInline: 0, flexShrink: 0 }} />
+                        </Badge>
                     </Tooltip>
                     <div style={{ flex: 1 }} />
                     <Tooltip title={t('sidebar.sqlLog')}>
