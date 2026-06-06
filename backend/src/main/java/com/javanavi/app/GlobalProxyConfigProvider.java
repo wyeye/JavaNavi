@@ -7,8 +7,6 @@ import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.security.SecretStore;
 import org.springframework.stereotype.Component;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
@@ -19,11 +17,13 @@ public class GlobalProxyConfigProvider {
 
     private final ObjectMapper objectMapper;
     private final SecretStore secretStore;
+    private final AppPersistenceService appPersistence;
     private final Path globalProxyFile;
 
     public GlobalProxyConfigProvider(SecurityProperties securityProperties, ObjectMapper objectMapper, SecretStore secretStore) {
         this.objectMapper = objectMapper;
         this.secretStore = secretStore;
+        this.appPersistence = new AppPersistenceService(securityProperties, objectMapper);
         this.globalProxyFile = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize().resolve("global-proxy.json");
     }
 
@@ -48,14 +48,7 @@ public class GlobalProxyConfigProvider {
     }
 
     private Map<String, Object> readMap() {
-        if (!Files.isRegularFile(globalProxyFile)) {
-            return Map.of();
-        }
-        try {
-            return objectMapper.readValue(globalProxyFile.toFile(), MAP_TYPE);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi global proxy settings.", error);
-        }
+        return appPersistence.readMap("global-proxy", globalProxyFile);
     }
 
     private static Integer port(Object value, int fallback) {

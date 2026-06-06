@@ -48,7 +48,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, GetSavedQueries, GetSqlLogs, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SaveSqlLogs, SetMacNativeWindowControls, SetWindowTranslucency } from '@compat/javanaviApp';
+import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetErrorLog, GetErrorLogs, GetGlobalProxyConfig, GetLanguage, GetSavedConnections, GetSavedQueries, GetSqlLogs, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SaveSqlLogs, SetErrorLogResolved, SetMacNativeWindowControls, SetWindowTranslucency, type ErrorLogPayload } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -1420,6 +1420,11 @@ function App() {
   const [isDataRootModalOpen, setIsDataRootModalOpen] = useState(false);
   const [dataRootInfo, setDataRootInfo] = useState<DataRootInfo | null>(null);
   const [dataRootLoading, setDataRootLoading] = useState(false);
+  const [isErrorLogModalOpen, setIsErrorLogModalOpen] = useState(false);
+  const [errorLogSearch, setErrorLogSearch] = useState('');
+  const [errorLogs, setErrorLogs] = useState<ErrorLogPayload[]>([]);
+  const [selectedErrorLog, setSelectedErrorLog] = useState<ErrorLogPayload | null>(null);
+  const [errorLogLoading, setErrorLogLoading] = useState(false);
   const [isAISettingsOpen, setIsAISettingsOpen] = useState(false);
   const aiEntryPlacement = resolveAIEntryPlacement();
   const aiEdgeHandleAttachment = resolveAIEdgeHandleAttachment(aiPanelVisible);
@@ -1488,6 +1493,68 @@ function App() {
       }
       void loadDataRootInfo();
   }, [isDataRootModalOpen, loadDataRootInfo]);
+
+  const loadErrorLogs = useCallback(async (query = errorLogSearch) => {
+      setErrorLogLoading(true);
+      try {
+          const logs = await GetErrorLogs(query, 200);
+          setErrorLogs(logs);
+          setSelectedErrorLog((current) => {
+              if (!current) return logs[0] || null;
+              return logs.find((log) => log.id === current.id) || logs[0] || null;
+          });
+      } catch (error: unknown) {
+          void message.error(getErrorMessage(error, t('settings.errorLogs.loadFailed')));
+      } finally {
+          setErrorLogLoading(false);
+      }
+  }, [errorLogSearch, t]);
+
+  useEffect(() => {
+      if (!isErrorLogModalOpen) {
+          return;
+      }
+      void loadErrorLogs();
+  }, [isErrorLogModalOpen, loadErrorLogs]);
+
+  const handleSearchErrorLog = useCallback(async () => {
+      const query = errorLogSearch.trim();
+      setErrorLogLoading(true);
+      try {
+          if (query.toUpperCase().startsWith('ERR-')) {
+              const log = await GetErrorLog(query);
+              const logs = log ? [log] : [];
+              setErrorLogs(logs);
+              setSelectedErrorLog(log);
+              if (!log) {
+                  void message.warning(t('settings.errorLogs.notFound'));
+              }
+          } else {
+              const logs = await GetErrorLogs(query, 200);
+              setErrorLogs(logs);
+              setSelectedErrorLog(logs[0] || null);
+          }
+      } catch (error: unknown) {
+          void message.error(getErrorMessage(error, t('settings.errorLogs.loadFailed')));
+      } finally {
+          setErrorLogLoading(false);
+      }
+  }, [errorLogSearch, t]);
+
+  const handleToggleErrorLogResolved = useCallback(async () => {
+      if (!selectedErrorLog) {
+          return;
+      }
+      try {
+          const updated = await SetErrorLogResolved(selectedErrorLog.id, !selectedErrorLog.resolved);
+          if (updated) {
+              setSelectedErrorLog(updated);
+              setErrorLogs((logs) => logs.map((log) => log.id === updated.id ? updated : log));
+          }
+      } catch (error: unknown) {
+          void message.error(getErrorMessage(error, t('settings.errorLogs.updateFailed')));
+      }
+  }, [selectedErrorLog, t]);
 
 
 
@@ -2327,6 +2394,16 @@ function App() {
                   },
                 },
                 {
+                  key: 'error-logs',
+                  icon: <BugOutlined />,
+                  title: t('settings.errorLogs.title'),
+                  description: t('settings.errorLogs.description'),
+                  onClick: () => {
+                    setIsSettingsModalOpen(false);
+                    setIsErrorLogModalOpen(true);
+                  },
+                },
+                {
                   key: 'about',
                   icon: <InfoCircleOutlined />,
                   title: t('settings.about.title'),
@@ -2347,6 +2424,96 @@ function App() {
                   </span>
                 </Button>
               ))}
+            </div>
+          </Modal>
+          <Modal
+            title={renderUtilityModalTitle(<BugOutlined />, t('settings.errorLogs.title'), t('settings.errorLogs.description'))}
+            open={isErrorLogModalOpen}
+            onCancel={() => setIsErrorLogModalOpen(false)}
+            footer={null}
+            width={920}
+            styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10 } }}
+          >
+            <div style={{ display: 'grid', gap: 12, padding: '12px 0' }}>
+              <div style={utilityPanelStyle}>
+                <Input.Search
+                  aria-label={t('settings.errorLogs.searchPlaceholder')}
+                  placeholder={t('settings.errorLogs.searchPlaceholder')}
+                  value={errorLogSearch}
+                  allowClear
+                  enterButton={t('common.search')}
+                  onChange={(event) => setErrorLogSearch(event.target.value)}
+                  onSearch={() => void handleSearchErrorLog()}
+                />
+                <div style={{ ...utilityMutedTextStyle, marginTop: 8 }}>{t('settings.errorLogs.searchHint')}</div>
+              </div>
+              <Spin spinning={errorLogLoading}>
+                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 330px) 1fr', gap: 12, minHeight: 360 }}>
+                  <div style={{ ...utilityPanelStyle, maxHeight: 520, overflow: 'auto', padding: 10 }}>
+                    {errorLogs.length === 0 ? (
+                      <div style={{ ...utilityMutedTextStyle, textAlign: 'center', padding: '32px 8px' }}>{t('settings.errorLogs.empty')}</div>
+                    ) : errorLogs.map((log) => {
+                      const active = selectedErrorLog?.id === log.id;
+                      return (
+                        <button
+                          key={log.id}
+                          type="button"
+                          onClick={() => setSelectedErrorLog(log)}
+                          style={{
+                            width: '100%',
+                            textAlign: 'left',
+                            border: `1px solid ${active ? overlayTheme.iconColor : 'transparent'}`,
+                            background: active ? overlayTheme.iconBg : 'transparent',
+                            color: overlayTheme.titleText,
+                            borderRadius: 10,
+                            padding: 10,
+                            cursor: 'pointer',
+                            marginBottom: 8,
+                          }}
+                        >
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                            <span style={{ fontWeight: 700 }}>{log.id}</span>
+                            <span style={{ color: log.resolved ? '#16a34a' : '#dc2626', fontSize: 12 }}>{log.resolved ? t('settings.errorLogs.resolved') : t('settings.errorLogs.unresolved')}</span>
+                          </div>
+                          <div style={{ ...utilityMutedTextStyle, marginTop: 4 }}>{dayjs(log.createdAt).format('YYYY-MM-DD HH:mm:ss')}</div>
+                          <div style={{ ...utilityMutedTextStyle, marginTop: 4, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{log.requestMethod} {log.requestPath}</div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div style={{ ...utilityPanelStyle, maxHeight: 520, overflow: 'auto' }}>
+                    {selectedErrorLog ? (
+                      <div style={{ display: 'grid', gap: 12 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
+                          <div>
+                            <div style={{ fontSize: 16, fontWeight: 700, color: overlayTheme.titleText }}>{selectedErrorLog.id}</div>
+                            <div style={utilityMutedTextStyle}>{dayjs(selectedErrorLog.createdAt).format('YYYY-MM-DD HH:mm:ss')}</div>
+                          </div>
+                          <Button onClick={() => void handleToggleErrorLogResolved()}>
+                            {selectedErrorLog.resolved ? t('settings.errorLogs.markUnresolved') : t('settings.errorLogs.markResolved')}
+                          </Button>
+                        </div>
+                        {[
+                          [t('settings.errorLogs.request'), `${selectedErrorLog.requestMethod} ${selectedErrorLog.requestPath}`],
+                          [t('settings.errorLogs.type'), selectedErrorLog.errorType],
+                          [t('settings.errorLogs.message'), selectedErrorLog.message],
+                        ].map(([label, value]) => (
+                          <div key={label}>
+                            <div style={{ fontWeight: 600, color: overlayTheme.titleText }}>{label}</div>
+                            <div style={{ ...utilityMutedTextStyle, fontSize: 13, wordBreak: 'break-word' }}>{value}</div>
+                          </div>
+                        ))}
+                        <div>
+                          <div style={{ fontWeight: 600, color: overlayTheme.titleText, marginBottom: 6 }}>{t('settings.errorLogs.stackTrace')}</div>
+                          <pre style={{ margin: 0, padding: 12, borderRadius: 10, background: darkMode ? 'rgba(15,23,42,0.72)' : 'rgba(248,250,252,0.92)', color: overlayTheme.titleText, whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12, lineHeight: 1.6 }}>{selectedErrorLog.stackTrace || t('common.unknown')}</pre>
+                        </div>
+                      </div>
+                    ) : (
+                      <div style={{ ...utilityMutedTextStyle, textAlign: 'center', padding: '80px 8px' }}>{t('settings.errorLogs.selectHint')}</div>
+                    )}
+                  </div>
+                </div>
+              </Spin>
             </div>
           </Modal>
           <Modal

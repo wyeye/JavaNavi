@@ -11,7 +11,15 @@ public record ApiEnvelope<T>(boolean success, T data, ApiError error) {
         return new ApiEnvelope<>(false, null, new ApiError(code, message));
     }
 
+    public static <T> ApiEnvelope<T> fail(String code, String message, String errorId) {
+        return new ApiEnvelope<>(false, null, new ApiError(code, message, errorId));
+    }
+
     public static <T> ApiEnvelope<T> failKey(I18nMessages messages, String code, Object... args) {
         return new ApiEnvelope<>(false, null, new ApiError(code, messages.message(code, args)));
+    }
+
+    public static <T> ApiEnvelope<T> failKeyWithErrorId(I18nMessages messages, String errorId, String code, Object... args) {
+        return new ApiEnvelope<>(false, null, new ApiError(code, messages.message(code, args), errorId));
     }
 }

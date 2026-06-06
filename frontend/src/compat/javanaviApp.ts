@@ -51,6 +51,18 @@ export type SqlLogPayload = {
   affectedRows?: number;
 };
 
+export type ErrorLogPayload = {
+  id: string;
+  createdAt: string;
+  level: string;
+  requestMethod: string;
+  requestPath: string;
+  errorType: string;
+  message: string;
+  stackTrace: string;
+  resolved: boolean;
+};
+
 function recordValue(value: unknown): UnknownRecord {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {};
 }
@@ -61,7 +73,13 @@ function fieldValue(source: unknown, key: string): unknown {
 
 function payloadErrorMessage(payload: unknown): unknown {
   const error = recordValue(fieldValue(payload, 'error'));
-  return fieldValue(error, 'message') || fieldValue(payload, 'message');
+  const message = fieldValue(error, 'message') || fieldValue(payload, 'message');
+  const errorId = fieldValue(error, 'errorId') || fieldValue(payload, 'errorId');
+  if (typeof errorId === 'string' && errorId.trim()) {
+    const text = typeof message === 'string' && message.trim() ? message.trim() : 'Request failed';
+    return `${text} (${localText('errors.referenceId')}: ${errorId.trim()})`;
+  }
+  return message;
 }
 
 function getErrorMessage(error: unknown, fallback = 'Request failed'): string {
@@ -928,6 +946,27 @@ export async function GetSqlLogs(): Promise<SqlLogPayload[]> {
   const payload = await postJson('/sql-logs/list', {});
   assertSuccessPayload(payload, 'Failed to load JavaNavi SQL logs.');
   return payloadArrayData<SqlLogPayload>(payload);
+}
+
+export async function GetErrorLogs(query = '', limit = 200): Promise<ErrorLogPayload[]> {
+  const params = new URLSearchParams();
+  if (query.trim()) params.set('q', query.trim());
+  params.set('limit', String(limit));
+  const payload = await getJson(`/error-logs?${params.toString()}`);
+  assertSuccessPayload(payload, 'Failed to load JavaNavi error logs.');
+  return payloadArrayData<ErrorLogPayload>(payload);
+}
+
+export async function GetErrorLog(id: string): Promise<ErrorLogPayload | null> {
+  const payload = await getJson(`/error-logs/${encodeURIComponent(id || '')}`);
+  assertSuccessPayload(payload, 'Failed to load JavaNavi error log.');
+  return payloadData<ErrorLogPayload>(payload) || null;
+}
+
+export async function SetErrorLogResolved(id: string, resolved: boolean): Promise<ErrorLogPayload | null> {
+  const payload = await postJson(`/error-logs/${encodeURIComponent(id || '')}/resolved`, { resolved });
+  assertSuccessPayload(payload, 'Failed to update JavaNavi error log.');
+  return payloadData<ErrorLogPayload>(payload) || null;
 }
 
 export async function SaveSqlLogs(arg1: SqlLogPayload[]): Promise<SqlLogPayload[]> {

@@ -38,6 +38,7 @@ public class AppCompatibilityService {
     private final ConnectionPackageCompatibilityService connectionPackageCompatibilityService;
     private final ExportedFileRevealService exportedFileRevealService;
     private final SecretStore secretStore;
+    private final AppPersistenceService appPersistence;
     private final Path dataDirectory;
     private final Path globalProxyFile;
     private final Path languageFile;
@@ -54,6 +55,7 @@ public class AppCompatibilityService {
         this.connectionPackageCompatibilityService = connectionPackageCompatibilityService;
         this.exportedFileRevealService = exportedFileRevealService;
         this.secretStore = secretStore;
+        this.appPersistence = new AppPersistenceService(securityProperties, objectMapper);
         this.dataDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize();
         this.globalProxyFile = dataDirectory.resolve("global-proxy.json");
         this.languageFile = dataDirectory.resolve("language.json");
@@ -119,7 +121,7 @@ public class AppCompatibilityService {
                 dataDirectory.toString(),
                 dataDirectory.toString(),
                 driverPath.toString(),
-                dataDirectory.resolve("connections.json").toString(),
+                appPersistence.databasePath().toString(),
                 Files.isDirectory(dataDirectory),
                 true,
                 true
@@ -127,7 +129,7 @@ public class AppCompatibilityService {
     }
 
     public synchronized AppContracts.GlobalProxyResponse getGlobalProxy() {
-        Map<String, Object> stored = readMap(globalProxyFile);
+        Map<String, Object> stored = appPersistence.readMap("global-proxy", globalProxyFile);
         boolean hasPassword = secretStore.get(GLOBAL_PROXY_SECRET_KEY).isPresent() || bool(stored.get("hasPassword"));
         Map<String, Object> result = defaultGlobalProxy();
         result.putAll(stored);
@@ -138,7 +140,7 @@ public class AppCompatibilityService {
     }
 
     public synchronized AppContracts.LanguageResponse getLanguage() {
-        Map<String, Object> stored = readMap(languageFile);
+        Map<String, Object> stored = appPersistence.readMap("language", languageFile);
         String language = AppLanguage.from(stored.get("language")) == AppLanguage.ZH ? "zh" : "en";
         return new AppContracts.LanguageResponse(language);
     }
@@ -146,7 +148,8 @@ public class AppCompatibilityService {
     public synchronized AppContracts.LanguageResponse saveLanguage(String rawLanguage) {
         AppLanguage language = AppLanguage.from(rawLanguage);
         Map<String, Object> value = orderedMap("language", language == AppLanguage.ZH ? "zh" : "en");
-        writeMap(languageFile, value);
+        appPersistence.writeJson("language", value);
+        writeLegacyMap(languageFile, value);
         return new AppContracts.LanguageResponse(String.valueOf(value.get("language")));
     }
 
@@ -170,7 +173,8 @@ public class AppCompatibilityService {
         }
         next.put("password", "");
         next.put("secretRef", GLOBAL_PROXY_SECRET_REF);
-        writeMap(globalProxyFile, next);
+        appPersistence.writeJson("global-proxy", next);
+        writeLegacyMap(globalProxyFile, next);
         return getGlobalProxy();
     }
 
@@ -427,22 +431,6 @@ public class AppCompatibilityService {
         }
     }
 
-    private Map<String, Object> readMap(Path file) {
-        try {
-            if (!Files.exists(file)) {
-                return new LinkedHashMap<>();
-            }
-            String json = Files.readString(file, StandardCharsets.UTF_8);
-            if (json.isBlank()) {
-                return new LinkedHashMap<>();
-            }
-            Map<String, Object> value = objectMapper.readValue(json, MAP_TYPE);
-            return value == null ? new LinkedHashMap<>() : new LinkedHashMap<>(value);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi app state.", error);
-        }
-    }
-
     private AppContracts.SqlDirectoryEntryResponse sqlDirectoryEntry(Path path) {
         try {
             boolean directory = Files.isDirectory(path);
@@ -553,12 +541,12 @@ public class AppCompatibilityService {
         return normalized;
     }
 
-    private void writeMap(Path file, Map<String, Object> value) {
+    private void writeLegacyMap(Path file, Map<String, Object> value) {
         try {
             Files.createDirectories(file.getParent());
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), value);
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi app state.", error);
+            throw new IllegalStateException("Unable to write JavaNavi legacy app state mirror.", error);
         }
     }
 

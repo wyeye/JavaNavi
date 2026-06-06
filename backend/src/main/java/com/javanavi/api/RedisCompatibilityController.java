@@ -1,5 +1,6 @@
 package com.javanavi.api;
 
+import com.javanavi.app.ErrorLogService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.RedisContracts;
@@ -19,10 +20,12 @@ import java.util.function.Supplier;
 public class RedisCompatibilityController {
     private final RedisCompatibilityService service;
     private final I18nMessages messages;
+    private final ErrorLogService errorLogService;
 
-    public RedisCompatibilityController(RedisCompatibilityService service, I18nMessages messages) {
+    public RedisCompatibilityController(RedisCompatibilityService service, I18nMessages messages, ErrorLogService errorLogService) {
         this.service = service;
         this.messages = messages;
+        this.errorLogService = errorLogService;
     }
 
     @PostMapping("/connect") public ApiEnvelope<RedisContracts.ConnectResponse> connect(@RequestBody(required = false) RedisContracts.BaseRequest input) { return invoke(() -> RedisContracts.ConnectResponse.from(service.connect(toPayload(input)))); }
@@ -56,7 +59,9 @@ public class RedisCompatibilityController {
         try {
             return ApiEnvelope.ok(action.get());
         } catch (RuntimeException error) {
-            return ApiEnvelope.failKey(messages, "redis.operationFailed", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+            String message = messages.message("redis.operationFailed", "message", SecretRedactor.redact(error == null ? "" : String.valueOf(error.getMessage())));
+            String errorId = errorLogService.record(error, "redis.operationFailed", message);
+            return ApiEnvelope.fail("redis.operationFailed", message, errorId);
         }
     }
 

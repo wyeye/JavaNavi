@@ -1,10 +1,12 @@
 package com.javanavi.api;
 
+import com.javanavi.app.ErrorLogService;
 import com.javanavi.files.FileWorkflowCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.FileWorkflowContracts;
 import com.javanavi.security.SecretRedactor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.http.MediaType;
@@ -23,10 +25,17 @@ import java.util.List;
 public class FileWorkflowCompatibilityController {
     private final FileWorkflowCompatibilityService fileWorkflowCompatibilityService;
     private final I18nMessages messages;
+    private final ErrorLogService errorLogService;
 
     public FileWorkflowCompatibilityController(FileWorkflowCompatibilityService fileWorkflowCompatibilityService, I18nMessages messages) {
+        this(fileWorkflowCompatibilityService, messages, null);
+    }
+
+    @Autowired
+    public FileWorkflowCompatibilityController(FileWorkflowCompatibilityService fileWorkflowCompatibilityService, I18nMessages messages, ErrorLogService errorLogService) {
         this.fileWorkflowCompatibilityService = fileWorkflowCompatibilityService;
         this.messages = messages;
+        this.errorLogService = errorLogService;
     }
 
     @PostMapping("/sql/open")
@@ -98,13 +107,22 @@ public class FileWorkflowCompatibilityController {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiEnvelope<Void> badRequest(IllegalArgumentException error) {
-        return ApiEnvelope.failKey(messages, "files.invalidRequest", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+        return fail(error, "files.invalidRequest");
     }
 
     @ExceptionHandler(IllegalStateException.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiEnvelope<Void> illegalState(IllegalStateException error) {
-        return ApiEnvelope.failKey(messages, "files.state", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+        return fail(error, "files.state");
+    }
+
+    private ApiEnvelope<Void> fail(Throwable error, String code) {
+        String message = messages.message(code, "message", SecretRedactor.redact(error == null ? "" : String.valueOf(error.getMessage())));
+        if (errorLogService == null) {
+            return ApiEnvelope.fail(code, message);
+        }
+        String errorId = errorLogService.record(error, code, message);
+        return ApiEnvelope.fail(code, message, errorId);
     }
 
     private static String firstText(String... values) {

@@ -3,6 +3,7 @@ package com.javanavi.ai;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.app.AppPersistenceService;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.events.CompatEventPublisher;
 import com.javanavi.i18n.AppLanguage;
@@ -47,6 +48,7 @@ public class AiCompatibilityService {
 
     private final ObjectMapper objectMapper;
     private final SecretStore secretStore;
+    private final AppPersistenceService appPersistence;
     private final Path stateFile;
     private final HttpClient httpClient;
     private final CompatEventPublisher eventPublisher;
@@ -62,6 +64,7 @@ public class AiCompatibilityService {
     ) {
         this.objectMapper = objectMapper;
         this.secretStore = secretStore;
+        this.appPersistence = new AppPersistenceService(properties, objectMapper);
         this.eventPublisher = eventPublisher;
         this.messages = messages;
         Path directory = Path.of(properties.getDataDirectory()).toAbsolutePath().normalize();
@@ -975,32 +978,16 @@ public class AiCompatibilityService {
     }
 
     private Map<String, Object> readState() {
-        try {
-            if (!Files.exists(stateFile)) {
-                return defaultState();
-            }
-            String json = Files.readString(stateFile, StandardCharsets.UTF_8);
-            if (json.isBlank()) {
-                return defaultState();
-            }
-            Map<String, Object> state = objectMapper.readValue(json, MAP_TYPE);
-            Map<String, Object> result = defaultState();
-            if (state != null) {
-                result.putAll(state);
-            }
-            return result;
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi AI state.", error);
+        Map<String, Object> state = appPersistence.readMap("ai-state", stateFile);
+        Map<String, Object> result = defaultState();
+        if (state != null) {
+            result.putAll(state);
         }
+        return result;
     }
 
     private void writeState(Map<String, Object> state) {
-        try {
-            Files.createDirectories(stateFile.getParent());
-            objectMapper.writerWithDefaultPrettyPrinter().writeValue(stateFile.toFile(), state);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi AI state.", error);
-        }
+        appPersistence.writeJson("ai-state", state == null ? defaultState() : state);
     }
 
     private Map<String, Object> defaultState() {

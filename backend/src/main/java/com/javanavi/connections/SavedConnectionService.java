@@ -2,6 +2,7 @@ package com.javanavi.connections;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.app.AppPersistenceService;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.model.ConnectionTagDto;
 import com.javanavi.model.ConnectionConfigDto;
@@ -13,9 +14,6 @@ import com.javanavi.model.SavedConnectionViewDto;
 import com.javanavi.security.SecretStore;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -39,6 +37,7 @@ public class SavedConnectionService {
 
     private final ObjectMapper objectMapper;
     private final SecretStore secretStore;
+    private final AppPersistenceService appPersistence;
     private final Path connectionsFile;
     private final Path connectionTagsFile;
     private final Path savedQueriesFile;
@@ -46,6 +45,7 @@ public class SavedConnectionService {
     public SavedConnectionService(SecurityProperties properties, ObjectMapper objectMapper, SecretStore secretStore) {
         this.objectMapper = objectMapper;
         this.secretStore = secretStore;
+        this.appPersistence = new AppPersistenceService(properties, objectMapper);
         Path directory = Path.of(properties.getDataDirectory()).toAbsolutePath().normalize();
         this.connectionsFile = directory.resolve("connections.json");
         this.connectionTagsFile = directory.resolve("connection-tags.json");
@@ -609,55 +609,21 @@ public class SavedConnectionService {
     }
 
     private List<StoredConnection> readAll() {
-        try {
-            if (!Files.exists(connectionsFile)) {
-                return new ArrayList<>();
-            }
-            String text = Files.readString(connectionsFile, StandardCharsets.UTF_8);
-            if (text.isBlank()) {
-                return new ArrayList<>();
-            }
-            List<StoredConnection> connections = objectMapper.readValue(text, STORED_CONNECTIONS);
-            return connections == null ? new ArrayList<>() : new ArrayList<>(connections);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi saved connections.", error);
-        }
+        List<StoredConnection> connections = appPersistence.readJson("saved-connections", connectionsFile, STORED_CONNECTIONS, new ArrayList<>());
+        return connections == null ? new ArrayList<>() : new ArrayList<>(connections);
     }
 
     private void writeAll(List<StoredConnection> connections) {
-        try {
-            Files.createDirectories(connectionsFile.getParent());
-            byte[] json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(connections);
-            Files.write(connectionsFile, json);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi saved connections.", error);
-        }
+        appPersistence.writeJson("saved-connections", connections);
     }
 
     private List<StoredConnectionTag> readAllTags() {
-        try {
-            if (!Files.exists(connectionTagsFile)) {
-                return new ArrayList<>();
-            }
-            String text = Files.readString(connectionTagsFile, StandardCharsets.UTF_8);
-            if (text.isBlank()) {
-                return new ArrayList<>();
-            }
-            List<StoredConnectionTag> tags = objectMapper.readValue(text, STORED_CONNECTION_TAGS);
-            return tags == null ? new ArrayList<>() : new ArrayList<>(tags);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi connection groups.", error);
-        }
+        List<StoredConnectionTag> tags = appPersistence.readJson("connection-tags", connectionTagsFile, STORED_CONNECTION_TAGS, new ArrayList<>());
+        return tags == null ? new ArrayList<>() : new ArrayList<>(tags);
     }
 
     private void writeAllTags(List<StoredConnectionTag> tags) {
-        try {
-            Files.createDirectories(connectionTagsFile.getParent());
-            byte[] json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(tags);
-            Files.write(connectionTagsFile, json);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi connection groups.", error);
-        }
+        appPersistence.writeJson("connection-tags", tags);
     }
 
     private ConnectionTagDto toTagDto(StoredConnectionTag tag) {
@@ -665,29 +631,12 @@ public class SavedConnectionService {
     }
 
     private List<StoredSavedQuery> readAllSavedQueries() {
-        try {
-            if (!Files.exists(savedQueriesFile)) {
-                return new ArrayList<>();
-            }
-            String text = Files.readString(savedQueriesFile, StandardCharsets.UTF_8);
-            if (text.isBlank()) {
-                return new ArrayList<>();
-            }
-            List<StoredSavedQuery> queries = objectMapper.readValue(text, STORED_SAVED_QUERIES);
-            return queries == null ? new ArrayList<>() : new ArrayList<>(queries);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi saved queries.", error);
-        }
+        List<StoredSavedQuery> queries = appPersistence.readJson("saved-queries", savedQueriesFile, STORED_SAVED_QUERIES, new ArrayList<>());
+        return queries == null ? new ArrayList<>() : new ArrayList<>(queries);
     }
 
     private void writeAllSavedQueries(List<StoredSavedQuery> queries) {
-        try {
-            Files.createDirectories(savedQueriesFile.getParent());
-            byte[] json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(queries);
-            Files.write(savedQueriesFile, json);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi saved queries.", error);
-        }
+        appPersistence.writeJson("saved-queries", queries);
     }
 
     private SavedQueryDto toSavedQueryDto(StoredSavedQuery query) {

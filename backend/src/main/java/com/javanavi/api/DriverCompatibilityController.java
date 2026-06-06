@@ -1,5 +1,6 @@
 package com.javanavi.api;
 
+import com.javanavi.app.ErrorLogService;
 import com.javanavi.driver.DriverCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
@@ -26,10 +27,12 @@ import java.util.Map;
 public class DriverCompatibilityController {
     private final DriverCompatibilityService driverCompatibilityService;
     private final I18nMessages messages;
+    private final ErrorLogService errorLogService;
 
-    public DriverCompatibilityController(DriverCompatibilityService driverCompatibilityService, I18nMessages messages) {
+    public DriverCompatibilityController(DriverCompatibilityService driverCompatibilityService, I18nMessages messages, ErrorLogService errorLogService) {
         this.driverCompatibilityService = driverCompatibilityService;
         this.messages = messages;
+        this.errorLogService = errorLogService;
     }
 
     @GetMapping("/network-status")
@@ -168,12 +171,18 @@ public class DriverCompatibilityController {
     @ExceptionHandler(IllegalArgumentException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
     public ApiEnvelope<Void> badRequest(IllegalArgumentException error) {
-        return ApiEnvelope.failKey(messages, "drivers.invalidRequest", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+        return fail(error, "drivers.invalidRequest");
     }
 
     @ExceptionHandler(IllegalStateException.class)
     @ResponseStatus(HttpStatus.INTERNAL_SERVER_ERROR)
     public ApiEnvelope<Void> illegalState(IllegalStateException error) {
-        return ApiEnvelope.failKey(messages, "drivers.state", "message", SecretRedactor.redact(messages.localizeFallback(error.getMessage())));
+        return fail(error, "drivers.state");
+    }
+
+    private ApiEnvelope<Void> fail(Throwable error, String code) {
+        String message = messages.message(code, "message", SecretRedactor.redact(error == null ? "" : String.valueOf(error.getMessage())));
+        String errorId = errorLogService.record(error, code, message);
+        return ApiEnvelope.fail(code, message, errorId);
     }
 }

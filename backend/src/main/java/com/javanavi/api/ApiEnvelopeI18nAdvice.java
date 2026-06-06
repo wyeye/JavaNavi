@@ -56,7 +56,7 @@ public class ApiEnvelopeI18nAdvice implements ResponseBodyAdvice<Object> {
             return body;
         }
         ApiError error = envelope.error();
-        ApiError localizedError = error == null ? null : new ApiError(error.code(), messages.localizeFallback(error.message()));
+        ApiError localizedError = error == null ? null : new ApiError(error.code(), messages.localizeFallback(error.message()), error.errorId());
         return new ApiEnvelope<>(envelope.success(), localizeData(envelope.data()), localizedError);
     }
 

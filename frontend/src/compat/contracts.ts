@@ -10,6 +10,7 @@ export type DataRow = Record<string, unknown>;
 export interface ApiErrorPayload {
   code?: string;
   message?: string;
+  errorId?: string;
   details?: UnknownRecord;
 }
 

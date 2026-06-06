@@ -1,15 +1,11 @@
 package com.javanavi.app;
 
 import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.model.SqlLogDto;
 import com.javanavi.model.SqlLogsRequestDto;
 import org.springframework.stereotype.Service;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -21,11 +17,11 @@ public class SqlLogService {
     private static final int MAX_SQL_LOGS = 1000;
     private static final int MAX_SQL_TEXT_LENGTH = 200_000;
 
-    private final ObjectMapper objectMapper;
+    private final AppPersistenceService appPersistence;
     private final Path sqlLogsFile;
 
-    public SqlLogService(SecurityProperties properties, ObjectMapper objectMapper) {
-        this.objectMapper = objectMapper;
+    public SqlLogService(SecurityProperties properties, AppPersistenceService appPersistence) {
+        this.appPersistence = appPersistence;
         Path directory = Path.of(properties.getDataDirectory()).toAbsolutePath().normalize();
         this.sqlLogsFile = directory.resolve("sql-logs.json");
     }
@@ -56,29 +52,12 @@ public class SqlLogService {
     }
 
     private List<StoredSqlLog> readAll() {
-        try {
-            if (!Files.exists(sqlLogsFile)) {
-                return new ArrayList<>();
-            }
-            String text = Files.readString(sqlLogsFile, StandardCharsets.UTF_8);
-            if (text.isBlank()) {
-                return new ArrayList<>();
-            }
-            List<StoredSqlLog> logs = objectMapper.readValue(text, STORED_SQL_LOGS);
-            return logs == null ? new ArrayList<>() : new ArrayList<>(logs).stream().limit(MAX_SQL_LOGS).toList();
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi SQL logs.", error);
-        }
+        List<StoredSqlLog> logs = appPersistence.readJson("sql-logs", sqlLogsFile, STORED_SQL_LOGS, new ArrayList<>());
+        return logs == null ? new ArrayList<>() : new ArrayList<>(logs).stream().limit(MAX_SQL_LOGS).toList();
     }
 
     private void writeAll(List<StoredSqlLog> logs) {
-        try {
-            Files.createDirectories(sqlLogsFile.getParent());
-            byte[] json = objectMapper.writerWithDefaultPrettyPrinter().writeValueAsBytes(logs.stream().limit(MAX_SQL_LOGS).toList());
-            Files.write(sqlLogsFile, json);
-        } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi SQL logs.", error);
-        }
+        appPersistence.writeJson("sql-logs", logs.stream().limit(MAX_SQL_LOGS).toList());
     }
 
     private SqlLogDto toDto(StoredSqlLog log) {
