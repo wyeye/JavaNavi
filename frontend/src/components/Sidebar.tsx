@@ -42,7 +42,7 @@ import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 	import { SavedConnection, ExternalSQLTreeEntry, type ConnectionTag, type TabData } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, isJavaNaviDesktopRuntime, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBGetColumns, DBGetIndexes, DBGetForeignKeys, DBGetTriggers, DBQuery, DBShowCreateTable, ExportTable, OpenSQLFile, isJavaNaviDesktopRuntime, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
   import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
@@ -141,6 +141,16 @@ type SidebarRuntimeNodeData = SidebarDataRef & SavedConnection & {
   triggerName?: string;
   groupKey?: string;
 };
+type SidebarTableChildCounts = {
+  columns?: number;
+  indexes?: number;
+  foreignKeys?: number;
+  triggers?: number;
+};
+
+const formatSidebarCountTitle = (title: string, count?: number) => (
+  typeof count === 'number' ? `${title} (${count})` : title
+);
 type SidebarEventNode = EventDataNode<TreeNode>;
 type SidebarMenuNode = TreeNode | SidebarEventNode;
 type SidebarSelectInfo = {
@@ -1157,6 +1167,31 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
 	      }
   };
 
+  const loadSidebarTableChildCounts = async (node: { dataRef?: object }): Promise<SidebarTableChildCounts> => {
+      const conn = getSidebarDataRef<SidebarRuntimeNodeData>(node);
+      const dbName = String(conn.dbName || '').trim();
+      const tableName = String(conn.tableName || '').trim();
+      if (!conn.id || !dbName || !tableName) return {};
+
+      try {
+          const config = buildRuntimeConfig(conn, dbName);
+          const [columnsRes, indexesRes, foreignKeysRes, triggersRes] = await Promise.all([
+              DBGetColumns(config, dbName, tableName),
+              DBGetIndexes(config, dbName, tableName),
+              DBGetForeignKeys(config, dbName, tableName),
+              DBGetTriggers(config, dbName, tableName),
+          ]);
+          return {
+              columns: columnsRes.success && Array.isArray(columnsRes.data) ? columnsRes.data.length : undefined,
+              indexes: indexesRes.success && Array.isArray(indexesRes.data) ? indexesRes.data.length : undefined,
+              foreignKeys: foreignKeysRes.success && Array.isArray(foreignKeysRes.data) ? foreignKeysRes.data.length : undefined,
+              triggers: triggersRes.success && Array.isArray(triggersRes.data) ? triggersRes.data.length : undefined,
+          };
+      } catch {
+          return {};
+      }
+  };
+
   const onLoadData = async ({ key, children, dataRef, type }: SidebarEventNode) => {
     if (type === 'tag') return;
     if (children) return;
@@ -1167,11 +1202,12 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
         await loadTables({ key, dataRef });
     } else if (type === 'table') {
         // Expand table to show object categories
-        const conn = dataRef; 
+        const conn = dataRef;
+        const counts = await loadSidebarTableChildCounts({ dataRef });
 
         const folders: TreeNode[] = [
             {
-                title: t('sidebar.tree.columns'),
+                title: formatSidebarCountTitle(t('sidebar.tree.columns'), counts.columns),
                 key: `${key}-columns`,
                 icon: <UnorderedListOutlined />,
                 type: 'folder-columns',
@@ -1179,7 +1215,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 dataRef: conn
             },
             {
-                title: t('sidebar.tree.indexes'),
+                title: formatSidebarCountTitle(t('sidebar.tree.indexes'), counts.indexes),
                 key: `${key}-indexes`,
                 icon: <KeyOutlined style={{ transform: 'rotate(45deg)' }} />,
                 type: 'folder-indexes',
@@ -1187,7 +1223,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 dataRef: conn
             },
             {
-                title: t('sidebar.tree.foreignKeys'),
+                title: formatSidebarCountTitle(t('sidebar.tree.foreignKeys'), counts.foreignKeys),
                 key: `${key}-fks`,
                 icon: <LinkOutlined />,
                 type: 'folder-fks',
@@ -1195,7 +1231,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 dataRef: conn
             },
             {
-                title: t('sidebar.tree.triggers'),
+                title: formatSidebarCountTitle(t('sidebar.tree.triggers'), counts.triggers),
                 key: `${key}-triggers`,
                 icon: <ThunderboltOutlined />,
                 type: 'folder-triggers',
@@ -1203,7 +1239,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
                 dataRef: conn
             }
         ];
-        
+
         setTreeData(origin => updateTreeData(origin, key, folders));
     }
   };
