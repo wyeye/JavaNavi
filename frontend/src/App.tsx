@@ -2057,7 +2057,7 @@ function App() {
           <div
             style={{
               position: 'fixed',
-              top: 12,
+              top: 52,
               right: 16,
               zIndex: 90,
               pointerEvents: 'auto',
