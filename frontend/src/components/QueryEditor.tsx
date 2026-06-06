@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import Editor, { OnMount, type Monaco } from '@monaco-editor/react';
 import type { editor, Position } from 'monaco-editor';
-import { Button, message, Modal, Input, Form, Dropdown, MenuProps, Tooltip, Select, Tabs, Switch } from 'antd';
+import type { ColumnsType } from 'antd/es/table';
+import { Button, message, Modal, Input, Form, Dropdown, MenuProps, Tooltip, Select, Tabs, Switch, Table } from 'antd';
 import { PlayCircleOutlined, SaveOutlined, FormatPainterOutlined, SettingOutlined, CloseOutlined, StopOutlined, RobotOutlined } from '@ant-design/icons';
 import { format } from 'sql-formatter';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,6 +21,7 @@ import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { resolveSqlDialect, resolveSqlFunctions, resolveSqlKeywords } from '../utils/sqlDialect';
 import { isExecutionPlanSql } from '../utils/executionPlanPresentation';
 import { translate, type I18nKey } from '../i18n';
+import { buildQueryResultGroups, type ExecutionSummaryRow } from '../utils/queryResultGrouping';
 
 const SQL_KEYWORDS = [
     'SELECT', 'FROM', 'WHERE', 'LIMIT', 'INSERT', 'UPDATE', 'DELETE', 'JOIN', 'LEFT', 'RIGHT',
@@ -137,6 +139,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const [query, setQuery] = useState(tab.query || 'SELECT * FROM ');
 
   type ResultSet = {
+      kind?: 'executionSummary' | 'queryResult';
       key: string;
       sql: string;
       exportSql?: string;
@@ -1601,109 +1604,35 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             // 前端也拆分语句用于匹配原始 SQL（展示和表名检测）
             const statements = splitSQLStatements(fullSQL);
 
-            for (let idx = 0; idx < resultSetDataArray.length; idx++) {
-                const rsData = resultSetDataArray[idx];
-                const rawStatement = String(rsData.sql || ((idx < statements.length) ? statements[idx] : ''));
-                const statementIndex = Number(rsData.statementIndex || idx + 1);
-                const startLine = Number(rsData.startLine || 0);
-                const endLine = Number(rsData.endLine || 0);
-                const statementStatus: StatementExecutionStatus = rsData.status === 'error' ? 'error' : 'success';
-                const statementMessage = String(rsData.message || (statementStatus === 'error' ? t('queryEditor.executionFailed') : t('queryEditor.executionSucceededBare')));
-                const transactionRolledBack = rsData.transactionRolledBack === true;
-
-                // 检查是否为 affectedRows 类结果集
-                const isAffectedResult = Array.isArray(rsData.rows) && rsData.rows.length === 1
-                    && rsData.columns && rsData.columns.length === 1
-                    && rsData.columns[0] === 'affectedRows';
-
-                if (isAffectedResult) {
-                    const affectedRow = Array.isArray(rsData.rows) ? rsData.rows[0] : undefined;
-                    const affected = affectedRowsOf(affectedRow) ?? 0;
-                    nextResultSets.push({
-                        key: `result-${idx + 1}`,
-                        sql: rawStatement,
-                        exportSql: rawStatement,
-                        rows: [statementExecutionSummaryRow({
-                            statementIndex,
-                            startLine,
-                            endLine,
-                            status: statementStatus,
-                            message: statementMessage,
-                            affectedRows: affected,
-                            statusText: statementStatus === 'success' ? t('queryEditor.status.success') : t('queryEditor.status.error')
-                        })],
-                        columns: ['statementIndex', 'startLine', 'endLine', 'status', 'message', 'affectedRows'],
-                        pkColumns: [],
-                        readOnly: true,
-                        source: runSource,
-                        statementIndex,
-                        startLine,
-                        endLine,
-                        status: statementStatus,
-                        message: statementMessage,
-                        statementSummary: true,
-                        transactionRolledBack
-                    });
-                } else {
-                    let rows = Array.isArray(rsData.rows) ? rsData.rows : [];
-                    let truncated = false;
-                    // 仅当前端自动注入了 LIMIT 时才做兜底截断；用户手写 LIMIT 时尊重原始结果
-                    if (anyLimitApplied && Number.isFinite(maxRows) && maxRows > 0 && rows.length > maxRows) {
-                        truncated = true;
-                        anyTruncated = true;
-                        rows = rows.slice(0, maxRows);
-                    }
-                    const cols = (rsData.columns && rsData.columns.length > 0)
-                        ? rsData.columns
-                        : (rows.length > 0 ? Object.keys(rows[0]) : []);
-
-                    rows.forEach((row, i) => {
-                        row[JAVANAVI_ROW_KEY] = i;
-                    });
-
-                    let simpleTableName: string | undefined = undefined;
-                    if (rawStatement) {
-                        // 支持多行 SQL：SELECT [cols] FROM [schema.]table [WHERE...] [ORDER BY...] [LIMIT...] 等
-                        // JOIN 查询表名歧义，不提取。Oracle 无主键结果需要 ROWID 时，只在用户已显式选出 ROWID 时启用编辑。
-                        const hasJoin = /\bJOIN\b/i.test(rawStatement);
-                        const tableMatch = !hasJoin
-                            ? rawStatement.match(/^\s*SELECT\s+.+?\s+FROM\s+(?:[\w`"\[\].]+\.)?[`"\[]?(\w+)[`"\]]?\s*(?:$|[\s;])/im)
-                            : null;
-                        if (tableMatch) {
-                            simpleTableName = tableMatch[1];
-                            if (!forceReadOnlyResult && !anyLimitApplied) {
-                                pendingPk.push({ resultKey: `result-${idx + 1}`, tableName: simpleTableName });
-                            }
-                        }
-                    }
-
-                    const canResolveLocator = !!simpleTableName && !forceReadOnlyResult && !anyLimitApplied;
-                    const initialEditLocator = canResolveLocator
-                        ? undefined
-                        : resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [], dbType: normalizedDbType, language });
-                    nextResultSets.push({
-                        key: `result-${idx + 1}`,
-                        sql: rawStatement,
-                        exportSql: rawStatement,
-                        rows,
-                        columns: cols,
-                        tableName: simpleTableName,
-                        pkColumns: [],
-                        editLocator: initialEditLocator,
-                        readOnly: true,
-                        pkLoading: canResolveLocator,
-                        truncated,
-                        source: runSource,
-                        statementIndex,
-                        startLine,
-                        endLine,
-                        status: statementStatus,
-                        message: statementMessage,
-                        statementSummary: statementStatus === 'error',
-                        transactionRolledBack
-                    });
-                }
-            }
+            const resolveSimpleResultTableName = (rawStatement: string): string | undefined => {
+                if (!rawStatement) return undefined;
+                // 支持多行 SQL：SELECT [cols] FROM [schema.]table [WHERE...] [ORDER BY...] [LIMIT...] 等
+                // JOIN 查询表名歧义，不提取。Oracle 无主键结果需要 ROWID 时，只在用户已显式选出 ROWID 时启用编辑。
+                const hasJoin = /\bJOIN\b/i.test(rawStatement);
+                const tableMatch = !hasJoin
+                    ? rawStatement.match(/^\s*SELECT\s+.+?\s+FROM\s+(?:[\w`"\[\].]+\.)?[`"\[]?(\w+)[`"\]]?\s*(?:$|[\s;])/im)
+                    : null;
+                return tableMatch ? tableMatch[1] : undefined;
+            };
+            const canLoadPrimaryKeysForResult = (tableName: string): boolean => !!tableName && !forceReadOnlyResult && !anyLimitApplied;
+            const groupedResult = buildQueryResultGroups<RunSource, EditRowLocator>({
+                resultSetDataArray,
+                statements,
+                maxRows,
+                anyLimitApplied,
+                source: runSource,
+                rowKeyField: JAVANAVI_ROW_KEY,
+                successText: t('queryEditor.status.success'),
+                errorText: t('queryEditor.status.error'),
+                operationSucceededText: t('queryEditor.executionSucceededBare'),
+                operationFailedText: t('queryEditor.executionFailed'),
+                resolveReadOnlyLocator: (cols) => resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [], dbType: normalizedDbType, language }),
+                resolveSimpleTableName: resolveSimpleResultTableName,
+                canLoadPrimaryKeys: canLoadPrimaryKeysForResult,
+            });
+            nextResultSets.push(...groupedResult.resultGroups.map((group) => ({ ...group, source: group.source as RunSource | undefined })) as ResultSet[]);
+            anyTruncated = groupedResult.anyTruncated;
+            pendingPk.push(...groupedResult.pendingPk);
 
             setResultSets(nextResultSets);
             setActiveResultKey(nextResultSets[0]?.key || '');
@@ -2153,6 +2082,74 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       });
   };
 
+
+  const renderExecutionSummaryTable = (rs: ResultSet) => {
+      const rows = rs.rows as ExecutionSummaryRow[];
+      const columns: ColumnsType<ExecutionSummaryRow> = [
+          {
+              title: t('queryEditor.executionSummary.lineRange'),
+              dataIndex: 'editorLineRange',
+              key: 'editorLineRange',
+              width: 140,
+          },
+          {
+              title: t('queryEditor.executionSummary.sqlType'),
+              dataIndex: 'sqlType',
+              key: 'sqlType',
+              width: 110,
+          },
+          {
+              title: t('queryEditor.executionSummary.sqlContent'),
+              dataIndex: 'sqlSummary',
+              key: 'sqlSummary',
+              ellipsis: true,
+              render: (_value, row) => (
+                  <Tooltip
+                      title={<pre style={{ maxWidth: 720, maxHeight: 360, overflow: 'auto', margin: 0, whiteSpace: 'pre-wrap' }}>{row.sql}</pre>}
+                  >
+                      <span style={{ display: 'block', maxWidth: 520, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', cursor: 'default' }}>
+                          {row.sqlSummary || row.sql}
+                      </span>
+                  </Tooltip>
+              ),
+          },
+          {
+              title: t('queryEditor.executionSummary.result'),
+              dataIndex: 'statusText',
+              key: 'statusText',
+              width: 140,
+              render: (_value, row) => {
+                  const ok = row.status !== 'error';
+                  return (
+                      <Tooltip title={row.message || row.statusText}>
+                          <span style={{ color: ok ? '#389e0d' : '#cf1322', fontWeight: 500 }}>{row.statusText}</span>
+                      </Tooltip>
+                  );
+              },
+          },
+          {
+              title: t('queryEditor.executionSummary.affectedRows'),
+              dataIndex: 'affectedRows',
+              key: 'affectedRows',
+              width: 120,
+              align: 'right',
+              render: (value) => Number.isFinite(Number(value)) ? Number(value) : '-',
+          },
+      ];
+      return (
+          <div style={{ flex: 1, minHeight: 0, overflow: 'auto', padding: 12 }}>
+              <Table<ExecutionSummaryRow>
+                  size="small"
+                  rowKey={(row) => String(row[JAVANAVI_ROW_KEY] ?? row.statementIndex)}
+                  columns={columns}
+                  dataSource={rows}
+                  pagination={false}
+                  scroll={{ x: 900 }}
+              />
+          </div>
+      );
+  };
+
   return (
     <div ref={queryEditorRootRef} style={{ flex: '1 1 auto', minHeight: 0, display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       <style>{`
@@ -2347,17 +2344,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   label: (
                       <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                           <Tooltip title={rs.sql}>
-                          <span>{(() => {
-                              const isAffected = rs.columns.length === 1 && rs.columns[0] === 'affectedRows';
-                              const title = statementResultTitle(t, rs.statementIndex ?? idx + 1, rs.startLine, rs.endLine);
-                              if (rs.status === 'error') return `${title} ✗`;
-                              if (rs.statementSummary && rs.columns.includes('affectedRows')) {
-                                  const affectedRows = Number(rs.rows[0]?.affectedRows ?? 0);
-                                  return t('queryEditor.statement.affectedRowsLabel', { title, affectedRows: Number.isFinite(affectedRows) ? affectedRows : 0 });
-                              }
-                              if (isAffected || rs.statementSummary) return `${title} ✓`;
-                              return `${title}${rs.status === 'success' ? ' ✓' : ''}${Array.isArray(rs.rows) ? ` (${rs.rows.length})` : ''}`;
-                          })()}</span>
+                          <span>{t('queryEditor.result.index', { index: idx + 1 })}</span>
                           </Tooltip>
                           <Tooltip title={t('queryEditor.closeResult.tooltip')}>
                               <span
@@ -2374,6 +2361,9 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       </div>
                   ),
                   children: (() => {
+                      if (rs.kind === 'executionSummary') {
+                          return renderExecutionSummaryTable(rs);
+                      }
                       // affectedRows 类型结果集（UPDATE/INSERT/DELETE）：简洁提示
                       const isAffectedResult = rs.columns.length === 1 && rs.columns[0] === 'affectedRows';
                       const isStatementSummaryResult = rs.statementSummary === true;
