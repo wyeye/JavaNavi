@@ -670,13 +670,14 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
             if (fetchSeqRef.current !== seq) return;
             setColumnNames(fieldNames);
             const editLocatorKey = `${tab.connectionId}|${dbName}|${tableName}|${fieldNames.join('\u0001')}`;
+            const optimisticEditLocator = resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language, allowAllColumnsFallback: true });
             if (isMongoDB) {
                 const mongoEditLocatorKey = `${editLocatorKey}|mongo`;
                 if (editLocatorKeyRef.current !== mongoEditLocatorKey) {
                     editLocatorKeyRef.current = mongoEditLocatorKey;
                     editLocatorSeqRef.current++;
                     setPkColumns([]);
-                    setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language, allowAllColumnsFallback: true }));
+                    setEditLocator(optimisticEditLocator);
                 }
             }
 
@@ -684,7 +685,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                 editLocatorKeyRef.current = editLocatorKey;
                 const editSeq = ++editLocatorSeqRef.current;
                 setPkColumns([]);
-                setEditLocator(undefined);
+                setEditLocator(optimisticEditLocator);
                 Promise.all([
                     DBGetColumns(buildRpcConnectionConfig(config), dbName, tableName),
                     DBGetIndexes(buildRpcConnectionConfig(config), dbName, tableName).catch(() => ({ success: false, message: t('queryEditor.indexLoadFailed'), data: [] } as QueryResult)),
@@ -694,7 +695,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                         if (editLocatorKeyRef.current !== editLocatorKey) return;
                         if (!resCols?.success || !Array.isArray(resCols.data)) {
                             setPkColumns([]);
-                            setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language, allowAllColumnsFallback: true }));
+                            setEditLocator(optimisticEditLocator);
                             return;
                         }
                         const pks = queryArrayData<ColumnDefinition>(resCols).filter(isPrimaryKeyColumnDefinition).map((c) => c.name);
@@ -706,7 +707,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                         if (editLocatorSeqRef.current !== editSeq) return;
                         if (editLocatorKeyRef.current !== editLocatorKey) return;
                         setPkColumns([]);
-                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language, allowAllColumnsFallback: true }));
+                        setEditLocator(optimisticEditLocator);
                     });
             }
 
