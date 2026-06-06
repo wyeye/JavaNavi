@@ -2034,10 +2034,23 @@ const DataGrid: React.FC<DataGridProps> = ({
       }
   }, [cellEditorIsJson, cellEditorValue]);
 
+  const getCellEditUnavailableMessage = useCallback(() => {
+      if (effectiveEditLocator?.reason) return effectiveEditLocator.reason;
+      if (!tableName) return t('dataGrid.rowEditor.readOnly');
+      if (!effectiveEditLocator || effectiveEditLocator.readOnly || effectiveEditLocator.strategy === 'none') {
+          return t('dataGrid.locator.noSafeLocatorCurrent');
+      }
+      if (readOnly) return t('dataGrid.rowEditor.readOnly');
+      return t('dataGrid.rowEditor.readOnly');
+  }, [effectiveEditLocator, readOnly, tableName, t]);
+
   const handleVirtualCellActivate = useCallback((record: Item, dataIndex: string, title: React.ReactNode) => {
-      if (!canModifyData) return;
+      if (!canModifyData) {
+          void message.info(getCellEditUnavailableMessage());
+          return;
+      }
       openCellEditor(record, dataIndex, title);
-  }, [canModifyData, openCellEditor]);
+  }, [canModifyData, getCellEditUnavailableMessage, openCellEditor]);
 
   // Merge Data for Display
   // 'displayData' already merges addedRows.

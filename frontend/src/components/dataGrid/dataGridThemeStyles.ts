@@ -283,8 +283,13 @@ export const buildDataGridCssText = ({
                 .${gridId} .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-col-name] {
                     user-select: none;
                     -webkit-user-select: none;
-                    cursor: crosshair;
+                    cursor: default;
                     font-weight: ${DATA_GRID_BODY_FONT_WEIGHT_CSS} !important;
+                }
+                .${gridId}.cell-edit-mode .ant-table-tbody > tr > td[data-col-name],
+                .${gridId}.cell-edit-mode .ant-table-tbody .ant-table-row > .ant-table-cell[data-col-name],
+                .${gridId}.cell-edit-mode .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell[data-col-name] {
+                    cursor: crosshair;
                 }
                 .${gridId} .ant-table-tbody > tr,
                 .${gridId} .ant-table-tbody .ant-table-row,
