@@ -60,6 +60,7 @@ import {
     getTemporalPickerType,
     isTemporalColumnType,
     parseToDayjs,
+    shouldTemporalEditorUseConfirm,
     type TemporalPickerType,
 } from './dataGrid/dataGridTemporal';
 import {
@@ -103,6 +104,7 @@ import {
     type DataGridItem,
 } from './dataGrid/dataGridCells';
 import { DataGridToolbar } from './dataGrid/dataGridToolbar';
+import { getDataGridPickerLocale } from './dataGrid/dataGridPickerLocale';
 import { DataGridFilterPanel } from './dataGrid/dataGridFilterPanel';
 import type { GridFilterCondition, GridSortInfo } from './dataGrid/dataGridFilterTypes';
 import { DataGridFooterControls, type DataGridViewMode } from './dataGrid/dataGridFooterControls';
@@ -283,6 +285,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const queryOptions = useStore(state => state.queryOptions);
   const language = useStore(state => state.language);
   const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
+  const pickerLocale = useMemo(() => getDataGridPickerLocale(language), [language]);
   const setQueryOptions = useStore(state => state.setQueryOptions);
   const tableColumnOrders = useStore(state => state.tableColumnOrders);
   const enableColumnOrderMemory = useStore(state => state.enableColumnOrderMemory);
@@ -4346,6 +4349,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                                                 rowPickerType === 'time' ? (
                                                     <TimePicker
                                                         style={{ flex: 1, width: '100%' }}
+                                                        locale={pickerLocale}
                                                         format={TEMPORAL_FORMATS[rowPickerType]}
                                                         placeholder={placeholder}
                                                         needConfirm={false}
@@ -4353,14 +4357,16 @@ const DataGrid: React.FC<DataGridProps> = ({
                                                 ) : rowPickerType === 'datetime' ? (
                                                     <DatePicker
                                                         style={{ flex: 1, width: '100%' }}
+                                                        locale={pickerLocale}
                                                         showTime
                                                         format={TEMPORAL_FORMATS[rowPickerType]}
                                                         placeholder={placeholder}
-                                                        needConfirm
+                                                        needConfirm={shouldTemporalEditorUseConfirm(rowPickerType)}
                                                     />
                                                 ) : (
                                                     <DatePicker
                                                         style={{ flex: 1, width: '100%' }}
+                                                        locale={pickerLocale}
                                                         format={TEMPORAL_FORMATS[rowPickerType]}
                                                         picker={rowPickerType}
                                                         placeholder={placeholder}

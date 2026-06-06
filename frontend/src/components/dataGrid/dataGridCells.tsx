@@ -1,5 +1,5 @@
 import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { Dropdown, Form, Input, DatePicker, TimePicker } from 'antd';
+import { Dropdown, Form, Input, DatePicker, TimePicker, InputNumber, Select } from 'antd';
 import type { FormInstance, InputRef, MenuProps } from 'antd';
 import type { PickerMode, PickerRef } from 'rc-picker/lib/interface';
 import dayjs from 'dayjs';
@@ -11,12 +11,16 @@ import {
     getTemporalPickerType,
     parseToDayjs,
     resolveTemporalEditorSaveValue,
+    shouldTemporalEditorSaveOnChange,
+    shouldTemporalEditorUseConfirm,
     type TemporalPickerType,
 } from './dataGridTemporal';
 import {
     isCellValueEqualForDiff,
     normalizeDateTimeString,
 } from './dataGridValue';
+import { getDataGridScalarEditorType, toBooleanEditorValue } from './dataGridEditorType';
+import { getDataGridPickerLocale } from './dataGridPickerLocale';
 import { useStore } from '../../store';
 import { translate, type I18nKey } from '../../i18n';
 
@@ -285,6 +289,9 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   const bindPickerRef = useCallback((node: PickerRef | null) => {
       inputRef.current = node;
   }, []);
+  const bindFocusableRef = useCallback((node: FocusableEditorRef | null) => {
+      inputRef.current = node;
+  }, []);
   const cellRef = useRef<HTMLElement>(null);
   const pickerOpenRef = useRef(false);
   const scrollLockRef = useRef<{ el: HTMLElement; handler: (e: WheelEvent) => void } | null>(null);
@@ -316,6 +323,8 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
       if (isDateTimeField) {
         const dayjsVal = parseToDayjs(raw, pickerType);
         setCellFieldValue(form, fieldName, dayjsVal);
+      } else if (scalarEditorType === 'boolean') {
+        setCellFieldValue(form, fieldName, toBooleanEditorValue(raw));
       } else {
         const initialValue = typeof raw === 'string' ? normalizeDateTimeString(raw) : raw;
         setCellFieldValue(form, fieldName, initialValue);
@@ -362,6 +371,8 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
   let childNode = children;
 
   const pickerType = getTemporalPickerType(columnType);
+  const scalarEditorType = getDataGridScalarEditorType(columnType);
+  const pickerLocale = getDataGridPickerLocale(language);
   const isDateTimeField = !!pickerType && !(/^0{4}-0{2}-0{2}/.test(String(record?.[dataIndex] || '')));
 
   if (editable) {
@@ -372,6 +383,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
             <TimePicker
               ref={bindPickerRef}
               style={{ width: '100%' }}
+              locale={pickerLocale}
               format={TEMPORAL_FORMATS[pickerType]}
               onChange={(value) => setTimeout(() => { void save(value); }, 0)}
               onOpenChange={lockTableScroll}
@@ -382,6 +394,7 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
             <DatePicker
               ref={bindPickerRef}
               style={{ width: '100%' }}
+              locale={pickerLocale}
               showTime
               showNow={false}
               format={TEMPORAL_FORMATS[pickerType]}
@@ -389,31 +402,35 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
                 <a
                   style={{ padding: '0 2px' }}
                   onClick={() => {
-                    // 自定义"此刻"：仅将当前时间填入表单字段，面板保持打开。
-                    // 用户需点击"确定"才真正保存，替代内置 showNow 的自动提交行为。
+                    // 自定义“此刻”：填入当前时间并立即保存。
                     const fieldName = getCellFieldName(record, dataIndex);
-                    setCellFieldValue(form, fieldName, dayjs());
+                    const now = dayjs();
+                    setCellFieldValue(form, fieldName, now);
+                    setTimeout(() => { void save(now); }, 0);
                   }}
                 >{t('dataGrid.editor.now')}</a>
               )}
+              onChange={(value) => {
+                if (shouldTemporalEditorSaveOnChange(pickerType)) {
+                  setTimeout(() => { void save(value); }, 0);
+                }
+              }}
               onOk={(value) => setTimeout(() => { void save((value as dayjs.Dayjs | null | undefined) ?? undefined); }, 0)}
               onOpenChange={(open) => {
                 pickerOpenRef.current = open;
                 lockTableScroll(open);
-                // 面板关闭（点击外部）时退出编辑，不保存；仅"确定"按钮（onOk）触发保存
-                if (!open) setTimeout(() => { if (editing) toggleEdit(); }, 0);
               }}
               onBlur={() => {
-                // 兜底：面板未打开或已关闭时，点击外部通过 blur 退出编辑。
-                // 延迟检查面板状态，避免点击自定义"此刻"按钮时误退出（此时面板仍打开）。
-                setTimeout(() => { if (editing && !pickerOpenRef.current) setEditing(false); }, 150);
+                // 兜底：面板未打开或已关闭时，点击外部通过 blur 保存并退出编辑。
+                setTimeout(() => { if (editing && !pickerOpenRef.current) void save(); }, 150);
               }}
-              needConfirm
+              needConfirm={shouldTemporalEditorUseConfirm(pickerType)}
             />
           ) : (
             <DatePicker
               ref={bindPickerRef}
               style={{ width: '100%' }}
+              locale={pickerLocale}
               format={TEMPORAL_FORMATS[pickerType]}
               picker={toDatePickerMode(pickerType)}
               onChange={(value) => setTimeout(() => { void save(value); }, 0)}
@@ -422,6 +439,41 @@ export const EditableCell: React.FC<EditableCellProps> = React.memo(({
               needConfirm={false}
             />
           )
+        ) : scalarEditorType === 'number' ? (
+          <InputNumber
+            ref={bindFocusableRef}
+            style={{ width: '100%' }}
+            stringMode
+            controls={false}
+            onPressEnter={() => { void save(); }}
+            onBlur={() => { void save(); }}
+            onFocus={(e) => {
+              try {
+                (e.target as HTMLInputElement)?.select?.();
+              } catch {
+                // ignore
+              }
+            }}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              try {
+                ((e.target as HTMLElement).closest('input') as HTMLInputElement | null)?.select?.();
+              } catch {
+                // ignore
+              }
+            }}
+          />
+        ) : scalarEditorType === 'boolean' ? (
+          <Select
+            ref={bindFocusableRef}
+            style={{ width: '100%' }}
+            options={[
+              { label: 'true', value: true },
+              { label: 'false', value: false },
+            ]}
+            onChange={() => setTimeout(() => { void save(); }, 0)}
+            onBlur={() => setTimeout(() => { void save(); }, 0)}
+          />
         ) : (
           <Input
             ref={bindInputRef}

@@ -1,4 +1,5 @@
 import dayjs from 'dayjs';
+import { sanitizeLanguage, type AppLanguage } from '../../i18n/index.ts';
 
 export type TemporalPickerType = 'datetime' | 'date' | 'time' | 'year' | null;
 
@@ -9,24 +10,31 @@ export const TEMPORAL_FORMATS: Record<string, string> = {
   year: 'YYYY',
 };
 
+const getTemporalBaseType = (columnType?: string): string => (
+  String(columnType || '').trim().toLowerCase().split(/[ (]/)[0] || ''
+);
+
 export const isTemporalColumnType = (columnType?: string): boolean => {
-  const raw = String(columnType || '').trim().toLowerCase();
-  if (!raw) return false;
-  if (raw.includes('datetime') || raw.includes('timestamp')) return true;
-  const base = raw.split(/[ (]/)[0];
-  return base === 'date' || base === 'time' || base === 'year';
+  return getTemporalPickerType(columnType) !== null;
 };
 
 export const getTemporalPickerType = (columnType?: string): TemporalPickerType => {
   const raw = String(columnType || '').trim().toLowerCase();
   if (!raw) return null;
-  if (raw.includes('datetime') || raw.includes('timestamp')) return 'datetime';
-  const base = raw.split(/[ (]/)[0];
+  const base = getTemporalBaseType(raw);
+  if (raw.includes('timestamp') || base.startsWith('datetim')) return 'datetime';
   if (base === 'date') return 'date';
-  if (base === 'time') return 'time';
+  if (base === 'time' || base === 'timetz') return 'time';
   if (base === 'year') return 'year';
   return null;
 };
+
+
+export const resolveDataGridPickerLocaleKey = (language?: unknown): AppLanguage => sanitizeLanguage(language);
+
+export const shouldTemporalEditorUseConfirm = (pickerType: TemporalPickerType): boolean => false;
+
+export const shouldTemporalEditorSaveOnChange = (pickerType: TemporalPickerType): boolean => pickerType !== null;
 
 export const parseToDayjs = (val: unknown, pickerType: TemporalPickerType): dayjs.Dayjs | null => {
   if (val === null || val === undefined || val === '') return null;
