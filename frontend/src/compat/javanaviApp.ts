@@ -724,35 +724,18 @@ export async function DuplicateConnection(arg1:string): Promise<connection.Saved
 }
 
 export async function ExecuteSQLFile(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
-  let sqlText = arg3;
-  if (typeof arg3 === 'string' && !arg3.trim().includes('\n') && /\.sql$/i.test(arg3.trim())) {
-    const readResult = await ReadLocalFile(arg3.trim());
-    if (!readResult.success) return readResult;
-    const payload = recordValue(readResult.data);
-    if (payload.isLargeFile === true && typeof payload.content !== 'string') {
-      return apiEnvelopeToQueryResult(
-        {
-          success: false,
-          error: { message: 'Large local SQL file execution is not available yet. Open the file in the editor or split it into smaller SQL files.' },
-          data: payload,
-        },
-        'SQL file executed',
-      );
-    }
-    sqlText = String(payload.content ?? readResult.data ?? '');
-  }
-  const payload = await postJson('/query/multi', {
+  const rawInput = String(arg3 ?? '');
+  const trimmedInput = rawInput.trim();
+  const isSqlFilePath = !!trimmedInput && !trimmedInput.includes('\n') && /\.sql$/i.test(trimmedInput);
+  const fileName = isSqlFilePath ? (trimmedInput.split(/[\\/]/).pop() || trimmedInput) : '';
+  const payload = await postJson('/jobs/run-sql-file', {
+    title: fileName ? `Run SQL file ${fileName}` : 'Run SQL file',
     connection: toConnectionPayload(arg1),
     database: arg2,
-    sql: sqlText,
     queryId: arg4,
-  }, { requestSource: 'sql-file' });
-  const result = apiEnvelopeToQueryResult(payload, 'SQL file executed');
-  if (result.success && !Array.isArray(result.data)) {
-    result.data = [];
-  }
-  result.queryId = arg4;
-  return result;
+    ...(isSqlFilePath ? { filePath: trimmedInput } : { sql: rawInput }),
+  });
+  return jobQueryResult(payload, 'SQL file task created');
 }
 
 type ExportDestinationInput = {

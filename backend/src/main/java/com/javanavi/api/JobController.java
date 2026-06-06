@@ -72,6 +72,11 @@ public class JobController {
         return ApiEnvelope.ok(jobs.createCopyTables(payloadOrEmpty(payload)).toPayload());
     }
 
+    @PostMapping("/run-sql-file")
+    public ApiEnvelope<Map<String, Object>> runSqlFile(@RequestBody(required = false) Map<String, Object> payload) {
+        return ApiEnvelope.ok(jobs.createRunSqlFile(payloadOrEmpty(payload)).toPayload());
+    }
+
     private static Map<String, Object> payloadOrEmpty(Map<String, Object> payload) {
         return payload == null ? new LinkedHashMap<>() : new LinkedHashMap<>(payload);
     }

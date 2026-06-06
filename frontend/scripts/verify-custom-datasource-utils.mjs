@@ -81,14 +81,18 @@ try {
   );
 
   assert.equal(
-    javanaviAppSource.includes('payload.isLargeFile === true'),
+    javanaviAppSource.includes("postJson('/jobs/run-sql-file'"),
     true,
-    'large local SQL file execution should fail before query/multi',
+    'SQL file execution should create a task-center job',
+  );
+  const executeSqlFileSource = javanaviAppSource.slice(
+    javanaviAppSource.indexOf('export async function ExecuteSQLFile'),
+    javanaviAppSource.indexOf('type ExportDestinationInput'),
   );
   assert.equal(
-    javanaviAppSource.includes('Large local SQL file execution is not available yet.'),
-    true,
-    'large local SQL file guard should return a clear failure message',
+    executeSqlFileSource.includes("postJson('/query/multi'"),
+    false,
+    'SQL file execution should not run synchronously through query/multi',
   );
 
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');

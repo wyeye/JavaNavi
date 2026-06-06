@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Tree, message, Dropdown, MenuProps, Input, Button, Modal, Form, Badge, Checkbox, Space, Select, Popover, Tooltip, Progress, type InputRef } from 'antd';
+import { Tree, message, Dropdown, MenuProps, Input, Button, Modal, Form, Badge, Checkbox, Space, Select, Popover, Tooltip, type InputRef } from 'antd';
 import type RcTree from 'rc-tree';
 import type { EventDataNode } from 'rc-tree/lib/interface';
 	import {
@@ -42,9 +42,8 @@ import { useStore } from '../store';
 import { buildOverlayWorkbenchTheme } from '../utils/overlayWorkbenchTheme';
 	import { SavedConnection, ExternalSQLTreeEntry, type ConnectionTag, type TabData } from '../types';
 import { getDbIcon } from './DatabaseIcons';
-	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBGetColumns, DBGetIndexes, DBGetForeignKeys, DBGetTriggers, DBQuery, DBShowCreateTable, ExportTable, SelectLocalFile, isJavaNaviDesktopRuntime, ExecuteSQLFile, CancelSQLFileExecution, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
+	import { DBGetDatabases, DBGetTables, DBGetSchemaObjects, DBGetColumns, DBGetIndexes, DBGetForeignKeys, DBGetTriggers, DBQuery, DBShowCreateTable, ExportTable, SelectLocalFile, isJavaNaviDesktopRuntime, ExecuteSQLFile, CreateDatabase, RenameDatabase, DropDatabase, RenameTable, DropTable, DropView, DropFunction, RenameView, ListSQLDirectory, ReadSQLFile, ResolveSQLWorkspace, UploadSQLFile, CreateSQLDirectory, RenameSQLWorkspacePath, CloseConnection, RedisGetDatabases, DuplicateConnection, DeleteConnection, ExportDatabaseSQL, ExportTablesSQL, ExportTablesDataSQL, ClearTables, TruncateTables } from '@compat/javanaviApp';
 import { supportsTableTruncateAction, type TableDataDangerActionKind } from './tableDataDangerActions';
-  import { EventsOn } from '@compat/runtime';
   import { isMacLikePlatform, normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import FindInDatabaseModal from './FindInDatabaseModal';
@@ -105,7 +104,6 @@ type SidebarRedisDatabaseRow = Record<string, unknown> & { index?: unknown; keys
 type SidebarWorkspacePayload = { path?: unknown; name?: unknown };
 type SidebarExecutionResultData = { executedSQLs?: unknown; count?: unknown };
 type SidebarLargeFilePayload = { isLargeFile?: unknown; filePath?: unknown; path?: unknown; fileSizeMB?: unknown };
-type SidebarSqlFileProgressEvent = { jobId?: unknown; status?: unknown; executed?: unknown; failed?: unknown; total?: unknown; percent?: unknown; currentSQL?: unknown };
 type SidebarQueryRecord = Record<string, unknown>;
 type SidebarRoutineType = 'FUNCTION' | 'PROCEDURE';
 type SidebarLoadTreeNode = { key?: React.Key; dataRef?: object };
@@ -2021,6 +2019,20 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   };
 
 
+  const openTaskCenter = () => {
+      window.dispatchEvent(new Event('javanavi:open-task-center'));
+  };
+
+  const createSQLFileTask = async (config: SavedConnection['config'], dbName: string, sqlOrPath: string) => {
+      const res = await ExecuteSQLFile(buildRpcConnectionConfig(config), dbName, sqlOrPath, '');
+      if (res.success) {
+          message.success(t('taskCenter.created'));
+          openTaskCenter();
+      } else if (!isCancelledMessage(res.message)) {
+          message.error(t('sidebar.msg.readSqlFailed', { message: res.message }));
+      }
+  };
+
   const openSQLFileForContext = async (context: { connectionId: string; dbName?: string }) => {
       const conn = connections.find(c => c.id === context.connectionId);
       if (!conn) {
@@ -2041,7 +2053,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           if (!selectedPath) {
               return;
           }
-          startSQLFileExecution(conn.config, context.dbName || '', selectedPath, '');
+          await createSQLFileTask(conn.config, context.dbName || '', selectedPath);
           return;
       }
       pendingOpenSqlContextRef.current = context;
@@ -2065,64 +2077,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
           return;
       }
       const text = await file.text();
-      startSQLFileExecution(conn.config, context.dbName || '', text, (file.size / 1024 / 1024).toFixed(1));
-  };
-
-  // SQL 文件流式执行状态
-  const [sqlFileExecState, setSqlFileExecState] = useState<{
-      open: boolean;
-      jobId: string;
-      fileSizeMB: string;
-      status: 'running' | 'done' | 'cancelled' | 'error';
-      executed: number;
-      failed: number;
-      total: number;
-      percent: number;
-      currentSQL: string;
-      resultMessage: string;
-  }>({
-      open: false, jobId: '', fileSizeMB: '', status: 'running',
-      executed: 0, failed: 0, total: 0, percent: 0, currentSQL: '', resultMessage: ''
-  });
-
-  const startSQLFileExecution = (config: SavedConnection['config'], dbName: string, filePath: string, fileSizeMB: string) => {
-      const jobId = `sqlfile-${Date.now()}`;
-      setSqlFileExecState({
-          open: true, jobId, fileSizeMB, status: 'running',
-          executed: 0, failed: 0, total: 0, percent: 0, currentSQL: '', resultMessage: ''
-      });
-
-      // 监听进度事件
-      const offProgress = EventsOn<[SidebarSqlFileProgressEvent]>('sqlfile:progress', (event) => {
-          if (!event || event.jobId !== jobId) return;
-          setSqlFileExecState(prev => ({
-              ...prev,
-              status: typeof event.status === 'string' ? event.status as typeof prev.status : prev.status,
-              executed: typeof event.executed === 'number' ? event.executed : prev.executed,
-              failed: typeof event.failed === 'number' ? event.failed : prev.failed,
-              total: typeof event.total === 'number' ? event.total : prev.total,
-              percent: typeof event.percent === 'number' ? Math.min(100, event.percent) : prev.percent,
-              currentSQL: typeof event.currentSQL === 'string' ? event.currentSQL : prev.currentSQL,
-          }));
-      });
-
-      // 异步执行
-      ExecuteSQLFile(buildRpcConnectionConfig(config), dbName, filePath, jobId).then(res => {
-          offProgress();
-          setSqlFileExecState(prev => ({
-              ...prev,
-              status: res.success ? 'done' : (prev.status === 'cancelled' ? 'cancelled' : 'error'),
-              percent: 100,
-              resultMessage: res.message || '',
-          }));
-      }).catch(err => {
-          offProgress();
-          setSqlFileExecState(prev => ({
-              ...prev,
-              status: 'error',
-              resultMessage: getErrorMessage(err),
-          }));
-      });
+      await createSQLFileTask(conn.config, context.dbName || '', text);
   };
 
   const refreshDatabaseNode = async (dbNodeKey: string) => {
@@ -2133,6 +2088,23 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       if (dbNode && dbNode.type === 'database') {
           await loadTables(dbNode);
       }
+  };
+
+  const runExternalSQLFile = async (fileNode: TreeNode) => {
+      const dataRef = getSidebarDataRef(fileNode);
+      const connectionId = String(dataRef.connectionId || '').trim();
+      const dbName = String(dataRef.dbName || '').trim();
+      const filePath = String(dataRef.path || '').trim();
+      if (!connectionId || !dbName || !filePath) {
+          message.error(t('sidebar.msg.sqlContextIncomplete'));
+          return;
+      }
+      const conn = connections.find((item) => item.id === connectionId);
+      if (!conn) {
+          message.error(t('sidebar.msg.connConfigNotFound'));
+          return;
+      }
+      await createSQLFileTask(conn.config, dbName, filePath);
   };
 
   const openExternalSQLFile = async (fileNode: TreeNode) => {
@@ -2162,7 +2134,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
               message.error(t('sidebar.msg.connConfigNotFound'));
               return;
           }
-          startSQLFileExecution(conn.config, dbName, String(payload.filePath || ''), String(payload.fileSizeMB || ''));
+          await createSQLFileTask(conn.config, dbName, String(payload.filePath || filePath));
           return;
       }
 
@@ -3860,6 +3832,14 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
     if (node.type === 'external-sql-file') {
         return [
             {
+                key: 'run-external-sql-file',
+                label: t('sidebar.menu.runExternalSql'),
+                icon: <ThunderboltOutlined />,
+                onClick: () => {
+                    void runExternalSQLFile(node);
+                }
+            },
+            {
                 key: 'open-external-sql-file',
                 label: t('sidebar.menu.openSqlFile'),
                 icon: <ConsoleSqlOutlined />,
@@ -4598,59 +4578,6 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
             )}
         </Modal>
 
-        {/* SQL 文件流式执行进度 Modal */}
-        <Modal
-            title={t('sidebar.menu.runExternalSql')}
-            open={sqlFileExecState.open}
-            centered
-            closable={sqlFileExecState.status !== 'running'}
-            maskClosable={false}
-            footer={sqlFileExecState.status === 'running' ? [
-                <Button key="cancel" danger onClick={() => {
-                    CancelSQLFileExecution(sqlFileExecState.jobId);
-                    setSqlFileExecState(prev => ({ ...prev, status: 'cancelled' }));
-                }}>
-                    {t('sidebar.sqlExecution.cancel')}
-                </Button>
-            ] : [
-                <Button key="close" type="primary" onClick={() => setSqlFileExecState(prev => ({ ...prev, open: false }))}>
-                    {t('common.close')}
-                </Button>
-            ]}
-            onCancel={() => {
-                if (sqlFileExecState.status !== 'running') {
-                    setSqlFileExecState(prev => ({ ...prev, open: false }));
-                }
-            }}
-            styles={{ content: modalPanelStyle, header: { background: 'transparent', borderBottom: 'none' }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none' } }}
-        >
-            <div style={{ marginBottom: 16 }}>
-                <Progress
-                    percent={Math.round(sqlFileExecState.percent)}
-                    status={sqlFileExecState.status === 'error' ? 'exception' : sqlFileExecState.status === 'done' ? 'success' : 'active'}
-                    strokeColor={sqlFileExecState.status === 'cancelled' ? '#faad14' : undefined}
-                />
-            </div>
-            <div style={{ fontSize: 13, lineHeight: '22px', marginBottom: 8 }}>
-                <div>{t('sidebar.sqlExecution.fileSize')}：<strong>{sqlFileExecState.fileSizeMB} MB</strong></div>
-                <div>{t('sidebar.sqlExecution.status')}：<strong>{
-                    sqlFileExecState.status === 'running' ? t('sidebar.sqlExecution.running') :
-                    sqlFileExecState.status === 'done' ? t('sidebar.sqlExecution.done') :
-                    sqlFileExecState.status === 'cancelled' ? t('sidebar.sqlExecution.cancelled') : t('sidebar.sqlExecution.error')
-                }</strong></div>
-                <div>{t('sidebar.sqlExecution.executedFailed', { executed: sqlFileExecState.executed, failed: sqlFileExecState.failed })}</div>
-            </div>
-            {sqlFileExecState.currentSQL && sqlFileExecState.status === 'running' && (
-                <div style={{ fontSize: 12, color: 'rgba(128,128,128,0.8)', background: 'rgba(128,128,128,0.06)', borderRadius: 6, padding: '6px 10px', marginTop: 8, fontFamily: 'monospace', wordBreak: 'break-all', maxHeight: 60, overflow: 'hidden' }}>
-                    {sqlFileExecState.currentSQL}
-                </div>
-            )}
-            {sqlFileExecState.resultMessage && sqlFileExecState.status !== 'running' && (
-                <div style={{ fontSize: 12, marginTop: 12, maxHeight: 200, overflow: 'auto', whiteSpace: 'pre-wrap', background: 'rgba(128,128,128,0.06)', borderRadius: 6, padding: '8px 12px' }}>
-                    {sqlFileExecState.resultMessage}
-                </div>
-            )}
-        </Modal>
         <FindInDatabaseModal
             open={findInDbContext.open}
             onClose={() => setFindInDbContext({ open: false, connectionId: '', dbName: '' })}

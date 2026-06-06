@@ -7,12 +7,17 @@ import com.javanavi.files.FileWorkflowCompatibilityService;
 import com.javanavi.model.CompatEventDto;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.DatabaseOperationResultDto;
+import com.javanavi.model.QueryRequestDto;
+import com.javanavi.model.ResultSetDataDto;
 import com.javanavi.security.LocalSessionService;
 import com.javanavi.security.SecretRedactor;
 import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import org.springframework.stereotype.Service;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -141,6 +146,45 @@ public class JobTaskService {
         });
     }
 
+    public AppJob createRunSqlFile(Map<String, Object> payload) {
+        Map<String, Object> body = payload(payload);
+        return start("run-sql-file", title(body, "Run SQL file"), (jobId, sink) -> {
+            body.put("jobId", jobId);
+            String sql = sqlText(body);
+            String filePath = text(first(body, "filePath", "path"));
+            String current = filePath.isBlank() ? "SQL" : filePath;
+            sink.throwIfCancelled();
+            sink.progress(0, 1, current, "Executing SQL file");
+            List<ResultSetDataDto> resultSets;
+            try {
+                resultSets = databaseCompatibility.executeMulti(new QueryRequestDto(
+                        connection(body),
+                        text(body.get("database")),
+                        sql,
+                        null,
+                        null,
+                        jobId
+                ));
+            } catch (RuntimeException error) {
+                sink.throwIfCancelled();
+                throw error;
+            }
+            sink.throwIfCancelled();
+            long failed = resultSets.stream().filter(JobTaskService::isFailedStatement).count();
+            if (failed > 0) {
+                throw new IllegalStateException(firstFailedMessage(resultSets));
+            }
+            sink.progress(1, 1, current, "SQL file executed");
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("operation", "run-sql-file");
+            map.put("count", resultSets.size());
+            map.put("failed", failed);
+            map.put("filePath", filePath);
+            map.put("resultSets", resultSets);
+            return map;
+        });
+    }
+
     private AppJob start(String type, String title, JobWork work) {
         String jobId = "job-" + Instant.now().toEpochMilli() + "-" + UUID.randomUUID().toString().substring(0, 8);
         String sessionId = currentSessionId();
@@ -215,6 +259,55 @@ public class JobTaskService {
             return List.of();
         }
         return list.stream().map(JobTaskService::text).filter(value -> !value.isBlank()).distinct().toList();
+    }
+
+    private static String sqlText(Map<String, Object> payload) {
+        String inlineSql = text(first(payload, "sql", "content"));
+        if (!inlineSql.isBlank()) {
+            return inlineSql;
+        }
+        String filePath = text(first(payload, "filePath", "path"));
+        if (filePath.isBlank()) {
+            throw new IllegalArgumentException("SQL file path or SQL content is required.");
+        }
+        Path file = Path.of(filePath).toAbsolutePath().normalize();
+        if (!Files.isRegularFile(file)) {
+            throw new IllegalArgumentException("Selected SQL file does not exist.");
+        }
+        if (!file.getFileName().toString().toLowerCase().endsWith(".sql")) {
+            throw new IllegalArgumentException("Only SQL files can be executed through this action.");
+        }
+        try {
+            return Files.readString(file, StandardCharsets.UTF_8);
+        } catch (Exception error) {
+            throw new IllegalStateException("Unable to read selected SQL file.", error);
+        }
+    }
+
+    private static boolean isFailedStatement(ResultSetDataDto resultSet) {
+        return "error".equalsIgnoreCase(text(resultSet == null ? null : resultSet.status()));
+    }
+
+    private static String firstFailedMessage(List<ResultSetDataDto> resultSets) {
+        return resultSets.stream()
+                .filter(JobTaskService::isFailedStatement)
+                .map(resultSet -> text(resultSet.message()))
+                .filter(message -> !message.isBlank())
+                .findFirst()
+                .orElse("SQL file execution failed.");
+    }
+
+    private static Object first(Map<String, Object> payload, String... keys) {
+        if (payload == null || keys == null) {
+            return null;
+        }
+        for (String key : keys) {
+            Object value = payload.get(key);
+            if (value != null && !text(value).isBlank()) {
+                return value;
+            }
+        }
+        return null;
     }
 
     private static String title(Map<String, Object> payload, String fallback) {
