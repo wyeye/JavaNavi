@@ -64,8 +64,10 @@ export const buildDataGridCommitChangeSet = ({
     });
 
     const writeColumnSet = new Set(columnNames.map((column) => String(column || '').trim()).filter(Boolean));
-    editLocator.valueColumns.forEach((column) => writeColumnSet.delete(String(column || '').trim()));
-    editLocator.columns.forEach((column) => writeColumnSet.delete(String(column || '').trim()));
+    if (editLocator.strategy !== 'all-columns') {
+        editLocator.valueColumns.forEach((column) => writeColumnSet.delete(String(column || '').trim()));
+        editLocator.columns.forEach((column) => writeColumnSet.delete(String(column || '').trim()));
+    }
 
     const filterWritableValues = (values: DataGridCommitRow) => {
         const filtered: DataGridCommitRow = {};

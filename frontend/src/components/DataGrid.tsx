@@ -2583,10 +2583,12 @@ const DataGrid: React.FC<DataGridProps> = ({
   }), [columns, dirtyCellKeySet, enableInlineEditableCell, enableVirtual, handleCellSave, openCellEditor, handleVirtualCellActivate, rowKeyStr, showCellContextMenu, columnMetaMap, columnMetaMapByLowerName]);
 
   const writableColumnNames = useMemo(() => {
-      const locatorColumns = new Set<string>([
-          ...(effectiveEditLocator?.columns || []),
-          ...(effectiveEditLocator?.valueColumns || []),
-      ].map((column) => String(column || '').trim()).filter(Boolean));
+      const locatorColumns = effectiveEditLocator?.strategy !== 'all-columns'
+          ? new Set<string>([
+              ...(effectiveEditLocator?.columns || []),
+              ...(effectiveEditLocator?.valueColumns || []),
+          ].map((column) => String(column || '').trim()).filter(Boolean))
+          : new Set<string>();
       return columnNames.filter((column) => column !== JAVANAVI_ROW_KEY && !locatorColumns.has(column));
   }, [columnNames, effectiveEditLocator]);
 

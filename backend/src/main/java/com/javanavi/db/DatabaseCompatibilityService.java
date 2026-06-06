@@ -870,6 +870,7 @@ public class DatabaseCompatibilityService {
         int inserted = 0;
         int updated = 0;
         int deleted = 0;
+        boolean allColumnsLocator = isAllColumnsLocator(changes);
         connection.setAutoCommit(false);
         try {
             for (Map<String, Object> keys : nullSafeRows(changes.deletes())) {
@@ -877,8 +878,11 @@ public class DatabaseCompatibilityService {
                     continue;
                 }
                 String where = whereClause(driver, keys, " AND ");
+                if (allColumnsLocator) {
+                    ensureSingleRowAllColumnsMatch(connection, tableSql, driver, keys);
+                }
                 try (PreparedStatement statement = connection.prepareStatement("DELETE FROM " + tableSql + " WHERE " + where)) {
-                    bindValues(statement, keys.values());
+                    bindValues(statement, whereBindValues(keys));
                     deleted += Math.max(statement.executeUpdate(), 0);
                 }
             }
@@ -894,10 +898,13 @@ public class DatabaseCompatibilityService {
                 }
                 String set = assignmentClause(driver, values, ", ");
                 String where = whereClause(driver, keys, " AND ");
+                if (allColumnsLocator) {
+                    ensureSingleRowAllColumnsMatch(connection, tableSql, driver, keys);
+                }
                 try (PreparedStatement statement = connection.prepareStatement("UPDATE " + tableSql + " SET " + set + " WHERE " + where)) {
                     List<Object> args = new ArrayList<>();
                     args.addAll(values.values());
-                    args.addAll(keys.values());
+                    args.addAll(whereBindValues(keys));
                     bindValues(statement, args);
                     updated += Math.max(statement.executeUpdate(), 0);
                 }
@@ -922,6 +929,28 @@ public class DatabaseCompatibilityService {
             throw error;
         } finally {
             connection.setAutoCommit(previousAutoCommit);
+        }
+    }
+
+    private static boolean isAllColumnsLocator(ChangeSetDto changes) {
+        return changes != null && "all-columns".equalsIgnoreCase(nullToEmpty(changes.locatorStrategy()).trim());
+    }
+
+    private static void ensureSingleRowAllColumnsMatch(
+            Connection connection,
+            String tableSql,
+            String driver,
+            Map<String, Object> keys
+    ) throws SQLException {
+        String where = whereClause(driver, keys, " AND ");
+        try (PreparedStatement statement = connection.prepareStatement("SELECT COUNT(*) FROM " + tableSql + " WHERE " + where)) {
+            bindValues(statement, whereBindValues(keys));
+            try (ResultSet rs = statement.executeQuery()) {
+                int matched = rs.next() ? rs.getInt(1) : 0;
+                if (matched != 1) {
+                    throw new SQLException("All-columns row locator matched " + matched + " rows; edit is unsafe.");
+                }
+            }
         }
     }
 
@@ -2015,6 +2044,9 @@ public class DatabaseCompatibilityService {
                 keys.putIfAbsent(key, nonUnique ? "MUL" : "UNI");
             }
         }
+        if (keys.values().stream().noneMatch(value -> "PRI".equalsIgnoreCase(value)) && isMySqlLikeConnection(connection)) {
+            mysqlShowKeysFallback(connection, ref, keys);
+        }
         if (keys.isEmpty() && isDuckDbConnection(connection)) {
             String sql = """
                     select kcu.column_name
@@ -2041,6 +2073,31 @@ public class DatabaseCompatibilityService {
             }
         }
         return keys;
+    }
+
+    private static void mysqlShowKeysFallback(Connection connection, TableRef ref, Map<String, String> keys) throws SQLException {
+        String sql = "SHOW KEYS FROM " + tableSqlName("mysql", ref);
+        try (Statement statement = connection.createStatement(); ResultSet rs = statement.executeQuery(sql)) {
+            while (rs.next()) {
+                String column = firstText(getString(rs, "Column_name"), getString(rs, "COLUMN_NAME"));
+                if (column == null || column.isBlank()) {
+                    continue;
+                }
+                String keyName = firstText(getString(rs, "Key_name"), getString(rs, "INDEX_NAME"));
+                String key = column.toLowerCase(Locale.ROOT);
+                if ("PRIMARY".equalsIgnoreCase(nullToEmpty(keyName))) {
+                    keys.put(key, "PRI");
+                    continue;
+                }
+                if ("PRI".equalsIgnoreCase(keys.get(key))) {
+                    continue;
+                }
+                int nonUnique = rs.getInt("Non_unique");
+                keys.putIfAbsent(key, nonUnique == 0 ? "UNI" : "MUL");
+            }
+        } catch (SQLException ignored) {
+            // Metadata already degraded safely; callers can still use all-columns fallback.
+        }
     }
 
     private TableRef tableRef(ConnectionConfigDto config, String requestedDatabase, String rawTableName) {
@@ -2501,6 +2558,16 @@ public class DatabaseCompatibilityService {
         }
     }
 
+    private static boolean isMySqlLikeConnection(Connection connection) {
+        try {
+            String product = connection.getMetaData().getDatabaseProductName();
+            String normalized = product == null ? "" : product.toLowerCase(Locale.ROOT);
+            return normalized.contains("mysql") || normalized.contains("mariadb");
+        } catch (SQLException ignored) {
+            return false;
+        }
+    }
+
     private static String escapeBacktick(String value) {
         return value.replace("`", "``");
     }
@@ -2535,14 +2602,25 @@ public class DatabaseCompatibilityService {
 
     private static String whereClause(String driver, Map<String, Object> keys, String separator) {
         List<String> conditions = new ArrayList<>();
-        for (String column : keys.keySet()) {
+        for (Map.Entry<String, Object> entry : keys.entrySet()) {
+            String column = entry.getKey();
             String normalizedColumn = requireText(column, "column");
             String expression = "oracle".equals(driver) && "ROWID".equalsIgnoreCase(normalizedColumn)
                     ? "ROWID"
                     : quoteIdentifier(driver, normalizedColumn);
-            conditions.add(expression + " = ?");
+            conditions.add(entry.getValue() == null ? expression + " IS NULL" : expression + " = ?");
         }
         return String.join(separator, conditions);
+    }
+
+    private static List<Object> whereBindValues(Map<String, Object> keys) {
+        List<Object> values = new ArrayList<>();
+        for (Object value : keys.values()) {
+            if (value != null) {
+                values.add(value);
+            }
+        }
+        return values;
     }
 
     private static void bindValues(PreparedStatement statement, Iterable<Object> values) throws SQLException {

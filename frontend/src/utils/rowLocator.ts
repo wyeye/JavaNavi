@@ -2,7 +2,7 @@ import type { IndexDefinition } from '../types';
 import { translate, type AppLanguage } from '../i18n';
 import { resolveUniqueKeyGroupsFromIndexes } from '../components/dataGrid/dataGridCopyInsert';
 
-export type RowLocatorStrategy = 'primary-key' | 'unique-key' | 'rowid' | 'none';
+export type RowLocatorStrategy = 'primary-key' | 'unique-key' | 'rowid' | 'all-columns' | 'none';
 
 export type EditRowLocator = {
   strategy: RowLocatorStrategy;
@@ -18,6 +18,7 @@ export type ResolveEditRowLocatorParams = {
   indexes?: IndexDefinition[];
   dbType?: string;
   language?: AppLanguage;
+  allowAllColumnsFallback?: boolean;
 };
 
 type RowLocatorValueMap = Record<string, unknown>;
@@ -60,6 +61,7 @@ export const resolveEditRowLocator = ({
   indexes,
   dbType,
   language = 'en',
+  allowAllColumnsFallback = false,
 }: ResolveEditRowLocatorParams): EditRowLocator => {
   const columns = (resultColumns || []).map(normalizeColumnName).filter(Boolean);
   const primaryKeyColumns = (primaryKeys || []).map(normalizeColumnName).filter(Boolean);
@@ -98,6 +100,15 @@ export const resolveEditRowLocator = ({
     };
   }
 
+  if (allowAllColumnsFallback && columns.length > 0) {
+    return {
+      strategy: 'all-columns',
+      columns,
+      valueColumns: columns,
+      readOnly: false,
+    };
+  }
+
   return buildReadOnlyLocator(translate(language, 'dataGrid.locator.noSafeLocator'));
 };
 
@@ -114,7 +125,15 @@ export const resolveRowLocatorValues = (
   for (let index = 0; index < locator.columns.length; index++) {
     const column = locator.columns[index];
     const valueColumn = locator.valueColumns[index] || column;
+    const hasColumnValue = Array.isArray(row) || Object.prototype.hasOwnProperty.call(row, valueColumn);
     const value = row?.[valueColumn];
+    if (locator.strategy === 'all-columns') {
+      if (!hasColumnValue || value === undefined) {
+        return { ok: false, error: translate(language, 'dataGrid.locator.emptyLocatorValue', { column }) };
+      }
+      values[column] = value;
+      continue;
+    }
     if (isRowLocatorValueEmpty(row, valueColumn)) {
       return { ok: false, error: translate(language, 'dataGrid.locator.emptyLocatorValue', { column }) };
     }

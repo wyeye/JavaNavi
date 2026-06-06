@@ -81,6 +81,13 @@ const queryArrayData = <T,>(result: QueryResult): T[] => (
   Array.isArray(result.data) ? result.data as T[] : []
 );
 
+const isPrimaryKeyColumnDefinition = (column: ColumnDefinition): boolean => {
+  const keyText = String(column?.key ?? '').trim().toUpperCase();
+  if (keyText === 'PRI' || keyText === 'PRIMARY' || keyText === 'PRIMARY KEY') return true;
+  const extraText = String(column?.extra ?? '').trim().toLowerCase();
+  return extraText.includes('auto_increment');
+};
+
 const isIntegerText = (text: string): boolean => /^[+-]?\d+$/.test(text);
 
 const toNonNegativeFiniteNumber = (value: unknown): number | null => {
@@ -669,7 +676,7 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                     editLocatorKeyRef.current = mongoEditLocatorKey;
                     editLocatorSeqRef.current++;
                     setPkColumns([]);
-                    setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language }));
+                    setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language, allowAllColumnsFallback: true }));
                 }
             }
 
@@ -687,19 +694,19 @@ const DataViewer: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAct
                         if (editLocatorKeyRef.current !== editLocatorKey) return;
                         if (!resCols?.success || !Array.isArray(resCols.data)) {
                             setPkColumns([]);
-                            setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language }));
+                            setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language, allowAllColumnsFallback: true }));
                             return;
                         }
-                        const pks = queryArrayData<ColumnDefinition>(resCols).filter((c) => c.key === 'PRI').map((c) => c.name);
+                        const pks = queryArrayData<ColumnDefinition>(resCols).filter(isPrimaryKeyColumnDefinition).map((c) => c.name);
                         const indexes = resIndexes?.success ? queryArrayData<IndexDefinition>(resIndexes) : [];
                         setPkColumns(pks);
-                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: pks, indexes, dbType: dbTypeLower, language }));
+                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: pks, indexes, dbType: dbTypeLower, language, allowAllColumnsFallback: true }));
                     })
                     .catch(() => {
                         if (editLocatorSeqRef.current !== editSeq) return;
                         if (editLocatorKeyRef.current !== editLocatorKey) return;
                         setPkColumns([]);
-                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language }));
+                        setEditLocator(resolveEditRowLocator({ resultColumns: fieldNames, primaryKeys: [], indexes: [], dbType: dbTypeLower, language, allowAllColumnsFallback: true }));
                     });
             }
 
