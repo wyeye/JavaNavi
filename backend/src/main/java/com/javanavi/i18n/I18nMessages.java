@@ -15,12 +15,12 @@ import java.util.TreeSet;
 public class I18nMessages {
     private final Map<String, String> en = new LinkedHashMap<>();
     private final Map<String, String> zh = new LinkedHashMap<>();
-    private final Map<String, String> fallbackCodes = new LinkedHashMap<>();
+    private final Map<String, String> legacyMessageCodes = new LinkedHashMap<>();
 
     public I18nMessages() {
         en.putAll(loadMessages("i18n/messages_en.properties"));
         zh.putAll(loadMessages("i18n/messages_zh_CN.properties"));
-        fallbackCodes.putAll(loadMessages("i18n/fallback-codes.properties"));
+        legacyMessageCodes.putAll(loadMessages("i18n/legacy-message-codes.properties"));
     }
 
     public String message(String code, Object... args) {
@@ -40,7 +40,7 @@ public class I18nMessages {
         if (normalized.isBlank()) {
             return message("common.operationSucceeded");
         }
-        String code = fallbackCodes.get(normalized);
+        String code = legacyMessageCodes.get(normalized);
         if (code != null) {
             return message(code);
         }

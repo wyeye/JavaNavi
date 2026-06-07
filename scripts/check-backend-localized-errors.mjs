@@ -10,18 +10,18 @@ const i18nSource = readFileSync('backend/src/main/java/com/javanavi/i18n/I18nMes
 const placeholderPattern = /\{([A-Za-z0-9_.-]+)\}/g;
 const enResource = readProperties('backend/src/main/resources/i18n/messages_en.properties');
 const zhResource = readProperties('backend/src/main/resources/i18n/messages_zh_CN.properties');
-const fallbackResource = readProperties('backend/src/main/resources/i18n/fallback-codes.properties');
+const legacyMessageResource = readProperties('backend/src/main/resources/i18n/legacy-message-codes.properties');
 const resourceViolations = [
   ...validateResources(enResource, zhResource),
-  ...validateFallbackCodes(fallbackResource, enResource),
+  ...validateLegacyMessageCodes(legacyMessageResource, enResource),
 ];
 const i18nCorpus = [
   i18nSource,
   ...Object.keys(enResource),
   ...Object.values(enResource),
   ...Object.values(zhResource),
-  ...Object.keys(fallbackResource),
-  ...Object.values(fallbackResource),
+  ...Object.keys(legacyMessageResource),
+  ...Object.values(legacyMessageResource),
 ].join('\n');
 
 const violationPattern = /new\s+(?:[A-Za-z0-9_$.]*Exception)\s*\(\s*"([^"]+)"/g;
@@ -110,12 +110,12 @@ function validateResources(en, zh) {
 }
 
 
-function validateFallbackCodes(fallbacks, en) {
+function validateLegacyMessageCodes(legacyMessages, en) {
   const errors = [];
   const messageCodes = new Set(Object.keys(en));
-  for (const [rawMessage, code] of Object.entries(fallbacks)) {
-    if (!rawMessage.trim()) errors.push('backend fallback resource contains a blank raw message key.');
-    if (!messageCodes.has(code)) errors.push(`unknown fallback code for "${rawMessage}": ${code}`);
+  for (const [rawMessage, code] of Object.entries(legacyMessages)) {
+    if (!rawMessage.trim()) errors.push('backend legacy message resource contains a blank raw message key.');
+    if (!messageCodes.has(code)) errors.push(`unknown legacy message code for "${rawMessage}": ${code}`);
   }
   return errors;
 }
@@ -166,4 +166,4 @@ if (resourceViolations.length > 0 || violations.length > 0) {
   process.exit(1);
 }
 
-console.log(`backend localized error check passed (${files.length - ignoredFiles.size} enforced files, ${Object.keys(enResource).length} i18n keys, ${Object.keys(fallbackResource).length} fallback aliases).`);
+console.log(`backend localized error check passed (${files.length - ignoredFiles.size} enforced files, ${Object.keys(enResource).length} i18n keys, ${Object.keys(legacyMessageResource).length} legacy aliases).`);
