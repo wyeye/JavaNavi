@@ -165,7 +165,7 @@ public class JobTaskService {
             sink.throwIfCancelled();
             long failed = resultSets.stream().filter(JobTaskService::isFailedStatement).count();
             if (failed > 0) {
-                throw new IllegalStateException(firstFailedMessage(resultSets));
+                throw new JobTaskStageException(firstFailedMessage(resultSets), "SQL file execution failed");
             }
             Map<String, Object> map = new LinkedHashMap<>();
             map.put("operation", "run-sql-file");
@@ -193,9 +193,11 @@ public class JobTaskService {
             Map<String, Object> result = work.run(jobId, sink);
             publish(sessionId, jobs.complete(jobId, result));
         } catch (JobCancellationException error) {
-            publish(sessionId, jobs.fail(jobId, "cancelled", "Task cancelled."));
+            publish(sessionId, jobs.fail(jobId, "cancelled", "Task cancelled.", "Task cancelled."));
+        } catch (JobTaskStageException error) {
+            publish(sessionId, jobs.fail(jobId, "failed", SecretRedactor.redact(error.getMessage()), error.stage()));
         } catch (RuntimeException error) {
-            publish(sessionId, jobs.fail(jobId, "failed", SecretRedactor.redact(error.getMessage())));
+            publish(sessionId, jobs.fail(jobId, "failed", SecretRedactor.redact(error.getMessage()), "Task failed."));
         }
     }
 
@@ -309,6 +311,20 @@ public class JobTaskService {
 
     private static String text(Object value) {
         return value == null ? "" : String.valueOf(value).trim();
+    }
+
+
+    private static final class JobTaskStageException extends RuntimeException {
+        private final String stage;
+
+        private JobTaskStageException(String message, String stage) {
+            super(message);
+            this.stage = stage;
+        }
+
+        private String stage() {
+            return stage;
+        }
     }
 
     @FunctionalInterface

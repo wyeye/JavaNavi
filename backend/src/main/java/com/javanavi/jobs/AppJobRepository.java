@@ -146,13 +146,21 @@ public class AppJobRepository {
 
     public synchronized AppJob fail(String jobId, String status, String errorMessage) {
         String safeStatus = "cancelled".equals(status) ? "cancelled" : "failed";
-        update("update app_jobs set status=?, error_message=?, updated_at=?, finished_at=? where job_id=?", statement -> {
+        String stage = "cancelled".equals(safeStatus) ? "Task cancelled." : "Task failed.";
+        return fail(jobId, safeStatus, errorMessage, stage);
+    }
+
+    public synchronized AppJob fail(String jobId, String status, String errorMessage, String stage) {
+        String safeStatus = "cancelled".equals(status) ? "cancelled" : "failed";
+        String safeStage = text(stage).isBlank() ? ("cancelled".equals(safeStatus) ? "Task cancelled." : "Task failed.") : text(stage);
+        update("update app_jobs set status=?, stage=?, error_message=?, updated_at=?, finished_at=? where job_id=?", statement -> {
             String now = now();
             statement.setString(1, safeStatus);
-            statement.setString(2, text(errorMessage));
-            statement.setString(3, now);
+            statement.setString(2, safeStage);
+            statement.setString(3, text(errorMessage));
             statement.setString(4, now);
-            statement.setString(5, text(jobId));
+            statement.setString(5, now);
+            statement.setString(6, text(jobId));
         });
         return require(jobId);
     }
@@ -172,11 +180,12 @@ public class AppJobRepository {
 
     public synchronized void markRunningJobsInterrupted() {
         initialize();
-        update("update app_jobs set status='failed', error_message=?, updated_at=?, finished_at=? where status='running'", statement -> {
+        update("update app_jobs set status='failed', stage=?, error_message=?, updated_at=?, finished_at=? where status='running'", statement -> {
             String now = now();
-            statement.setString(1, INTERRUPTED_MESSAGE);
-            statement.setString(2, now);
+            statement.setString(1, "Task failed.");
+            statement.setString(2, INTERRUPTED_MESSAGE);
             statement.setString(3, now);
+            statement.setString(4, now);
         });
     }
 

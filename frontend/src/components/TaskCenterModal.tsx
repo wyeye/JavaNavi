@@ -67,6 +67,10 @@ const exactStageKeys: Record<string, I18nKey> = {
   '正在准备 SQL 文件执行': 'taskCenter.stage.preparingSqlFileExecution',
   'SQL file executed': 'taskCenter.stage.sqlFileExecuted',
   'SQL 文件执行完成': 'taskCenter.stage.sqlFileExecuted',
+  'SQL file execution failed': 'taskCenter.stage.sqlFileExecutionFailed',
+  'SQL 文件执行失败': 'taskCenter.stage.sqlFileExecutionFailed',
+  'Task failed.': 'taskCenter.stage.taskFailed',
+  '任务失败。': 'taskCenter.stage.taskFailed',
   'Cancel requested': 'taskCenter.stage.cancelRequested',
   '已请求取消': 'taskCenter.stage.cancelRequested',
   'Task cancelled.': 'taskCenter.stage.taskCancelled',
@@ -188,6 +192,62 @@ const resolveTaskStage = (stage: string, t: TaskTranslator): string => {
   return key ? t(key) : normalized;
 };
 
+const resolveJobStage = (job: AppJob, t: TaskTranslator): string => {
+  const normalized = String(job.stage || '').trim();
+  if (job.status === 'failed' && (normalized === 'SQL file executed' || normalized === 'SQL 文件执行完成')) {
+    return t('taskCenter.stage.sqlFileExecutionFailed');
+  }
+  if (job.status === 'failed' && !normalized) {
+    return t('taskCenter.stage.taskFailed');
+  }
+  if (job.status === 'cancelled' && !normalized) {
+    return t('taskCenter.stage.taskCancelled');
+  }
+  return resolveTaskStage(normalized, t);
+};
+
+const parseJobTime = (value: string): number => {
+  const time = Date.parse(String(value || '').trim());
+  return Number.isFinite(time) ? time : 0;
+};
+
+const pad2 = (value: number): string => String(value).padStart(2, '0');
+
+const formatJobDateTime = (value: string): string => {
+  const time = parseJobTime(value);
+  if (!time) return '-';
+  const date = new Date(time);
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+};
+
+const jobElapsedMs = (job: AppJob, nowMs: number): number | null => {
+  const startedAt = parseJobTime(job.createdAt);
+  if (!startedAt) return null;
+  const finishedAt = job.status === 'running' ? nowMs : parseJobTime(job.finishedAt);
+  if (!finishedAt) return null;
+  return Math.max(0, finishedAt - startedAt);
+};
+
+const formatJobDuration = (durationMs: number | null): string => {
+  if (durationMs === null) return '-';
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  if (hours > 0) return `${hours}h ${String(minutes).padStart(2, '0')}m ${String(seconds).padStart(2, '0')}s`;
+  if (minutes > 0) return `${minutes}m ${String(seconds).padStart(2, '0')}s`;
+  return `${seconds}s`;
+};
+
+const jobDurationSummary = (job: AppJob, nowMs: number, t: TaskTranslator): string => (
+  `${t('taskCenter.duration')}: ${formatJobDuration(jobElapsedMs(job, nowMs))}`
+);
+
+const jobStartEndSummary = (job: AppJob, t: TaskTranslator): string => {
+  const finishedAt = job.status === 'running' ? '-' : formatJobDateTime(job.finishedAt);
+  return `${t('taskCenter.startedAt')}: ${formatJobDateTime(job.createdAt)} · ${t('taskCenter.finishedAt')}: ${finishedAt}`;
+};
+
 const resolveTaskError = (errorMessage: string, t: TaskTranslator): string => {
   const normalized = String(errorMessage || '').trim();
   if (!normalized) return '';
@@ -204,6 +264,7 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
   const [selectedJobId, setSelectedJobId] = useState('');
   const [loading, setLoading] = useState(false);
   const [cancellingJobId, setCancellingJobId] = useState('');
+  const [nowMs, setNowMs] = useState(() => Date.now());
 
   const selectedJob = jobs.find((job) => job.jobId === selectedJobId) || jobs[0];
   const runningCount = jobs.filter((job) => job.status === 'running').length;
@@ -211,6 +272,13 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
   useEffect(() => {
     onRunningCountChange?.(runningCount);
   }, [onRunningCountChange, runningCount]);
+
+  useEffect(() => {
+    if (!open || runningCount <= 0) return undefined;
+    setNowMs(Date.now());
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [open, runningCount]);
 
   useEffect(() => {
     if (!open) return;
@@ -261,10 +329,10 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
   const muted = darkMode ? 'rgba(226,232,240,0.66)' : 'rgba(71,85,105,0.82)';
   const titleColor = darkMode ? '#f8fafc' : '#0f172a';
 
-  const stat = (label: string, value: React.ReactNode) => (
-    <div style={{ padding: '12px 14px', borderRadius: 12, border, background: panelBg, minWidth: 0 }}>
+  const metric = (label: string, value: React.ReactNode, expanded = false, align: 'left' | 'right' = 'left') => (
+    <div style={{ minWidth: 0, textAlign: align }}>
       <div style={{ fontSize: 12, color: muted }}>{label}</div>
-      <div style={{ marginTop: 4, fontSize: 18, fontWeight: 700, color: titleColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{value}</div>
+      <div style={{ marginTop: 4, fontSize: 16, fontWeight: 700, color: titleColor, overflow: expanded ? 'visible' : 'hidden', textOverflow: expanded ? 'clip' : 'ellipsis', whiteSpace: expanded ? 'normal' : 'nowrap', wordBreak: expanded ? 'break-word' : 'normal', lineHeight: 1.35 }}>{value}</div>
     </div>
   );
 
@@ -314,7 +382,10 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
                     </div>
                     <Progress percent={job.percent || 0} size="small" status={job.status === 'failed' ? 'exception' : undefined} showInfo={false} style={{ marginTop: 8 }} />
                     <div style={{ marginTop: 6, color: muted, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {job.current}/{job.total} · {job.currentTable || resolveTaskStage(job.stage, t)}
+                      {job.current}/{job.total} · {job.currentTable || resolveJobStage(job, t)}
+                    </div>
+                    <div style={{ marginTop: 3, color: muted, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {t('taskCenter.duration')}: {formatJobDuration(jobElapsedMs(job, nowMs))}
                     </div>
                   </button>
                 );
@@ -328,20 +399,21 @@ export default function TaskCenterModal({ open, onClose, onRunningCountChange }:
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start' }}>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontSize: 18, fontWeight: 800, color: titleColor }}>{resolveTaskTitle(selectedJob, t)}</div>
-                    <div style={{ marginTop: 4, color: muted, fontSize: 12 }}>{selectedJob.jobId}</div>
+                    <div style={{ marginTop: 4, color: muted, fontSize: 12, lineHeight: 1.5, wordBreak: 'break-word' }}>{selectedJob.jobId} · {jobDurationSummary(selectedJob, nowMs, t)}</div>
+                    <div style={{ marginTop: 2, color: muted, fontSize: 12, lineHeight: 1.5, wordBreak: 'break-word' }}>{jobStartEndSummary(selectedJob, t)}</div>
                   </div>
                   <Tag icon={statusIcon[selectedJob.status]} color={statusColor[selectedJob.status]}>{t(`taskCenter.status.${selectedJob.status}` as I18nKey)}</Tag>
                 </div>
                 <Progress percent={selectedJob.percent || 0} status={selectedJob.status === 'failed' ? 'exception' : selectedJob.status === 'completed' ? 'success' : undefined} />
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 10 }}>
-                  {stat(t('taskCenter.total'), selectedJob.total)}
-                  {stat(t('taskCenter.current'), selectedJob.current)}
-                  {stat('%', `${selectedJob.percent}%`)}
-                  {stat(t('taskCenter.currentTable'), selectedJob.currentTable || selectedJob.table || '-')}
+                <div style={{ display: 'grid', gridTemplateColumns: '80px 80px 1fr auto', gap: 14, alignItems: 'start', padding: '2px 0 4px' }}>
+                  {metric(t('taskCenter.total'), selectedJob.total)}
+                  {metric(t('taskCenter.current'), selectedJob.current)}
+                  {metric(t('taskCenter.currentTable'), selectedJob.currentTable || selectedJob.table || '-', true)}
+                  {metric(t('taskCenter.progress'), `${selectedJob.percent}%`, false, 'right')}
                 </div>
                 <div style={{ padding: 14, borderRadius: 12, border, background: panelBg }}>
                   <div style={{ color: muted, fontSize: 12 }}>{t('taskCenter.stage')}</div>
-                  <div style={{ marginTop: 6, color: titleColor }}>{resolveTaskStage(selectedJob.stage, t)}</div>
+                  <div style={{ marginTop: 6, color: titleColor }}>{resolveJobStage(selectedJob, t)}</div>
                 </div>
                 {selectedJob.filePath ? (
                   <div style={{ padding: 14, borderRadius: 12, border, background: panelBg }}>
