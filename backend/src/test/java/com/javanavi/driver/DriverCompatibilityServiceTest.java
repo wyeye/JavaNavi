@@ -13,6 +13,7 @@ import com.javanavi.i18n.I18nMessages;
 import com.javanavi.db.JdbcConnectionFactory;
 import com.javanavi.db.JdbcConnectionPoolRegistry;
 import com.javanavi.db.ProxySocketFactory;
+import com.javanavi.redis.RedisCompatibilityService;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.security.LocalSessionService;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -20,17 +21,26 @@ import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.lang.reflect.Method;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -463,6 +473,32 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
+    void redisConnectUsesConfiguredHttpProxy() throws Exception {
+        try (HttpConnectRedisProbe proxy = HttpConnectRedisProbe.start()) {
+            RedisCompatibilityService service = new RedisCompatibilityService(new I18nMessages());
+
+            Map<String, Object> result = service.connect(Map.of(
+                    "connection", Map.of(
+                            "type", "redis",
+                            "host", "redis.internal",
+                            "port", 6379,
+                            "database", 0,
+                            "useProxy", true,
+                            "proxy", Map.of(
+                                    "type", "http",
+                                    "host", "127.0.0.1",
+                                    "port", proxy.port()
+                            )
+                    )
+            ));
+
+            assertThat(result).containsEntry("connected", true);
+            proxy.assertConnectTarget("redis.internal:6379");
+            assertThat(proxy.commands()).containsExactly("SELECT", "PING");
+        }
+    }
+
+    @Test
     void proxySocketFactoryUsesConfiguredCredentialsForHttpConnectAndSocks5() throws Exception {
         Method httpConnectRequest = ProxySocketFactory.class.getDeclaredMethod("httpConnectRequest", String.class, int.class);
         httpConnectRequest.setAccessible(true);
@@ -699,6 +735,119 @@ class DriverCompatibilityServiceTest {
                 .filter(item -> name.equals(item.get("name")))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static final class HttpConnectRedisProbe implements AutoCloseable {
+        private final ServerSocket server;
+        private final CountDownLatch done = new CountDownLatch(1);
+        private final AtomicReference<String> connectTarget = new AtomicReference<>("");
+        private final AtomicReference<Throwable> error = new AtomicReference<>();
+        private final List<String> commands = new ArrayList<>();
+        private final Thread thread;
+
+        private HttpConnectRedisProbe(ServerSocket server) {
+            this.server = server;
+            this.thread = new Thread(this::serve, "redis-http-connect-probe");
+            this.thread.setDaemon(true);
+        }
+
+        static HttpConnectRedisProbe start() throws IOException {
+            try {
+                ServerSocket server = new ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"));
+                HttpConnectRedisProbe probe = new HttpConnectRedisProbe(server);
+                probe.thread.start();
+                return probe;
+            } catch (IOException error) {
+                if (error instanceof SocketException && String.valueOf(error.getMessage()).contains("Operation not permitted")) {
+                    Assumptions.assumeTrue(false, "local TCP server unavailable in this test environment: " + error.getMessage());
+                }
+                throw error;
+            }
+        }
+
+        int port() {
+            return server.getLocalPort();
+        }
+
+        List<String> commands() throws Exception {
+            awaitDone();
+            return List.copyOf(commands);
+        }
+
+        void assertConnectTarget(String expected) throws Exception {
+            awaitDone();
+            assertThat(connectTarget.get()).isEqualTo(expected);
+        }
+
+        private void serve() {
+            try (Socket socket = server.accept()) {
+                InputStream input = socket.getInputStream();
+                OutputStream output = socket.getOutputStream();
+                String connect = readLine(input);
+                if (connect.startsWith("CONNECT ")) {
+                    connectTarget.set(connect.substring("CONNECT ".length(), connect.indexOf(" HTTP/")));
+                }
+                while (!readLine(input).isEmpty()) {
+                    // consume proxy headers
+                }
+                output.write("HTTP/1.1 200 OK\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1));
+                output.flush();
+                for (int index = 0; index < 2; index++) {
+                    String command = readRedisCommand(input);
+                    commands.add(command);
+                    output.write(("PING".equals(command) ? "+PONG\r\n" : "+OK\r\n").getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                }
+            } catch (Throwable failure) {
+                error.set(failure);
+            } finally {
+                done.countDown();
+            }
+        }
+
+        private static String readRedisCommand(InputStream input) throws IOException {
+            String array = readLine(input);
+            int count = Integer.parseInt(array.substring(1));
+            List<String> parts = new ArrayList<>();
+            for (int index = 0; index < count; index++) {
+                String bulk = readLine(input);
+                int length = Integer.parseInt(bulk.substring(1));
+                byte[] value = input.readNBytes(length);
+                input.readNBytes(2);
+                parts.add(new String(value, StandardCharsets.UTF_8));
+            }
+            return parts.get(0).toUpperCase(Locale.ROOT);
+        }
+
+        private static String readLine(InputStream input) throws IOException {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            int previous = -1;
+            while (true) {
+                int value = input.read();
+                if (value < 0) {
+                    throw new IOException("connection closed while reading line");
+                }
+                if (previous == '\r' && value == '\n') {
+                    byte[] bytes = buffer.toByteArray();
+                    return new String(bytes, 0, Math.max(0, bytes.length - 1), StandardCharsets.ISO_8859_1);
+                }
+                buffer.write(value);
+                previous = value;
+            }
+        }
+
+        private void awaitDone() throws Exception {
+            assertThat(done.await(3, TimeUnit.SECONDS)).isTrue();
+            Throwable failure = error.get();
+            if (failure != null) {
+                throw new AssertionError(failure);
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            server.close();
+        }
     }
 
     private static final class ProbeServer implements AutoCloseable {

@@ -8,6 +8,7 @@ import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
 import com.javanavi.model.ColumnDefinitionDto;
 import com.javanavi.model.ColumnDefinitionWithTableDto;
+import com.javanavi.db.NetworkSocketConnector;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.ConnectionTestResultDto;
 import com.javanavi.model.ForeignKeyDefinitionDto;
@@ -29,7 +30,6 @@ import java.net.URI;
 import java.net.URISyntaxException;
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URLDecoder;
 import java.nio.ByteBuffer;
@@ -69,6 +69,7 @@ public class MongoCompatibilityService {
     private static final int DEFAULT_PORT = 27017;
     static final String DEFAULT_SSL_MODE = "required";
     private static final int DEFAULT_TIMEOUT_MS = 1500;
+    private static final NetworkSocketConnector NETWORK_CONNECTOR = new NetworkSocketConnector();
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final I18nMessages messages;
@@ -748,9 +749,8 @@ public class MongoCompatibilityService {
     }
 
     private static Socket openSocket(MongoConnectionAttempt attempt) throws IOException {
-        Socket plain = new Socket();
+        Socket plain = NETWORK_CONNECTOR.openSocket(attempt.networkConfig(), attempt.timeoutMs());
         try {
-            plain.connect(new InetSocketAddress(attempt.host(), attempt.port()), attempt.timeoutMs());
             plain.setSoTimeout(attempt.timeoutMs());
             if (!attempt.tls()) {
                 return plain;
@@ -1711,6 +1711,7 @@ public class MongoCompatibilityService {
     }
 
     private static final class MongoConnectionProfile {
+        private final ConnectionConfigDto config;
         private final String database;
         private final List<HostPort> seeds;
         private final int timeoutMs;
@@ -1726,6 +1727,7 @@ public class MongoCompatibilityService {
         private final String replicaSet;
 
         private MongoConnectionProfile(
+                ConnectionConfigDto config,
                 String database,
                 List<HostPort> seeds,
                 int timeoutMs,
@@ -1740,6 +1742,7 @@ public class MongoCompatibilityService {
                 String authMechanism,
                 String replicaSet
         ) {
+            this.config = config;
             this.database = database;
             this.seeds = seeds;
             this.timeoutMs = timeoutMs;
@@ -1799,6 +1802,7 @@ public class MongoCompatibilityService {
                 useSsl = true;
             }
             return new MongoConnectionProfile(
+                    config,
                     database,
                     List.copyOf(seeds),
                     mongoTimeoutMs(config),
@@ -1832,12 +1836,50 @@ public class MongoCompatibilityService {
                                 auth.password(),
                                 authSource.isBlank() ? "admin" : authSource,
                                 auth.mechanism(),
+                                networkConfigForSeed(config, seed),
                                 seed.host() + ":" + seed.port() + " tls=" + tls.label() + " auth=" + auth.label()
                         ));
                     }
                 }
             }
             return attempts;
+        }
+
+        private static ConnectionConfigDto networkConfigForSeed(ConnectionConfigDto config, HostPort seed) {
+            if (config == null) {
+                return new ConnectionConfigDto(
+                        "mongo-runtime",
+                        "MongoDB",
+                        "mongodb",
+                        null,
+                        seed.host(),
+                        seed.port(),
+                        "admin",
+                        "",
+                        "",
+                        Map.of(),
+                        DEFAULT_TIMEOUT_MS / 1000,
+                        false,
+                        "disable",
+                        false,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        null,
+                        List.of(),
+                        null,
+                        null,
+                        null,
+                        null,
+                        false,
+                        null,
+                        null,
+                        null
+                );
+            }
+            return config.withEndpoint(seed.host(), seed.port());
         }
 
         private List<TlsAttempt> tlsAttempts() {
@@ -2035,6 +2077,7 @@ public class MongoCompatibilityService {
             String password,
             String authSource,
             String mechanism,
+            ConnectionConfigDto networkConfig,
             String label
     ) {
         boolean hasAuth() {
