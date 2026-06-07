@@ -1,7 +1,6 @@
 package com.javanavi.db;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
-import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.connections.SavedConnectionService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.i18n.I18nMessages;
@@ -65,7 +64,6 @@ public class DatabaseCompatibilityService {
     private final JdbcConnectionFactory jdbcConnectionFactory;
     private final JdbcConnectionPoolRegistry jdbcConnectionPoolRegistry;
     private final SavedConnectionService savedConnectionService;
-    private final GlobalProxyConfigProvider globalProxyConfigProvider;
     private final MongoCompatibilityService mongoCompatibilityService;
     private final I18nMessages messages;
     private final Map<String, RunningQuery> runningQueries = new ConcurrentHashMap<>();
@@ -74,7 +72,7 @@ public class DatabaseCompatibilityService {
             DemoDatabaseService demoDatabaseService,
             JdbcConnectionFactory jdbcConnectionFactory
     ) {
-        this(demoDatabaseService, jdbcConnectionFactory, new JdbcConnectionPoolRegistry(jdbcConnectionFactory), null, null, null, new I18nMessages());
+        this(demoDatabaseService, jdbcConnectionFactory, new JdbcConnectionPoolRegistry(jdbcConnectionFactory), null, null, new I18nMessages());
     }
 
     @Autowired
@@ -83,7 +81,6 @@ public class DatabaseCompatibilityService {
             JdbcConnectionFactory jdbcConnectionFactory,
             JdbcConnectionPoolRegistry jdbcConnectionPoolRegistry,
             SavedConnectionService savedConnectionService,
-            GlobalProxyConfigProvider globalProxyConfigProvider,
             MongoCompatibilityService mongoCompatibilityService,
             I18nMessages messages
     ) {
@@ -91,7 +88,6 @@ public class DatabaseCompatibilityService {
         this.jdbcConnectionFactory = jdbcConnectionFactory;
         this.jdbcConnectionPoolRegistry = jdbcConnectionPoolRegistry;
         this.savedConnectionService = savedConnectionService;
-        this.globalProxyConfigProvider = globalProxyConfigProvider;
         this.mongoCompatibilityService = mongoCompatibilityService;
         this.messages = messages;
     }
@@ -2267,13 +2263,7 @@ public class DatabaseCompatibilityService {
         if (resolved == null) {
             return null;
         }
-        resolved = resolved.withGlobalProxy(null);
-        if (isMongo(resolved) || globalProxyConfigProvider == null) {
-            return resolved;
-        }
-        return globalProxyConfigProvider.activeProxy()
-                .map(resolved::withGlobalProxy)
-                .orElse(resolved);
+        return resolved;
     }
 
     private void rejectUnsupportedNetworkTunnel(ConnectionConfigDto config) {

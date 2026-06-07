@@ -1,15 +1,15 @@
 import React, { lazy, Suspense, useState, useEffect, useMemo, useCallback, useRef } from 'react';
-import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Switch, Input, InputNumber, Select, Segmented, Tooltip, Badge } from 'antd';
+import { Layout, Button, ConfigProvider, theme, message, Modal, Spin, Slider, Switch, Input, Select, Segmented, Tooltip, Badge } from 'antd';
 import type { Locale } from 'antd/es/locale';
 import type { CSSProperties } from 'react';
 import enUSLocale from 'antd/locale/en_US';
 import dayjs from 'dayjs';
 import 'dayjs/locale/en';
 import 'dayjs/locale/zh-cn';
-import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, GlobalOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TableOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { PlusOutlined, ConsoleSqlOutlined, UploadOutlined, DownloadOutlined, BugOutlined, ToolOutlined, InfoCircleOutlined, GithubOutlined, SkinOutlined, CheckOutlined, SettingOutlined, LinkOutlined, BgColorsOutlined, AppstoreOutlined, RobotOutlined, HddOutlined, MenuFoldOutlined, MenuUnfoldOutlined, TableOutlined, ClockCircleOutlined } from '@ant-design/icons';
 import { BrowserOpenURL, Environment, EventsOn, WindowFullscreen, WindowGetPosition, WindowGetSize, WindowIsFullscreen, WindowIsMaximised, WindowIsMinimised, WindowIsNormal, WindowMaximise, WindowSetPosition, WindowSetSize, WindowToggleMaximise, WindowUnfullscreen } from '@compat/runtime';
 import { DEFAULT_APPEARANCE, replaceConnectionTagsFromBackend, replaceSavedQueriesFromBackend, replaceSqlLogsFromBackend, useStore } from './store';
-import type { GlobalProxyConfig, SavedConnection } from './types';
+import type { SavedConnection } from './types';
 import { blurToFilter, isMacLikePlatform, normalizeBlurForPlatform, normalizeOpacityForPlatform, isWindowsPlatform, resolveAppearanceValues, resolveTextInputSafeBackdropFilter } from './utils/appearance';
 import { getDataGridColumnWidthModeOptions, sanitizeDataTableColumnWidthMode } from './utils/dataGridDisplay';
 import { shouldHandleMacNativeFullscreenShortcut, shouldSuppressMacNativeEscapeExit } from './utils/macWindow';
@@ -17,7 +17,6 @@ import { shouldEnableMacWindowDiagnostics } from './utils/macWindowDiagnostics';
 import { resolveAboutDisplayVersion } from './utils/appVersionDisplay';
 import { buildOverlayWorkbenchTheme } from './utils/overlayWorkbenchTheme';
 import { getConnectionWorkbenchState } from './utils/startupReadiness';
-import { createGlobalProxyDraft, toSaveGlobalProxyInput } from './utils/globalProxyDraft';
 import {
   detectConnectionImportKind,
   isConnectionPackagePasswordRequiredError,
@@ -48,7 +47,7 @@ import {
   resolveAIEdgeHandleDockStyle,
   resolveAIEdgeHandleStyle,
 } from './utils/aiEntryLayout';
-import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetErrorLog, GetErrorLogs, GetGlobalProxyConfig, GetJobs, normalizeJob, GetLanguage, GetSavedConnections, GetSavedQueries, GetSqlLogs, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveGlobalProxy, SaveLanguage, SaveSavedQueries, SaveSqlLogs, SetErrorLogResolved, SetMacNativeWindowControls, SetWindowTranslucency, type ErrorLogPayload } from '@compat/javanaviApp';
+import { CheckDesktopUpdate, ExportConnectionsPackage, GetAppInfo, GetConnectionTags, GetDataRootDirectoryInfo, GetErrorLog, GetErrorLogs, GetJobs, normalizeJob, GetLanguage, GetSavedConnections, GetSavedQueries, GetSqlLogs, ImportConnectionsPayload, InstallDesktopUpdate, LogWindowDiagnostic, RestartDesktopApp, SaveConnectionTags, SaveLanguage, SaveSavedQueries, SaveSqlLogs, SetErrorLogResolved, SetMacNativeWindowControls, SetWindowTranslucency, type ErrorLogPayload } from '@compat/javanaviApp';
 import { DEFAULT_LANGUAGE, appLanguageOptions, currentHtmlLangValue, currentLanguageHeaderValue, installCompatibilityI18nFallback, setRuntimeLanguage, translate, type I18nKey } from './i18n';
 import './App.css';
 
@@ -175,10 +174,7 @@ function App() {
   const setFontSize = useStore(state => state.setFontSize);
   const startupFullscreen = useStore(state => state.startupFullscreen);
   const setStartupFullscreen = useStore(state => state.setStartupFullscreen);
-  const globalProxy = useStore(state => state.globalProxy);
-  const setGlobalProxy = useStore(state => state.setGlobalProxy);
   const replaceConnections = useStore(state => state.replaceConnections);
-  const replaceGlobalProxy = useStore(state => state.replaceGlobalProxy);
   const shortcutOptions = useStore(state => state.shortcutOptions);
   const updateShortcut = useStore(state => state.updateShortcut);
   const resetShortcutOptions = useStore(state => state.resetShortcutOptions);
@@ -212,7 +208,6 @@ function App() {
   const aiPanelVisible = useStore(state => state.aiPanelVisible);
   const toggleAIPanel = useStore(state => state.toggleAIPanel);
   const setAIPanelVisible = useStore(state => state.setAIPanelVisible);
-  const globalProxyInvalidHintShownRef = React.useRef(false);
   const windowDiagSequenceRef = React.useRef(0);
   const windowDiagLastSignatureRef = React.useRef('');
   const windowDiagLastAtRef = React.useRef(0);
@@ -418,14 +413,6 @@ function App() {
               console.warn('Failed to load SQL logs', err);
           }
 
-          try {
-              const proxyResult = await GetGlobalProxyConfig();
-              if (!cancelled && proxyResult?.success && proxyResult.data) {
-                  replaceGlobalProxy(createGlobalProxyDraft(proxyResult.data as Partial<GlobalProxyConfig>));
-              }
-          } catch (err) {
-              console.warn('Failed to load global proxy config', err);
-          }
 
           try {
               const languageResult = await GetLanguage();
@@ -450,66 +437,7 @@ function App() {
       return () => {
           cancelled = true;
       };
-  }, [isStoreHydrated, replaceConnections, replaceGlobalProxy]);
-
-  useEffect(() => {
-      if (!isStoreHydrated || !hasLoadedInitialConfig) {
-          return;
-      }
-
-      const host = String(globalProxy.host || '').trim();
-      const port = Number(globalProxy.port);
-      const portValid = Number.isFinite(port) && port > 0 && port <= 65535;
-      const invalidWhenEnabled = globalProxy.enabled && (!host || !portValid);
-
-      if (invalidWhenEnabled) {
-          if (!globalProxyInvalidHintShownRef.current) {
-              void message.warning({
-                  content: t('proxy.invalidWarning'),
-                  key: 'global-proxy-invalid',
-              });
-              globalProxyInvalidHintShownRef.current = true;
-          }
-          return;
-      }
-
-      globalProxyInvalidHintShownRef.current = false;
-      void message.destroy('global-proxy-invalid');
-
-      let cancelled = false;
-      Promise.resolve(
-          SaveGlobalProxy(
-              toSaveGlobalProxyInput({
-                  ...globalProxy,
-                  host,
-                  port: portValid ? port : (globalProxy.type === 'http' ? 8080 : 1080),
-              })
-          )
-      )
-          .catch((err) => {
-              if (cancelled) {
-                  return;
-              }
-              const errMsg = err instanceof Error ? err.message : String(err || t('message.unknownError'));
-              void message.error({
-                  content: t('proxy.syncFailed', { message: errMsg }),
-                  key: 'global-proxy-sync-error',
-              });
-          });
-
-      return () => {
-          cancelled = true;
-      };
-  }, [
-      isStoreHydrated,
-      hasLoadedInitialConfig,
-      globalProxy.enabled,
-      globalProxy.type,
-      globalProxy.host,
-      globalProxy.port,
-      globalProxy.user,
-      globalProxy.password,
-  ]);
+  }, [isStoreHydrated, replaceConnections]);
 
   useEffect(() => {
       let cancelled = false;
@@ -1449,7 +1377,6 @@ function App() {
   const [isAppearanceModalOpen, setIsAppearanceModalOpen] = useState(false);
   const [isShortcutModalOpen, setIsShortcutModalOpen] = useState(false);
   const [capturingShortcutAction, setCapturingShortcutAction] = useState<ShortcutAction | null>(null);
-  const [isProxyModalOpen, setIsProxyModalOpen] = useState(false);
   const [isDataRootModalOpen, setIsDataRootModalOpen] = useState(false);
   const [dataRootInfo, setDataRootInfo] = useState<DataRootInfo | null>(null);
   const [dataRootLoading, setDataRootLoading] = useState(false);
@@ -1707,13 +1634,6 @@ function App() {
       setIsDriverModalOpen(false);
   }, []);
 
-  const handleOpenGlobalProxySettings = useCallback(() => {
-      setIsProxyModalOpen(true);
-  }, []);
-
-  const handleCloseGlobalProxySettings = useCallback(() => {
-      setIsProxyModalOpen(false);
-  }, []);
 
   const handleOpenAISettings = useCallback((providerId?: string) => {
       setFocusedAIProviderId(providerId);
@@ -2449,16 +2369,6 @@ function App() {
                   },
                 },
                 {
-                  key: 'proxy',
-                  icon: <GlobalOutlined />,
-                  title: t('settings.proxy.title'),
-                  description: t('settings.proxy.description'),
-                  onClick: () => {
-                    setIsSettingsModalOpen(false);
-                    handleOpenGlobalProxySettings();
-                  },
-                },
-                {
                   key: 'ai',
                   icon: <RobotOutlined />,
                   title: t('settings.ai.title'),
@@ -2631,7 +2541,6 @@ function App() {
               <DriverManagerModal
                 open={isDriverModalOpen}
                 onClose={handleCloseDriverManager}
-                onOpenGlobalProxySettings={handleOpenGlobalProxySettings}
               />
             </Suspense>
           )}
@@ -3118,81 +3027,7 @@ function App() {
                   })}
               </div>
           </Modal>
-          <Modal
-              title={renderUtilityModalTitle(<GlobalOutlined />, t('proxy.modal.title'), t('proxy.modal.description'))}
-              open={isProxyModalOpen}
-              onCancel={handleCloseGlobalProxySettings}
-              footer={null}
-              width={520}
-              styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10 } }}
-          >
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 16, padding: '12px 0' }}>
-                  <div style={utilityPanelStyle}>
-                      <div style={{ marginBottom: 8, fontWeight: 500 }}>{t('proxy.label')}</div>
-                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                          <span>{t('proxy.enable')}</span>
-                          <Switch checked={globalProxy.enabled} onChange={(checked) => setGlobalProxy({ enabled: checked })} />
-                      </div>
-                      <div style={{ marginTop: 12, display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, opacity: globalProxy.enabled ? 1 : 0.7 }}>
-                          <div>
-                              <div style={{ marginBottom: 6, fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>{t('proxy.type')}</div>
-                              <Select
-                                  value={globalProxy.type}
-                                  disabled={!globalProxy.enabled}
-                                  options={[
-                                      { value: 'socks5', label: 'SOCKS5' },
-                                      { value: 'http', label: 'HTTP' },
-                                  ]}
-                                  onChange={(value) => setGlobalProxy({ type: value as 'socks5' | 'http' })}
-                              />
-                          </div>
-                          <div>
-                              <div style={{ marginBottom: 6, fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>{t('proxy.port')}</div>
-                              <InputNumber
-                                  min={1}
-                                  max={65535}
-                                  style={{ width: '100%' }}
-                                  value={globalProxy.port}
-                                  disabled={!globalProxy.enabled}
-                                  onChange={(value) => setGlobalProxy({
-                                      port: typeof value === 'number' ? value : (globalProxy.type === 'http' ? 8080 : 1080),
-                                  })}
-                              />
-                          </div>
-                          <div style={{ gridColumn: '1 / span 2' }}>
-                              <div style={{ marginBottom: 6, fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>{t('proxy.host')}</div>
-                              <Input
-                                  placeholder={t('proxy.hostPlaceholder')}
-                                  value={globalProxy.host}
-                                  disabled={!globalProxy.enabled}
-                                  onChange={(e) => setGlobalProxy({ host: e.target.value })}
-                              />
-                          </div>
-                          <div>
-                              <div style={{ marginBottom: 6, fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>{t('proxy.usernameOptional')}</div>
-                              <Input
-                                  placeholder="proxy-user"
-                                  value={globalProxy.user}
-                                  disabled={!globalProxy.enabled}
-                                  onChange={(e) => setGlobalProxy({ user: e.target.value })}
-                              />
-                          </div>
-                          <div>
-                              <div style={{ marginBottom: 6, fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)' }}>{t('proxy.passwordOptional')}</div>
-                              <Input.Password
-                                  placeholder="proxy-password"
-                                  value={globalProxy.password}
-                                  disabled={!globalProxy.enabled}
-                                  onChange={(e) => setGlobalProxy({ password: e.target.value })}
-                              />
-                          </div>
-                      </div>
-                      <div style={{ fontSize: 12, color: darkMode ? 'rgba(255,255,255,0.5)' : 'rgba(16,24,40,0.55)', marginTop: 6 }}>
-                          {t('proxy.scopeHint')}
-                      </div>
-                  </div>
-              </div>
-          </Modal>
+
 
           <Suspense fallback={null}>
               <TaskCenterModal

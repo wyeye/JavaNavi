@@ -280,7 +280,6 @@ export namespace connection {
 	    ssh?: SSHConfig;
 	    useProxy?: boolean;
 	    proxy?: ProxyConfig;
-			    globalProxy?: ProxyConfig;
 	    driver?: string;
 	    dsn?: string;
 	    options?: Record<string, string>;
@@ -321,7 +320,6 @@ export namespace connection {
 	        this.ssh = convertCompatValues(sourceRecord["ssh"], SSHConfig) as SSHConfig | undefined;
 	        this.useProxy = sourceRecord["useProxy"];
 	        this.proxy = convertCompatValues(sourceRecord["proxy"], ProxyConfig) as ProxyConfig | undefined;
-			        this.globalProxy = convertCompatValues(sourceRecord["globalProxy"], ProxyConfig) as ProxyConfig | undefined;
 	        this.driver = sourceRecord["driver"];
 	        this.dsn = sourceRecord["dsn"];
 	        this.options = sourceRecord["options"];
@@ -342,39 +340,6 @@ export namespace connection {
 	    }
 
 	}
-	export class GlobalProxyView {
-	    enabled: boolean;
-	    type: string;
-	    host: string;
-	    port: number;
-	    user?: string;
-	    password?: string;
-	    hasPassword?: boolean;
-	    secretRef?: string;
-
-	    static createFrom(source: CompatModelSource = {}) {
-	        return new GlobalProxyView(source);
-	    }
-
-	    constructor(source: CompatModelSource = {}) {
-	        const sourceRecord = parseModelSource(source);
-	        this.enabled = sourceRecord["enabled"];
-	        this.type = sourceRecord["type"];
-	        this.host = sourceRecord["host"];
-	        this.port = sourceRecord["port"];
-	        this.user = sourceRecord["user"];
-	        this.password = sourceRecord["password"];
-	        this.hasPassword = sourceRecord["hasPassword"];
-	        this.secretRef = sourceRecord["secretRef"];
-	    }
-	}
-
-
-
-
-
-
-
 	export class QueryResult {
 	    success: boolean;
 	    message: string;
@@ -408,28 +373,6 @@ export namespace connection {
 	    }
 	}
 
-	export class SaveGlobalProxyInput {
-	    enabled: boolean;
-	    type: string;
-	    host: string;
-	    port: number;
-	    user?: string;
-	    password?: string;
-
-	    static createFrom(source: CompatModelSource = {}) {
-	        return new SaveGlobalProxyInput(source);
-	    }
-
-	    constructor(source: CompatModelSource = {}) {
-	        const sourceRecord = parseModelSource(source);
-	        this.enabled = sourceRecord["enabled"];
-	        this.type = sourceRecord["type"];
-	        this.host = sourceRecord["host"];
-	        this.port = sourceRecord["port"];
-	        this.user = sourceRecord["user"];
-	        this.password = sourceRecord["password"];
-	    }
-	}
 	export class SavedConnectionInput {
 	    id?: string;
 	    name: string;

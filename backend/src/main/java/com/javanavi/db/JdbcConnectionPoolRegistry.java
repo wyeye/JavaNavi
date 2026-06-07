@@ -251,14 +251,6 @@ public class JdbcConnectionPoolRegistry {
             value.append("proxy.user=").append(nullToEmpty(proxy.user())).append('\n');
             value.append("proxy.password=").append(nullToEmpty(proxy.password())).append('\n');
         }
-        ConnectionConfigDto.NetworkProxyConfigDto globalProxy = config.globalProxy();
-        if (globalProxy != null) {
-            value.append("globalProxy.type=").append(nullToEmpty(globalProxy.type())).append('\n');
-            value.append("globalProxy.host=").append(nullToEmpty(globalProxy.host())).append('\n');
-            value.append("globalProxy.port=").append(globalProxy.port()).append('\n');
-            value.append("globalProxy.user=").append(nullToEmpty(globalProxy.user())).append('\n');
-            value.append("globalProxy.password=").append(nullToEmpty(globalProxy.password())).append('\n');
-        }
     }
 
     private void discardFailedPool(ManagedPool pool) {

@@ -1764,7 +1764,6 @@ public class DataSyncCompatibilityService {
                 networkCredential(map.get("sshConfig")),
                 booleanValue(map.get("useProxy")),
                 networkProxy(map.get("proxy")),
-                networkProxy(map.get("globalProxy")),
                 text(map.get("uri")),
                 text(map.get("dsn")),
                 stringList(map.get("hosts")),

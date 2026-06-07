@@ -128,10 +128,6 @@ public class ConnectionNetworkTunnelService {
         if (config.sshEnabled()) {
             return null;
         }
-        ConnectionConfigDto.NetworkProxyConfigDto globalProxy = config.globalProxy();
-        if (globalProxy != null && text(globalProxy.host()) != null) {
-            return jdbcProxyEndpoint(globalProxy);
-        }
         return null;
     }
 

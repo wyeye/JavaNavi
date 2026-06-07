@@ -4,7 +4,6 @@ import com.javanavi.app.AppCompatibilityService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApiEnvelope;
 import com.javanavi.model.AppContracts;
-import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -38,19 +37,9 @@ public class AppCompatibilityController {
         return ApiEnvelope.ok(appCompatibilityService.dataRootInfo());
     }
 
-    @GetMapping("/global-proxy")
-    public ApiEnvelope<AppContracts.GlobalProxyResponse> getGlobalProxy() {
-        return ApiEnvelope.ok(appCompatibilityService.getGlobalProxy());
-    }
-
     @GetMapping("/language")
     public ApiEnvelope<AppContracts.LanguageResponse> getLanguage() {
         return ApiEnvelope.ok(appCompatibilityService.getLanguage());
-    }
-
-    @PostMapping("/global-proxy")
-    public ApiEnvelope<AppContracts.GlobalProxyResponse> saveGlobalProxy(@RequestBody GlobalProxyConfigDto input) {
-        return ApiEnvelope.ok(appCompatibilityService.saveGlobalProxy(input));
     }
 
     @PostMapping("/language")

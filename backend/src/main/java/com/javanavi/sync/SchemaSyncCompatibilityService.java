@@ -860,7 +860,6 @@ public class SchemaSyncCompatibilityService {
                     networkCredential(source.get("sshConfig")),
                     booleanValue(source.get("useProxy")),
                     networkProxy(source.get("proxy")),
-                    networkProxy(source.get("globalProxy")),
                     text(source.get("uri")),
                     text(source.get("dsn")),
                     stringList(source.get("hosts")),

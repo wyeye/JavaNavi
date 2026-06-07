@@ -2,7 +2,6 @@ package com.javanavi.db;
 
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.driver.JdbcDriverRuntimeService;
-import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.i18n.LocalizedException;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -15,7 +14,6 @@ import java.sql.SQLException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
-import java.util.Optional;
 import java.util.Properties;
 
 @Component
@@ -23,27 +21,20 @@ public class JdbcConnectionFactory {
     private final JdbcDriverRuntimeService driverRuntimeService;
     private final I18nMessages messages;
     private final ConnectionNetworkTunnelService networkTunnelService;
-    private final GlobalProxyConfigProvider globalProxyConfigProvider;
 
     public JdbcConnectionFactory() {
-        this(null, new I18nMessages(), new ConnectionNetworkTunnelService(), null);
-    }
-
-    public JdbcConnectionFactory(JdbcDriverRuntimeService driverRuntimeService, I18nMessages messages, ConnectionNetworkTunnelService networkTunnelService) {
-        this(driverRuntimeService, messages, networkTunnelService, null);
+        this(null, new I18nMessages(), new ConnectionNetworkTunnelService());
     }
 
     @Autowired
     public JdbcConnectionFactory(
             JdbcDriverRuntimeService driverRuntimeService,
             I18nMessages messages,
-            ConnectionNetworkTunnelService networkTunnelService,
-            GlobalProxyConfigProvider globalProxyConfigProvider
+            ConnectionNetworkTunnelService networkTunnelService
     ) {
         this.driverRuntimeService = driverRuntimeService;
         this.messages = messages;
         this.networkTunnelService = networkTunnelService == null ? new ConnectionNetworkTunnelService() : networkTunnelService;
-        this.globalProxyConfigProvider = globalProxyConfigProvider;
     }
 
     private JdbcDriverRuntimeService requireDriverRuntimeService() {
@@ -199,18 +190,7 @@ public class JdbcConnectionFactory {
     }
 
     ConnectionConfigDto effectiveConnectionConfig(ConnectionConfigDto config) {
-        if (config == null) {
-            return config;
-        }
-        boolean hasConnectionNetwork = config.sshEnabled() || config.proxyEnabled();
-        if (hasConnectionNetwork) {
-            return config.globalProxy() == null ? config : config.withGlobalProxy(null);
-        }
-        if (config.globalProxy() != null || globalProxyConfigProvider == null) {
-            return config;
-        }
-        Optional<ConnectionConfigDto.NetworkProxyConfigDto> globalProxy = globalProxyConfigProvider.activeProxy();
-        return globalProxy.map(config::withGlobalProxy).orElse(config);
+        return config;
     }
 
     public String normalizeDriver(String driverType) {

@@ -31,7 +31,6 @@ final class CompatibilityRequestMaps {
         putIfNotNull(map, "ssh", config.ssh());
         putIfNotNull(map, "sshConfig", config.sshConfig());
         putIfNotNull(map, "proxy", config.proxy());
-        putIfNotNull(map, "globalProxy", config.globalProxy());
         putIfNotNull(map, "uri", config.uri());
         putIfNotNull(map, "dsn", config.dsn());
         putIfNotNull(map, "hosts", config.hosts());

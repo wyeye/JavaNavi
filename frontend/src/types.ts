@@ -34,7 +34,6 @@ export interface ConnectionConfig {
   ssh?: SSHConfig;
   useProxy?: boolean;
   proxy?: ProxyConfig;
-  globalProxy?: ProxyConfig;
   driver?: string;
   dsn?: string;
   options?: Record<string, string>;
@@ -104,11 +103,6 @@ export interface AppJob {
   finishedAt: string;
 }
 
-export interface GlobalProxyConfig extends ProxyConfig {
-  enabled: boolean;
-  hasPassword?: boolean;
-  secretRef?: string;
-}
 
 export interface ConnectionTag {
   id: string;

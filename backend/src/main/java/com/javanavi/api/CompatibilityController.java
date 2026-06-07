@@ -57,7 +57,7 @@ public class CompatibilityController {
             new CapabilityDto("apply-changes", "DataGrid apply changes", "partial", "Transactional insert/update/delete change sets are wired for demo/H2 plus MySQL/PostgreSQL JDBC"),
             new CapabilityDto("relational-ddl", "Relational DDL compatibility", "partial", "Database/table/view/function create/drop/rename and clear/truncate endpoints are wired with dialect guardrails"),
             new CapabilityDto("compat-event-bridge", "Compatibility event bridge", "partial", "SSE publisher/controller and frontend runtime bridge are wired with fixture families for stream-style JavaNavi events"),
-            new CapabilityDto("saved-secrets", "Saved secrets compatibility", "ready", "Saved connections, global proxy secrets, and JavaNavi connection packages use SecretStore-backed redaction")
+            new CapabilityDto("saved-secrets", "Saved secrets compatibility", "ready", "Saved connections and JavaNavi connection packages use SecretStore-backed redaction")
     );
 
     private static final String REQUEST_SOURCE_HEADER = "X-JavaNavi-Request-Source";

@@ -106,11 +106,8 @@ type DriverNetworkStatusPayload = JsonRecord & {
   checks?: unknown;
   reachable?: unknown;
   summary?: unknown;
-  recommendedProxy?: unknown;
-  proxyConfigured?: unknown;
   downloadChainReachable?: unknown;
   downloadRequiredHosts?: unknown;
-  proxyEnv?: unknown;
   checkedAt?: unknown;
   logPath?: unknown;
   repositoryURL?: unknown;
@@ -282,11 +279,8 @@ type DriverNetworkProbe = {
 type DriverNetworkStatus = {
   reachable: boolean;
   summary: string;
-  recommendedProxy: boolean;
-  proxyConfigured: boolean;
   downloadChainReachable?: boolean;
   downloadRequiredHosts?: string[];
-  proxyEnv?: Record<string, string>;
   checks: DriverNetworkProbe[];
   checkedAt?: string;
   logPath?: string;
@@ -478,10 +472,9 @@ const renderDefaultDriverLabel = (
   </span>
 );
 
-const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenGlobalProxySettings?: () => void }> = ({
+const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
   open,
   onClose,
-  onOpenGlobalProxySettings,
 }) => {
   const [customDataSourceForm] = Form.useForm();
   const theme = useStore((state) => state.theme);
@@ -888,13 +881,10 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
       const nextStatus: DriverNetworkStatus = {
         reachable: !!data.reachable,
         summary: String(data.summary || '').trim() || compatText('驱动网络检测已完成'),
-        recommendedProxy: !!data.recommendedProxy,
-        proxyConfigured: !!data.proxyConfigured,
         downloadChainReachable: typeof data.downloadChainReachable === 'boolean' ? data.downloadChainReachable : undefined,
         downloadRequiredHosts: Array.isArray(data.downloadRequiredHosts)
           ? data.downloadRequiredHosts.map((item: unknown) => String(item || '').trim()).filter(Boolean)
           : undefined,
-        proxyEnv: toStringRecord(data.proxyEnv),
         checkedAt: String(data.checkedAt || '').trim() || undefined,
         checks: normalizedChecks,
         logPath: String(data.logPath || '').trim() || undefined,
@@ -2012,7 +2002,6 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
 
   const activeDriverLogs = operationLogMap[logDriverType] || [];
   const activeDriverLogLines = activeDriverLogs.map((item) => `[${item.time}] ${item.text}`);
-  const proxyEnvEntries = Object.entries(networkStatus?.proxyEnv || {});
   const downloadRequiredHosts = (networkStatus?.downloadRequiredHosts || []).filter(Boolean);
   const showDownloadChainAlert = networkStatus?.downloadChainReachable === false;
   const networkUnreachable = networkStatus?.reachable === false;
@@ -2085,18 +2074,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                 <Space direction="vertical" size={8} style={{ width: '100%' }}>
                   {showDownloadChainAlert ? (
                     <>
-                      <Text>{compatText('当前 Maven 驱动源或其依赖域名不可达。请优先在 JavaNavi 顶部“代理”中启用全局代理（填写代理应用本地地址和端口）。', 'jsx')}</Text>
-                      {onOpenGlobalProxySettings ? (
-                        <Button size="small" onClick={onOpenGlobalProxySettings}>{compatText('打开全局代理设置')}</Button>
-                      ) : null}
-                      <Text>{compatText(`若仍失败，请在代理规则放行：${downloadRequiredHostText}；仍无法调整规则时，再考虑开启 TUN 模式。`, 'jsx')}</Text>
+                      <Text>{compatText('当前 Maven 驱动源或其依赖域名不可达。请检查网络连通性、Maven 源地址或本机代理规则。', 'jsx')}</Text>
+                      <Text>{compatText(`需要放行的域名：${downloadRequiredHostText}。`, 'jsx')}</Text>
                     </>
                   ) : (
                     <Text>{networkStatus.summary}</Text>
                   )}
-                  {proxyEnvEntries.length > 0 ? (
-                    <Text type="secondary">{compatText(`检测到代理环境变量：${proxyEnvEntries.map(([key]) => key).join('、')}`, 'jsx')}</Text>
-                  ) : null}
                 </Space>
               )}
             />
@@ -2120,11 +2103,6 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void; onOpenG
                           <Text type="secondary">
                             {compatText(`Maven 源配置可用性：${repositoryConnectivityProbe ? (repositoryConnectivityProbe.reachable ? '可达' : '不可达') : '暂无结果'}${repositoryConnectivityLatencyMs !== undefined ? `，${repositoryConnectivityLatencyMs}ms` : ''}${repositoryConnectivityProbe?.error ? `，${repositoryConnectivityProbe.error}` : ''}`, 'jsx')} 
                           </Text>
-                          {proxyEnvEntries.length > 0 ? (
-                            <Text type="secondary">{compatText(`检测到代理环境变量：${proxyEnvEntries.map(([key]) => key).join('、')}`, 'jsx')}</Text>
-                          ) : (
-                            <Text type="secondary">{compatText('未检测到系统代理环境变量。')}</Text>
-                          )}
                         </Space>
                       ),
                     },

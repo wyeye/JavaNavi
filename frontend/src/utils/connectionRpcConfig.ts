@@ -9,11 +9,10 @@ type UnknownRecord = Record<string, unknown>;
 
 type NestedConnectionConfigInput = UnknownRecord | Partial<connection.SSHConfig> | Partial<connection.ProxyConfig>;
 
-type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ssh' | 'proxy' | 'globalProxy'>> & {
+type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ssh' | 'proxy'>> & {
   id?: string;
   ssh?: NestedConnectionConfigInput;
   proxy?: NestedConnectionConfigInput;
-  globalProxy?: NestedConnectionConfigInput;
   mongoSRV?: boolean;
   mongoReplicaSet?: string;
   queryTimeout?: number;
@@ -111,18 +110,11 @@ export function buildRpcConnectionConfig(
     ...(config.proxy ?? {}),
     ...(overrides.proxy ?? {}),
   };
-  const mergedGlobalProxy: NestedConnectionConfigInput | undefined = config.globalProxy || overrides.globalProxy
-    ? {
-        ...(config.globalProxy ?? {}),
-        ...(overrides.globalProxy ?? {}),
-      }
-    : undefined;
   const merged: ConnectionConfigInput = {
     ...config,
     ...overrides,
     ssh: mergedSSH,
     proxy: mergedProxy,
-    globalProxy: mergedGlobalProxy,
   };
   const baseId = toStringValue(config.id).trim() || toStringValue(overrides.id).trim() || undefined;
   const timeout = toOptionalInteger(merged.timeout, toOptionalInteger(config.timeout));
@@ -144,7 +136,6 @@ export function buildRpcConnectionConfig(
     ssh: normalizeSSHConfig(merged.ssh),
     useProxy: merged.useProxy === true,
     proxy: normalizeProxyConfig(merged.proxy),
-    globalProxy: merged.globalProxy ? normalizeProxyConfig(merged.globalProxy) : undefined,
     driver: toOptionalStringValue(merged.driver),
     dsn: toOptionalStringValue(merged.dsn),
     options: queryTimeout === undefined

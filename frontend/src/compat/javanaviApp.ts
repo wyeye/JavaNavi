@@ -304,7 +304,6 @@ function toConnectionPayload(config: unknown = {}): ConnectionPayload {
     ssh: fieldValue(config, 'ssh'),
     useProxy: booleanField(config, 'useProxy'),
     proxy: fieldValue(config, 'proxy'),
-    globalProxy: fieldValue(config, 'globalProxy'),
   };
 }
 
@@ -518,11 +517,6 @@ export async function ConfigureDriverRepositoryURL(arg1:string): Promise<connect
 export async function ConfigureDefaultDriver(arg1:string,arg2:string,arg3:string): Promise<connection.QueryResult> {
   const payload = await postJson('/drivers/default-driver', { databaseType: arg1, driverType: arg2, downloadDir: arg3 });
   return apiEnvelopeToQueryResult(payload, 'Default driver configured');
-}
-
-export async function ConfigureGlobalProxy(arg1:boolean,arg2:connection.ProxyConfig): Promise<connection.QueryResult> {
-  const payload = await postJson('/app/global-proxy', { enabled: arg1, ...(arg2 || {}) });
-  return apiEnvelopeToQueryResult(payload, 'Global proxy saved');
 }
 
 export async function CreateDatabase(arg1:connection.ConnectionConfig,arg2:string): Promise<connection.QueryResult> {
@@ -931,11 +925,6 @@ export async function GetDriverVersionPackageSize(arg1:string,arg2:string): Prom
   return apiEnvelopeToQueryResult(payload, 'Driver package size loaded');
 }
 
-export async function GetGlobalProxyConfig(): Promise<connection.QueryResult> {
-  const payload = await getJson('/app/global-proxy');
-  return apiEnvelopeToQueryResult(payload, 'Global proxy loaded');
-}
-
 export async function GetLanguage(): Promise<connection.QueryResult> {
   const payload = await getJson('/app/language');
   return apiEnvelopeToQueryResult(payload, 'Language loaded');
@@ -1336,10 +1325,6 @@ export async function SaveConnection(arg1:connection.SavedConnectionInput): Prom
   const payload = await postJson('/connections/saved/save', arg1);
   assertSuccessPayload(payload, 'Failed to save JavaNavi connection.');
   return payloadData<connection.SavedConnectionView>(payload) as connection.SavedConnectionView;
-}
-
-export async function SaveGlobalProxy(arg1:connection.SaveGlobalProxyInput): Promise<connection.GlobalProxyView> {
-  return dataOrThrow<connection.GlobalProxyView>(await postJson('/app/global-proxy', arg1 || {}), 'Failed to save global proxy.');
 }
 
 export async function SaveLanguage(arg1:string): Promise<connection.QueryResult> {

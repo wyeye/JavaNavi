@@ -26,7 +26,6 @@ public record ConnectionConfigDto(
         NetworkCredentialConfigDto sshConfig,
         @JsonAlias({"useProxy"}) Boolean useProxy,
         NetworkProxyConfigDto proxy,
-        NetworkProxyConfigDto globalProxy,
         String uri,
         String dsn,
         List<String> hosts,
@@ -52,38 +51,9 @@ public record ConnectionConfigDto(
             Integer timeout
     ) {
         this(
-                id,
-                name,
-                driverType,
-                null,
-                host,
-                port,
-                database,
-                username,
-                password,
-                options,
-                timeout,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                List.of(),
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null
+                id, name, driverType, null, host, port, database, username, password, options, timeout,
+                null, null, null, null, null, null, null, null, null,
+                null, null, List.of(), null, null, null, null, null, null, null, null
         );
     }
 
@@ -133,38 +103,10 @@ public record ConnectionConfigDto(
             String mongoReplicaPassword
     ) {
         this(
-                id,
-                name,
-                driverType,
-                driver,
-                host,
-                port,
-                database,
-                username,
-                password,
-                options,
-                timeout,
-                useSSL,
-                sslMode,
-                null,
-                null,
-                useSSH,
-                ssh,
-                sshConfig,
-                useProxy,
-                proxy,
-                null,
-                uri,
-                dsn,
-                hosts,
-                topology,
-                replicaSet,
-                authSource,
-                readPreference,
-                mongoSrv,
-                mongoAuthMechanism,
-                mongoReplicaUser,
-                mongoReplicaPassword
+                id, name, driverType, driver, host, port, database, username, password, options, timeout,
+                useSSL, sslMode, null, null, useSSH, ssh, sshConfig, useProxy, proxy,
+                uri, dsn, hosts, topology, replicaSet, authSource, readPreference, mongoSrv,
+                mongoAuthMechanism, mongoReplicaUser, mongoReplicaPassword
         );
     }
 
@@ -197,38 +139,10 @@ public record ConnectionConfigDto(
             Boolean useProxy
     ) {
         this(
-                id,
-                name,
-                driverType,
-                driver,
-                host,
-                port,
-                database,
-                username,
-                password,
-                options,
-                timeout,
-                useSSL,
-                sslMode,
-                null,
-                null,
-                useSSH,
-                null,
-                null,
-                useProxy,
-                null,
-                null,
-                uri,
-                dsn,
-                hosts,
-                topology,
-                replicaSet,
-                authSource,
-                readPreference,
-                mongoSrv,
-                mongoAuthMechanism,
-                mongoReplicaUser,
-                mongoReplicaPassword
+                id, name, driverType, driver, host, port, database, username, password, options, timeout,
+                useSSL, sslMode, null, null, useSSH, null, null, useProxy, null,
+                uri, dsn, hosts, topology, replicaSet, authSource, readPreference, mongoSrv,
+                mongoAuthMechanism, mongoReplicaUser, mongoReplicaPassword
         );
     }
 
@@ -259,38 +173,10 @@ public record ConnectionConfigDto(
             String mongoReplicaPassword
     ) {
         this(
-                id,
-                name,
-                driverType,
-                driver,
-                host,
-                port,
-                database,
-                username,
-                password,
-                options,
-                timeout,
-                useSSL,
-                sslMode,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                null,
-                uri,
-                dsn,
-                hosts,
-                topology,
-                replicaSet,
-                authSource,
-                readPreference,
-                mongoSrv,
-                mongoAuthMechanism,
-                mongoReplicaUser,
-                mongoReplicaPassword
+                id, name, driverType, driver, host, port, database, username, password, options, timeout,
+                useSSL, sslMode, null, null, null, null, null, null, null,
+                uri, dsn, hosts, topology, replicaSet, authSource, readPreference, mongoSrv,
+                mongoAuthMechanism, mongoReplicaUser, mongoReplicaPassword
         );
     }
 
@@ -306,7 +192,7 @@ public record ConnectionConfigDto(
     public ConnectionConfigDto withEndpoint(String host, Integer port) {
         return new ConnectionConfigDto(
                 id, name, driverType, driver, host, port, database, username, password, options, timeout,
-                useSSL, sslMode, sslCertPath, sslKeyPath, useSSH, ssh, sshConfig, useProxy, proxy, globalProxy,
+                useSSL, sslMode, sslCertPath, sslKeyPath, useSSH, ssh, sshConfig, useProxy, proxy,
                 uri, dsn, hosts, topology, replicaSet, authSource, readPreference, mongoSrv,
                 mongoAuthMechanism, mongoReplicaUser, mongoReplicaPassword
         );
@@ -326,112 +212,19 @@ public record ConnectionConfigDto(
 
     public ConnectionConfigDto withDatabase(String database) {
         return new ConnectionConfigDto(
-                id,
-                name,
-                driverType,
-                driver,
-                host,
-                port,
-                database,
-                username,
-                password,
-                options,
-                timeout,
-                useSSL,
-                sslMode,
-                sslCertPath,
-                sslKeyPath,
-                useSSH,
-                ssh,
-                sshConfig,
-                useProxy,
-                proxy,
-                globalProxy,
-                uri,
-                dsn,
-                hosts,
-                topology,
-                replicaSet,
-                authSource,
-                readPreference,
-                mongoSrv,
-                mongoAuthMechanism,
-                mongoReplicaUser,
-                mongoReplicaPassword
+                id, name, driverType, driver, host, port, database, username, password, options, timeout,
+                useSSL, sslMode, sslCertPath, sslKeyPath, useSSH, ssh, sshConfig, useProxy, proxy,
+                uri, dsn, hosts, topology, replicaSet, authSource, readPreference, mongoSrv,
+                mongoAuthMechanism, mongoReplicaUser, mongoReplicaPassword
         );
     }
 
     public ConnectionConfigDto withSslFiles(String sslCertPath, String sslKeyPath) {
         return new ConnectionConfigDto(
-                id,
-                name,
-                driverType,
-                driver,
-                host,
-                port,
-                database,
-                username,
-                password,
-                options,
-                timeout,
-                useSSL,
-                sslMode,
-                sslCertPath,
-                sslKeyPath,
-                useSSH,
-                ssh,
-                sshConfig,
-                useProxy,
-                proxy,
-                globalProxy,
-                uri,
-                dsn,
-                hosts,
-                topology,
-                replicaSet,
-                authSource,
-                readPreference,
-                mongoSrv,
-                mongoAuthMechanism,
-                mongoReplicaUser,
-                mongoReplicaPassword
-        );
-    }
-
-    public ConnectionConfigDto withGlobalProxy(NetworkProxyConfigDto globalProxy) {
-        return new ConnectionConfigDto(
-                id,
-                name,
-                driverType,
-                driver,
-                host,
-                port,
-                database,
-                username,
-                password,
-                options,
-                timeout,
-                useSSL,
-                sslMode,
-                sslCertPath,
-                sslKeyPath,
-                useSSH,
-                ssh,
-                sshConfig,
-                useProxy,
-                proxy,
-                globalProxy,
-                uri,
-                dsn,
-                hosts,
-                topology,
-                replicaSet,
-                authSource,
-                readPreference,
-                mongoSrv,
-                mongoAuthMechanism,
-                mongoReplicaUser,
-                mongoReplicaPassword
+                id, name, driverType, driver, host, port, database, username, password, options, timeout,
+                useSSL, sslMode, sslCertPath, sslKeyPath, useSSH, ssh, sshConfig, useProxy, proxy,
+                uri, dsn, hosts, topology, replicaSet, authSource, readPreference, mongoSrv,
+                mongoAuthMechanism, mongoReplicaUser, mongoReplicaPassword
         );
     }
 

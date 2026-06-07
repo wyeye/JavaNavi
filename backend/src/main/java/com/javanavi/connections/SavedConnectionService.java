@@ -118,8 +118,6 @@ public class SavedConnectionService {
         StoredConnection existing = find(connections, id).orElse(null);
         Map<String, Object> rawConfig = input.config() == null ? new LinkedHashMap<>() : deepCopyMap(input.config());
         rawConfig.put("id", id);
-        rawConfig.remove("globalProxy");
-
         boolean hasPrimaryPassword = updateSecret(id, "primaryPassword", stringAt(rawConfig, "password"), input.clearPrimaryPassword(), existing == null ? false : existing.hasPrimaryPassword());
         boolean hasSSHPassword = updateSecret(id, "sshPassword", stringAt(rawConfig, "ssh", "password"), input.clearSSHPassword(), existing == null ? false : existing.hasSSHPassword());
         boolean hasProxyPassword = updateSecret(id, "proxyPassword", stringAt(rawConfig, "proxy", "password"), input.clearProxyPassword(), existing == null ? false : existing.hasProxyPassword());
@@ -345,7 +343,6 @@ public class SavedConnectionService {
                 proxyPassword.map(value -> new ConnectionConfigDto.NetworkProxyConfigDto(
                         proxy.type(), proxy.host(), proxy.port(), proxy.user(), value
                 )).orElse(proxy),
-                config.globalProxy(),
                 uri.orElse(config.uri()),
                 dsn.orElse(config.dsn()),
                 config.hosts(),

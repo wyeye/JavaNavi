@@ -35,18 +35,6 @@ public final class AppContracts {
     ) {
     }
 
-    public record GlobalProxyResponse(
-            boolean enabled,
-            String type,
-            String host,
-            int port,
-            String user,
-            String password,
-            boolean hasPassword,
-            String secretRef
-    ) {
-    }
-
     public record LanguageRequest(String language) {
     }
 

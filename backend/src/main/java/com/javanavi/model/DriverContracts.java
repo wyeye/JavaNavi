@@ -531,9 +531,6 @@ public final class DriverContracts {
     public record NetworkStatusResponse(
             boolean reachable,
             String summary,
-            boolean recommendedProxy,
-            boolean proxyConfigured,
-            Map<String, Object> proxyEnv,
             boolean downloadChainReachable,
             List<String> downloadRequiredHosts,
             String defaultRepositoryURL,
@@ -553,9 +550,6 @@ public final class DriverContracts {
             return new NetworkStatusResponse(
                     booleanValue(source.get("reachable")),
                     text(source.get("summary")),
-                    booleanValue(source.get("recommendedProxy")),
-                    booleanValue(source.get("proxyConfigured")),
-                    mapValue(source.get("proxyEnv")),
                     booleanValue(source.get("downloadChainReachable")),
                     stringList(source.get("downloadRequiredHosts")),
                     text(source.get("defaultRepositoryURL")),

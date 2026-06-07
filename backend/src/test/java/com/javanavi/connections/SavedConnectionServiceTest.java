@@ -129,41 +129,6 @@ class SavedConnectionServiceTest {
         assertThat(envelope.data().deleted()).isTrue();
     }
 
-    @Test
-    void saveDropsClientSuppliedGlobalProxyFromConnectionConfig() {
-        SavedConnectionService service = service();
-        Map<String, Object> config = new LinkedHashMap<>();
-        config.put("id", "postgres-prod");
-        config.put("type", "postgresql");
-        config.put("host", "db.local");
-        config.put("port", 5432);
-        config.put("globalProxy", Map.of(
-                "type", "http",
-                "host", "client.proxy",
-                "port", 8080,
-                "user", "proxy-user",
-                "password", "proxy-secret"
-        ));
-
-        SavedConnectionViewDto saved = service.save(new SavedConnectionInputDto(
-                "postgres-prod",
-                "Postgres Prod",
-                config,
-                null,
-                null,
-                null,
-                null,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false,
-                false
-        ));
-
-        assertThat(saved.config()).doesNotContainKey("globalProxy");
-    }
 
     private SavedConnectionService service() {
         SecurityProperties properties = new SecurityProperties();

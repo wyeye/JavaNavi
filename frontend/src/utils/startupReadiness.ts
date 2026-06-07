@@ -5,7 +5,7 @@ export interface ConnectionWorkbenchState {
 
 export function getConnectionWorkbenchState(
   isStoreHydrated: boolean,
-  hasAppliedInitialGlobalProxy: boolean
+  hasLoadedInitialConfig: boolean
 ): ConnectionWorkbenchState {
   if (!isStoreHydrated) {
     return {
@@ -13,7 +13,7 @@ export function getConnectionWorkbenchState(
       message: 'Loading local configuration…',
     };
   }
-  if (!hasAppliedInitialGlobalProxy) {
+  if (!hasLoadedInitialConfig) {
     return {
       ready: false,
       message: 'Loading application configuration…',
