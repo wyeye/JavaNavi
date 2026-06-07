@@ -15,6 +15,7 @@ import com.javanavi.db.ProxySocketFactory;
 import com.javanavi.redis.RedisCompatibilityService;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.security.LocalSessionService;
+import com.javanavi.sync.DataSyncCompatibilityService;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -411,6 +412,194 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
+    void redisConnectAcceptsDirectDtoConnection() throws Exception {
+        try (HttpConnectRedisProbe proxy = HttpConnectRedisProbe.start()) {
+            RedisCompatibilityService service = new RedisCompatibilityService(new I18nMessages());
+            ConnectionConfigDto connection = new ConnectionConfigDto(
+                    "redis-direct-dto",
+                    "Redis Direct DTO",
+                    "redis",
+                    null,
+                    "redis.internal",
+                    6379,
+                    "0",
+                    "",
+                    "",
+                    Map.of(),
+                    5,
+                    false,
+                    "disable",
+                    false,
+                    null,
+                    null,
+                    true,
+                    new ConnectionConfigDto.NetworkProxyConfigDto("http", "127.0.0.1", proxy.port(), null, null),
+                    null,
+                    null,
+                    List.of(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    null
+            );
+
+            Map<String, Object> result = service.connect(Map.of("connection", connection));
+
+            assertThat(result).containsEntry("connected", true);
+            proxy.assertConnectTarget("redis.internal:6379");
+            assertThat(proxy.commands()).containsExactly("SELECT", "PING");
+        }
+    }
+
+    @Test
+    void redisConnectAcceptsDtoProxyFromControllerPayload() throws Exception {
+        try (HttpConnectRedisProbe proxy = HttpConnectRedisProbe.start()) {
+            RedisCompatibilityService service = new RedisCompatibilityService(new I18nMessages());
+
+            Map<String, Object> result = service.connect(Map.of(
+                    "connection", Map.of(
+                            "type", "redis",
+                            "host", "redis.internal",
+                            "port", 6379,
+                            "database", 0,
+                            "useProxy", true,
+                            "proxy", new ConnectionConfigDto.NetworkProxyConfigDto(
+                                    "http",
+                                    "127.0.0.1",
+                                    proxy.port(),
+                                    null,
+                                    null
+                            )
+                    )
+            ));
+
+            assertThat(result).containsEntry("connected", true);
+            proxy.assertConnectTarget("redis.internal:6379");
+            assertThat(proxy.commands()).containsExactly("SELECT", "PING");
+        }
+    }
+
+    @Test
+    void redisNetworkCredentialAcceptsDtoCredentialFromControllerPayload() throws Exception {
+        Method method = RedisCompatibilityService.class.getDeclaredMethod("networkCredential", Object.class);
+        method.setAccessible(true);
+
+        Object credential = method.invoke(null, new ConnectionConfigDto.NetworkCredentialConfigDto(
+                "ssh.local",
+                2222,
+                "ssh-user",
+                "ssh-secret",
+                "/tmp/id_rsa"
+        ));
+
+        assertThat(credential).isInstanceOf(ConnectionConfigDto.NetworkCredentialConfigDto.class);
+        ConnectionConfigDto.NetworkCredentialConfigDto dto = (ConnectionConfigDto.NetworkCredentialConfigDto) credential;
+        assertThat(dto.host()).isEqualTo("ssh.local");
+        assertThat(dto.port()).isEqualTo(2222);
+        assertThat(dto.user()).isEqualTo("ssh-user");
+        assertThat(dto.password()).isEqualTo("ssh-secret");
+        assertThat(dto.keyPath()).isEqualTo("/tmp/id_rsa");
+    }
+
+    @Test
+    void dataSyncConnectionConfigAcceptsDirectDtoAndDtoNetworkSettings() throws Exception {
+        Method method = DataSyncCompatibilityService.class.getDeclaredMethod("connectionConfig", Object.class, String.class);
+        method.setAccessible(true);
+
+        ConnectionConfigDto direct = dtoNetworkConfig(true);
+        assertThat(method.invoke(null, direct, "source")).isSameAs(direct);
+
+        Method fixtureEligible = DataSyncCompatibilityService.class.getDeclaredMethod("fixtureEligible", Map.class);
+        fixtureEligible.setAccessible(true);
+        assertThat((boolean) fixtureEligible.invoke(null, Map.of(
+                "sourceConfig", direct,
+                "targetConfig", dtoNetworkConfig(false)
+        ))).isFalse();
+
+        Class<?> syncRequestClass = Class.forName("com.javanavi.sync.DataSyncCompatibilityService$SyncRequest");
+        Method from = syncRequestClass.getDeclaredMethod("from", Map.class);
+        from.setAccessible(true);
+        Object request = from.invoke(null, Map.of(
+                "sourceConfig", direct,
+                "targetConfig", dtoNetworkConfig(false),
+                "tables", List.of("orders")
+        ));
+        Method hasJdbcTableSync = syncRequestClass.getDeclaredMethod("hasJdbcTableSync");
+        hasJdbcTableSync.setAccessible(true);
+        assertThat((boolean) hasJdbcTableSync.invoke(request)).isTrue();
+
+        ConnectionConfigDto.NetworkCredentialConfigDto ssh = new ConnectionConfigDto.NetworkCredentialConfigDto(
+                "ssh.local",
+                2222,
+                "ssh-user",
+                "ssh-secret",
+                "/tmp/id_rsa"
+        );
+        ConnectionConfigDto sshConfig = (ConnectionConfigDto) method.invoke(null, Map.of(
+                "driverType", "mysql",
+                "host", "db.local",
+                "port", 3306,
+                "useSSH", true,
+                "ssh", ssh
+        ), "source");
+        assertThat(sshConfig.sshEnabled()).isTrue();
+        assertThat(sshConfig.effectiveSsh()).isSameAs(ssh);
+
+        ConnectionConfigDto.NetworkProxyConfigDto proxy = new ConnectionConfigDto.NetworkProxyConfigDto(
+                "http",
+                "proxy.local",
+                8080,
+                "proxy-user",
+                "proxy-secret"
+        );
+        ConnectionConfigDto proxyConfig = (ConnectionConfigDto) method.invoke(null, Map.of(
+                "driverType", "mysql",
+                "host", "db.local",
+                "port", 3306,
+                "useProxy", true,
+                "proxy", proxy
+        ), "target");
+        assertThat(proxyConfig.proxyEnabled()).isTrue();
+        assertThat(proxyConfig.proxy()).isSameAs(proxy);
+    }
+
+    @Test
+    void schemaSyncRequestAcceptsDirectDtoAndDtoNetworkSettings() throws Exception {
+        Class<?> requestClass = Class.forName("com.javanavi.sync.SchemaSyncCompatibilityService$Request");
+        Method from = requestClass.getDeclaredMethod("from", Map.class);
+        from.setAccessible(true);
+        Method sourceConfigAccessor = requestClass.getDeclaredMethod("sourceConfig");
+        sourceConfigAccessor.setAccessible(true);
+
+        ConnectionConfigDto direct = dtoNetworkConfig(true);
+        Object request = from.invoke(null, Map.of("sourceConfig", direct, "targetConfig", dtoNetworkConfig(false)));
+        assertThat(sourceConfigAccessor.invoke(request)).isSameAs(direct);
+
+        Method connectionConfig = requestClass.getDeclaredMethod("connectionConfig", Object.class);
+        connectionConfig.setAccessible(true);
+        ConnectionConfigDto.NetworkCredentialConfigDto ssh = new ConnectionConfigDto.NetworkCredentialConfigDto(
+                "ssh.local",
+                2222,
+                "ssh-user",
+                "ssh-secret",
+                "/tmp/id_rsa"
+        );
+        ConnectionConfigDto sshConfig = (ConnectionConfigDto) connectionConfig.invoke(null, Map.of(
+                "driverType", "mysql",
+                "host", "db.local",
+                "port", 3306,
+                "useSSH", true,
+                "ssh", ssh
+        ));
+        assertThat(sshConfig.sshEnabled()).isTrue();
+        assertThat(sshConfig.effectiveSsh()).isSameAs(ssh);
+    }
+
+    @Test
     void proxySocketFactoryUsesConfiguredCredentialsForHttpConnectAndSocks5() throws Exception {
         Method httpConnectRequest = ProxySocketFactory.class.getDeclaredMethod("httpConnectRequest", String.class, int.class);
         httpConnectRequest.setAccessible(true);
@@ -487,6 +676,43 @@ class DriverCompatibilityServiceTest {
         );
     }
 
+
+    private static ConnectionConfigDto dtoNetworkConfig(boolean sshEnabled) {
+        ConnectionConfigDto.NetworkCredentialConfigDto ssh = sshEnabled
+                ? new ConnectionConfigDto.NetworkCredentialConfigDto("ssh.local", 22, "ssh-user", "ssh-secret", "")
+                : null;
+        return new ConnectionConfigDto(
+                "dto-network",
+                "DTO Network",
+                "mysql",
+                null,
+                "db.local",
+                3306,
+                "demo",
+                "user",
+                "password",
+                Map.of(),
+                30,
+                false,
+                "disable",
+                sshEnabled,
+                ssh,
+                null,
+                false,
+                null,
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
 
     private static ConnectionConfigDto jdbcConfig(
             String driverType,

@@ -1421,6 +1421,9 @@ public class MongoCompatibilityService {
     }
 
     private static ConnectionConfigDto.NetworkCredentialConfigDto networkCredential(Object value) {
+        if (value instanceof ConnectionConfigDto.NetworkCredentialConfigDto credential) {
+            return credential;
+        }
         if (!(value instanceof Map<?, ?> map)) {
             return null;
         }
@@ -1434,6 +1437,9 @@ public class MongoCompatibilityService {
     }
 
     private static ConnectionConfigDto.NetworkProxyConfigDto networkProxy(Object value) {
+        if (value instanceof ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+            return proxy;
+        }
         if (!(value instanceof Map<?, ?> map)) {
             return null;
         }

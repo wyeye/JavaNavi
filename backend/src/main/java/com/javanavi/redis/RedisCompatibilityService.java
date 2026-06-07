@@ -492,6 +492,9 @@ public class RedisCompatibilityService {
     }
 
     private static ConnectionConfigDto.NetworkCredentialConfigDto networkCredential(Object value) {
+        if (value instanceof ConnectionConfigDto.NetworkCredentialConfigDto credential) {
+            return credential;
+        }
         if (!(value instanceof Map<?, ?> map)) {
             return null;
         }
@@ -505,6 +508,9 @@ public class RedisCompatibilityService {
     }
 
     private static ConnectionConfigDto.NetworkProxyConfigDto networkProxy(Object value) {
+        if (value instanceof ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+            return proxy;
+        }
         if (!(value instanceof Map<?, ?> map)) {
             return null;
         }
@@ -855,12 +861,55 @@ public class RedisCompatibilityService {
 
     @SuppressWarnings("unchecked")
     private static Map<String, Object> map(Object value) {
+        if (value instanceof ConnectionConfigDto config) {
+            return connectionMap(config);
+        }
         if (value instanceof Map<?, ?> raw) {
             Map<String, Object> result = new LinkedHashMap<>();
             raw.forEach((key, mapValue) -> result.put(String.valueOf(key), mapValue));
             return result;
         }
         return Map.of();
+    }
+
+    private static Map<String, Object> connectionMap(ConnectionConfigDto config) {
+        Map<String, Object> result = new LinkedHashMap<>();
+        putIfNotNull(result, "id", config.id());
+        putIfNotNull(result, "name", config.name());
+        putIfNotNull(result, "driverType", config.driverType());
+        putIfNotNull(result, "driver", config.driver());
+        putIfNotNull(result, "host", config.host());
+        putIfNotNull(result, "port", config.port());
+        putIfNotNull(result, "database", config.database());
+        putIfNotNull(result, "username", config.username());
+        putIfNotNull(result, "password", config.password());
+        putIfNotNull(result, "options", config.options());
+        putIfNotNull(result, "timeout", config.timeout());
+        putIfNotNull(result, "useSSL", config.useSSL());
+        putIfNotNull(result, "sslMode", config.sslMode());
+        putIfNotNull(result, "useSSH", config.useSSH());
+        putIfNotNull(result, "ssh", config.ssh());
+        putIfNotNull(result, "sshConfig", config.sshConfig());
+        putIfNotNull(result, "useProxy", config.useProxy());
+        putIfNotNull(result, "proxy", config.proxy());
+        putIfNotNull(result, "uri", config.uri());
+        putIfNotNull(result, "dsn", config.dsn());
+        putIfNotNull(result, "hosts", config.hosts());
+        putIfNotNull(result, "topology", config.topology());
+        putIfNotNull(result, "replicaSet", config.replicaSet());
+        putIfNotNull(result, "authSource", config.authSource());
+        putIfNotNull(result, "readPreference", config.readPreference());
+        putIfNotNull(result, "mongoSrv", config.mongoSrv());
+        putIfNotNull(result, "mongoAuthMechanism", config.mongoAuthMechanism());
+        putIfNotNull(result, "mongoReplicaUser", config.mongoReplicaUser());
+        putIfNotNull(result, "mongoReplicaPassword", config.mongoReplicaPassword());
+        return result;
+    }
+
+    private static void putIfNotNull(Map<String, Object> map, String key, Object value) {
+        if (value != null) {
+            map.put(key, value);
+        }
     }
 
     @SuppressWarnings("unchecked")

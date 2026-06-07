@@ -1197,6 +1197,9 @@ public class FileWorkflowCompatibilityService {
     @SuppressWarnings("unchecked")
     private ConnectionConfigDto connectionConfig(Map<String, Object> input) {
         Object raw = input == null ? null : input.get("connection");
+        if (raw instanceof ConnectionConfigDto config) {
+            return config;
+        }
         if (raw instanceof Map<?, ?> map) {
             return objectMapper.convertValue(map, ConnectionConfigDto.class);
         }

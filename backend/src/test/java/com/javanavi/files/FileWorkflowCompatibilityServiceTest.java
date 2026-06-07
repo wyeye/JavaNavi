@@ -8,6 +8,8 @@ import com.javanavi.db.JdbcConnectionFactory;
 import com.javanavi.events.CompatEventFixtures;
 import com.javanavi.events.CompatEventPublisher;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.jobs.JobTaskService;
+import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.QueryResultDto;
 import com.javanavi.security.LocalSessionService;
 import org.junit.jupiter.api.AfterEach;
@@ -20,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
@@ -250,6 +253,54 @@ class FileWorkflowCompatibilityServiceTest {
                 "applyToDatabase", true
         ))).isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("does not support JavaNavi table import");
+    }
+
+    @Test
+    void connectionConfigAcceptsDirectDto() throws Exception {
+        FileWorkflowCompatibilityService service = service();
+        Method method = FileWorkflowCompatibilityService.class.getDeclaredMethod("connectionConfig", Map.class);
+        method.setAccessible(true);
+
+        ConnectionConfigDto connection = new ConnectionConfigDto(
+                "mysql-direct",
+                "MySQL Direct",
+                "mysql",
+                "db.local",
+                3306,
+                "demo",
+                "user",
+                "password",
+                Map.of(),
+                30
+        );
+
+        Object parsed = method.invoke(service, Map.of("connection", connection));
+
+        assertThat(parsed).isSameAs(connection);
+    }
+
+    @Test
+    void jobTaskConnectionConfigAcceptsDirectDto() throws Exception {
+        JobTaskService service = new JobTaskService(null, null, null, null, null, new ObjectMapper().findAndRegisterModules());
+        Method method = JobTaskService.class.getDeclaredMethod("connection", Map.class);
+        method.setAccessible(true);
+
+        ConnectionConfigDto connection = new ConnectionConfigDto(
+                "mysql-job",
+                "MySQL Job",
+                "mysql",
+                "db.local",
+                3306,
+                "demo",
+                "user",
+                "password",
+                Map.of(),
+                30
+        );
+
+        Object parsed = method.invoke(service, Map.of("connection", connection));
+
+        assertThat(parsed).isSameAs(connection);
     }
 
     private FileWorkflowCompatibilityService service() {

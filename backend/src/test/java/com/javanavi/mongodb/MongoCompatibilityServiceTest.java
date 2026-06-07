@@ -184,6 +184,48 @@ class MongoCompatibilityServiceTest {
     }
 
     @Test
+    void mongoConfigFromControllerPayloadKeepsDtoNetworkSettings() throws Exception {
+        Method method = MongoCompatibilityService.class.getDeclaredMethod("mongoConfigFrom", Map.class, Map.class);
+        method.setAccessible(true);
+
+        ConnectionConfigDto.NetworkCredentialConfigDto ssh = new ConnectionConfigDto.NetworkCredentialConfigDto(
+                "ssh.local",
+                2222,
+                "ssh-user",
+                "ssh-secret",
+                "/tmp/id_rsa"
+        );
+        ConnectionConfigDto sshConfig = (ConnectionConfigDto) method.invoke(null, Map.of(
+                "driverType", "mongodb",
+                "host", "mongo.local",
+                "port", 27017,
+                "useSSH", true,
+                "ssh", ssh
+        ), Map.of());
+
+        assertThat(sshConfig.sshEnabled()).isTrue();
+        assertThat(sshConfig.effectiveSsh()).isSameAs(ssh);
+
+        ConnectionConfigDto.NetworkProxyConfigDto proxy = new ConnectionConfigDto.NetworkProxyConfigDto(
+                "http",
+                "proxy.local",
+                8080,
+                "proxy-user",
+                "proxy-secret"
+        );
+        ConnectionConfigDto proxyConfig = (ConnectionConfigDto) method.invoke(null, Map.of(
+                "driverType", "mongodb",
+                "host", "mongo.local",
+                "port", 27017,
+                "useProxy", true,
+                "proxy", proxy
+        ), Map.of());
+
+        assertThat(proxyConfig.proxyEnabled()).isTrue();
+        assertThat(proxyConfig.proxy()).isSameAs(proxy);
+    }
+
+    @Test
     void discoverMembersReturnsTypedPreviewForExampleHost() {
         MongoCompatibilityService service = new MongoCompatibilityService(new com.javanavi.i18n.I18nMessages());
 

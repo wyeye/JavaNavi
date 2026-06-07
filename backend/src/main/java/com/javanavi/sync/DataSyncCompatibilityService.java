@@ -1108,6 +1108,9 @@ public class DataSyncCompatibilityService {
     }
 
     private static ConnectionConfigDto.NetworkCredentialConfigDto networkCredential(Object value) {
+        if (value instanceof ConnectionConfigDto.NetworkCredentialConfigDto credential) {
+            return credential;
+        }
         if (!(value instanceof Map<?, ?> map)) {
             return null;
         }
@@ -1121,6 +1124,9 @@ public class DataSyncCompatibilityService {
     }
 
     private static ConnectionConfigDto.NetworkProxyConfigDto networkProxy(Object value) {
+        if (value instanceof ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+            return proxy;
+        }
         if (!(value instanceof Map<?, ?> map)) {
             return null;
         }
@@ -1208,19 +1214,27 @@ public class DataSyncCompatibilityService {
         if (input.get("fixtures") instanceof Map<?, ?> fixtures && !fixtures.isEmpty()) {
             return true;
         }
-        boolean hasSource = input.get("sourceConfig") instanceof Map<?, ?>;
-        boolean hasTarget = input.get("targetConfig") instanceof Map<?, ?>;
+        boolean hasSource = hasConnectionConfig(input.get("sourceConfig"));
+        boolean hasTarget = hasConnectionConfig(input.get("targetConfig"));
         if (!hasSource && !hasTarget) {
             return true;
         }
         return isDemoLikeConfig(input.get("sourceConfig")) && isDemoLikeConfig(input.get("targetConfig"));
     }
 
+    private static boolean hasConnectionConfig(Object value) {
+        return value instanceof ConnectionConfigDto || value instanceof Map<?, ?>;
+    }
+
     private static boolean isDemoLikeConfig(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
+        String driver;
+        if (value instanceof ConnectionConfigDto config) {
+            driver = firstText(text(config.driverType()), text(config.driver())).toLowerCase(Locale.ROOT);
+        } else if (value instanceof Map<?, ?> map) {
+            driver = firstText(text(map.get("driverType")), text(map.get("type")), text(map.get("driver"))).toLowerCase(Locale.ROOT);
+        } else {
             return false;
         }
-        String driver = firstText(text(map.get("driverType")), text(map.get("type")), text(map.get("driver"))).toLowerCase(Locale.ROOT);
         return driver.isBlank() || Set.of("demo", "h2", "fixture").contains(driver);
     }
 
@@ -1229,7 +1243,7 @@ public class DataSyncCompatibilityService {
         if (request.hasExplicitFixtures()) {
             return;
         }
-        if (request.input().get("sourceConfig") instanceof Map<?, ?> || request.input().get("targetConfig") instanceof Map<?, ?>) {
+        if (hasConnectionConfig(request.input().get("sourceConfig")) || hasConnectionConfig(request.input().get("targetConfig"))) {
             ConnectionConfigDto sourceConfig = request.connectionConfig("sourceConfig");
             ConnectionConfigDto targetConfig = request.connectionConfig("targetConfig");
             String sourceDriver = normalizeDriverType(sourceConfig.driverType());
@@ -1727,6 +1741,9 @@ public class DataSyncCompatibilityService {
     }
 
     private static ConnectionConfigDto connectionConfig(Object raw, String label) {
+        if (raw instanceof ConnectionConfigDto config) {
+            return config;
+        }
         if (!(raw instanceof Map<?, ?> map)) {
             return new ConnectionConfigDto(label + "-demo-h2", label + " Demo", "h2", null, null, "", null, null, Map.of(), null);
         }
@@ -1840,8 +1857,8 @@ public class DataSyncCompatibilityService {
 
         boolean hasJdbcTableSync() {
             return !hasExplicitFixtures()
-                    && input.get("sourceConfig") instanceof Map<?, ?>
-                    && input.get("targetConfig") instanceof Map<?, ?>
+                    && hasConnectionConfig(input.get("sourceConfig"))
+                    && hasConnectionConfig(input.get("targetConfig"))
                     && !tables.isEmpty();
         }
 

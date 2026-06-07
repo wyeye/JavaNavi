@@ -814,11 +814,9 @@ public class SchemaSyncCompatibilityService {
             String previewTable
     ) {
         static Request from(Map<String, Object> input) {
-            Map<String, Object> sourceMap = objectMap(input == null ? null : input.get("sourceConfig"));
-            Map<String, Object> targetMap = objectMap(input == null ? null : input.get("targetConfig"));
             return new Request(
-                    connectionConfig(sourceMap),
-                    connectionConfig(targetMap),
+                    connectionConfig(input == null ? null : input.get("sourceConfig")),
+                    connectionConfig(input == null ? null : input.get("targetConfig")),
                     text(input == null ? null : input.get("sourceDatabase")),
                     text(input == null ? null : input.get("targetDatabase")),
                     stringList(input == null ? null : input.get("tables")),
@@ -838,7 +836,11 @@ public class SchemaSyncCompatibilityService {
             return Map.of();
         }
 
-        private static ConnectionConfigDto connectionConfig(Map<String, Object> source) {
+        private static ConnectionConfigDto connectionConfig(Object value) {
+            if (value instanceof ConnectionConfigDto config) {
+                return config;
+            }
+            Map<String, Object> source = objectMap(value);
             return new ConnectionConfigDto(
                     text(source.get("id")),
                     text(source.get("name")),
@@ -875,6 +877,9 @@ public class SchemaSyncCompatibilityService {
         }
 
         private static ConnectionConfigDto.NetworkCredentialConfigDto networkCredential(Object value) {
+            if (value instanceof ConnectionConfigDto.NetworkCredentialConfigDto credential) {
+                return credential;
+            }
             if (!(value instanceof Map<?, ?> map)) {
                 return null;
             }
@@ -888,6 +893,9 @@ public class SchemaSyncCompatibilityService {
         }
 
         private static ConnectionConfigDto.NetworkProxyConfigDto networkProxy(Object value) {
+            if (value instanceof ConnectionConfigDto.NetworkProxyConfigDto proxy) {
+                return proxy;
+            }
             if (!(value instanceof Map<?, ?> map)) {
                 return null;
             }

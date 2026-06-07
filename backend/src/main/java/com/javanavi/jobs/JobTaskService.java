@@ -238,6 +238,9 @@ public class JobTaskService {
 
     private ConnectionConfigDto connection(Map<String, Object> payload) {
         Object raw = payload == null ? null : payload.get("connection");
+        if (raw instanceof ConnectionConfigDto config) {
+            return config;
+        }
         if (raw instanceof Map<?, ?> map) {
             return objectMapper.convertValue(map, ConnectionConfigDto.class);
         }
