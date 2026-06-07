@@ -543,10 +543,10 @@ public class I18nMessages {
             return message("drivers.invalidRequest", "message", "未找到 JDBC Jar 文件。");
         }
         if (normalized.startsWith("Unable to copy") || normalized.startsWith("Unable to load JDBC driver") || normalized.startsWith("Unable to download JDBC driver") || normalized.startsWith("Interrupted while downloading JDBC driver") || normalized.startsWith("HTTP ")) {
-            return message("drivers.state", "message", message("backend.untranslatedError"));
+            return message("drivers.state", "message", normalized);
         }
         if (normalized.startsWith("Invalid custom JDBC driver type:") || normalized.startsWith("Invalid Maven JDBC driver version:")) {
-            return message("drivers.invalidRequest", "message", message("backend.untranslatedError"));
+            return message("drivers.invalidRequest", "message", normalized);
         }
         if (normalized.startsWith("MongoDB command returned") || normalized.startsWith("MongoDB command failed:")) {
             return message("request.invalid", "message", "MongoDB 命令执行失败。");

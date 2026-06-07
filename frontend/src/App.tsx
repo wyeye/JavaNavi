@@ -1790,6 +1790,34 @@ function App() {
   }, [isMacRuntime, useNativeMacWindowControls]);
 
   useEffect(() => {
+      const handleGlobalF5Guard = (event: KeyboardEvent) => {
+          if (event.key !== 'F5' && event.code !== 'F5') {
+              return;
+          }
+          const plainF5 = !event.ctrlKey && !event.metaKey && !event.altKey && !event.shiftKey;
+          if (window.__JAVANAVI_DRIVER_MANAGER_OPEN__) {
+              event.preventDefault();
+              event.stopPropagation();
+              event.stopImmediatePropagation();
+              if (plainF5) {
+                  window.dispatchEvent(new CustomEvent('javanavi:driver-manager-refresh'));
+              }
+              return;
+          }
+          if (plainF5 && window.__JAVANAVI_ALLOW_F5__) {
+              return;
+          }
+          event.preventDefault();
+          event.stopPropagation();
+      };
+
+      window.addEventListener('keydown', handleGlobalF5Guard, true);
+      return () => {
+          window.removeEventListener('keydown', handleGlobalF5Guard, true);
+      };
+  }, []);
+
+  useEffect(() => {
       const handleGlobalShortcut = (event: KeyboardEvent) => {
           const matchedAction = SHORTCUT_ACTION_ORDER.find((action) => {
               const meta = SHORTCUT_ACTION_META[action];

@@ -379,7 +379,7 @@ function dataOrThrow<T = unknown>(payload: ApiPayload<T | null> | null, fallback
   const envelope = recordValue(payload);
   if (!payload || fieldValue(envelope, 'success') === false) {
     const error = recordValue(fieldValue(envelope, 'error'));
-    throw new Error(localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), fallbackMessage));
+    throw new Error(localizeBackendMessage(payloadErrorMessage(payload) || fieldValue(error, 'message') || fieldValue(envelope, 'message'), fallbackMessage));
   }
   return (fieldValue(envelope, 'data') ?? payload) as T;
 }
@@ -434,7 +434,8 @@ function apiEnvelopeToQueryResult(payload: unknown, fallbackMessage = 'OK'): Que
   if (!payload) return { success: false, message: translateBackendFallback(language, 'Empty response'), data: null } satisfies QueryResultPayload;
   if (fieldValue(envelope, 'success') === false) {
     const error = recordValue(fieldValue(envelope, 'error'));
-    return { success: false, message: localizeBackendMessage(fieldValue(error, 'message') || fieldValue(envelope, 'message'), 'Request failed'), data: fieldValue(envelope, 'data') ?? null } satisfies QueryResultPayload;
+    const errorMessage = payloadErrorMessage(payload) || fieldValue(error, 'message') || fieldValue(envelope, 'message');
+    return { success: false, message: localizeBackendMessage(errorMessage, 'Request failed'), data: fieldValue(envelope, 'data') ?? null } satisfies QueryResultPayload;
   }
   const data = fieldValue(envelope, 'data') ?? payload;
   const dataRecord = recordValue(data);

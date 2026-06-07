@@ -257,6 +257,7 @@ type ProgressState = {
 };
 
 type DriverActionKind = '' | 'install' | 'remove' | 'upload';
+type DriverStatusFilter = 'all' | 'attention' | 'available' | 'custom';
 
 type DriverLogEntry = {
   time: string;
@@ -323,7 +324,7 @@ type DriverVersionNotice = {
 
 const buildVersionOptionKey = (option: DriverVersionOption) => `${option.version}@@${option.downloadUrl}`;
 const buildVersionSizeLoadingKey = (driverType: string, optionKey: string) => `${driverType}@@${optionKey}`;
-const DRIVER_TABLE_SCROLL_X = 1560;
+const DRIVER_TABLE_SCROLL_X = 720;
 const DRIVER_STATUS_CACHE_TTL_MS = 60 * 1000;
 const DRIVER_NETWORK_CACHE_TTL_MS = 5 * 60 * 1000;
 const DRIVER_STATUS_INITIAL_RETRY_COUNT = 3;
@@ -369,6 +370,55 @@ const driverSourceTagColor = (source?: string) => {
     default:
       return 'blue';
   }
+};
+
+
+const isDriverRowAvailable = (row: DriverStatusRow): boolean => (
+  row.connectable || (row.builtIn && row.runtimeAvailable)
+);
+
+const isDriverRowAttention = (row: DriverStatusRow): boolean => (
+  !isDriverRowAvailable(row) && !row.builtIn && (
+    !!row.managedDownload ||
+    !!row.downloadRequired ||
+    !!row.packageInstalled ||
+    !!row.managedJarUploadAllowed ||
+    !!row.message
+  )
+);
+
+const isCustomDriverRow = (row: DriverStatusRow): boolean => (
+  String(row.type || '').startsWith(CUSTOM_DRIVER_TYPE_PREFIX) ||
+  String(row.installSource || '').trim() === 'manual-upload'
+);
+
+const driverStatusLabel = (row: DriverStatusRow, progress?: ProgressState): string => {
+  if (row.builtIn) {
+    return row.runtimeAvailable ? '内置可用' : '内置待接入';
+  }
+  if (row.reusedDriverType) {
+    return row.connectable ? `复用 ${row.reusedDriverName || row.reusedDriverType}` : `等待 ${row.reusedDriverName || row.reusedDriverType}`;
+  }
+  if (progress && (progress.status === 'start' || progress.status === 'downloading')) {
+    return `安装中 ${Math.round(progress.percent)}%`;
+  }
+  if (row.connectable) {
+    return '可用';
+  }
+  if (row.packageInstalled) {
+    return '已安装';
+  }
+  if (row.managedDownload || row.downloadRequired) {
+    return '待安装';
+  }
+  return '未启用';
+};
+
+const driverStatusColor = (row: DriverStatusRow, progress?: ProgressState): string => {
+  if (progress && (progress.status === 'start' || progress.status === 'downloading')) return 'processing';
+  if (isDriverRowAvailable(row)) return 'success';
+  if (isDriverRowAttention(row) || row.packageInstalled) return 'warning';
+  return 'default';
 };
 
 const customDriverTypeSlug = (value: string): string => {
@@ -484,6 +534,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
   const opacity = normalizeOpacityForPlatform(resolvedAppearance.opacity);
   const modalContentRef = useRef<HTMLDivElement | null>(null);
   const tableContainerRef = useRef<HTMLDivElement | null>(null);
+  const detailPanelRef = useRef<HTMLDivElement | null>(null);
   const tableScrollTargetsRef = useRef<HTMLElement[]>([]);
   const externalHScrollRef = useRef<HTMLDivElement | null>(null);
   const horizontalSyncSourceRef = useRef<'table' | 'external' | ''>('');
@@ -493,7 +544,10 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
   const [networkStatus, setNetworkStatus] = useState<DriverNetworkStatus | null>(null);
   const [repositoryURL, setRepositoryURL] = useState('');
   const [repositorySaving, setRepositorySaving] = useState(false);
+  const [repositoryEditing, setRepositoryEditing] = useState(false);
   const [searchKeyword, setSearchKeyword] = useState('');
+  const [statusFilter, setStatusFilter] = useState<DriverStatusFilter>('all');
+  const [selectedDriverType, setSelectedDriverType] = useState('');
   const [rows, setRows] = useState<DriverStatusRow[]>([]);
   const [actionState, setActionState] = useState<{ driverType: string; kind: DriverActionKind }>({ driverType: '', kind: '' });
   const [progressMap, setProgressMap] = useState<Record<string, ProgressState>>({});
@@ -790,6 +844,23 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       }
     }
   }, []);
+
+  useEffect(() => {
+    if (!open) {
+      window.__JAVANAVI_DRIVER_MANAGER_OPEN__ = false;
+      return undefined;
+    }
+
+    window.__JAVANAVI_DRIVER_MANAGER_OPEN__ = true;
+    const handleDriverManagerRefresh = () => {
+      void refreshStatus(true);
+    };
+    window.addEventListener('javanavi:driver-manager-refresh', handleDriverManagerRefresh);
+    return () => {
+      window.removeEventListener('javanavi:driver-manager-refresh', handleDriverManagerRefresh);
+      window.__JAVANAVI_DRIVER_MANAGER_OPEN__ = false;
+    };
+  }, [open, refreshStatus]);
 
   const refreshCustomDefinitions = useCallback(async (toastOnError = false): Promise<CustomDataSource[]> => {
     setCustomDefinitionLoading(true);
@@ -1109,6 +1180,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       const data = toRecord<DriverRepositoryPayload>(result?.data);
       const effectiveURL = String(data.repositoryUrl || data.repositoryURL || '').trim();
       setRepositoryURL(effectiveURL);
+      setRepositoryEditing(false);
       setVersionMap({});
       setVersionNoticeMap({});
       setSelectedVersionMap({});
@@ -1325,6 +1397,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
     if (!open) {
       setHorizontalScrollWidth(DRIVER_TABLE_SCROLL_X);
       tableScrollTargetsRef.current = [];
+      setStatusFilter('all');
+      setSelectedDriverType('');
+      setRepositoryEditing(false);
       return;
     }
     setCustomDataSources(loadCustomDataSources());
@@ -1637,327 +1712,85 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
     }
   }, [appendOperationLog, downloadDir, refreshStatus]);
 
-  const columns = useMemo<ColumnsType<DriverStatusRow>>(() => {
-    return [
-      {
-        title: compatText('数据源'),
-        dataIndex: 'name',
-        key: 'name',
-        width: 150,
-      },
-      {
-        title: compatText('安装包大小'),
-        dataIndex: 'packageSizeText',
-        key: 'packageSizeText',
-        width: 120,
-        render: (_: string | undefined, row: DriverStatusRow) => {
-          if (row.builtIn) {
-            return row.packageSizeText || '-';
-          }
-          const options = versionMap[row.type] || [];
-          const selectedKey = selectedVersionMap[row.type];
-          const loadingKey = buildVersionSizeLoadingKey(row.type, selectedKey || '');
-          const selectedOption =
-            options.find((item) => buildVersionOptionKey(item) === selectedKey) ||
-            options.find((item) => item.recommended) ||
-            options[0];
-          const anyKnownSize = options.find((item) => String(item.packageSizeText || '').trim())?.packageSizeText;
-          if (selectedKey && versionSizeLoadingMap[loadingKey]) {
-            return compatText('计算中...');
-          }
-          return selectedOption?.packageSizeText || anyKnownSize || row.packageSizeText || '-';
-        },
-      },
-      {
-        title: compatText('状态'),
-        key: 'status',
-        width: 140,
-        render: (_: string, row: DriverStatusRow) => {
-          if (row.builtIn) {
-            return row.runtimeAvailable
-              ? <Tag color="success">{compatText('内置可用')}</Tag>
-              : <Tag color="warning">{compatText('内置待接入')}</Tag>;
-          }
-          if (row.reusedDriverType) {
-            return row.connectable
-              ? <Tag color="blue">{compatText('复用')} {row.reusedDriverName || row.reusedDriverType}</Tag>
-              : <Tag color="warning">{compatText('等待')} {row.reusedDriverName || row.reusedDriverType}</Tag>;
-          }
-          const progress = progressMap[row.type];
-          if (progress && (progress.status === 'start' || progress.status === 'downloading')) {
-            return <Tag color="processing">{compatText('安装中')} {Math.round(progress.percent)}%</Tag>;
-          }
-          if (row.connectable) {
-            return <Tag color="success">{compatText('已启用')}</Tag>;
-          }
-          if (row.packageInstalled) {
-            return <Tag color="warning">{compatText('已安装')}</Tag>;
-          }
-          if (row.managedDownload || row.downloadRequired) {
-            return <Tag color="warning">{compatText('待下载')}</Tag>;
-          }
-          return <Tag color="default">{compatText('未启用')}</Tag>;
-        },
-      },
-      {
-        title: compatText('来源'),
-        key: 'installSource',
-        width: 180,
-        render: (_: string, row: DriverStatusRow) => {
-          const label = compatText(row.installSourceLabel || (row.packageInstalled || row.connectable ? '驱动元数据' : '未安装'));
-          return (
-            <div style={{ display: 'grid', gap: 4 }}>
-              <Tag color={driverSourceTagColor(row.installSource)} style={{ width: 'fit-content', marginInlineEnd: 0 }}>
-                {label}
-              </Tag>
-              {row.installSourceDetail ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>
-                  {row.installSourceDetail}
-                </Text>
-              ) : null}
-            </div>
-          );
-        },
-      },
-      {
-        title: compatText('默认驱动'),
-        key: 'defaultDriver',
-        width: 220,
-        render: (_: string, row: DriverStatusRow) => {
-          const options = row.driverOptions || [];
-          const currentValue = row.defaultDriverType || row.type;
-          const availableOptions = options.filter((option) => option.available && option.connectable);
-          const currentOption = options.find((option) => option.driverType === currentValue);
-          if (options.length <= 1) {
-            return (
-              renderDefaultDriverLabel(
-                row.defaultDriverName || currentOption?.driverName || row.name || currentValue,
-                true,
-                currentOption?.reusedRuntime,
-              )
-            );
-          }
-          return (
-            <div style={{ display: 'grid', gap: 4 }}>
-              <Select
-                size="small"
-                style={{ minWidth: 0, width: '100%' }}
-                value={currentValue}
-                loading={defaultDriverSavingKey.startsWith(`${row.type}:`)}
-                disabled={availableOptions.length === 0 || defaultDriverSavingKey.startsWith(`${row.type}:`)}
-                popupMatchSelectWidth={false}
-                optionLabelProp="label"
-                options={options.map((option) => ({
-                  value: option.driverType,
-                  disabled: !option.available || !option.connectable,
-                  label: renderDefaultDriverLabel(option.driverName, option.default, option.reusedRuntime),
-                }))}
-                onChange={(value) => void configureDefaultDriver(row, value)}
-              />
-              <Text type="secondary" style={{ fontSize: 12 }}>
-                {availableOptions.length > 1
-                  ? compatText('新增连接默认使用此驱动，也可在连接表单中改选。')
-                  : compatText('暂无多个可用兼容驱动。')}
-              </Text>
-            </div>
-          );
-        },
-      },
-      {
-        title: compatText('安装进度'),
-        key: 'progress',
-        width: 170,
-        render: (_: string, row: DriverStatusRow) => {
-          if (row.builtIn) {
-            return <Text type="secondary">-</Text>;
-          }
+  const renderDriverActions = useCallback((row: DriverStatusRow, buttonSize: 'small' | 'middle' = 'small') => {
+    if (row.builtIn) {
+      return <Text type="secondary">{compatText('内置驱动无需操作')}</Text>;
+    }
 
-          const progress = progressMap[row.type];
-          let percent = 0;
-          let status: 'normal' | 'exception' | 'active' | 'success' = 'normal';
+    const loadingInstallOrRemove =
+      actionState.driverType === row.type && (actionState.kind === 'install' || actionState.kind === 'remove');
+    const loadingUpload = actionState.driverType === row.type && actionState.kind === 'upload';
+    const logs = operationLogMap[row.type] || [];
+    const hasLogs = logs.length > 0;
 
-          if (progress?.status === 'error') {
-            percent = Math.max(0, Math.min(100, Math.round(progress.percent || 0)));
-            status = 'exception';
-          } else if (progress && (progress.status === 'start' || progress.status === 'downloading')) {
-            percent = Math.max(1, Math.min(99, Math.round(progress.percent || 0)));
-            status = 'active';
-          } else if (row.connectable || row.packageInstalled) {
-            percent = 100;
-            status = 'success';
-          }
+    if (row.reusedDriverType) {
+      return (
+        <Space size={8} wrap>
+          <Text type="secondary">{compatText(`由 ${row.reusedDriverName || row.reusedDriverType} 管理`, 'jsx')}</Text>
+          <Button size={buttonSize} disabled={!hasLogs} onClick={() => openDriverLog(row.type)}>
+            {compatText('查看日志')}
+          </Button>
+        </Space>
+      );
+    }
 
-          return <Progress percent={percent} status={status} size="small" />;
-        },
-      },
-      {
-        title: compatText('驱动版本'),
-        key: 'driverVersion',
-        width: 280,
-        render: (_: string, row: DriverStatusRow) => {
-          if (row.builtIn) {
-            return <Text type="secondary">-</Text>;
-          }
-          if (row.reusedDriverType) {
-            const version = String(row.installedVersion || '').trim();
-            return (
-              <Text type="secondary">
-                {row.connectable ? compatText('复用') : compatText('依赖')} {row.reusedDriverName || row.reusedDriverType}{version ? ` ${version}` : ''}
-              </Text>
-            );
-          }
-          const versionLocked = (row.packageInstalled || row.connectable) && !row.managedDownload;
-          if (versionLocked) {
-            const installedVersion = String(row.installedVersion || '').trim();
-            return (
-              <div style={{ display: 'grid', gap: 4 }}>
-                <Text type="secondary">
-                  {installedVersion
-                    ? compatText(`${installedVersion}（已安装，移除后可更换）`, 'jsx')
-                    : compatText('已安装（移除后可更换）')}
-                </Text>
-              </div>
-            );
-          }
-          const options = versionMap[row.type] || [];
-          const notice = versionNoticeMap[row.type];
-          const selectedKey = selectedVersionMap[row.type];
-          const selectOptions = buildVersionSelectOptions(options);
-          const mongoHint = row.type === 'mongodb'
-            ? compatText('当前仅支持 MongoDB 1.17.x 和 2.x；更老 1.x 暂不提供安装。')
-            : '';
-          const installedVersions = (row.installedVersions || []).map((item) => item.version).filter(Boolean);
-          const installedVersionsText = installedVersions.length > 0
-            ? compatText(`已下载 ${installedVersions.length} 个版本：${installedVersions.slice(0, 4).join('、')}${installedVersions.length > 4 ? '…' : ''}`, 'jsx')
-            : '';
-          return (
-            <div style={{ display: 'grid', gap: 4 }}>
-              <Select
-                size="small"
-                style={{ width: '100%' }}
-                loading={!!versionLoadingMap[row.type]}
-                disabled={actionState.driverType === row.type}
-                placeholder={options.length > 0 ? compatText('选择驱动版本') : compatText('点击展开加载版本')}
-                value={selectedKey}
-                options={selectOptions}
-                onOpenChange={(open) => {
-                  if (open && options.length === 0 && !versionLoadingMap[row.type]) {
-                    void loadVersionOptions(row, true);
-                    return;
-                  }
-                  if (open && selectedKey) {
-                    void loadVersionPackageSize(row, selectedKey);
-                  }
-                }}
-                onChange={(value) => {
-                  setSelectedVersionMap((prev) => ({ ...prev, [row.type]: value }));
-                  void loadVersionPackageSize(row, value);
-                }}
-              />
-              {row.installedVersion ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`当前启用：${row.installedVersion}`, 'jsx')}</Text>
-              ) : null}
-              {installedVersionsText ? (
-                <Text type="secondary" style={{ fontSize: 12 }}>{installedVersionsText}</Text>
-              ) : null}
-              {notice ? (
-                <Text type="warning" style={{ fontSize: 12 }}>
-                  {compatText(notice.message, 'jsx')}
-                </Text>
-              ) : null}
-              {mongoHint ? <Text type="secondary" style={{ fontSize: 12 }}>{mongoHint}</Text> : null}
-            </div>
-          );
-        },
-      },
-      {
-        title: compatText('操作'),
-        key: 'actions',
-        width: 300,
-        render: (_: string, row: DriverStatusRow) => {
-          if (row.builtIn) {
-            return <Text type="secondary">-</Text>;
-          }
-          const loadingInstallOrRemove =
-            actionState.driverType === row.type && (actionState.kind === 'install' || actionState.kind === 'remove');
-          const loadingUpload = actionState.driverType === row.type && actionState.kind === 'upload';
+    const canMavenDownload = !!row.managedDownload;
+    const downloadAction = canMavenDownload ? (
+      <Button
+        size={buttonSize}
+        type="primary"
+        icon={<DownloadOutlined />}
+        loading={loadingInstallOrRemove}
+        onClick={() => installDriver(row)}
+      >
+        {row.connectable ? compatText('切换版本') : compatText('安装启用')}
+      </Button>
+    ) : null;
+    const removeAction = row.connectable ? (
+      <Button
+        size={buttonSize}
+        danger
+        icon={<DeleteOutlined />}
+        loading={loadingInstallOrRemove}
+        onClick={() => removeDriver(row)}
+      >
+        {compatText('移除')}
+      </Button>
+    ) : null;
+    const mainAction = downloadAction || removeAction || (
+      <Button
+        size={buttonSize}
+        type="primary"
+        icon={<DownloadOutlined />}
+        loading={loadingInstallOrRemove}
+        onClick={() => installDriver(row)}
+      >
+        {compatText('安装启用')}
+      </Button>
+    );
 
-          const logs = operationLogMap[row.type] || [];
-          const hasLogs = logs.length > 0;
+    return (
+      <Space size={8} wrap>
+        {mainAction}
+        {downloadAction && removeAction ? removeAction : null}
+        {row.managedJarUploadAllowed ? (
+          <Button
+            size={buttonSize}
+            icon={<UploadOutlined />}
+            loading={loadingUpload}
+            onClick={() => uploadDriverFromJarFiles(row)}
+          >
+            {compatText('上传 Jar')}
+          </Button>
+        ) : null}
+        <Button size={buttonSize} type={hasLogs ? 'default' : 'text'} disabled={!hasLogs} onClick={() => openDriverLog(row.type)}>
+          {compatText('查看日志')}
+        </Button>
+      </Space>
+    );
+  }, [actionState, installDriver, openDriverLog, operationLogMap, removeDriver, uploadDriverFromJarFiles]);
 
-          if (row.reusedDriverType) {
-            return (
-              <Space size={8} wrap>
-                <Text type="secondary">{compatText(`由 ${row.reusedDriverName || row.reusedDriverType} 管理`, 'jsx')}</Text>
-                <Button
-                  type={hasLogs ? 'default' : 'text'}
-                  disabled={!hasLogs}
-                  onClick={() => openDriverLog(row.type)}
-                >
-                  {compatText('日志')}
-                </Button>
-              </Space>
-            );
-          }
 
-          const canMavenDownload = !!row.managedDownload;
-          const downloadAction = canMavenDownload ? (
-            <Button
-              type="primary"
-              icon={<DownloadOutlined />}
-              loading={loadingInstallOrRemove}
-              onClick={() => installDriver(row)}
-            >
-              {row.connectable ? compatText('下载/切换版本') : compatText('安装启用')}
-            </Button>
-          ) : null;
-          const removeAction = row.connectable ? (
-            <Button
-              danger
-              icon={<DeleteOutlined />}
-              loading={loadingInstallOrRemove}
-              onClick={() => removeDriver(row)}
-            >
-              {compatText('移除')}
-            </Button>
-          ) : null;
-          const mainAction = downloadAction || removeAction || (
-            <Button
-              type="primary"
-              icon={<DownloadOutlined />}
-              loading={loadingInstallOrRemove}
-              onClick={() => installDriver(row)}
-            >
-              {compatText('安装启用')}
-            </Button>
-          );
-
-          return (
-            <Space size={8} wrap>
-              {mainAction}
-              {downloadAction && removeAction ? removeAction : null}
-              {row.managedJarUploadAllowed ? (
-                <Button
-                  icon={<UploadOutlined />}
-                  loading={loadingUpload}
-                  onClick={() => uploadDriverFromJarFiles(row)}
-                >
-                  {compatText('上传 Jar')}
-                </Button>
-              ) : null}
-              <Button
-                type={hasLogs ? 'default' : 'text'}
-                disabled={!hasLogs}
-                onClick={() => openDriverLog(row.type)}
-              >
-                {compatText('日志')}
-              </Button>
-            </Space>
-          );
-        },
-      },
-    ];
-  }, [actionState, configureDefaultDriver, defaultDriverSavingKey, installDriver, loadVersionOptions, loadVersionPackageSize, openDriverLog, operationLogMap, progressMap, removeDriver, selectedVersionMap, uploadDriverFromJarFiles, versionLoadingMap, versionMap, versionNoticeMap, versionSizeLoadingMap]);
 
   const activeLogRow = useMemo(() => {
     if (!logDriverType) {
@@ -1966,7 +1799,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
     return rows.find((item) => item.type === logDriverType);
   }, [logDriverType, rows]);
   const normalizedSearchKeyword = useMemo(() => normalizeDriverSearchText(searchKeyword), [searchKeyword]);
-  const filteredRows = useMemo(() => {
+  const searchedRows = useMemo(() => {
     if (!normalizedSearchKeyword) {
       return rows;
     }
@@ -1985,20 +1818,153 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         ...(row.driverOptions || []).map((option) => compatText(`${option.driverName} ${option.default ? '默认' : ''} ${option.reusedRuntime ? '复用 runtime' : ''}`, 'jsx')),
         row.reusedDriverType ? compatText(`复用 ${row.reusedDriverName || row.reusedDriverType}`, 'jsx') : '',
         row.builtIn ? compatText('内置') : row.managedDownload ? compatText('按需下载') : compatText('外置'),
-        row.reusedDriverType
-          ? (row.connectable ? compatText('复用') : compatText(`等待 ${row.reusedDriverName || row.reusedDriverType}`, 'jsx'))
-          : row.connectable ? compatText('已启用') : row.packageInstalled ? compatText('已安装') : compatText('未启用'),
+        driverStatusLabel(row, progressMap[row.type]),
       ];
       const searchableText = normalizeDriverSearchText(searchableParts.filter(Boolean).join(' '));
       return searchableText.includes(normalizedSearchKeyword);
     });
-  }, [normalizedSearchKeyword, rows]);
+  }, [normalizedSearchKeyword, progressMap, rows]);
+  const attentionDriverCount = useMemo(() => rows.filter(isDriverRowAttention).length, [rows]);
+  const availableDriverCount = useMemo(() => rows.filter(isDriverRowAvailable).length, [rows]);
+  const customDriverCount = useMemo(() => rows.filter(isCustomDriverRow).length + customDataSources.length, [customDataSources.length, rows]);
+  const filteredRows = useMemo(() => {
+    switch (statusFilter) {
+      case 'attention':
+        return searchedRows.filter(isDriverRowAttention);
+      case 'available':
+        return searchedRows.filter(isDriverRowAvailable);
+      case 'custom':
+        return searchedRows.filter(isCustomDriverRow);
+      default:
+        return searchedRows;
+    }
+  }, [searchedRows, statusFilter]);
   const filterSummaryText = useMemo(() => {
-    if (normalizedSearchKeyword) {
-      return compatText(`匹配 ${filteredRows.length} / ${rows.length}`, 'jsx');
+    const filterName = statusFilter === 'attention'
+      ? '待处理'
+      : statusFilter === 'available'
+        ? '可用驱动'
+        : statusFilter === 'custom'
+          ? '自定义'
+          : '全部';
+    if (normalizedSearchKeyword || statusFilter !== 'all') {
+      return compatText(`${filterName}：匹配 ${filteredRows.length} / ${rows.length}`, 'jsx');
     }
     return compatText(`共 ${rows.length} 个驱动`, 'jsx');
-  }, [filteredRows.length, normalizedSearchKeyword, rows.length]);
+  }, [filteredRows.length, normalizedSearchKeyword, rows.length, statusFilter]);
+
+  useEffect(() => {
+    if (!open || !selectedDriverType) {
+      return;
+    }
+    if (!filteredRows.some((row) => row.type === selectedDriverType)) {
+      setSelectedDriverType('');
+    }
+  }, [filteredRows, open, selectedDriverType]);
+
+  const activeDriverRow = useMemo(() => {
+    if (!selectedDriverType) {
+      return undefined;
+    }
+    return filteredRows.find((row) => row.type === selectedDriverType);
+  }, [filteredRows, selectedDriverType]);
+
+  useEffect(() => {
+    if (!activeDriverRow) {
+      return undefined;
+    }
+    const frameId = requestAnimationFrame(() => {
+      detailPanelRef.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [activeDriverRow]);
+
+  const columns = useMemo<ColumnsType<DriverStatusRow>>(() => {
+    const baseColumns: ColumnsType<DriverStatusRow> = [
+      {
+        title: compatText('数据源'),
+        key: 'name',
+        width: 220,
+        render: (_: string, row: DriverStatusRow) => {
+          const tags = [
+            row.builtIn ? <Tag key="built-in" color="success">{compatText('内置')}</Tag> : null,
+            isCustomDriverRow(row) ? <Tag key="custom" color="purple">{compatText('自定义')}</Tag> : null,
+          ].filter(Boolean);
+          return (
+            <div className="driver-manager-driver-cell">
+              <div className="driver-manager-driver-name">{row.name || row.type}</div>
+              <Space size={4} wrap>
+                <Text type="secondary" style={{ fontSize: 12 }}>{row.type}</Text>
+                {tags}
+              </Space>
+            </div>
+          );
+        },
+      },
+      {
+        title: compatText('状态'),
+        key: 'status',
+        width: 120,
+        render: (_: string, row: DriverStatusRow) => {
+          const progress = progressMap[row.type];
+          const activeProgress = progress && (progress.status === 'start' || progress.status === 'downloading');
+          return (
+            <div className="driver-manager-status-cell">
+              <Tag color={driverStatusColor(row, progress)} style={{ marginInlineEnd: 0 }}>
+                {compatText(driverStatusLabel(row, progress), 'jsx')}
+              </Tag>
+              {activeProgress ? <Progress percent={Math.max(1, Math.min(99, Math.round(progress.percent || 0)))} size="small" /> : null}
+            </div>
+          );
+        },
+      },
+      {
+        title: compatText('版本'),
+        key: 'driverVersion',
+        width: 130,
+        render: (_: string, row: DriverStatusRow) => {
+          if (row.builtIn) {
+            return <Text type="secondary">{compatText('内置')}</Text>;
+          }
+          const version = row.installedVersion || row.pinnedVersion || '-';
+          const count = row.installedVersionCount || row.installedVersions?.length || 0;
+          return (
+            <div className="driver-manager-version-cell">
+              <Text>{version}</Text>
+              {count > 1 ? <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`已下载 ${count} 个版本`, 'jsx')}</Text> : null}
+            </div>
+          );
+        },
+      },
+      {
+        title: compatText('来源'),
+        key: 'installSource',
+        width: 150,
+        render: (_: string, row: DriverStatusRow) => {
+          const label = compatText(row.installSourceLabel || (row.packageInstalled || row.connectable ? '驱动元数据' : '未安装'));
+          return (
+            <div className="driver-manager-source-cell">
+              <Tag color={driverSourceTagColor(row.installSource)} style={{ width: 'fit-content', marginInlineEnd: 0 }}>
+                {label}
+              </Tag>
+              {row.installSourceDetail ? (
+                <Text type="secondary" ellipsis={{ tooltip: row.installSourceDetail }} style={{ fontSize: 12, maxWidth: 132 }}>
+                  {row.installSourceDetail}
+                </Text>
+              ) : null}
+            </div>
+          );
+        },
+      },
+    ];
+    const actionColumn: ColumnsType<DriverStatusRow>[number] = {
+      title: compatText('操作'),
+      key: 'actions',
+      width: 240,
+      render: (_: string, row: DriverStatusRow) => renderDriverActions(row),
+    };
+    return activeDriverRow ? baseColumns : [...baseColumns, actionColumn];
+  }, [activeDriverRow, progressMap, renderDriverActions]);
 
   const activeDriverLogs = operationLogMap[logDriverType] || [];
   const activeDriverLogLines = activeDriverLogs.map((item) => `[${item.time}] ${item.text}`);
@@ -2023,14 +1989,19 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
 
   return (
     <Modal
-      title={compatText('驱动管理')}
+      title={(
+        <Space size={10}>
+          <DatabaseOutlined />
+          <span>{compatText('驱动管理')}</span>
+        </Space>
+      )}
       open={open}
       onCancel={onClose}
-      width={980}
+      width={1180}
       style={{ top: 24 }}
       styles={{
         body: {
-          maxHeight: 'calc(100vh - 220px)',
+          maxHeight: 'calc(100vh - 180px)',
           overflowY: 'auto',
           overflowX: 'hidden',
           paddingRight: 18,
@@ -2061,155 +2032,277 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         </div>
       )}
     >
-      <div ref={modalContentRef}>
-      <Space direction="vertical" size={12} style={{ width: '100%' }}>
-        <Text type="secondary">{compatText('JavaNavi Web 会展示每个 JavaNavi 驱动的真实 Java 可用性；外部 JDBC 驱动默认按需下载或手动上传，只有实际可用后才会显示为已启用。来源列会区分 Maven 下载、手动上传、内置 runtime 与复用 runtime。', 'jsx')}</Text>
-        {networkStatus ? (
-          networkUnreachable ? (
-            <Alert
-              type="error"
-              showIcon
-              message={showDownloadChainAlert ? compatText('重要提醒：驱动下载链路域名不可达') : compatText('重要提醒：驱动下载网络不可达')} 
-              description={(
-                <Space direction="vertical" size={8} style={{ width: '100%' }}>
-                  {showDownloadChainAlert ? (
-                    <>
-                      <Text>{compatText('当前 Maven 驱动源或其依赖域名不可达。请检查网络连通性、Maven 源地址或本机代理规则。', 'jsx')}</Text>
-                      <Text>{compatText(`需要放行的域名：${downloadRequiredHostText}。`, 'jsx')}</Text>
-                    </>
-                  ) : (
-                    <Text>{networkStatus.summary}</Text>
-                  )}
-                </Space>
-              )}
-            />
-          ) : (
-            <Alert
-              type="success"
-              showIcon
-              message={networkStatus.summary}
-              description={(
-                <Collapse
-                  size="small"
-                  items={[
-                    {
-                      key: 'checks',
-                      label: compatText('查看网络检测明细'),
-                      children: (
-                        <Space direction="vertical" size={4} style={{ width: '100%' }}>
-                          <Text type="secondary">
-                            {compatText(`当前 Maven 源：${repositoryURL || '-'}；配置状态：${networkStatus.repositoryConfigured ? '已自定义' : '默认'}`, 'jsx')} 
-                          </Text>
-                          <Text type="secondary">
-                            {compatText(`Maven 源配置可用性：${repositoryConnectivityProbe ? (repositoryConnectivityProbe.reachable ? '可达' : '不可达') : '暂无结果'}${repositoryConnectivityLatencyMs !== undefined ? `，${repositoryConnectivityLatencyMs}ms` : ''}${repositoryConnectivityProbe?.error ? `，${repositoryConnectivityProbe.error}` : ''}`, 'jsx')} 
-                          </Text>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                />
-              )}
-            />
-          )
-        ) : (
+      <div ref={modalContentRef} className="driver-manager-content">
+        <div className="driver-manager-status-grid">
+          <div className="driver-manager-status-card">
+            <Text type="secondary">{compatText('网络状态')}</Text>
+            <div className={networkUnreachable ? 'driver-manager-status-value driver-manager-status-value-error' : 'driver-manager-status-value driver-manager-status-value-success'}>
+              {networkStatus ? (networkUnreachable ? compatText('不可达') : compatText('正常')) : (networkChecking ? compatText('检测中') : compatText('未检测'))}
+              {repositoryConnectivityLatencyMs !== undefined && !networkUnreachable ? <span>{repositoryConnectivityLatencyMs}ms</span> : null}
+            </div>
+          </div>
+          <div className="driver-manager-status-card">
+            <Text type="secondary">{compatText('驱动总数')}</Text>
+            <div className="driver-manager-status-value">{compatText(`${rows.length} 个`, 'jsx')}</div>
+          </div>
+          <div className="driver-manager-status-card">
+            <Text type="secondary">{compatText('待处理')}</Text>
+            <div className={attentionDriverCount > 0 ? 'driver-manager-status-value driver-manager-status-value-warning' : 'driver-manager-status-value'}>
+              {compatText(`${attentionDriverCount} 个`, 'jsx')}
+            </div>
+          </div>
+          <div className="driver-manager-status-card">
+            <Text type="secondary">{compatText('可用驱动')}</Text>
+            <div className="driver-manager-status-value driver-manager-status-value-success">{compatText(`${availableDriverCount} 个`, 'jsx')}</div>
+          </div>
+        </div>
+
+        {networkStatus && networkUnreachable ? (
           <Alert
-            type="info"
+            type="error"
             showIcon
-            icon={sharedInfoAlertIcon}
-            message={networkChecking ? compatText('正在检测驱动下载网络...') : compatText('尚未完成网络检测')} 
+            message={showDownloadChainAlert ? compatText('驱动下载链路域名不可达') : compatText('驱动下载网络不可达')}
+            description={showDownloadChainAlert
+              ? compatText(`请检查 Maven 源、代理规则或放行域名：${downloadRequiredHostText}。`, 'jsx')
+              : networkStatus.summary}
           />
-        )}
+        ) : null}
 
-        <Alert
-          type="info"
-          showIcon
-          icon={sharedInfoAlertIcon}
-          message={compatText('Maven 源配置')}
-          description={(
-            <Space direction="vertical" size={8} style={{ width: '100%' }}>
-              <Text type="secondary">
-                {compatText('自动安装和首次连接按需下载会使用这里配置的 Maven 仓库根地址，例如 Maven Central、阿里云或公司 Nexus/Artifactory。', 'jsx')}
-              </Text>
-              <Space.Compact style={{ width: '100%' }}>
-                <Input
-                  value={repositoryURL}
-                  placeholder="https://repo.maven.apache.org/maven2"
-                  onChange={(event) => setRepositoryURL(event.target.value)}
-                  onPressEnter={() => void configureRepository()}
-                />
-                <Button loading={repositorySaving} onClick={() => void configureRepository()}>
-                  {compatText('保存')}
-                </Button>
-                <Button disabled={repositorySaving} onClick={() => void configureRepository('')}>
-                  {compatText('恢复默认')}
-                </Button>
-              </Space.Compact>
-              <Text type="secondary">
-                {compatText(`当前生效：${repositoryURL || networkStatus?.defaultRepositoryURL || 'https://repo.maven.apache.org/maven2'}${networkStatus?.repositoryConfigured ? '（自定义）' : '（默认）'}`, 'jsx')} 
-              </Text>
-            </Space>
-          )}
-        />
+        <div className="driver-manager-config-strip">
+          <div className="driver-manager-config-rows">
+            <div className="driver-manager-config-row">
+              <div className="driver-manager-config-main">
+                <Tag color={networkStatus?.repositoryConfigured ? 'blue' : 'default'} style={{ marginInlineEnd: 0 }}>
+                  {networkStatus?.repositoryConfigured ? compatText('自定义 Maven 源') : compatText('默认 Maven 源')}
+                </Tag>
+                <Text ellipsis={{ tooltip: repositoryURL || networkStatus?.defaultRepositoryURL || 'https://repo.maven.apache.org/maven2' }}>
+                  {repositoryURL || networkStatus?.defaultRepositoryURL || 'https://repo.maven.apache.org/maven2'}
+                </Text>
+              </div>
+              <Space size={8} wrap>
+                <Button size="small" onClick={() => setRepositoryEditing(true)}>{compatText('编辑')}</Button>
+                <Button size="small" onClick={() => checkNetworkStatus(true)} loading={networkChecking}>{compatText('网络检测')}</Button>
+              </Space>
+            </div>
+            {repositoryEditing ? (
+              <div className="driver-manager-repository-editor">
+                <Space.Compact style={{ width: '100%' }}>
+                  <Input
+                    value={repositoryURL}
+                    placeholder="https://repo.maven.apache.org/maven2"
+                    onChange={(event) => setRepositoryURL(event.target.value)}
+                    onPressEnter={() => void configureRepository()}
+                  />
+                  <Button loading={repositorySaving} onClick={() => void configureRepository()}>
+                    {compatText('保存')}
+                  </Button>
+                  <Button disabled={repositorySaving} onClick={() => void configureRepository('')}>
+                    {compatText('恢复默认')}
+                  </Button>
+                  <Button disabled={repositorySaving} onClick={() => setRepositoryEditing(false)}>
+                    {compatText('取消')}
+                  </Button>
+                </Space.Compact>
+              </div>
+            ) : null}
+            <div className="driver-manager-config-row">
+              <div className="driver-manager-config-main">
+                <Tag color="default" style={{ marginInlineEnd: 0 }}>{compatText('驱动目录')}</Tag>
+                <Text type="secondary" ellipsis={{ tooltip: downloadDir || '-' }}>
+                  {downloadDir || '-'}
+                </Text>
+              </div>
+              <Button size="small" onClick={() => void openDriverDirectory()} icon={<FolderOpenOutlined />}>{compatText('打开目录')}</Button>
+            </div>
+          </div>
+        </div>
 
-        <Alert
-          type="info"
-          showIcon
-          icon={sharedInfoAlertIcon}
-          message={compatText('驱动目录与复用说明')}
-          description={(
-            <Collapse
-              size="small"
-              items={[
-                {
-                  key: 'driver-directory',
-                  label: compatText('查看驱动目录与复用说明'),
-                  children: (
-                    <Space direction="vertical" size={6} style={{ width: '100%' }}>
-                      <Text type="secondary">{compatText('自动下载的驱动会落盘到以下目录；后续版本升级可重复复用已下载驱动。', 'jsx')}</Text>
-                      <Paragraph copyable={{ text: downloadDir || '-' }} style={{ marginBottom: 0 }}>
-                        {compatText(`驱动根目录：${downloadDir || '-'}`, 'jsx')}
-                      </Paragraph>
-                      <Button icon={<FolderOpenOutlined />} onClick={() => void openDriverDirectory()}>
-                        {compatText('打开驱动目录')}
-                      </Button>
-                      {networkStatus?.logPath ? (
-                        <Paragraph copyable={{ text: networkStatus.logPath }} style={{ marginBottom: 0 }}>
-                          {compatText(`运行日志文件：${networkStatus.logPath}`, 'jsx')}
-                        </Paragraph>
-                      ) : null}
-                    </Space>
-                  ),
-                },
-              ]}
+        <div className="driver-manager-toolbar">
+          <Space size={8} wrap>
+            <Button size="small" type={statusFilter === 'all' ? 'primary' : 'default'} onClick={() => setStatusFilter('all')}>{compatText('全部')}</Button>
+            <Button size="small" type={statusFilter === 'attention' ? 'primary' : 'default'} onClick={() => setStatusFilter('attention')}>{compatText('待处理')}</Button>
+            <Button size="small" type={statusFilter === 'available' ? 'primary' : 'default'} onClick={() => setStatusFilter('available')}>{compatText('可用驱动')}</Button>
+            <Button size="small" type={statusFilter === 'custom' ? 'primary' : 'default'} onClick={() => setStatusFilter('custom')}>{compatText(`自定义 ${customDriverCount}`, 'jsx')}</Button>
+          </Space>
+          <div className="driver-manager-toolbar-actions">
+            <Input.Search
+              allowClear
+              placeholder={compatText('搜索驱动名称/类型（如 DuckDB、clickhouse）')}
+              value={searchKeyword}
+              onChange={(event) => setSearchKeyword(event.target.value)}
             />
-          )}
-        />
-
-        <div style={{ width: '100%', display: 'flex', gap: 12, alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap' }}>
-          <Input.Search
-            allowClear
-            placeholder={compatText('搜索驱动名称/类型（如 DuckDB、clickhouse）')}
-            value={searchKeyword}
-            onChange={(event) => setSearchKeyword(event.target.value)}
-            style={{ minWidth: 300, flex: '1 1 360px' }}
-          />
-          <Space size={8}>
-            <Button
-              type="primary"
-              icon={<DatabaseOutlined />}
-              onClick={openCustomDataSourceCreator}
-            >
+            <Button type="primary" icon={<DatabaseOutlined />} onClick={openCustomDataSourceCreator}>
               {compatText('新增自定义数据源')}
             </Button>
-            <Button
-              icon={<FolderOpenOutlined />}
-              onClick={() => void openDriverDirectory()}
-            >
-              {compatText('打开驱动目录')}
-            </Button>
-          </Space>
+          </div>
         </div>
+
+        {statusLoadError && rows.length === 0 ? (
+          <Alert
+            type="warning"
+            showIcon
+            message={compatText('驱动状态暂未加载成功')}
+            description={compatText(`已自动重试；仍失败时可点击“刷新”。原因：${statusLoadError}`, 'jsx')}
+            action={(
+              <Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshStatus(true, { retryCount: DRIVER_STATUS_INITIAL_RETRY_COUNT })}>
+                {compatText('刷新')}
+              </Button>
+            )}
+          />
+        ) : null}
+
+        <div className={`driver-manager-main-grid${activeDriverRow ? ' driver-manager-main-grid-selected' : ''}`}>
+          <div
+            ref={tableContainerRef}
+            className="driver-manager-list-panel driver-manager-table-wrap driver-manager-table-wrap-external-active"
+          >
+            <Table
+              className="driver-manager-table driver-manager-compact-table"
+              rowKey="type"
+              loading={loading}
+              columns={columns}
+              dataSource={filteredRows}
+              pagination={false}
+              size="middle"
+              sticky={false}
+              scroll={{ x: DRIVER_TABLE_SCROLL_X }}
+              rowClassName={(row) => row.type === activeDriverRow?.type ? 'driver-manager-row-selected-soft' : ''}
+              onRow={(row) => ({
+                onClick: () => setSelectedDriverType((current) => (current === row.type ? '' : row.type)),
+              })}
+              locale={{
+                emptyText: normalizedSearchKeyword
+                  ? compatText(`未找到匹配“${String(searchKeyword || '').trim()}”的驱动`, 'jsx')
+                  : compatText('暂无驱动数据'),
+              }}
+            />
+          </div>
+
+          {activeDriverRow ? (
+          <div ref={detailPanelRef} className="driver-manager-detail-panel">
+              <Space direction="vertical" size={12} style={{ width: '100%' }}>
+                <div className="driver-manager-detail-header">
+                  <div>
+                    <Text type="secondary" style={{ fontSize: 12 }}>{compatText('当前选择')}</Text>
+                    <div className="driver-manager-detail-title">{activeDriverRow.name || activeDriverRow.type}</div>
+                    <Text type="secondary">{activeDriverRow.type}</Text>
+                  </div>
+                  <Button size="small" onClick={() => setSelectedDriverType('')}>{compatText('收起详情')}</Button>
+                </div>
+                <div className="driver-manager-detail-card">
+                  <Text type="secondary">{compatText('当前状态')}</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Tag color={driverStatusColor(activeDriverRow, progressMap[activeDriverRow.type])}>
+                      {compatText(driverStatusLabel(activeDriverRow, progressMap[activeDriverRow.type]), 'jsx')}
+                    </Tag>
+                  </div>
+                </div>
+                <div className="driver-manager-detail-card">
+                  <Text type="secondary">{compatText('默认驱动')}</Text>
+                  <div style={{ marginTop: 8 }}>
+                    {(activeDriverRow.driverOptions || []).length > 1 ? (
+                      <Select
+                        size="small"
+                        style={{ width: '100%' }}
+                        value={activeDriverRow.defaultDriverType || activeDriverRow.type}
+                        loading={defaultDriverSavingKey.startsWith(`${activeDriverRow.type}:`)}
+                        disabled={defaultDriverSavingKey.startsWith(`${activeDriverRow.type}:`)}
+                        popupMatchSelectWidth={false}
+                        optionLabelProp="label"
+                        options={(activeDriverRow.driverOptions || []).map((option) => ({
+                          value: option.driverType,
+                          disabled: !option.available || !option.connectable,
+                          label: renderDefaultDriverLabel(option.driverName, option.default, option.reusedRuntime),
+                        }))}
+                        onChange={(value) => void configureDefaultDriver(activeDriverRow, value)}
+                      />
+                    ) : (
+                      <Text>{activeDriverRow.defaultDriverName || activeDriverRow.name || activeDriverRow.type}</Text>
+                    )}
+                  </div>
+                </div>
+                <div className="driver-manager-detail-card">
+                  <Text type="secondary">{compatText('版本')}</Text>
+                  {activeDriverRow.builtIn ? (
+                    <div className="driver-manager-detail-value">{compatText('内置')}</div>
+                  ) : activeDriverRow.reusedDriverType ? (
+                    <div className="driver-manager-detail-value">
+                      {compatText('复用')} {activeDriverRow.reusedDriverName || activeDriverRow.reusedDriverType}{activeDriverRow.installedVersion ? ` ${activeDriverRow.installedVersion}` : ''}
+                    </div>
+                  ) : (activeDriverRow.packageInstalled || activeDriverRow.connectable) && !activeDriverRow.managedDownload ? (
+                    <div className="driver-manager-detail-value">
+                      {activeDriverRow.installedVersion
+                        ? compatText(`${activeDriverRow.installedVersion}（移除后可更换）`, 'jsx')
+                        : compatText('已安装（移除后可更换）')}
+                    </div>
+                  ) : (
+                    <Space direction="vertical" size={6} style={{ width: '100%', marginTop: 8 }}>
+                      <Select
+                        size="small"
+                        style={{ width: '100%' }}
+                        loading={!!versionLoadingMap[activeDriverRow.type]}
+                        disabled={actionState.driverType === activeDriverRow.type}
+                        placeholder={(versionMap[activeDriverRow.type] || []).length > 0 ? compatText('选择驱动版本') : compatText('点击展开加载版本')}
+                        value={selectedVersionMap[activeDriverRow.type]}
+                        options={buildVersionSelectOptions(versionMap[activeDriverRow.type] || [])}
+                        onOpenChange={(open) => {
+                          const options = versionMap[activeDriverRow.type] || [];
+                          const selectedKey = selectedVersionMap[activeDriverRow.type];
+                          if (open && options.length === 0 && !versionLoadingMap[activeDriverRow.type]) {
+                            void loadVersionOptions(activeDriverRow, true);
+                            return;
+                          }
+                          if (open && selectedKey) {
+                            void loadVersionPackageSize(activeDriverRow, selectedKey);
+                          }
+                        }}
+                        onChange={(value) => {
+                          setSelectedVersionMap((prev) => ({ ...prev, [activeDriverRow.type]: value }));
+                          void loadVersionPackageSize(activeDriverRow, value);
+                        }}
+                      />
+                      {activeDriverRow.installedVersion ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`当前启用：${activeDriverRow.installedVersion}`, 'jsx')}</Text>
+                      ) : null}
+                      {activeDriverRow.installedVersions?.length ? (
+                        <Text type="secondary" style={{ fontSize: 12 }}>
+                          {compatText(`已下载 ${activeDriverRow.installedVersions.length} 个版本`, 'jsx')}
+                        </Text>
+                      ) : null}
+                      {versionNoticeMap[activeDriverRow.type] ? (
+                        <Text type="warning" style={{ fontSize: 12 }}>
+                          {compatText(versionNoticeMap[activeDriverRow.type].message, 'jsx')}
+                        </Text>
+                      ) : null}
+                    </Space>
+                  )}
+                </div>
+                <div className="driver-manager-detail-card">
+                  <Text type="secondary">{compatText('来源')}</Text>
+                  <div style={{ marginTop: 6 }}>
+                    <Tag color={driverSourceTagColor(activeDriverRow.installSource)}>{compatText(activeDriverRow.installSourceLabel || '-')}</Tag>
+                  </div>
+                  {activeDriverRow.installSourceDetail ? <Text type="secondary" style={{ fontSize: 12 }}>{activeDriverRow.installSourceDetail}</Text> : null}
+                </div>
+                <div className="driver-manager-detail-card">
+                  <Text type="secondary">{compatText('路径')}</Text>
+                  <Paragraph copyable={{ text: activeDriverRow.installDir || downloadDir || '-' }} className="driver-manager-detail-path">
+                    {activeDriverRow.installDir || downloadDir || '-'}
+                  </Paragraph>
+                </div>
+                <div className="driver-manager-detail-card driver-manager-detail-actions">
+                  <Text type="secondary">{compatText('操作')}</Text>
+                  <div className="driver-manager-detail-actions-body">
+                    {renderDriverActions(activeDriverRow, 'middle')}
+                  </div>
+                </div>
+              </Space>
+          </div>
+          ) : null}
+        </div>
+
         <Collapse
+          className="driver-manager-custom-collapse"
           size="small"
           items={[
             {
@@ -2235,18 +2328,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
                       const status = source.runtimeStatus;
                       const repairHints = status?.repairHints || [];
                       return (
-                        <div
-                          key={source.id}
-                          style={{
-                            alignItems: 'flex-start',
-                            border: '1px solid rgba(127, 127, 127, 0.18)',
-                            borderRadius: 10,
-                            display: 'flex',
-                            gap: 12,
-                            justifyContent: 'space-between',
-                            padding: '10px 12px',
-                          }}
-                        >
+                        <div key={source.id} className="driver-manager-custom-source-card">
                           <Space direction="vertical" size={4} style={{ minWidth: 0 }}>
                             <Space size={6} wrap>
                               <Text strong>{source.name}</Text>
@@ -2257,12 +2339,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
                               {source.installSource === 'maven-download' ? <Tag color="geekblue">{compatText('Maven 下载')}</Tag> : null}
                             </Space>
                             <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`Driver Class：${source.driverClassName || '待后端发现/校验'}`, 'jsx')}</Text>
-                            {source.dsnTemplate ? (
-                              <Text type="secondary" ellipsis={{ tooltip: source.dsnTemplate }} style={{ maxWidth: 760 }}>{compatText(`DSN 模板：${source.dsnTemplate}`, 'jsx')}</Text>
-                            ) : null}
-                            {source.dsnHelp ? (
-                              <Text type="secondary" ellipsis={{ tooltip: source.dsnHelp }} style={{ maxWidth: 760 }}>{compatText(`DSN 说明：${source.dsnHelp}`, 'jsx')}</Text>
-                            ) : null}
+                            {source.dsnTemplate ? <Text type="secondary" ellipsis={{ tooltip: source.dsnTemplate }} style={{ maxWidth: 760 }}>{compatText(`DSN 模板：${source.dsnTemplate}`, 'jsx')}</Text> : null}
                             {source.jarFileNames?.length ? <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`Jar：${source.jarFileNames.join('、')}`, 'jsx')}</Text> : null}
                             {status?.message ? <Text type={status.definitionUsable ? 'secondary' : 'danger'} style={{ fontSize: 12 }}>{compatText(`状态：${status.message}`, 'jsx')}</Text> : null}
                             {repairHints.length > 0 ? <Text type="secondary" style={{ fontSize: 12 }}>{compatText(`修复建议：${repairHints.join('；')}`, 'jsx')}</Text> : null}
@@ -2280,43 +2357,6 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
             },
           ]}
         />
-        <Text type="secondary">{filterSummaryText}</Text>
-        {statusLoadError && rows.length === 0 ? (
-          <Alert
-            type="warning"
-            showIcon
-            message={compatText('驱动状态暂未加载成功')}
-            description={compatText(`已自动重试；仍失败时可点击“刷新”。原因：${statusLoadError}`, 'jsx')}
-            action={(
-              <Button size="small" icon={<ReloadOutlined />} onClick={() => void refreshStatus(true, { retryCount: DRIVER_STATUS_INITIAL_RETRY_COUNT })}>
-                {compatText('刷新')}
-              </Button>
-            )}
-          />
-        ) : null}
-
-        <div
-          ref={tableContainerRef}
-          className="driver-manager-table-wrap driver-manager-table-wrap-external-active"
-        >
-          <Table
-            className="driver-manager-table"
-            rowKey="type"
-            loading={loading}
-            columns={columns}
-            dataSource={filteredRows}
-            pagination={false}
-            size="middle"
-            sticky={false}
-            scroll={{ x: DRIVER_TABLE_SCROLL_X }}
-            locale={{
-              emptyText: normalizedSearchKeyword
-                ? compatText(`未找到匹配“${String(searchKeyword || '').trim()}”的驱动`, 'jsx')
-                : compatText('暂无驱动数据'),
-            }}
-          />
-        </div>
-      </Space>
       </div>
       <Modal
         title={compatText('新增自定义数据源')}
