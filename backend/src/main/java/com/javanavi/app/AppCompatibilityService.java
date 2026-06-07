@@ -7,9 +7,7 @@ import com.javanavi.connections.ConnectionPackageCompatibilityService;
 import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.i18n.AppLanguage;
 import com.javanavi.model.AppContracts;
-import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.model.SavedConnectionViewDto;
-import com.javanavi.security.SecretStore;
 import org.springframework.web.multipart.MultipartFile;
 import org.springframework.stereotype.Service;
 
@@ -31,16 +29,11 @@ import java.util.stream.Stream;
 @Service
 public class AppCompatibilityService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
-    public static final String GLOBAL_PROXY_SECRET_KEY = "global-proxy:password";
-    private static final String GLOBAL_PROXY_SECRET_REF = "global-proxy";
-
     private final ObjectMapper objectMapper;
     private final ConnectionPackageCompatibilityService connectionPackageCompatibilityService;
     private final ExportedFileRevealService exportedFileRevealService;
-    private final SecretStore secretStore;
     private final AppPersistenceService appPersistence;
     private final Path dataDirectory;
-    private final Path globalProxyFile;
     private final Path languageFile;
     private final Path sqlWorkspaceDirectory;
 
@@ -48,16 +41,13 @@ public class AppCompatibilityService {
             SecurityProperties securityProperties,
             ObjectMapper objectMapper,
             ConnectionPackageCompatibilityService connectionPackageCompatibilityService,
-            ExportedFileRevealService exportedFileRevealService,
-            SecretStore secretStore
+            ExportedFileRevealService exportedFileRevealService
     ) {
         this.objectMapper = objectMapper;
         this.connectionPackageCompatibilityService = connectionPackageCompatibilityService;
         this.exportedFileRevealService = exportedFileRevealService;
-        this.secretStore = secretStore;
         this.appPersistence = new AppPersistenceService(securityProperties, objectMapper);
         this.dataDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize();
-        this.globalProxyFile = dataDirectory.resolve("global-proxy.json");
         this.languageFile = dataDirectory.resolve("language.json");
         this.sqlWorkspaceDirectory = dataDirectory.resolve("sql-workspace").normalize();
     }
@@ -128,17 +118,6 @@ public class AppCompatibilityService {
         );
     }
 
-    public synchronized AppContracts.GlobalProxyResponse getGlobalProxy() {
-        Map<String, Object> stored = appPersistence.readMap("global-proxy", globalProxyFile);
-        boolean hasPassword = secretStore.get(GLOBAL_PROXY_SECRET_KEY).isPresent() || bool(stored.get("hasPassword"));
-        Map<String, Object> result = defaultGlobalProxy();
-        result.putAll(stored);
-        result.put("password", "");
-        result.put("hasPassword", hasPassword);
-        result.put("secretRef", GLOBAL_PROXY_SECRET_REF);
-        return globalProxyResponse(result);
-    }
-
     public synchronized AppContracts.LanguageResponse getLanguage() {
         Map<String, Object> stored = appPersistence.readMap("language", languageFile);
         String language = AppLanguage.from(stored.get("language")) == AppLanguage.ZH ? "zh" : "en";
@@ -151,31 +130,6 @@ public class AppCompatibilityService {
         appPersistence.writeJson("language", value);
         writeLegacyMap(languageFile, value);
         return new AppContracts.LanguageResponse(String.valueOf(value.get("language")));
-    }
-
-    public synchronized AppContracts.GlobalProxyResponse saveGlobalProxy(GlobalProxyConfigDto input) {
-        Map<String, Object> next = defaultGlobalProxy();
-        if (input != null) {
-            next.put("enabled", Boolean.TRUE.equals(input.enabled()));
-            next.put("type", textOrDefault(input.type(), "socks5"));
-            next.put("host", textOrDefault(input.host(), ""));
-            next.put("port", input.port() == null || input.port() < 1 || input.port() > 65535 ? defaultPort(input.type()) : input.port());
-            next.put("user", textOrDefault(input.user(), ""));
-            if (input.password() != null && !input.password().isBlank()) {
-                secretStore.put(GLOBAL_PROXY_SECRET_KEY, input.password());
-                next.put("hasPassword", true);
-            } else if (Boolean.TRUE.equals(input.clearPassword())) {
-                secretStore.delete(GLOBAL_PROXY_SECRET_KEY);
-                next.put("hasPassword", false);
-            } else {
-                next.put("hasPassword", secretStore.get(GLOBAL_PROXY_SECRET_KEY).isPresent());
-            }
-        }
-        next.put("password", "");
-        next.put("secretRef", GLOBAL_PROXY_SECRET_REF);
-        appPersistence.writeJson("global-proxy", next);
-        writeLegacyMap(globalProxyFile, next);
-        return getGlobalProxy();
     }
 
     public void logWindowDiagnostic(String stage, String payload) {
@@ -564,36 +518,6 @@ public class AppCompatibilityService {
             file = file.resolveSibling(name + "." + extension);
         }
         return file;
-    }
-
-    private static Map<String, Object> defaultGlobalProxy() {
-        return orderedMap(
-                "enabled", false,
-                "type", "socks5",
-                "host", "",
-                "port", 1080,
-                "user", "",
-                "password", "",
-                "hasPassword", false,
-                "secretRef", GLOBAL_PROXY_SECRET_REF
-        );
-    }
-
-    private static int defaultPort(String type) {
-        return "http".equalsIgnoreCase(type) ? 8080 : 1080;
-    }
-
-    private static AppContracts.GlobalProxyResponse globalProxyResponse(Map<String, Object> map) {
-        return new AppContracts.GlobalProxyResponse(
-                bool(map.get("enabled")),
-                textOrDefault(stringValue(map.get("type")), "socks5"),
-                textOrDefault(stringValue(map.get("host")), ""),
-                intValue(map.get("port")),
-                textOrDefault(stringValue(map.get("user")), ""),
-                textOrDefault(stringValue(map.get("password")), ""),
-                bool(map.get("hasPassword")),
-                textOrDefault(stringValue(map.get("secretRef")), GLOBAL_PROXY_SECRET_REF)
-        );
     }
 
     private static AppContracts.ConnectionExportPackageResponse connectionExportPackageResponse(Map<String, Object> map) {

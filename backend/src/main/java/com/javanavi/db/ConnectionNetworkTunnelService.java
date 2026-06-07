@@ -115,12 +115,8 @@ public class ConnectionNetworkTunnelService {
             return null;
         }
         boolean proxyRequested = Boolean.TRUE.equals(config.useProxy()) || config.proxyEnabled();
-        boolean httpTunnelRequested = Boolean.TRUE.equals(config.useHttpTunnel()) || config.httpTunnelEnabled();
-        if (config.sshEnabled() && (proxyRequested || httpTunnelRequested)) {
-            throw new IllegalArgumentException("SSH tunnel and Proxy / HTTP Tunnel are mutually exclusive.");
-        }
-        if (proxyRequested && httpTunnelRequested) {
-            throw new IllegalArgumentException("Proxy and HTTP Tunnel are mutually exclusive.");
+        if (config.sshEnabled() && proxyRequested) {
+            throw new IllegalArgumentException("SSH tunnel and Proxy are mutually exclusive.");
         }
         if (proxyRequested) {
             ConnectionConfigDto.NetworkProxyConfigDto proxy = config.proxy();
@@ -129,21 +125,8 @@ public class ConnectionNetworkTunnelService {
             }
             return jdbcProxyEndpoint(proxy);
         }
-        if (httpTunnelRequested) {
-            ConnectionConfigDto.NetworkHttpTunnelConfigDto tunnel = config.httpTunnel();
-            if (tunnel == null) {
-                throw new IllegalArgumentException("HTTP Tunnel config is required.");
-            }
-            String host = requireText(tunnel.host(), "HTTP Tunnel host");
-            int port = validPort(tunnel.port(), 8080, "HTTP Tunnel port");
-            return new JdbcProxyEndpoint("http-connect", host, port, text(tunnel.user()), text(tunnel.password()));
-        }
         if (config.sshEnabled()) {
             return null;
-        }
-        ConnectionConfigDto.NetworkProxyConfigDto globalProxy = config.globalProxy();
-        if (globalProxy != null && text(globalProxy.host()) != null) {
-            return jdbcProxyEndpoint(globalProxy);
         }
         return null;
     }

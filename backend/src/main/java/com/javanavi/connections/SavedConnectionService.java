@@ -118,12 +118,9 @@ public class SavedConnectionService {
         StoredConnection existing = find(connections, id).orElse(null);
         Map<String, Object> rawConfig = input.config() == null ? new LinkedHashMap<>() : deepCopyMap(input.config());
         rawConfig.put("id", id);
-        rawConfig.remove("globalProxy");
-
         boolean hasPrimaryPassword = updateSecret(id, "primaryPassword", stringAt(rawConfig, "password"), input.clearPrimaryPassword(), existing == null ? false : existing.hasPrimaryPassword());
         boolean hasSSHPassword = updateSecret(id, "sshPassword", stringAt(rawConfig, "ssh", "password"), input.clearSSHPassword(), existing == null ? false : existing.hasSSHPassword());
         boolean hasProxyPassword = updateSecret(id, "proxyPassword", stringAt(rawConfig, "proxy", "password"), input.clearProxyPassword(), existing == null ? false : existing.hasProxyPassword());
-        boolean hasHttpTunnelPassword = updateSecret(id, "httpTunnelPassword", stringAt(rawConfig, "httpTunnel", "password"), input.clearHttpTunnelPassword(), existing == null ? false : existing.hasHttpTunnelPassword());
         boolean hasMySQLReplicaPassword = updateSecret(id, "mysqlReplicaPassword", stringAt(rawConfig, "mysqlReplicaPassword"), input.clearMySQLReplicaPassword(), existing == null ? false : existing.hasMySQLReplicaPassword());
         boolean hasMongoReplicaPassword = updateSecret(id, "mongoReplicaPassword", stringAt(rawConfig, "mongoReplicaPassword"), input.clearMongoReplicaPassword(), existing == null ? false : existing.hasMongoReplicaPassword());
         boolean hasOpaqueURI = updateSecret(id, "opaqueURI", stringAt(rawConfig, "uri"), input.clearOpaqueURI(), existing == null ? false : existing.hasOpaqueURI());
@@ -143,7 +140,6 @@ public class SavedConnectionService {
                 hasPrimaryPassword,
                 hasSSHPassword,
                 hasProxyPassword,
-                hasHttpTunnelPassword,
                 hasMySQLReplicaPassword,
                 hasMongoReplicaPassword,
                 hasOpaqueURI,
@@ -197,7 +193,6 @@ public class SavedConnectionService {
                 existing.hasPrimaryPassword(),
                 existing.hasSSHPassword(),
                 existing.hasProxyPassword(),
-                existing.hasHttpTunnelPassword(),
                 existing.hasMySQLReplicaPassword(),
                 existing.hasMongoReplicaPassword(),
                 existing.hasOpaqueURI(),
@@ -255,7 +250,6 @@ public class SavedConnectionService {
                 source.hasPrimaryPassword(),
                 source.hasSSHPassword(),
                 source.hasProxyPassword(),
-                source.hasHttpTunnelPassword(),
                 source.hasMySQLReplicaPassword(),
                 source.hasMongoReplicaPassword(),
                 source.hasOpaqueURI(),
@@ -305,9 +299,6 @@ public class SavedConnectionService {
         Optional<String> proxyPassword = config.proxy() != null && isBlankString(config.proxy().password())
                 ? secretStore.get(secretKey(sanitizedId, "proxyPassword"))
                 : Optional.empty();
-        Optional<String> httpTunnelPassword = config.httpTunnel() != null && isBlankString(config.httpTunnel().password())
-                ? secretStore.get(secretKey(sanitizedId, "httpTunnelPassword"))
-                : Optional.empty();
         Optional<String> mongoReplicaPassword = config.mongoReplicaPassword() == null || config.mongoReplicaPassword().isBlank()
                 ? secretStore.get(secretKey(sanitizedId, "mongoReplicaPassword"))
                 : Optional.empty();
@@ -320,7 +311,6 @@ public class SavedConnectionService {
         if (password.isEmpty()
                 && sshPassword.isEmpty()
                 && proxyPassword.isEmpty()
-                && httpTunnelPassword.isEmpty()
                 && mongoReplicaPassword.isEmpty()
                 && uri.isEmpty()
                 && dsn.isEmpty()) {
@@ -328,7 +318,6 @@ public class SavedConnectionService {
         }
         ConnectionConfigDto.NetworkCredentialConfigDto ssh = config.effectiveSsh();
         ConnectionConfigDto.NetworkProxyConfigDto proxy = config.proxy();
-        ConnectionConfigDto.NetworkHttpTunnelConfigDto httpTunnel = config.httpTunnel();
         return new ConnectionConfigDto(
                 config.id(),
                 config.name(),
@@ -354,11 +343,6 @@ public class SavedConnectionService {
                 proxyPassword.map(value -> new ConnectionConfigDto.NetworkProxyConfigDto(
                         proxy.type(), proxy.host(), proxy.port(), proxy.user(), value
                 )).orElse(proxy),
-                config.useHttpTunnel(),
-                httpTunnelPassword.map(value -> new ConnectionConfigDto.NetworkHttpTunnelConfigDto(
-                        httpTunnel.host(), httpTunnel.port(), httpTunnel.user(), value
-                )).orElse(httpTunnel),
-                config.globalProxy(),
                 uri.orElse(config.uri()),
                 dsn.orElse(config.dsn()),
                 config.hosts(),
@@ -396,7 +380,6 @@ public class SavedConnectionService {
         putSecret(secrets, "password", connectionId, "primaryPassword");
         putSecret(secrets, "sshPassword", connectionId, "sshPassword");
         putSecret(secrets, "proxyPassword", connectionId, "proxyPassword");
-        putSecret(secrets, "httpTunnelPassword", connectionId, "httpTunnelPassword");
         putSecret(secrets, "mysqlReplicaPassword", connectionId, "mysqlReplicaPassword");
         putSecret(secrets, "mongoReplicaPassword", connectionId, "mongoReplicaPassword");
         putSecret(secrets, "opaqueURI", connectionId, "opaqueURI");
@@ -431,7 +414,6 @@ public class SavedConnectionService {
                 !secrets.containsKey("password") && isBlankString(config.get("password")),
                 !secrets.containsKey("sshPassword") && isBlankNested(config, "ssh", "password"),
                 !secrets.containsKey("proxyPassword") && isBlankNested(config, "proxy", "password"),
-                !secrets.containsKey("httpTunnelPassword") && isBlankNested(config, "httpTunnel", "password"),
                 !secrets.containsKey("mysqlReplicaPassword") && isBlankString(config.get("mysqlReplicaPassword")),
                 !secrets.containsKey("mongoReplicaPassword") && isBlankString(config.get("mongoReplicaPassword")),
                 !secrets.containsKey("opaqueURI") && isBlankString(config.get("uri")),
@@ -456,7 +438,6 @@ public class SavedConnectionService {
         putSecretValue(config, "password", secrets.get("password"));
         putNestedSecretValue(config, "ssh", "password", secrets.get("sshPassword"));
         putNestedSecretValue(config, "proxy", "password", secrets.get("proxyPassword"));
-        putNestedSecretValue(config, "httpTunnel", "password", secrets.get("httpTunnelPassword"));
         putSecretValue(config, "mysqlReplicaPassword", secrets.get("mysqlReplicaPassword"));
         putSecretValue(config, "mongoReplicaPassword", secrets.get("mongoReplicaPassword"));
         putSecretValue(config, "uri", secrets.get("opaqueURI"));
@@ -554,7 +535,6 @@ public class SavedConnectionService {
                 stored.hasPrimaryPassword(),
                 stored.hasSSHPassword(),
                 stored.hasProxyPassword(),
-                stored.hasHttpTunnelPassword(),
                 stored.hasMySQLReplicaPassword(),
                 stored.hasMongoReplicaPassword(),
                 stored.hasOpaqueURI(),
@@ -592,7 +572,6 @@ public class SavedConnectionService {
                 "primaryPassword",
                 "sshPassword",
                 "proxyPassword",
-                "httpTunnelPassword",
                 "mysqlReplicaPassword",
                 "mongoReplicaPassword",
                 "opaqueURI",
@@ -669,10 +648,6 @@ public class SavedConnectionService {
         Object proxy = config.get("proxy");
         if (proxy instanceof Map<?, ?> proxyMap) {
             ((Map<String, Object>) proxyMap).put("password", "");
-        }
-        Object httpTunnel = config.get("httpTunnel");
-        if (httpTunnel instanceof Map<?, ?> httpTunnelMap) {
-            ((Map<String, Object>) httpTunnelMap).put("password", "");
         }
         config.put("mysqlReplicaPassword", "");
         config.put("mongoReplicaPassword", "");
@@ -878,7 +853,6 @@ public class SavedConnectionService {
             boolean hasPrimaryPassword,
             boolean hasSSHPassword,
             boolean hasProxyPassword,
-            boolean hasHttpTunnelPassword,
             boolean hasMySQLReplicaPassword,
             boolean hasMongoReplicaPassword,
             boolean hasOpaqueURI,

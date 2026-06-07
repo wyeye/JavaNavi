@@ -31,8 +31,6 @@ final class CompatibilityRequestMaps {
         putIfNotNull(map, "ssh", config.ssh());
         putIfNotNull(map, "sshConfig", config.sshConfig());
         putIfNotNull(map, "proxy", config.proxy());
-        putIfNotNull(map, "httpTunnel", config.httpTunnel());
-        putIfNotNull(map, "globalProxy", config.globalProxy());
         putIfNotNull(map, "uri", config.uri());
         putIfNotNull(map, "dsn", config.dsn());
         putIfNotNull(map, "hosts", config.hosts());
@@ -46,7 +44,6 @@ final class CompatibilityRequestMaps {
         putIfNotNull(map, "mongoReplicaPassword", config.mongoReplicaPassword());
         putIfNotNull(map, "useSSH", config.useSSH());
         putIfNotNull(map, "useProxy", config.useProxy());
-        putIfNotNull(map, "useHttpTunnel", config.useHttpTunnel());
         return map;
     }
 

@@ -2,7 +2,6 @@ package com.javanavi.driver;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.i18n.I18nMessages;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -13,10 +12,6 @@ import org.w3c.dom.NodeList;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.StringReader;
-import java.net.Authenticator;
-import java.net.InetSocketAddress;
-import java.net.PasswordAuthentication;
-import java.net.Proxy;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
@@ -67,48 +62,21 @@ public class JdbcDriverRuntimeService {
 
     private final ObjectMapper objectMapper;
     private final Path defaultDriverDirectory;
-    private final GlobalProxyConfigProvider globalProxyConfigProvider;
     private final I18nMessages messages;
     private final ConcurrentMap<String, DriverHandle> driverCache = new ConcurrentHashMap<>();
 
-    public JdbcDriverRuntimeService(SecurityProperties securityProperties, ObjectMapper objectMapper, I18nMessages messages) {
-        this(securityProperties, objectMapper, messages, null);
-    }
-
     @Autowired
-    public JdbcDriverRuntimeService(SecurityProperties securityProperties, ObjectMapper objectMapper, I18nMessages messages, GlobalProxyConfigProvider globalProxyConfigProvider) {
+    public JdbcDriverRuntimeService(SecurityProperties securityProperties, ObjectMapper objectMapper, I18nMessages messages) {
         this.objectMapper = objectMapper;
         this.messages = messages;
-        this.globalProxyConfigProvider = globalProxyConfigProvider;
         this.defaultDriverDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize().resolve("drivers");
     }
 
     private HttpClient httpClient(Duration connectTimeout) {
-        HttpClient.Builder builder = HttpClient.newBuilder()
+        return HttpClient.newBuilder()
                 .connectTimeout(connectTimeout)
-                .followRedirects(HttpClient.Redirect.NORMAL);
-        activeGlobalProxy().ifPresent(proxy -> applyProxy(builder, proxy));
-        return builder.build();
-    }
-
-    private Optional<com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto> activeGlobalProxy() {
-        return globalProxyConfigProvider == null ? Optional.empty() : globalProxyConfigProvider.activeProxy();
-    }
-
-    private static void applyProxy(HttpClient.Builder builder, com.javanavi.model.ConnectionConfigDto.NetworkProxyConfigDto proxy) {
-        Proxy.Type proxyType = "socks5".equalsIgnoreCase(proxy.type()) ? Proxy.Type.SOCKS : Proxy.Type.HTTP;
-        builder.proxy(new SingleProxySelector(new Proxy(proxyType, new InetSocketAddress(proxy.host(), proxy.port()))));
-        if (!text(proxy.user()).isBlank() || !text(proxy.password()).isBlank()) {
-            builder.authenticator(new Authenticator() {
-                @Override
-                protected PasswordAuthentication getPasswordAuthentication() {
-                    if (getRequestorType() != RequestorType.PROXY) {
-                        return null;
-                    }
-                    return new PasswordAuthentication(text(proxy.user()), text(proxy.password()).toCharArray());
-                }
-            });
-        }
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
     }
 
     public boolean isManagedDriver(String driverType) {

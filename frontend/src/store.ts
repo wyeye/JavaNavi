@@ -11,7 +11,6 @@ import {
   ConnectionTag,
   AIChatMessage,
   AIContextItem,
-  GlobalProxyConfig,
 } from "./types";
 import {
   ShortcutAction,
@@ -21,7 +20,6 @@ import {
   cloneShortcutOptions,
   sanitizeShortcutOptions,
 } from "./utils/shortcuts";
-import { toPersistedGlobalProxy } from "./utils/globalProxyDraft";
 import {
   DEFAULT_DATA_GRID_DISPLAY_SETTINGS,
   sanitizeDataGridDisplaySettings,
@@ -62,15 +60,6 @@ const PERSIST_VERSION = 9;
 const PERSIST_STORAGE_KEY = "lite-db-storage";
 const MAX_SQL_LOGS = 1000;
 const DEFAULT_CONNECTION_TYPE = "mysql";
-const DEFAULT_GLOBAL_PROXY: GlobalProxyConfig = {
-  enabled: false,
-  type: "socks5",
-  host: "",
-  port: 1080,
-  user: "",
-  password: "",
-  hasPassword: false,
-};
 const SUPPORTED_CONNECTION_TYPES = new Set([
   "mysql",
   "mariadb",
@@ -295,21 +284,8 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     user: toTrimmedString(proxyRaw.user),
     password: toTrimmedString(proxyRaw.password),
   };
-  const rawHttpTunnel = toUnknownRecord(raw.httpTunnel);
-  const httpTunnelRaw = Object.keys(rawHttpTunnel).length > 0
-    ? rawHttpTunnel
-    : toUnknownRecord(raw.HTTPTunnel);
-  const httpTunnel = {
-    host: toTrimmedString(httpTunnelRaw.host ?? raw.httpTunnelHost),
-    port: normalizePort(httpTunnelRaw.port ?? raw.httpTunnelPort, 8080),
-    user: toTrimmedString(httpTunnelRaw.user ?? raw.httpTunnelUser),
-    password: toTrimmedString(httpTunnelRaw.password ?? raw.httpTunnelPassword),
-  };
   const supportsNetworkTunnel = type !== "sqlite" && type !== "duckdb";
-  const useHttpTunnel =
-    supportsNetworkTunnel &&
-    (raw.useHttpTunnel === true || raw.UseHTTPTunnel === true);
-  const useProxy = supportsNetworkTunnel && !!raw.useProxy && !useHttpTunnel;
+  const useProxy = supportsNetworkTunnel && !!raw.useProxy;
 
   const safeConfig: ConnectionConfig & Record<string, unknown> = {
     ...raw,
@@ -329,8 +305,6 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     ssh,
     useProxy,
     proxy,
-    useHttpTunnel,
-    httpTunnel,
     uri: toTrimmedString(raw.uri).slice(0, MAX_URI_LENGTH),
     hosts: sanitizeAddressList(raw.hosts),
     topology:
@@ -431,7 +405,6 @@ const sanitizeSavedConnection = (
     hasPrimaryPassword: raw.hasPrimaryPassword === true,
     hasSSHPassword: raw.hasSSHPassword === true,
     hasProxyPassword: raw.hasProxyPassword === true,
-    hasHttpTunnelPassword: raw.hasHttpTunnelPassword === true,
     hasMySQLReplicaPassword: raw.hasMySQLReplicaPassword === true,
     hasMongoReplicaPassword: raw.hasMongoReplicaPassword === true,
     hasOpaqueURI: raw.hasOpaqueURI === true,
@@ -534,7 +507,6 @@ interface AppState {
   uiScale: number;
   fontSize: number;
   startupFullscreen: boolean;
-  globalProxy: GlobalProxyConfig;
   sqlFormatOptions: { keywordCase: "upper" | "lower" };
   queryOptions: QueryOptions;
   shortcutOptions: ShortcutOptions;
@@ -607,8 +579,6 @@ interface AppState {
   setUiScale: (scale: number) => void;
   setFontSize: (size: number) => void;
   setStartupFullscreen: (enabled: boolean) => void;
-  setGlobalProxy: (proxy: Partial<GlobalProxyConfig>) => void;
-  replaceGlobalProxy: (proxy: Partial<GlobalProxyConfig>) => void;
   setSqlFormatOptions: (options: { keywordCase: "upper" | "lower" }) => void;
   setQueryOptions: (options: Partial<QueryOptions>) => void;
   updateShortcut: (
@@ -727,13 +697,11 @@ const hasLegacyConnectionSecrets = (
     const config = toUnknownRecord(connection?.config);
     const ssh = toUnknownRecord(config.ssh);
     const proxy = toUnknownRecord(config.proxy);
-    const httpTunnel = toUnknownRecord(config.httpTunnel);
 
     return (
       toTrimmedString(config.password) !== "" ||
       toTrimmedString(ssh.password) !== "" ||
       toTrimmedString(proxy.password) !== "" ||
-      toTrimmedString(httpTunnel.password) !== "" ||
       toTrimmedString(config.mysqlReplicaPassword) !== "" ||
       toTrimmedString(config.mongoReplicaPassword) !== "" ||
       toTrimmedString(config.uri) !== "" ||
@@ -948,33 +916,6 @@ const sanitizeFontSize = (value: unknown): number => {
     MIN_FONT_SIZE,
     MAX_FONT_SIZE,
   );
-};
-
-const sanitizeGlobalProxy = (
-  value: unknown,
-  options: { allowPassword?: boolean } = {},
-): GlobalProxyConfig => {
-  const raw =
-    value && typeof value === "object"
-      ? (value as Record<string, unknown>)
-      : {};
-  const typeRaw = toTrimmedString(
-    raw.type,
-    DEFAULT_GLOBAL_PROXY.type,
-  ).toLowerCase();
-  const type: "socks5" | "http" = typeRaw === "http" ? "http" : "socks5";
-  const fallbackPort = type === "http" ? 8080 : 1080;
-  const password = toTrimmedString(raw.password);
-  return {
-    enabled: raw.enabled === true,
-    type,
-    host: toTrimmedString(raw.host),
-    port: normalizePort(raw.port, fallbackPort),
-    user: toTrimmedString(raw.user),
-    password: options.allowPassword === false ? "" : password,
-    hasPassword: raw.hasPassword === true || password !== "",
-    secretRef: toTrimmedString(raw.secretRef) || undefined,
-  };
 };
 
 const sanitizeWindowState = (
@@ -1277,7 +1218,6 @@ export const useStore = create<AppState>()(
       uiScale: DEFAULT_UI_SCALE,
       fontSize: DEFAULT_FONT_SIZE,
       startupFullscreen: DEFAULT_STARTUP_FULLSCREEN,
-      globalProxy: { ...DEFAULT_GLOBAL_PROXY },
       sqlFormatOptions: { keywordCase: "upper" },
       queryOptions: {
         maxRows: 5000,
@@ -1623,18 +1563,6 @@ export const useStore = create<AppState>()(
       setUiScale: (scale) => set({ uiScale: sanitizeUiScale(scale) }),
       setFontSize: (size) => set({ fontSize: sanitizeFontSize(size) }),
       setStartupFullscreen: (enabled) => set({ startupFullscreen: !!enabled }),
-      setGlobalProxy: (proxy) =>
-        set((state) => ({
-          globalProxy: sanitizeGlobalProxy({ ...state.globalProxy, ...proxy }),
-        })),
-      replaceGlobalProxy: (proxy) =>
-        set((state) => ({
-          globalProxy: sanitizeGlobalProxy({
-            ...DEFAULT_GLOBAL_PROXY,
-            ...proxy,
-          }),
-          shortcutOptions: readPersistedShortcutOptions() ?? state.shortcutOptions,
-        })),
       setSqlFormatOptions: (options) => set({ sqlFormatOptions: options }),
       setQueryOptions: (options) =>
         set((state) => ({
@@ -1991,7 +1919,6 @@ export const useStore = create<AppState>()(
         nextState.startupFullscreen = sanitizeStartupFullscreen(
           state.startupFullscreen,
         );
-        nextState.globalProxy = sanitizeGlobalProxy(state.globalProxy);
         nextState.sqlFormatOptions = sanitizeSqlFormatOptions(
           state.sqlFormatOptions,
         );
@@ -2048,7 +1975,6 @@ export const useStore = create<AppState>()(
           uiScale: sanitizeUiScale(state.uiScale),
           fontSize: sanitizeFontSize(state.fontSize),
           startupFullscreen: sanitizeStartupFullscreen(state.startupFullscreen),
-          globalProxy: sanitizeGlobalProxy(state.globalProxy),
           tableSortPreference: sanitizeTableSortPreference(
             state.tableSortPreference,
           ),
@@ -2086,10 +2012,6 @@ export const useStore = create<AppState>()(
           uiScale: state.uiScale,
           fontSize: state.fontSize,
           startupFullscreen: state.startupFullscreen,
-          globalProxy:
-            toTrimmedString(state.globalProxy.password) !== ""
-              ? { ...state.globalProxy }
-              : toPersistedGlobalProxy(state.globalProxy),
           sqlFormatOptions: state.sqlFormatOptions,
           queryOptions: state.queryOptions,
           sqlLogs: sanitizeSqlLogs(state.sqlLogs),

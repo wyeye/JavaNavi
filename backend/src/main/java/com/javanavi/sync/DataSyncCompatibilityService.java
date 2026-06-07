@@ -1133,18 +1133,6 @@ public class DataSyncCompatibilityService {
         );
     }
 
-    private static ConnectionConfigDto.NetworkHttpTunnelConfigDto networkHttpTunnel(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return null;
-        }
-        return new ConnectionConfigDto.NetworkHttpTunnelConfigDto(
-                text(map.get("host")),
-                nullableInt(map.get("port")),
-                firstText(text(map.get("user")), text(map.get("username"))),
-                text(map.get("password"))
-        );
-    }
-
     private static List<String> stringList(Object value) {
         if (!(value instanceof List<?> list)) {
             return List.of();
@@ -1776,9 +1764,6 @@ public class DataSyncCompatibilityService {
                 networkCredential(map.get("sshConfig")),
                 booleanValue(map.get("useProxy")),
                 networkProxy(map.get("proxy")),
-                booleanValue(map.get("useHttpTunnel")),
-                networkHttpTunnel(map.get("httpTunnel")),
-                networkProxy(map.get("globalProxy")),
                 text(map.get("uri")),
                 text(map.get("dsn")),
                 stringList(map.get("hosts")),

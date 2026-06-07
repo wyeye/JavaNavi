@@ -7,8 +7,6 @@ import com.javanavi.connections.SavedConnectionService;
 import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.AppContracts;
-import com.javanavi.model.ConnectionConfigDto;
-import com.javanavi.model.GlobalProxyConfigDto;
 import com.javanavi.security.SecretStore;
 import com.javanavi.security.SecretStoreStatus;
 import org.junit.jupiter.api.AfterEach;
@@ -57,19 +55,6 @@ class AppCompatibilityServiceTest {
         assertThat(service.getLanguage().language()).isEqualTo("zh");
     }
 
-    @Test
-    void globalProxyProviderResolvesStoredPasswordForRuntimeUse() {
-        AppCompatibilityService service = service();
-        service.saveGlobalProxy(new GlobalProxyConfigDto(true, "http", "127.0.0.1", 8080, "proxy-user", "secret", false));
-
-        ConnectionConfigDto.NetworkProxyConfigDto proxy = new GlobalProxyConfigProvider(properties(), objectMapper(), secretStore()).activeProxy().orElseThrow();
-
-        assertThat(proxy.type()).isEqualTo("http");
-        assertThat(proxy.host()).isEqualTo("127.0.0.1");
-        assertThat(proxy.port()).isEqualTo(8080);
-        assertThat(proxy.user()).isEqualTo("proxy-user");
-        assertThat(proxy.password()).isEqualTo("secret");
-    }
 
     @Test
     void exportConnectionsPackageReturnsRevealFieldsWithoutBlockingWhenDisabled() {
@@ -125,8 +110,7 @@ class AppCompatibilityServiceTest {
                 properties,
                 objectMapper,
                 packageService,
-                new ExportedFileRevealService(messages),
-                secretStore
+                new ExportedFileRevealService(messages)
         );
     }
 

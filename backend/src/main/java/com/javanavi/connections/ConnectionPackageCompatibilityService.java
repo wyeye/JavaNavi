@@ -64,7 +64,6 @@ public class ConnectionPackageCompatibilityService {
             "password",
             "sshPassword",
             "proxyPassword",
-            "httpTunnelPassword",
             "mysqlReplicaPassword",
             "mongoReplicaPassword",
             "opaqueURI",

@@ -14,7 +14,6 @@ public record SavedConnectionInputDto(
         Boolean clearPrimaryPassword,
         Boolean clearSSHPassword,
         Boolean clearProxyPassword,
-        Boolean clearHttpTunnelPassword,
         Boolean clearMySQLReplicaPassword,
         Boolean clearMongoReplicaPassword,
         Boolean clearOpaqueURI,

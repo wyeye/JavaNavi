@@ -1,6 +1,8 @@
 package com.javanavi.redis;
 
+import com.javanavi.db.NetworkSocketConnector;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.model.ConnectionConfigDto;
 import org.springframework.stereotype.Service;
 
 import javax.net.ssl.SSLSocketFactory;
@@ -9,7 +11,6 @@ import java.io.EOFException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.URI;
 import java.net.URLDecoder;
@@ -24,6 +25,7 @@ import java.util.Map;
 @Service
 public class RedisCompatibilityService {
     private static final String KEY_GONE_MESSAGE = "redis.keyGone";
+    private static final NetworkSocketConnector NETWORK_CONNECTOR = new NetworkSocketConnector();
 
     private final I18nMessages messages;
 
@@ -43,7 +45,7 @@ public class RedisCompatibilityService {
                 "connected", true,
                 "message", messages.message("common.connectionSucceeded"),
                 "db", first.database(),
-                "mode", configs.size() > 1 ? "direct-tcp-cluster" : "direct-tcp",
+                "mode", first.mode(configs.size() > 1),
                 "nodes", configs.stream().map(RedisConfig::address).toList()
         );
     }
@@ -428,10 +430,6 @@ public class RedisCompatibilityService {
     private List<RedisConfig> resolveConfigs(Map<String, Object> input, Integer databaseOverride) {
         Map<String, Object> connection = map(value(input, "connection"));
         Map<String, Object> options = map(connection.get("options"));
-        if (bool(connection.get("useSSH")) || bool(connection.get("useProxy")) || bool(connection.get("useHttpTunnel"))) {
-            throw new RedisOperationException(messages.message("redis.runtimeExclusion"));
-        }
-
         RedisConfig fromUri = parseUri(firstText(string(connection.get("uri")), string(options.get("uri"))));
         int defaultPort = positiveInt(firstText(string(connection.get("port")), string(options.get("port")), String.valueOf(fromUri.port())), 6379);
         List<RedisEndpoint> endpoints = resolveEndpoints(connection, options, fromUri, defaultPort);
@@ -445,8 +443,99 @@ public class RedisCompatibilityService {
         boolean explicitUriUsername = fromUri.explicitUriUsername();
 
         return endpoints.stream()
-                .map(endpoint -> new RedisConfig(endpoint.host(), endpoint.port(), username, password, database, useSsl, timeoutSeconds, explicitUriUsername))
+                .map(endpoint -> new RedisConfig(
+                        endpoint.host(),
+                        endpoint.port(),
+                        username,
+                        password,
+                        database,
+                        useSsl,
+                        timeoutSeconds,
+                        explicitUriUsername,
+                        networkConfig(connection, endpoint, useSsl, timeoutSeconds)
+                ))
                 .toList();
+    }
+
+    private static ConnectionConfigDto networkConfig(Map<String, Object> connection, RedisEndpoint endpoint, boolean useSsl, int timeoutSeconds) {
+        return new ConnectionConfigDto(
+                firstText(string(connection.get("id")), "redis-runtime"),
+                firstText(string(connection.get("name")), "Redis"),
+                firstText(string(connection.get("driverType")), string(connection.get("type")), "redis"),
+                null,
+                endpoint.host(),
+                endpoint.port(),
+                string(connection.get("database")),
+                firstText(string(connection.get("username")), string(connection.get("user"))),
+                string(connection.get("password")),
+                mapString(connection.get("options")),
+                timeoutSeconds,
+                useSsl,
+                string(connection.get("sslMode")),
+                bool(connection.get("useSSH")),
+                networkCredential(connection.get("ssh")),
+                networkCredential(connection.get("sshConfig")),
+                bool(connection.get("useProxy")),
+                networkProxy(connection.get("proxy")),
+                null,
+                null,
+                List.of(),
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    private static ConnectionConfigDto.NetworkCredentialConfigDto networkCredential(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        return new ConnectionConfigDto.NetworkCredentialConfigDto(
+                string(map.get("host")),
+                intOrNull(map.get("port")),
+                firstText(string(map.get("user")), string(map.get("username"))),
+                string(map.get("password")),
+                string(map.get("keyPath"))
+        );
+    }
+
+    private static ConnectionConfigDto.NetworkProxyConfigDto networkProxy(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return null;
+        }
+        return new ConnectionConfigDto.NetworkProxyConfigDto(
+                string(map.get("type")),
+                string(map.get("host")),
+                intOrNull(map.get("port")),
+                firstText(string(map.get("user")), string(map.get("username"))),
+                string(map.get("password"))
+        );
+    }
+
+    private static Integer intOrNull(Object value) {
+        String text = string(value).trim();
+        if (text.isBlank()) {
+            return null;
+        }
+        try {
+            return Integer.parseInt(text);
+        } catch (NumberFormatException ignored) {
+            return null;
+        }
+    }
+
+    private static Map<String, String> mapString(Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            return Map.of();
+        }
+        Map<String, String> result = new LinkedHashMap<>();
+        map.forEach((key, item) -> result.put(String.valueOf(key), string(item)));
+        return result;
     }
 
     private List<RedisEndpoint> resolveEndpoints(Map<String, Object> connection, Map<String, Object> options, RedisConfig fromUri, int defaultPort) {
@@ -537,7 +626,7 @@ public class RedisCompatibilityService {
             if (path != null && path.length() > 1) {
                 database = boundedDatabase(path.substring(1));
             }
-            return new RedisConfig(host, port, username, password, database, ssl, 5, explicitUsername);
+            return new RedisConfig(host, port, username, password, database, ssl, 5, explicitUsername, null);
         } catch (RuntimeException ignored) {
             return RedisConfig.empty();
         }
@@ -844,9 +933,11 @@ public class RedisCompatibilityService {
 
         private void openSocket(String username) {
             try {
-                socket = config.useSsl() ? SSLSocketFactory.getDefault().createSocket() : new Socket();
                 int timeoutMillis = Math.max(1, config.timeoutSeconds()) * 1000;
-                socket.connect(new InetSocketAddress(config.host(), config.port()), timeoutMillis);
+                Socket plain = NETWORK_CONNECTOR.openSocket(config.networkConfig(), timeoutMillis);
+                socket = config.useSsl()
+                        ? ((SSLSocketFactory) SSLSocketFactory.getDefault()).createSocket(plain, config.host(), config.port(), true)
+                        : plain;
                 socket.setSoTimeout(timeoutMillis);
                 input = socket.getInputStream();
                 output = socket.getOutputStream();
@@ -974,13 +1065,27 @@ public class RedisCompatibilityService {
     private record RedisEndpoint(String host, int port) {
     }
 
-    private record RedisConfig(String host, int port, String username, String password, int database, boolean useSsl, int timeoutSeconds, boolean explicitUriUsername) {
+    private record RedisConfig(String host, int port, String username, String password, int database, boolean useSsl, int timeoutSeconds, boolean explicitUriUsername, ConnectionConfigDto networkConfig) {
         private static RedisConfig empty() {
-            return new RedisConfig("", 6379, "", "", 0, false, 5, false);
+            return new RedisConfig("", 6379, "", "", 0, false, 5, false, null);
         }
 
         private String address() {
             return host + ":" + port;
+        }
+
+        private String mode(boolean cluster) {
+            String suffix = cluster ? "-cluster" : "";
+            if (networkConfig != null && networkConfig.sshEnabled()) {
+                return "ssh-tunnel" + suffix;
+            }
+            if (networkConfig != null && networkConfig.proxyEnabled()) {
+                String type = networkConfig.proxy() == null || networkConfig.proxy().type() == null
+                        ? "proxy"
+                        : networkConfig.proxy().type().trim().toLowerCase(Locale.ROOT).replace("_", "-");
+                return type + "-proxy" + suffix;
+            }
+            return "direct-tcp" + suffix;
         }
     }
 

@@ -3,7 +3,6 @@ package com.javanavi.driver;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpExchange;
 import com.sun.net.httpserver.HttpServer;
-import com.javanavi.app.GlobalProxyConfigProvider;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.events.CompatEventFixtures;
 import com.javanavi.events.CompatEventPublisher;
@@ -13,24 +12,33 @@ import com.javanavi.i18n.I18nMessages;
 import com.javanavi.db.JdbcConnectionFactory;
 import com.javanavi.db.JdbcConnectionPoolRegistry;
 import com.javanavi.db.ProxySocketFactory;
+import com.javanavi.redis.RedisCompatibilityService;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.security.LocalSessionService;
-import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.SocketException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.lang.reflect.Method;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.ArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -73,26 +81,6 @@ class DriverCompatibilityServiceTest {
         }
     }
 
-    @Test
-    void networkStatusReportsConfiguredGlobalProxy() {
-        DriverCompatibilityService service = serviceWithRepository(
-                "https://repo.maven.apache.org/maven2",
-                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "127.0.0.1", 1080, "proxy-user", "secret")
-        );
-
-        Map<String, Object> status = service.networkStatus();
-
-        assertThat(status.get("proxyConfigured")).isEqualTo(true);
-        assertThat(status.get("recommendedProxy")).isEqualTo(false);
-        assertThat(status.get("proxyEnv"))
-                .isInstanceOf(Map.class)
-                .asInstanceOf(InstanceOfAssertFactories.map(String.class, String.class))
-                .containsEntry("scope", "global")
-                .containsEntry("type", "socks5")
-                .containsEntry("host", "127.0.0.1")
-                .containsEntry("port", "1080")
-                .doesNotContainKey("password");
-    }
 
     @Test
     void networkStatusMarksRepositoryAsUnreachableWhenUrlIsInvalid() {
@@ -239,9 +227,6 @@ class DriverCompatibilityServiceTest {
                 null,
                 null,
                 null,
-                null,
-                null,
-                null,
                 null
         );
 
@@ -254,36 +239,36 @@ class DriverCompatibilityServiceTest {
     void jdbcConnectionFactoryMapsSslModesToDriverProperties() {
         JdbcConnectionFactory factory = new JdbcConnectionFactory();
 
-        ConnectionConfigDto mysql = jdbcConfig("mysql", 3306, true, "required", null, null, null, null);
+        ConnectionConfigDto mysql = jdbcConfig("mysql", 3306, true, "required", null, null, null);
         assertThat(factory.jdbcUrl(mysql)).doesNotContain("useSSL=false");
         assertThat(factory.connectionProperties(mysql))
                 .containsEntry("sslMode", "VERIFY_IDENTITY")
                 .containsEntry("useSSL", "true")
                 .containsEntry("requireSSL", "true");
 
-        ConnectionConfigDto mysqlSkipVerify = jdbcConfig("mysql", 3306, true, "skip-verify", null, null, null, null);
+        ConnectionConfigDto mysqlSkipVerify = jdbcConfig("mysql", 3306, true, "skip-verify", null, null, null);
         assertThat(factory.connectionProperties(mysqlSkipVerify))
                 .containsEntry("sslMode", "REQUIRED")
                 .containsEntry("verifyServerCertificate", "false");
 
-        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "preferred", null, null, null, null)))
+        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "preferred", null, null, null)))
                 .containsEntry("sslmode", "prefer");
-        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "skip-verify", null, null, null, null)))
+        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "skip-verify", null, null, null)))
                 .containsEntry("sslmode", "require")
                 .containsEntry("sslfactory", "org.postgresql.ssl.NonValidatingFactory");
 
-        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "required", null, null, null, null)))
+        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "required", null, null, null)))
                 .contains("encrypt=true")
                 .contains("trustServerCertificate=false");
-        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "skip-verify", null, null, null, null)))
+        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "skip-verify", null, null, null)))
                 .contains("encrypt=true")
                 .contains("trustServerCertificate=true");
 
-        assertThat(factory.connectionProperties(jdbcConfig("clickhouse", 8123, true, "skip-verify", null, null, null, null)))
+        assertThat(factory.connectionProperties(jdbcConfig("clickhouse", 8123, true, "skip-verify", null, null, null)))
                 .containsEntry("ssl", "true")
                 .containsEntry("sslmode", "none");
 
-        ConnectionConfigDto dameng = jdbcConfig("dameng", 5236, true, "required", null, null, "/tmp/client.crt", "/tmp/client.key");
+        ConnectionConfigDto dameng = jdbcConfig("dameng", 5236, true, "required", null, "/tmp/client.crt", "/tmp/client.key");
         assertThat(factory.connectionProperties(dameng))
                 .containsEntry("sslMode", "required")
                 .containsEntry("sslFilesPath", "/tmp/client.crt")
@@ -295,110 +280,43 @@ class DriverCompatibilityServiceTest {
                 .containsEntry("sslKeyPath", "/tmp/root-client.key");
     }
 
-    @Test
-    void globalProxyAppliesOnlyWhenConnectionHasNoProxyOrTunnel() {
-        JdbcConnectionFactory factory = new JdbcConnectionFactory();
-        ConnectionConfigDto globalOnly = jdbcConfig("postgresql", 5432, false, "disable", null, null, null, null)
-                .withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, "global-user", "global-secret"));
 
-        assertThat(factory.connectionProperties(globalOnly))
-                .containsEntry("socketFactory", "com.javanavi.db.ProxySocketFactory")
-                .containsEntry("javanavi.proxy.type", "http")
-                .containsEntry("javanavi.proxy.host", "global.proxy")
-                .containsEntry("javanavi.proxy.port", "8080")
-                .containsEntry("javanavi.proxy.user", "global-user");
-
-        ConnectionConfigDto connectionProxy = jdbcConfig("postgresql", 5432, false, "disable",
-                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "connection.proxy", 1080, null, null),
-                null,
-                null,
-                null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, null, null));
-
-        assertThat(factory.connectionProperties(connectionProxy))
-                .containsEntry("javanavi.proxy.type", "socks5")
-                .containsEntry("javanavi.proxy.host", "connection.proxy")
-                .containsEntry("javanavi.proxy.port", "1080");
-
-        ConnectionConfigDto httpTunnel = jdbcConfig("postgresql", 5432, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("connection.tunnel", 18080, null, null),
-                null,
-                null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, null, null));
-
-        assertThat(factory.connectionProperties(httpTunnel))
-                .containsEntry("javanavi.proxy.type", "http-connect")
-                .containsEntry("javanavi.proxy.host", "connection.tunnel")
-                .containsEntry("javanavi.proxy.port", "18080");
-
-        ConnectionConfigDto ssh = new ConnectionConfigDto(
-                "postgres-ssh", "Postgres SSH", "postgresql", null, "db.local", 5432, "demo", "user", "password", Map.of(), 30,
-                false, "disable", true,
-                new ConnectionConfigDto.NetworkCredentialConfigDto("ssh.local", 22, "ssh-user", "ssh-secret", null),
-                null,
-                false, null, false, null,
-                null, null, List.of(), null, null, null, null, null, null, null, null
-        ).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, null, null));
-
-        assertThat(factory.connectionProperties(ssh)).doesNotContainKey("javanavi.proxy.host");
-    }
 
     @Test
-    void jdbcConnectionFactoryAppliesInjectedGlobalProxyForDirectConsumers() {
-        ConnectionConfigDto.NetworkProxyConfigDto globalProxy =
-                new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, "global-user", "global-secret");
-        JdbcConnectionFactory factory = new JdbcConnectionFactory(
-                null,
-                new I18nMessages(),
-                null,
-                globalProxyProvider(globalProxy)
-        );
-
-        Properties properties = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable", null, null, null, null));
-
-        assertThat(properties)
-                .containsEntry("javanavi.proxy.type", "http")
-                .containsEntry("javanavi.proxy.host", "global.proxy")
-                .containsEntry("javanavi.proxy.port", "8080")
-                .containsEntry("javanavi.proxy.user", "global-user")
-                .containsEntry("javanavi.proxy.password", "global-secret");
-    }
-
-    @Test
-    void jdbcNetworkProxyAndHttpTunnelValidateForJdbcWithoutGenericRejection() {
+    void jdbcNetworkProxyValidatesForJdbcWithoutGenericRejection() {
         JdbcConnectionFactory factory = new JdbcConnectionFactory();
 
         ConnectionConfigDto proxy = jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
                 null,
-                null,
                 null);
         factory.connectionProperties(proxy);
 
-        ConnectionConfigDto httpTunnel = jdbcConfig("postgresql", 5432, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, "tunnel-user", "secret"),
+        ConnectionConfigDto httpProxy = jdbcConfig("postgresql", 5432, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
                 null);
-        factory.connectionProperties(httpTunnel);
+        factory.connectionProperties(httpProxy);
 
         ConnectionConfigDto invalidProxy = jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", " ", 1080, null, null),
-                null,
                 null,
                 null);
         assertThatThrownBy(() -> factory.connectionProperties(invalidProxy))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Proxy host is required");
 
-        ConnectionConfigDto both = new ConnectionConfigDto(
+        ConnectionConfigDto sshAndProxy = new ConnectionConfigDto(
                 "mysql-1", "MySQL", "mysql", null, "db.local", 3306, "demo", "user", "password", Map.of(), 30,
-                false, "disable", false, null, null, true,
-                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
+                false, "disable",
                 true,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, null, null),
+                new ConnectionConfigDto.NetworkCredentialConfigDto("ssh.local", 22, "ssh-user", "ssh-secret", null),
+                null,
+                true,
+                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
                 null, null, List.of(), null, null, null, null, null, null, null, null
         );
-        assertThatThrownBy(() -> factory.connectionProperties(both))
+        assertThatThrownBy(() -> factory.connectionProperties(sshAndProxy))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("mutually exclusive");
     }
@@ -409,7 +327,6 @@ class DriverCompatibilityServiceTest {
 
         Properties mysql = factory.connectionProperties(jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
-                null,
                 null,
                 null));
         assertThat(mysql)
@@ -424,7 +341,6 @@ class DriverCompatibilityServiceTest {
         Properties postgres = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
                 null,
-                null,
                 null));
         assertThat(postgres)
                 .containsEntry("socketFactory", "com.javanavi.db.ProxySocketFactory")
@@ -432,7 +348,6 @@ class DriverCompatibilityServiceTest {
 
         Properties sqlserver = factory.connectionProperties(jdbcConfig("sqlserver", 1433, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, null, null),
-                null,
                 null,
                 null));
         assertThat(sqlserver)
@@ -442,7 +357,6 @@ class DriverCompatibilityServiceTest {
         Properties clickhouse = factory.connectionProperties(jdbcConfig("clickhouse", 8123, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
-                null,
                 null));
         assertThat(clickhouse)
                 .containsEntry("proxy_type", "HTTP")
@@ -450,26 +364,50 @@ class DriverCompatibilityServiceTest {
                 .containsEntry("proxy_port", "8080")
                 .containsEntry("proxy_username", "proxy-user");
 
-        Properties httpTunnel = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, "tunnel-user", "secret"),
+        Properties httpProxy = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
                 null));
-        assertThat(httpTunnel)
+        assertThat(httpProxy)
                 .containsEntry("socketFactory", "com.javanavi.db.ProxySocketFactory")
-                .containsEntry("javanavi.proxy.type", "http-connect")
-                .containsEntry("javanavi.proxy.host", "tunnel.local")
+                .containsEntry("javanavi.proxy.type", "http")
+                .containsEntry("javanavi.proxy.host", "proxy.local")
                 .containsEntry("javanavi.proxy.port", "8080")
-                .containsEntry("javanavi.proxy.user", "tunnel-user");
+                .containsEntry("javanavi.proxy.user", "proxy-user");
 
         Properties custom = factory.connectionProperties(jdbcConfig("custom", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
-                null,
                 null,
                 null));
         assertThat(custom)
                 .containsEntry("socketFactory", "com.javanavi.db.ProxySocketFactory")
                 .containsEntry("socketFactoryClass", "com.javanavi.db.ProxySocketFactory");
+    }
+
+    @Test
+    void redisConnectUsesConfiguredHttpProxy() throws Exception {
+        try (HttpConnectRedisProbe proxy = HttpConnectRedisProbe.start()) {
+            RedisCompatibilityService service = new RedisCompatibilityService(new I18nMessages());
+
+            Map<String, Object> result = service.connect(Map.of(
+                    "connection", Map.of(
+                            "type", "redis",
+                            "host", "redis.internal",
+                            "port", 6379,
+                            "database", 0,
+                            "useProxy", true,
+                            "proxy", Map.of(
+                                    "type", "http",
+                                    "host", "127.0.0.1",
+                                    "port", proxy.port()
+                            )
+                    )
+            ));
+
+            assertThat(result).containsEntry("connected", true);
+            proxy.assertConnectTarget("redis.internal:6379");
+            assertThat(proxy.commands()).containsExactly("SELECT", "PING");
+        }
     }
 
     @Test
@@ -494,54 +432,28 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
-    void jdbcPoolFingerprintIncludesProxyAndHttpTunnelConfig() throws Exception {
+    void jdbcPoolFingerprintIncludesProxyConfig() throws Exception {
         JdbcConnectionPoolRegistry registry = new JdbcConnectionPoolRegistry(new JdbcConnectionFactory());
         Method fingerprint = JdbcConnectionPoolRegistry.class.getDeclaredMethod("fingerprint", ConnectionConfigDto.class);
         fingerprint.setAccessible(true);
 
-        String direct = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable", null, null, null, null)));
+        String direct = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable", null, null, null)));
         String proxy = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
-                null,
                 null,
                 null)));
         String otherProxy = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "other-proxy.local", 1080, "proxy-user", "secret"),
                 null,
+                null)));
+        String httpProxy = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
                 null)));
-        String httpTunnel = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, "tunnel-user", "secret"),
-                null,
-                null)));
-        String connectionProxyGlobalA = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
-                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
-                null,
-                null,
-                null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global-a", 8080, null, null))));
-        String connectionProxyGlobalB = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
-                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
-                null,
-                null,
-                null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global-b", 8080, null, null))));
-
         assertThat(proxy).isNotEqualTo(direct);
         assertThat(otherProxy).isNotEqualTo(proxy);
-        assertThat(httpTunnel).isNotEqualTo(proxy);
-        assertThat(httpTunnel).isNotEqualTo(direct);
-        assertThat(connectionProxyGlobalA).isEqualTo(connectionProxyGlobalB);
-    }
-
-    private GlobalProxyConfigProvider globalProxyProvider(ConnectionConfigDto.NetworkProxyConfigDto globalProxy) {
-        SecurityProperties securityProperties = new SecurityProperties();
-        securityProperties.setDataDirectory(tempDir.toString());
-        return new GlobalProxyConfigProvider(securityProperties, new ObjectMapper().findAndRegisterModules(), null) {
-            @Override
-            public java.util.Optional<ConnectionConfigDto.NetworkProxyConfigDto> activeProxy() {
-                return java.util.Optional.of(globalProxy);
-            }
-        };
+        assertThat(httpProxy).isNotEqualTo(proxy);
+        assertThat(httpProxy).isNotEqualTo(direct);
     }
 
     private DriverCompatibilityService service() {
@@ -549,20 +461,10 @@ class DriverCompatibilityServiceTest {
     }
 
     private DriverCompatibilityService serviceWithRepository(String repositoryUrl) {
-        return serviceWithRepository(repositoryUrl, null);
-    }
-
-    private DriverCompatibilityService serviceWithRepository(String repositoryUrl, ConnectionConfigDto.NetworkProxyConfigDto globalProxy) {
         I18nMessages messages = new I18nMessages();
         ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
         SecurityProperties securityProperties = new SecurityProperties();
         securityProperties.setDataDirectory(tempDir.toString());
-        GlobalProxyConfigProvider globalProxyProvider = globalProxy == null ? null : new GlobalProxyConfigProvider(securityProperties, objectMapper, null) {
-            @Override
-            public java.util.Optional<ConnectionConfigDto.NetworkProxyConfigDto> activeProxy() {
-                return java.util.Optional.of(globalProxy);
-            }
-        };
         JdbcDriverRuntimeService runtimeService = new JdbcDriverRuntimeService(securityProperties, objectMapper, messages) {
             @Override
             public Map<String, Object> repositorySettings() {
@@ -581,7 +483,6 @@ class DriverCompatibilityServiceTest {
                 new CompatEventPublisher(new LocalSessionService()),
                 new CompatEventFixtures(messages),
                 runtimeService,
-                globalProxyProvider,
                 messages
         );
     }
@@ -593,7 +494,6 @@ class DriverCompatibilityServiceTest {
             boolean useSSL,
             String sslMode,
             ConnectionConfigDto.NetworkProxyConfigDto proxy,
-            ConnectionConfigDto.NetworkHttpTunnelConfigDto httpTunnel,
             String sslCertPath,
             String sslKeyPath
     ) {
@@ -623,8 +523,6 @@ class DriverCompatibilityServiceTest {
                 null,
                 proxy != null,
                 proxy,
-                httpTunnel != null,
-                httpTunnel,
                 null,
                 null,
                 List.of(),
@@ -664,8 +562,6 @@ class DriverCompatibilityServiceTest {
                 sslMode,
                 false,
                 null,
-                null,
-                false,
                 null,
                 false,
                 null,
@@ -719,6 +615,119 @@ class DriverCompatibilityServiceTest {
                 .filter(item -> name.equals(item.get("name")))
                 .findFirst()
                 .orElseThrow();
+    }
+
+    private static final class HttpConnectRedisProbe implements AutoCloseable {
+        private final ServerSocket server;
+        private final CountDownLatch done = new CountDownLatch(1);
+        private final AtomicReference<String> connectTarget = new AtomicReference<>("");
+        private final AtomicReference<Throwable> error = new AtomicReference<>();
+        private final List<String> commands = new ArrayList<>();
+        private final Thread thread;
+
+        private HttpConnectRedisProbe(ServerSocket server) {
+            this.server = server;
+            this.thread = new Thread(this::serve, "redis-http-connect-probe");
+            this.thread.setDaemon(true);
+        }
+
+        static HttpConnectRedisProbe start() throws IOException {
+            try {
+                ServerSocket server = new ServerSocket(0, 1, java.net.InetAddress.getByName("127.0.0.1"));
+                HttpConnectRedisProbe probe = new HttpConnectRedisProbe(server);
+                probe.thread.start();
+                return probe;
+            } catch (IOException error) {
+                if (error instanceof SocketException && String.valueOf(error.getMessage()).contains("Operation not permitted")) {
+                    Assumptions.assumeTrue(false, "local TCP server unavailable in this test environment: " + error.getMessage());
+                }
+                throw error;
+            }
+        }
+
+        int port() {
+            return server.getLocalPort();
+        }
+
+        List<String> commands() throws Exception {
+            awaitDone();
+            return List.copyOf(commands);
+        }
+
+        void assertConnectTarget(String expected) throws Exception {
+            awaitDone();
+            assertThat(connectTarget.get()).isEqualTo(expected);
+        }
+
+        private void serve() {
+            try (Socket socket = server.accept()) {
+                InputStream input = socket.getInputStream();
+                OutputStream output = socket.getOutputStream();
+                String connect = readLine(input);
+                if (connect.startsWith("CONNECT ")) {
+                    connectTarget.set(connect.substring("CONNECT ".length(), connect.indexOf(" HTTP/")));
+                }
+                while (!readLine(input).isEmpty()) {
+                    // consume proxy headers
+                }
+                output.write("HTTP/1.1 200 OK\r\n\r\n".getBytes(StandardCharsets.ISO_8859_1));
+                output.flush();
+                for (int index = 0; index < 2; index++) {
+                    String command = readRedisCommand(input);
+                    commands.add(command);
+                    output.write(("PING".equals(command) ? "+PONG\r\n" : "+OK\r\n").getBytes(StandardCharsets.UTF_8));
+                    output.flush();
+                }
+            } catch (Throwable failure) {
+                error.set(failure);
+            } finally {
+                done.countDown();
+            }
+        }
+
+        private static String readRedisCommand(InputStream input) throws IOException {
+            String array = readLine(input);
+            int count = Integer.parseInt(array.substring(1));
+            List<String> parts = new ArrayList<>();
+            for (int index = 0; index < count; index++) {
+                String bulk = readLine(input);
+                int length = Integer.parseInt(bulk.substring(1));
+                byte[] value = input.readNBytes(length);
+                input.readNBytes(2);
+                parts.add(new String(value, StandardCharsets.UTF_8));
+            }
+            return parts.get(0).toUpperCase(Locale.ROOT);
+        }
+
+        private static String readLine(InputStream input) throws IOException {
+            ByteArrayOutputStream buffer = new ByteArrayOutputStream();
+            int previous = -1;
+            while (true) {
+                int value = input.read();
+                if (value < 0) {
+                    throw new IOException("connection closed while reading line");
+                }
+                if (previous == '\r' && value == '\n') {
+                    byte[] bytes = buffer.toByteArray();
+                    return new String(bytes, 0, Math.max(0, bytes.length - 1), StandardCharsets.ISO_8859_1);
+                }
+                buffer.write(value);
+                previous = value;
+            }
+        }
+
+        private void awaitDone() throws Exception {
+            assertThat(done.await(3, TimeUnit.SECONDS)).isTrue();
+            Throwable failure = error.get();
+            if (failure != null) {
+                throw new AssertionError(failure);
+            }
+        }
+
+        @Override
+        public void close() throws IOException {
+            server.close();
+        }
     }
 
     private static final class ProbeServer implements AutoCloseable {

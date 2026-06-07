@@ -26,7 +26,6 @@ JavaNavi's current local web package exposes credential-bearing database, driver
 - `ssh.password`
 - `ssh.keyPath` when logged
 - `proxy.password`
-- `httpTunnel.password`
 - `uri` and `dsn` if they include credentials
 - `mysqlReplicaPassword`
 - `mongoReplicaPassword`
