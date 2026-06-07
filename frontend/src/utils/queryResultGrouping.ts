@@ -1,5 +1,5 @@
 export type QueryRow = Record<string, unknown>;
-export type StatementExecutionStatus = 'success' | 'error';
+export type StatementExecutionStatus = 'success' | 'error' | 'pending' | 'rolledBack';
 
 export type QueryResultSetData = {
   columns?: string[];
@@ -77,6 +77,8 @@ export type BuildQueryResultGroupsOptions<TSource = string, TEditLocator = unkno
   source?: TSource;
   successText: string;
   errorText: string;
+  pendingText: string;
+  rolledBackText: string;
   operationSucceededText: string;
   operationFailedText: string;
   rowKeyField?: string;
@@ -147,6 +149,8 @@ export const buildQueryResultGroups = <TSource = string, TEditLocator = unknown>
   rowKeyField,
   successText,
   errorText,
+  pendingText,
+  rolledBackText,
   operationSucceededText,
   operationFailedText,
   resolveReadOnlyLocator,
@@ -168,6 +172,7 @@ export const buildQueryResultGroups = <TSource = string, TEditLocator = unknown>
     const firstErrorRow = rows.find(row => row.status === 'error');
     const firstRow = rows[0];
     const hasError = !!firstErrorRow;
+    const hasRolledBack = rows.some(row => row.status === 'rolledBack');
     const groupSql = rows.map(row => row.sql).filter(Boolean).join('\n\n');
     resultGroups.push({
       kind: 'executionSummary',
@@ -183,8 +188,8 @@ export const buildQueryResultGroups = <TSource = string, TEditLocator = unknown>
       startLine: Number(firstErrorRow?.startLine ?? firstRow?.startLine ?? 0) || undefined,
       endLine: Number(firstErrorRow?.endLine ?? firstRow?.endLine ?? 0) || undefined,
       statementSummary: true,
-      status: hasError ? 'error' : 'success',
-      message: hasError ? String(firstErrorRow?.message || operationFailedText) : operationSucceededText,
+      status: hasError ? 'error' : (hasRolledBack ? 'rolledBack' : 'success'),
+      message: hasError ? String(firstErrorRow?.message || operationFailedText) : (hasRolledBack ? rolledBackText : operationSucceededText),
       transactionRolledBack: rows.some(row => row.transactionRolledBack === true),
     });
   };
@@ -194,8 +199,13 @@ export const buildQueryResultGroups = <TSource = string, TEditLocator = unknown>
     const statementIndex = Number(rsData.statementIndex || idx + 1);
     const startLine = Number(rsData.startLine || 0);
     const endLine = Number(rsData.endLine || 0);
-    const statementStatus: StatementExecutionStatus = rsData.status === 'error' ? 'error' : 'success';
-    const statementMessage = String(rsData.message || (statementStatus === 'error' ? operationFailedText : operationSucceededText));
+    const rawStatus = String(rsData.status || '').trim();
+    const statementStatus: StatementExecutionStatus = rawStatus === 'error'
+      ? 'error'
+      : (rawStatus === 'pending' ? 'pending' : (rawStatus === 'rolledBack' ? 'rolledBack' : 'success'));
+    const statementMessage = String(rsData.message || (statementStatus === 'error'
+      ? operationFailedText
+      : (statementStatus === 'pending' ? pendingText : (statementStatus === 'rolledBack' ? rolledBackText : operationSucceededText))));
     const transactionRolledBack = rsData.transactionRolledBack === true;
 
     const isAffectedResult = isAffectedRowsResultSet(rsData);
@@ -212,7 +222,7 @@ export const buildQueryResultGroups = <TSource = string, TEditLocator = unknown>
         sqlType: detectSqlType(rawStatement),
         sqlSummary: summarizeSql(rawStatement),
         sql: rawStatement,
-        statusText: statementStatus === 'success' ? successText : errorText,
+        statusText: statementStatus === 'error' ? errorText : (statementStatus === 'pending' ? pendingText : (statementStatus === 'rolledBack' ? rolledBackText : successText)),
         status: statementStatus,
         message: statementMessage,
         ...(affected !== undefined ? { affectedRows: affected } : {}),

@@ -23,19 +23,30 @@ import com.javanavi.model.QueryCancelRequestDto;
 import com.javanavi.model.QueryCancelResultDto;
 import com.javanavi.model.QueryRequestDto;
 import com.javanavi.model.QueryResultDto;
+import com.javanavi.model.QueryStreamEventDto;
 import com.javanavi.model.ResultSetDataDto;
 import com.javanavi.model.SchemaTablesRequestDto;
 import com.javanavi.model.TableSummaryDto;
 import com.javanavi.model.TableMetadataRequestDto;
 import com.javanavi.model.TriggerDefinitionDto;
+import com.javanavi.security.SecretRedactor;
 import jakarta.validation.Valid;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
+import java.io.BufferedWriter;
+import java.io.IOException;
+import java.io.OutputStreamWriter;
+import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Map;
 
@@ -60,6 +71,8 @@ public class CompatibilityController {
             new CapabilityDto("saved-secrets", "Saved secrets compatibility", "ready", "Saved connections and JavaNavi connection packages use SecretStore-backed redaction")
     );
 
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final MediaType NDJSON_MEDIA_TYPE = MediaType.valueOf("application/x-ndjson");
     private static final String REQUEST_SOURCE_HEADER = "X-JavaNavi-Request-Source";
     private static final String AI_TOOL_REQUEST_SOURCE = "ai-tool";
 
@@ -203,6 +216,37 @@ public class CompatibilityController {
     ) {
         enforceAiSqlSafety(request, requestSource);
         return ApiEnvelope.ok(databaseCompatibilityService.executeMulti(request));
+    }
+
+    @PostMapping(value = "/query/multi/stream", produces = "application/x-ndjson")
+    public ResponseEntity<StreamingResponseBody> queryMultiStream(
+            @Valid @RequestBody QueryRequestDto request,
+            @RequestHeader(value = REQUEST_SOURCE_HEADER, required = false) String requestSource
+    ) {
+        enforceAiSqlSafety(request, requestSource);
+        StreamingResponseBody body = outputStream -> {
+            BufferedWriter writer = new BufferedWriter(new OutputStreamWriter(outputStream, StandardCharsets.UTF_8));
+            try {
+                databaseCompatibilityService.executeMultiStream(request, event -> writeStreamEvent(writer, event));
+            } catch (UncheckedIOException error) {
+                throw error.getCause();
+            } catch (RuntimeException error) {
+                writeStreamEvent(writer, QueryStreamEventDto.error(SecretRedactor.redact(error.getMessage())));
+            } finally {
+                writer.flush();
+            }
+        };
+        return ResponseEntity.ok().contentType(NDJSON_MEDIA_TYPE).body(body);
+    }
+
+    private static void writeStreamEvent(BufferedWriter writer, QueryStreamEventDto event) {
+        try {
+            writer.write(OBJECT_MAPPER.writeValueAsString(event));
+            writer.newLine();
+            writer.flush();
+        } catch (IOException error) {
+            throw new UncheckedIOException(error);
+        }
     }
 
     private void enforceAiSqlSafety(QueryRequestDto request, String requestSource) {

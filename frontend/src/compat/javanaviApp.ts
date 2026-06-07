@@ -14,6 +14,20 @@ export type QueryExecutionOptions = {
   autoCommit?: boolean;
 };
 
+export type QueryStreamEvent = {
+  type?: 'start' | 'statementStart' | 'statementResult' | 'transactionCommitted' | 'transactionRolledBack' | 'done' | 'error';
+  statementIndex?: number;
+  startLine?: number;
+  endLine?: number;
+  total?: number;
+  sql?: string;
+  status?: string;
+  message?: string;
+  autoCommit?: boolean;
+  transactionRolledBack?: boolean;
+  resultSet?: unknown;
+};
+
 export type TableRenameInput = {
   oldName: string;
   newName: string;
@@ -603,6 +617,83 @@ export async function DBQueryMulti(arg1: connection.ConnectionConfig, arg2: stri
   }
   result.queryId = arg4;
   return result;
+}
+
+export async function DBQueryMultiStream(
+  arg1: connection.ConnectionConfig,
+  arg2: string,
+  arg3: string,
+  arg4: string,
+  requestSource = 'query',
+  options?: QueryExecutionOptions,
+  onEvent?: (event: QueryStreamEvent) => void,
+): Promise<connection.QueryResult> {
+  const body = { connection: toConnectionPayload(arg1), database: arg2, sql: arg3, queryId: arg4, ...(options || {}) };
+  const makeInit = async (forceRefresh = false): Promise<RequestInit> => ({
+    method: 'POST',
+    credentials: 'same-origin',
+    headers: {
+      'Content-Type': 'application/json',
+      Accept: 'application/x-ndjson',
+      ...(await localSessionHeaders(forceRefresh)),
+      ...requestSourceHeaders(requestSource),
+    },
+    body: JSON.stringify(body),
+  });
+
+  let response = await fetch(`${API_BASE}/query/multi/stream`, await makeInit(false));
+  if (!response.ok) {
+    const payload = await response.clone().json().catch(() => null);
+    if (isLocalSessionAuthFailure(response.status, payload)) {
+      response = await fetch(`${API_BASE}/query/multi/stream`, await makeInit(true));
+    }
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    return { success: false, message: localizeBackendMessage(payloadErrorMessage(payload) || response.statusText), data: [], queryId: arg4 } as QueryResult;
+  }
+  if (!response.body) {
+    return { success: false, message: localizeBackendMessage('Empty response stream'), data: [], queryId: arg4 } as QueryResult;
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  const events: QueryStreamEvent[] = [];
+  const resultSets: unknown[] = [];
+  let buffer = '';
+  let failedMessage = '';
+  let finalMessage = 'Query batch executed';
+
+  const consumeLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return;
+    const event = JSON.parse(trimmed) as QueryStreamEvent;
+    events.push(event);
+    if (event.resultSet) resultSets.push(event.resultSet);
+    if (event.type === 'error' || event.status === 'error') {
+      failedMessage = String(event.message || failedMessage || 'Query failed');
+    }
+    if (event.message) finalMessage = String(event.message);
+    onEvent?.(event);
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+    const lines = buffer.split(/\r?\n/u);
+    buffer = lines.pop() || '';
+    lines.forEach(consumeLine);
+    if (done) break;
+  }
+  if (buffer.trim()) consumeLine(buffer);
+
+  return {
+    success: !failedMessage,
+    message: failedMessage || finalMessage,
+    data: resultSets,
+    queryId: arg4,
+    events,
+  } as QueryResult & { events: QueryStreamEvent[] };
 }
 
 export async function DBQueryWithCancel(arg1: connection.ConnectionConfig, arg2: string, arg3: string, arg4: string, requestSource = 'query', options?: QueryExecutionOptions): Promise<connection.QueryResult> {

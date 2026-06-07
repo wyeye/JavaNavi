@@ -18,6 +18,7 @@ import com.javanavi.model.ForeignKeyDefinitionDto;
 import com.javanavi.model.IndexDefinitionDto;
 import com.javanavi.model.QueryRequestDto;
 import com.javanavi.model.QueryResultDto;
+import com.javanavi.model.QueryStreamEventDto;
 import com.javanavi.model.ResultSetDataDto;
 import com.javanavi.model.TableSummaryDto;
 import com.javanavi.model.TableRenameDto;
@@ -51,6 +52,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -322,6 +324,43 @@ public class DatabaseCompatibilityService {
         ConnectionConfigDto connectionConfig = connectionWithRequestedDatabase(request.connection(), request.database());
         try {
             return withRedactedSqlErrors(() -> withDatabaseConnection(connectionConfig, request.database(), connection -> executeMultiOnConnection(connection, request, running)));
+        } finally {
+            runningQueries.remove(queryId, running);
+        }
+    }
+
+    public void executeMultiStream(QueryRequestDto request, Consumer<QueryStreamEventDto> sink) {
+        rejectUnsupportedNetworkTunnel(request == null ? null : request.connection());
+        Consumer<QueryStreamEventDto> eventSink = sink == null ? event -> { } : sink;
+        if (isMongo(request.connection())) {
+            List<ResultSetDataDto> resultSets = requireMongoCompatibilityService().executeMulti(
+                    resolveSavedConnectionSecret(connectionWithRequestedDatabase(request.connection(), request.database())),
+                    request.database(),
+                    request.sql()
+            );
+            int total = Math.max(resultSets.size(), 1);
+            eventSink.accept(QueryStreamEventDto.start(total, true, messages.message("job.stage.executingSqlFile")));
+            for (int index = 0; index < resultSets.size(); index++) {
+                ResultSetDataDto resultSet = withStatementExecutionMetadata(
+                        resultSets.get(index),
+                        new SqlStatementSlice(nullToEmpty(request.sql()), 1, 1),
+                        index + 1,
+                        "success",
+                        messages.message("common.operationSucceeded")
+                );
+                eventSink.accept(QueryStreamEventDto.statementResult(resultSet, total, true));
+            }
+            eventSink.accept(QueryStreamEventDto.done(total, true, messages.message("query.streamCompleted")));
+            return;
+        }
+        String queryId = normalizedQueryId(request.queryId());
+        RunningQuery running = registerQuery(queryId);
+        ConnectionConfigDto connectionConfig = connectionWithRequestedDatabase(request.connection(), request.database());
+        try {
+            withRedactedSqlErrors(() -> withDatabaseConnection(connectionConfig, request.database(), connection -> {
+                executeMultiStreamOnConnection(connection, request, running, eventSink);
+                return null;
+            }));
         } finally {
             runningQueries.remove(queryId, running);
         }
@@ -814,6 +853,99 @@ public class DatabaseCompatibilityService {
             }
         }
         return resultSets;
+    }
+
+    private void executeMultiStreamOnConnection(Connection connection, QueryRequestDto request, RunningQuery running, Consumer<QueryStreamEventDto> sink) throws SQLException {
+        List<SqlStatementSlice> statements = splitSQLStatementSlices(request.sql());
+        int total = Math.max(statements.size(), 1);
+        boolean autoCommit = request.normalizedAutoCommit();
+        sink.accept(QueryStreamEventDto.start(total, autoCommit, messages.message("job.stage.preparingSqlFileExecution")));
+        if (statements.isEmpty()) {
+            sink.accept(QueryStreamEventDto.done(total, autoCommit, messages.message("query.streamCompleted")));
+            return;
+        }
+
+        if (autoCommit) {
+            for (int index = 0; index < statements.size(); index++) {
+                SqlStatementSlice statementSlice = statements.get(index);
+                String statementSql = statementSlice.sql().trim();
+                if (statementSql.isEmpty()) {
+                    continue;
+                }
+                ResultSetDataDto start = withStatementExecutionMetadata(
+                        new ResultSetDataDto(List.of(), List.of()),
+                        statementSlice,
+                        index + 1,
+                        null,
+                        messages.message("job.stage.executingSqlStatement", "current", index + 1, "total", total)
+                );
+                sink.accept(QueryStreamEventDto.statementStart(start, total, true, start.message()));
+                try (Statement statement = connection.createStatement()) {
+                    configureStatement(statement, request.connection(), running);
+                    ResultSetDataDto resultSet = executeStatement(statement, statementSql, running);
+                    sink.accept(QueryStreamEventDto.statementResult(
+                            withStatementExecutionMetadata(resultSet, statementSlice, index + 1, "success", messages.message("common.operationSucceeded")),
+                            total,
+                            true
+                    ));
+                } catch (SQLException error) {
+                    if (isQueryCancellation(error)) {
+                        throw error;
+                    }
+                    sink.accept(QueryStreamEventDto.statementResult(statementFailureResult(statementSlice, index + 1, error, false), total, true));
+                    return;
+                }
+            }
+            sink.accept(QueryStreamEventDto.done(total, true, messages.message("query.streamCompleted")));
+            return;
+        }
+
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try {
+            for (int index = 0; index < statements.size(); index++) {
+                SqlStatementSlice statementSlice = statements.get(index);
+                String statementSql = statementSlice.sql().trim();
+                if (statementSql.isEmpty()) {
+                    continue;
+                }
+                ResultSetDataDto start = withStatementExecutionMetadata(
+                        new ResultSetDataDto(List.of(), List.of()),
+                        statementSlice,
+                        index + 1,
+                        null,
+                        messages.message("job.stage.executingSqlStatement", "current", index + 1, "total", total)
+                );
+                sink.accept(QueryStreamEventDto.statementStart(start, total, false, start.message()));
+                try (Statement statement = connection.createStatement()) {
+                    configureStatement(statement, request.connection(), running);
+                    ResultSetDataDto resultSet = executeStatement(statement, statementSql, running);
+                    sink.accept(QueryStreamEventDto.statementResult(
+                            withStatementExecutionMetadata(resultSet, statementSlice, index + 1, "pending", messages.message("query.statement.pendingCommit")),
+                            total,
+                            false
+                    ));
+                } catch (SQLException error) {
+                    if (isQueryCancellation(error)) {
+                        throw error;
+                    }
+                    connection.rollback();
+                    ResultSetDataDto failed = statementFailureResult(statementSlice, index + 1, error, true);
+                    sink.accept(QueryStreamEventDto.statementResult(failed, total, false));
+                    sink.accept(QueryStreamEventDto.transaction("transactionRolledBack", total, messages.message("query.transactionRolledBack"), true));
+                    return;
+                }
+            }
+            running.throwIfCancelled();
+            connection.commit();
+            sink.accept(QueryStreamEventDto.transaction("transactionCommitted", total, messages.message("query.transactionCommitted"), false));
+            sink.accept(QueryStreamEventDto.done(total, false, messages.message("query.streamCompleted")));
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
     }
 
     private List<ResultSetDataDto> executeMultiWithProgressOnConnection(Connection connection, QueryRequestDto request, RunningQuery running, JobProgressSink progress) throws SQLException {

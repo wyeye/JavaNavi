@@ -51,6 +51,10 @@ public class I18nMessages {
         put("security.originRejected", "Request origin is not allowed for JavaNavi local API.", "请求来源不允许访问 JavaNavi 本地 API。");
         put("security.localSessionRequired", "A valid JavaNavi local session token is required for credential-bearing API calls.", "涉及凭据的 API 调用需要有效的 JavaNavi 本地会话令牌。");
         put("common.operationSucceeded", "Operation succeeded.", "操作成功。");
+        put("query.statement.pendingCommit", "Statement executed. Waiting for transaction commit.", "语句已执行，等待事务提交。");
+        put("query.transactionCommitted", "Transaction committed.", "事务已提交。");
+        put("query.transactionRolledBack", "Transaction rolled back.", "事务已回滚。");
+        put("query.streamCompleted", "Query batch executed.", "查询批量执行完成。");
         put("common.connectionSucceeded", "Connection succeeded.", "连接成功。");
         put("common.setSucceeded", "Saved successfully.", "设置成功。");
         put("common.deleteSucceeded", "Deleted successfully.", "删除成功。");

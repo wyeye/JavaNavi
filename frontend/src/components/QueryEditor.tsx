@@ -8,7 +8,7 @@ import { format } from 'sql-formatter';
 import { v4 as uuidv4 } from 'uuid';
 import type { TabData, ColumnDefinition, IndexDefinition, SavedConnection } from '../types';
 import { useStore } from '../store';
-import { DBQueryWithCancel, DBQueryMulti, DBGetTables, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetIndexes, CancelQuery, GenerateQueryID, WriteSQLFile, type QueryResult } from '@compat/javanaviApp';
+import { DBQueryWithCancel, DBQueryMulti, DBQueryMultiStream, DBGetTables, DBGetAllColumns, DBGetDatabases, DBGetColumns, DBGetIndexes, CancelQuery, GenerateQueryID, WriteSQLFile, type QueryResult, type QueryStreamEvent } from '@compat/javanaviApp';
 import DataGrid, { JAVANAVI_ROW_KEY } from './DataGrid';
 import ExecutionPlanResultView from './ExecutionPlanResultView';
 import { applyQueryAutoLimit } from '../utils/queryAutoLimit';
@@ -41,7 +41,7 @@ type TableMeta = { dbName: string; tableName: string };
 type ColumnMeta = { dbName: string; tableName: string; name: string; type: string };
 type QueryResultSetData = { columns?: string[]; rows?: QueryRow[]; statementIndex?: number; startLine?: number; endLine?: number; sql?: string; status?: string; message?: string; transactionRolledBack?: boolean };
 type AffectedRowsPayload = { affectedRows?: number };
-type StatementExecutionStatus = 'success' | 'error';
+type StatementExecutionStatus = 'success' | 'error' | 'pending' | 'rolledBack';
 type DatabaseRow = { Database?: unknown; database?: unknown };
 type SlashCommandDef = { cmd: string; label: string; desc: string; prompt: string; useSelection?: boolean };
 type InsertSqlEventDetail = { tabId?: string; sql?: string; connectionId?: string; dbName?: string; runImmediately?: boolean };
@@ -1504,7 +1504,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             }
 
         } else {
-            // 非 MongoDB：使用 DBQueryMulti 一次性执行多条 SQL，后端返回多结果集
+            // 非 MongoDB：一次提交 SQL，后端逐条流式返回结果集
             let fullSQL = normalizedRawSQL;
             if (!fullSQL.trim()) {
                 message.info(t('queryEditor.noExecutableSql'));
@@ -1536,10 +1536,84 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             }
             setQueryId(queryId);
 
-            const res = await DBQueryMulti(rpcConfig, currentDb, fullSQL, queryId, runSource || 'query', queryExecutionOptions);
+            const maxRows = Number(queryOptions?.maxRows) || 0;
+            const forceReadOnlyResult = connCaps.forceReadOnlyQueryResult;
+            // 前端也拆分语句用于匹配原始 SQL（展示和表名检测）
+            const statements = splitSQLStatements(fullSQL);
+
+            const resolveSimpleResultTableName = (rawStatement: string): string | undefined => {
+                if (!rawStatement) return undefined;
+                // 支持多行 SQL：SELECT [cols] FROM [schema.]table [WHERE...] [ORDER BY...] [LIMIT...] 等
+                // JOIN 查询表名歧义，不提取。Oracle 无主键结果需要 ROWID 时，只在用户已显式选出 ROWID 时启用编辑。
+                const hasJoin = /\bJOIN\b/i.test(rawStatement);
+                const tableMatch = !hasJoin
+                    ? rawStatement.match(/^\s*SELECT\s+.+?\s+FROM\s+(?:[\w`"\[\].]+\.)?[`"\[]?(\w+)[`"\]]?\s*(?:$|[\s;])/im)
+                    : null;
+                return tableMatch ? tableMatch[1] : undefined;
+            };
+            const canLoadPrimaryKeysForResult = (tableName: string): boolean => !!tableName && !forceReadOnlyResult && !anyLimitApplied;
+            const buildGroupedResult = (input: QueryResultSetData[], allowPrimaryKeys: boolean) => buildQueryResultGroups<RunSource, EditRowLocator>({
+                resultSetDataArray: input,
+                statements,
+                maxRows,
+                anyLimitApplied,
+                source: runSource,
+                rowKeyField: JAVANAVI_ROW_KEY,
+                successText: t('queryEditor.status.success'),
+                errorText: t('queryEditor.status.error'),
+                pendingText: t('queryEditor.status.pendingCommit'),
+                rolledBackText: t('queryEditor.status.rolledBack'),
+                operationSucceededText: t('queryEditor.executionSucceededBare'),
+                operationFailedText: t('queryEditor.executionFailed'),
+                resolveReadOnlyLocator: (cols) => resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [], dbType: normalizedDbType, language }),
+                resolveSimpleTableName: resolveSimpleResultTableName,
+                canLoadPrimaryKeys: (tableName) => allowPrimaryKeys && canLoadPrimaryKeysForResult(tableName),
+            });
+            const publishStreamResultSets = (input: QueryResultSetData[]) => {
+                const grouped = buildGroupedResult(input, false);
+                const next = grouped.resultGroups.map((group) => ({ ...group, source: group.source as RunSource | undefined })) as ResultSet[];
+                setResultSets(next);
+                setActiveResultKey(prev => prev || next[0]?.key || '');
+            };
+
+            let streamedResultSetDataArray: QueryResultSetData[] = [];
+            const res = await DBQueryMultiStream(
+                rpcConfig,
+                currentDb,
+                fullSQL,
+                queryId,
+                runSource || 'query',
+                queryExecutionOptions,
+                (event: QueryStreamEvent) => {
+                    if (runSeqRef.current !== runSeq) return;
+                    if (event.type === 'statementResult' && event.resultSet && isRecord(event.resultSet)) {
+                        streamedResultSetDataArray = [...streamedResultSetDataArray, event.resultSet as QueryResultSetData];
+                        publishStreamResultSets(streamedResultSetDataArray);
+                        return;
+                    }
+                    if (event.type === 'transactionCommitted') {
+                        streamedResultSetDataArray = streamedResultSetDataArray.map(item => (
+                            item.status === 'pending'
+                                ? { ...item, status: 'success', message: event.message || t('queryEditor.executionSucceededBare') }
+                                : item
+                        ));
+                        publishStreamResultSets(streamedResultSetDataArray);
+                        return;
+                    }
+                    if (event.type === 'transactionRolledBack') {
+                        streamedResultSetDataArray = streamedResultSetDataArray.map(item => (
+                            item.status === 'pending' || item.status === 'success'
+                                ? { ...item, status: 'rolledBack', message: event.message || t('queryEditor.status.rolledBack'), transactionRolledBack: true }
+                                : item
+                        ));
+                        publishStreamResultSets(streamedResultSetDataArray);
+                    }
+                },
+            );
             const duration = Date.now() - startTime;
 
-            if (!res.success) {
+            const resultSetDataArray = streamedResultSetDataArray.length > 0 ? streamedResultSetDataArray : queryResultSetDataArray(res);
+            if (!res.success && resultSetDataArray.length === 0) {
                 addSqlLog({
                     id: `log-${Date.now()}-query-multi`,
                     timestamp: Date.now(),
@@ -1577,8 +1651,6 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 return;
             }
 
-            // res.data 是 ResultSetData[] 数组
-            const resultSetDataArray = queryResultSetDataArray(res);
             const backendFailedResult = resultSetDataArray.find(item => item.status === 'error');
             const failureLogMessage = backendFailedResult
                 ? t(backendFailedResult.transactionRolledBack ? 'queryEditor.statement.failedWithRollback' : 'queryEditor.statement.failedWithMessage', {
@@ -1590,48 +1662,15 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 id: `log-${Date.now()}-query-multi`,
                 timestamp: Date.now(),
                 sql: fullSQL,
-                status: backendFailedResult ? 'error' : 'success',
+                status: backendFailedResult || !res.success ? 'error' : 'success',
                 duration,
-                message: failureLogMessage,
+                message: failureLogMessage || (!res.success ? res.message : ''),
                 dbName: currentDb
             });
-            const nextResultSets: ResultSet[] = [];
-            const maxRows = Number(queryOptions?.maxRows) || 0;
-            const forceReadOnlyResult = connCaps.forceReadOnlyQueryResult;
-            let anyTruncated = false;
             const pendingPk: Array<{ resultKey: string; tableName: string }> = [];
-
-            // 前端也拆分语句用于匹配原始 SQL（展示和表名检测）
-            const statements = splitSQLStatements(fullSQL);
-
-            const resolveSimpleResultTableName = (rawStatement: string): string | undefined => {
-                if (!rawStatement) return undefined;
-                // 支持多行 SQL：SELECT [cols] FROM [schema.]table [WHERE...] [ORDER BY...] [LIMIT...] 等
-                // JOIN 查询表名歧义，不提取。Oracle 无主键结果需要 ROWID 时，只在用户已显式选出 ROWID 时启用编辑。
-                const hasJoin = /\bJOIN\b/i.test(rawStatement);
-                const tableMatch = !hasJoin
-                    ? rawStatement.match(/^\s*SELECT\s+.+?\s+FROM\s+(?:[\w`"\[\].]+\.)?[`"\[]?(\w+)[`"\]]?\s*(?:$|[\s;])/im)
-                    : null;
-                return tableMatch ? tableMatch[1] : undefined;
-            };
-            const canLoadPrimaryKeysForResult = (tableName: string): boolean => !!tableName && !forceReadOnlyResult && !anyLimitApplied;
-            const groupedResult = buildQueryResultGroups<RunSource, EditRowLocator>({
-                resultSetDataArray,
-                statements,
-                maxRows,
-                anyLimitApplied,
-                source: runSource,
-                rowKeyField: JAVANAVI_ROW_KEY,
-                successText: t('queryEditor.status.success'),
-                errorText: t('queryEditor.status.error'),
-                operationSucceededText: t('queryEditor.executionSucceededBare'),
-                operationFailedText: t('queryEditor.executionFailed'),
-                resolveReadOnlyLocator: (cols) => resolveEditRowLocator({ resultColumns: cols, primaryKeys: [], indexes: [], dbType: normalizedDbType, language }),
-                resolveSimpleTableName: resolveSimpleResultTableName,
-                canLoadPrimaryKeys: canLoadPrimaryKeysForResult,
-            });
-            nextResultSets.push(...groupedResult.resultGroups.map((group) => ({ ...group, source: group.source as RunSource | undefined })) as ResultSet[]);
-            anyTruncated = groupedResult.anyTruncated;
+            const groupedResult = buildGroupedResult(resultSetDataArray, true);
+            const nextResultSets = groupedResult.resultGroups.map((group) => ({ ...group, source: group.source as RunSource | undefined })) as ResultSet[];
+            let anyTruncated = groupedResult.anyTruncated;
             pendingPk.push(...groupedResult.pendingPk);
 
             setResultSets(nextResultSets);
@@ -2369,30 +2408,44 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       const isStatementSummaryResult = rs.statementSummary === true;
                       if (isAffectedResult) {
                           const affected = Number(rs.rows[0]?.affectedRows ?? 0);
+                          const affectedStatus = rs.status || 'success';
+                          const affectedOk = affectedStatus !== 'error' && affectedStatus !== 'rolledBack';
+                          const title = statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine);
+                          const statusText = affectedStatus === 'pending'
+                              ? t('queryEditor.statement.pendingWithMessage', { title, message: rs.message || t('queryEditor.status.pendingCommit') })
+                              : (affectedStatus === 'rolledBack'
+                                  ? t('queryEditor.statement.rolledBackWithMessage', { title, message: rs.message || t('queryEditor.status.rolledBack') })
+                                  : t('queryEditor.statement.succeeded', { title }));
                           return (
                               <div style={{
                                   flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
                                   flexDirection: 'column', gap: 8, color: '#666', userSelect: 'text',
                               }}>
-                                  <span style={{ fontSize: 36, color: '#52c41a' }}>✓</span>
-                                  <span style={{ fontSize: 14, fontWeight: 500 }}>{t('queryEditor.statement.succeeded', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine) })}</span>
+                                  <span style={{ fontSize: 36, color: affectedOk ? '#52c41a' : '#cf1322' }}>{affectedOk ? '✓' : '×'}</span>
+                                  <span style={{ fontSize: 14, fontWeight: 500 }}>{statusText}</span>
                                   <span style={{ fontSize: 13, color: '#999' }}>{t('queryEditor.affectedRows', { affectedRows: affected })}</span>
                               </div>
                           );
                       }
                       if (isStatementSummaryResult) {
-                          const ok = rs.status !== 'error';
+                          const ok = rs.status !== 'error' && rs.status !== 'rolledBack';
+                          const title = statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine);
+                          const summaryText = rs.status === 'pending'
+                              ? t('queryEditor.statement.pendingWithMessage', { title, message: rs.message || t('queryEditor.status.pendingCommit') })
+                              : (rs.status === 'rolledBack'
+                                  ? t('queryEditor.statement.rolledBackWithMessage', { title, message: rs.message || t('queryEditor.status.rolledBack') })
+                                  : (ok
+                                      ? t('queryEditor.statement.succeededWithMessage', { title, message: rs.message || t('queryEditor.executionSucceededBare') })
+                                      : t(rs.transactionRolledBack ? 'queryEditor.statement.failedWithRollback' : 'queryEditor.statement.failedWithMessage', { title, message: rs.message || t('queryEditor.executionFailed') })));
                           return (
                               <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
                                   <div style={{ padding: '10px 12px', color: ok ? '#389e0d' : '#cf1322', background: ok ? '#f6ffed' : '#fff2f0', borderBottom: `1px solid ${ok ? '#b7eb8f' : '#ffccc7'}` }}>
-                                      {ok
-                                          ? t('queryEditor.statement.succeededWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionSucceededBare') })
-                                          : t(rs.transactionRolledBack ? 'queryEditor.statement.failedWithRollback' : 'queryEditor.statement.failedWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionFailed') })}
+                                      {summaryText}
                                   </div>
                                   <DataGrid
                                       data={rs.rows}
                                       columnNames={rs.columns}
-                                      loading={loading}
+                                      loading={false}
                                       exportScope="queryResult"
                                       resultSql={rs.exportSql || rs.sql}
                                       dbName={currentDb}
@@ -2409,7 +2462,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                           <DataGrid
                               data={rs.rows}
                               columnNames={rs.columns}
-                              loading={loading}
+                              loading={false}
                               tableName={rs.tableName}
                               exportScope="queryResult"
                               resultSql={rs.exportSql || rs.sql}
@@ -2428,10 +2481,17 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                               </ExecutionPlanResultView>
                           );
                       }
+                      const resultOk = rs.status !== 'error' && rs.status !== 'rolledBack';
+                      const title = statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine);
+                      const resultMessage = rs.status === 'pending'
+                          ? t('queryEditor.statement.pendingWithMessage', { title, message: rs.message || t('queryEditor.status.pendingCommit') })
+                          : (rs.status === 'rolledBack'
+                              ? t('queryEditor.statement.rolledBackWithMessage', { title, message: rs.message || t('queryEditor.status.rolledBack') })
+                              : t('queryEditor.statement.succeededWithMessage', { title, message: rs.message || t('queryEditor.executionSucceededBare') }));
                       return (
                           <div style={{ flex: 1, minHeight: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-                              <div style={{ padding: '10px 12px', color: '#389e0d', background: '#f6ffed', borderBottom: '1px solid #b7eb8f' }}>
-                                  {t('queryEditor.statement.succeededWithMessage', { title: statementResultTitle(t, rs.statementIndex, rs.startLine, rs.endLine), message: rs.message || t('queryEditor.executionSucceededBare') })}
+                              <div style={{ padding: '10px 12px', color: resultOk ? '#389e0d' : '#cf1322', background: resultOk ? '#f6ffed' : '#fff2f0', borderBottom: `1px solid ${resultOk ? '#b7eb8f' : '#ffccc7'}` }}>
+                                  {resultMessage}
                               </div>
                               {grid}
                           </div>
