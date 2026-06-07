@@ -4,6 +4,7 @@ import { ClearOutlined, CloseOutlined, BugOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
 import { normalizeOpacityForPlatform, resolveAppearanceValues } from '../utils/appearance';
 import type { SqlLog } from '../store';
+import { translate, type I18nKey, type I18nParams } from '../i18n';
 
 interface LogPanelProps {
     height: number;
@@ -16,6 +17,8 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
     const clearSqlLogs = useStore(state => state.clearSqlLogs);
     const theme = useStore(state => state.theme);
     const appearance = useStore(state => state.appearance);
+    const language = useStore(state => state.language);
+    const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
     const darkMode = theme === 'dark';
     const resolvedAppearance = resolveAppearanceValues(appearance);
     const opacity = normalizeOpacityForPlatform(resolvedAppearance.opacity);
@@ -64,13 +67,13 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
 
     const columns = [
         {
-            title: 'Time',
+            title: t('logPanel.column.time'),
             dataIndex: 'timestamp',
             width: 80,
             render: (ts: number) => <span style={{ color: panelMutedTextColor, fontSize: '12px' }}>{new Date(ts).toLocaleTimeString()}</span>
         },
         {
-            title: 'Status',
+            title: t('logPanel.column.status'),
             dataIndex: 'status',
             width: 70,
             render: (status: string) => (
@@ -80,19 +83,19 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
             )
         },
         {
-            title: 'Duration',
+            title: t('logPanel.column.duration'),
             dataIndex: 'duration',
             width: 70,
             render: (d: number) => <span style={{ color: d > 1000 ? 'orange' : 'inherit', fontSize: '12px' }}>{d}ms</span>
         },
         {
-            title: 'SQL / Message',
+            title: t('logPanel.column.sqlMessage'),
             dataIndex: 'sql',
             render: (text: string, record: SqlLog) => (
                 <div style={{ fontFamily: 'monospace', wordBreak: 'break-all', fontSize: '12px', lineHeight: '1.45' }}>
                     <div style={{ color: darkMode ? '#a6e22e' : '#005cc5' }}>{text}</div>
                     {record.message && <div style={{ color: '#ff4d4f', marginTop: 2 }}>{record.message}</div>}
-                    {record.affectedRows !== undefined && <div style={{ color: panelMutedTextColor, marginTop: 1 }}>Affected: {record.affectedRows}</div>}
+                    {record.affectedRows !== undefined && <div style={{ color: panelMutedTextColor, marginTop: 1 }}>{t('logPanel.affected', { count: record.affectedRows })}</div>}
                 </div>
             )
         }
@@ -143,23 +146,23 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
                         <BugOutlined />
                     </div>
                     <div style={{ minWidth: 0 }}>
-                        <div style={{ fontWeight: 700, fontSize: 13, color: darkMode ? '#f5f7ff' : '#162033' }}>SQL 执行日志</div>
-                        <div style={{ fontSize: 12, color: panelMutedTextColor }}>记录执行状态、耗时与错误信息，便于快速回溯。</div>
+                        <div style={{ fontWeight: 700, fontSize: 13, color: darkMode ? '#f5f7ff' : '#162033' }}>{t('logPanel.title')}</div>
+                        <div style={{ fontSize: 12, color: panelMutedTextColor }}>{t('logPanel.description')}</div>
                     </div>
                 </div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                     <Input.Search
                         allowClear
                         size="small"
-                        placeholder="搜索 SQL / 信息 / 数据库"
+                        placeholder={t('logPanel.searchPlaceholder')}
                         value={sqlLogSearchTerm}
                         onChange={(event) => setSqlLogSearchTerm(event.target.value)}
                         style={{ width: 220 }}
                     />
-                    <Tooltip title="清空日志">
+                    <Tooltip title={t('logPanel.clearTooltip')}>
                         <Button type="text" size="small" icon={<ClearOutlined />} onClick={clearSqlLogs} style={{ color: panelMutedTextColor }} />
                     </Tooltip>
-                    <Tooltip title="关闭面板">
+                    <Tooltip title={t('logPanel.closeTooltip')}>
                         <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose} style={{ color: panelMutedTextColor }} />
                     </Tooltip>
                 </div>
@@ -171,14 +174,14 @@ const LogPanel: React.FC<LogPanelProps> = ({ height, onClose, onResizeStart }) =
                     <div style={{ height: '100%', minHeight: 160, display: 'grid', placeItems: 'center' }}>
                         <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={<span style={{ color: panelMutedTextColor }}>暂无 SQL 执行日志</span>}
+                            description={<span style={{ color: panelMutedTextColor }}>{t('logPanel.empty')}</span>}
                         />
                     </div>
                 ) : filteredSqlLogs.length === 0 ? (
                     <div style={{ height: '100%', minHeight: 160, display: 'grid', placeItems: 'center' }}>
                         <Empty
                             image={Empty.PRESENTED_IMAGE_SIMPLE}
-                            description={<span style={{ color: panelMutedTextColor }}>未找到匹配日志</span>}
+                            description={<span style={{ color: panelMutedTextColor }}>{t('logPanel.noMatch')}</span>}
                         />
                     </div>
                 ) : (

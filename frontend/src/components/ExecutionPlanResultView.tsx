@@ -68,7 +68,7 @@ const ExecutionPlanStepCard: React.FC<{ step: ExecutionPlanStep; darkMode: boole
       <Text strong ellipsis={{ tooltip: step.tableName }}>{step.tableName}</Text>
       {step.accessType && <Tag color={getAccessTagColor(step.accessType)}>{step.accessType}</Tag>}
       {step.warnings.map((warning) => (
-        <Tag key={warning.kind} color={warning.severity === 'danger' ? 'red' : 'orange'}>{warning.label}</Tag>
+        <Tag key={warning.kind} color={warning.severity === 'danger' ? 'red' : 'orange'}>{t(warning.labelKey)}</Tag>
       ))}
     </div>
     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))', gap: 10 }}>
@@ -110,7 +110,7 @@ const ExecutionPlanStepList: React.FC<{ steps: ExecutionPlanStep[]; darkMode: bo
         <Text>{formatNumber(step.estimatedRows)}</Text>
         <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', minWidth: 0 }}>
           {step.warnings.length > 0 ? step.warnings.map((warning) => (
-            <Tag key={warning.kind} color={warning.severity === 'danger' ? 'red' : 'orange'} style={{ marginInlineEnd: 0 }}>{warning.label}</Tag>
+            <Tag key={warning.kind} color={warning.severity === 'danger' ? 'red' : 'orange'} style={{ marginInlineEnd: 0 }}>{t(warning.labelKey)}</Tag>
           )) : <Text type="secondary">{t('queryEditor.executionPlan.noWarnings')}</Text>}
         </div>
       </div>

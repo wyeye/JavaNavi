@@ -207,7 +207,7 @@ export async function GetJobs(limit = 100): Promise<AppJob[]> {
 
 export async function CancelJob(jobId: string): Promise<AppJob> {
   const id = String(jobId || '').trim();
-  if (!id) throw new Error('Job ID is required.');
+  if (!id) throw new Error(localText('compat.jobIdRequired'));
   const payload = await postJson(`/jobs/${encodeURIComponent(id)}/cancel`, {});
   return normalizeJob(dataOrThrow(payload, 'Failed to cancel task.'));
 }
@@ -513,7 +513,7 @@ export async function ClearTables(arg1:connection.ConnectionConfig,arg2:string,a
 export async function CopyTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>,arg4:string,arg5:string,arg6:boolean): Promise<connection.QueryResult> {
   const tableNames = arg3 || [];
   const payload = await postJson('/jobs/copy-tables', {
-    title: `Backup ${tableNames.length || 1} table${tableNames.length === 1 ? '' : 's'}`,
+    title: localText('compat.job.backupTablesTitle', { count: tableNames.length || 1, plural: tableNames.length === 1 ? '' : 's' }),
     connection: toConnectionPayload(arg1),
     database: arg2,
     tables: tableNames,
@@ -902,7 +902,7 @@ export async function ExportData(arg1:DataRow[],arg2:Array<string>,arg3:string,a
     extension,
   });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Data exported');
-  const payload = await postJson('/jobs/export-data', { title: `Export ${arg3 || 'data'}`, rows: arg1 || [], columns: arg2 || [], defaultName: arg3, format: arg4, targetPath });
+  const payload = await postJson('/jobs/export-data', { title: localText('compat.job.exportDataTitle', { name: arg3 || 'data' }), rows: arg1 || [], columns: arg2 || [], defaultName: arg3, format: arg4, targetPath });
   return jobQueryResult(payload, 'Data export task created');
 }
 
@@ -946,7 +946,7 @@ export async function ExportTablesDataSQL(arg1:connection.ConnectionConfig,arg2:
   const defaultName = exportDefaultName(defaultBaseName, 'sql');
   const targetPath = await prepareExportDestination({ kind: 'tables-sql', defaultName, extension: 'sql' });
   if (targetPath === undefined) return apiEnvelopeToQueryResult({ success: false, error: { message: 'Cancelled' }, data: null }, 'Tables data SQL exported');
-  const payload = await postJson('/jobs/export-tables', { title: `Export data for ${tableNames.length || 1} table${tableNames.length === 1 ? '' : 's'}`, connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, includeSchema: false, includeData: true, defaultName: defaultBaseName, targetPath });
+  const payload = await postJson('/jobs/export-tables', { title: localText('compat.job.exportTablesDataTitle', { count: tableNames.length || 1, plural: tableNames.length === 1 ? '' : 's' }), connection: toConnectionPayload(arg1), database: arg2, tables: tableNames, includeSchema: false, includeData: true, defaultName: defaultBaseName, targetPath });
   return jobQueryResult(payload, 'Tables data SQL export task created');
 }
 
@@ -997,7 +997,7 @@ export async function InstallDesktopUpdate(): Promise<connection.QueryResult> {
 export async function RestartDesktopApp(): Promise<connection.QueryResult> {
   const result = tauriInvoke<null>('restart_desktop_app', {});
   if (!result) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Tauri restart bridge is not available.' }, data: null }, 'Desktop restart unavailable');
+    return apiEnvelopeToQueryResult({ success: false, error: { message: localText('compat.restartBridgeUnavailable') }, data: null }, 'Desktop restart unavailable');
   }
   try {
     await result;
@@ -1204,7 +1204,7 @@ export async function OpenSQLFile(): Promise<connection.QueryResult> {
   const selectedData = recordValue(selected.data);
   const selectedPath = resolveSelectedSqlFilePath(selectedData);
   if (!selectedPath) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: 'SQL file selection was cancelled.' }, data: null }, 'SQL file opened');
+    return apiEnvelopeToQueryResult({ success: false, error: { message: localText('compat.sqlFileSelectionCancelled') }, data: null }, 'SQL file opened');
   }
   const result = await ReadLocalFile(selectedPath);
   const data = recordValue(result.data);
@@ -1216,7 +1216,7 @@ export async function OpenSQLFile(): Promise<connection.QueryResult> {
 
 export async function SelectLocalFile(kind: string, currentPath = ''): Promise<connection.QueryResult> {
   if (!isJavaNaviDesktopRuntime()) {
-    return apiEnvelopeToQueryResult({ success: false, error: { message: 'Browser mode requires upload-based file selection.' }, data: null }, 'Local file selection unavailable');
+    return apiEnvelopeToQueryResult({ success: false, error: { message: localText('compat.uploadFileSelectionRequired') }, data: null }, 'Local file selection unavailable');
   }
   const nativeSelection = tauriInvoke<UnknownRecord>('select_local_file', { request: { kind, currentPath } });
   if (nativeSelection) {

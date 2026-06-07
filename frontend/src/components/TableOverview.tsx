@@ -190,6 +190,15 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const language = useStore(state => state.language);
     const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
     const darkMode = theme === 'dark';
+    const isCancelledMessage = useCallback((value: unknown) => {
+        const normalized = String(value || '').trim().toLowerCase();
+        if (!normalized) return false;
+        const cancelledTexts = [
+            translate('en', 'export.cancelled'),
+            translate('zh', 'export.cancelled'),
+        ].map(item => item.trim().toLowerCase());
+        return cancelledTexts.includes(normalized);
+    }, []);
 
     const [tables, setTables] = useState<TableStatRow[]>([]);
     const [loading, setLoading] = useState(true);
@@ -231,10 +240,10 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             if (res.success && Array.isArray(res.data)) {
                 setTables(parseTableStats(metadataDialect, res.data as QueryRow[]));
             } else {
-                message.error('获取表信息失败: ' + (res.message || '未知错误'));
+                message.error(t('tableOverview.loadInfoFailed', { message: res.message || t('message.unknownError') }));
             }
         } catch (e: unknown) {
-            message.error('获取表信息失败: ' + getErrorMessage(e));
+            message.error(t('tableOverview.loadInfoFailed', { message: getErrorMessage(e) }));
         } finally {
             setLoading(false);
         }
@@ -317,7 +326,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         setActiveContext({ connectionId: connection.id, dbName: tab.dbName || '' });
         addTab({
             id: `design-${connection.id}-${tab.dbName}-${tableName}`,
-            title: `设计表 (${tableName})`,
+            title: t('tableOverview.designTableTitle', { table: tableName }),
             type: 'design',
             connectionId: connection.id,
             dbName: tab.dbName,
@@ -358,10 +367,10 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         const res = await ExportTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName, format);
         if (res.success) {
             showTaskCreated();
-        } else if (res.message !== '已取消') {
+        } else if (!isCancelledMessage(res.message)) {
             message.error(t('sidebar.msg.exportFailed', { message: res.message }));
         }
-    }, [buildConfig, showTaskCreated, tab.dbName, t]);
+    }, [buildConfig, isCancelledMessage, showTaskCreated, tab.dbName, t]);
 
     const handleBulkExportTableData = useCallback(async () => {
         const config = buildConfig();
@@ -374,13 +383,13 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             const res = await ExportTablesDataSQL(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames);
             if (res.success) {
                 showTaskCreated();
-            } else if (res.message !== '已取消') {
+            } else if (!isCancelledMessage(res.message)) {
                 message.error(t('sidebar.msg.exportFailed', { message: res.message }));
             }
         } catch (e: unknown) {
             message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
         }
-    }, [buildConfig, selectedTableNames, showTaskCreated, tab.dbName, t]);
+    }, [buildConfig, isCancelledMessage, selectedTableNames, showTaskCreated, tab.dbName, t]);
 
     const handleBulkBackupTables = useCallback(async () => {
         const config = buildConfig();
@@ -393,13 +402,13 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             const res = await ExportTablesSQL(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames, true);
             if (res.success) {
                 showTaskCreated();
-            } else if (res.message !== '已取消') {
+            } else if (!isCancelledMessage(res.message)) {
                 message.error(t('sidebar.msg.exportFailed', { message: res.message }));
             }
         } catch (e: unknown) {
             message.error(t('sidebar.msg.exportFailed', { message: getErrorMessage(e) }));
         }
-    }, [buildConfig, selectedTableNames, showTaskCreated, tab.dbName, t]);
+    }, [buildConfig, isCancelledMessage, selectedTableNames, showTaskCreated, tab.dbName, t]);
 
     const handleBulkCopyStructure = useCallback(async () => {
         const config = buildConfig();
@@ -429,16 +438,16 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         const config = buildConfig();
         if (!config) return;
         Modal.confirm({
-            title: '确认删除表',
-            content: `确定删除表 "${tableName}" 吗？该操作不可恢复。`,
+            title: t('tableOverview.deleteConfirmTitle'),
+            content: t('tableOverview.deleteConfirmContent', { table: tableName }),
             okButtonProps: { danger: true },
             onOk: async () => {
                 const res = await DropTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
                 if (res.success) {
-                    message.success('表删除成功');
+                    message.success(t('tableOverview.deleteSuccess'));
                     loadData();
                 } else {
-                    message.error('删除失败: ' + res.message);
+                    message.error(t('tableOverview.deleteFailed', { message: res.message }));
                 }
             },
         });
@@ -448,29 +457,29 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         const config = buildConfig();
         if (!config) return;
 
-        const { label, progressLabel } = getTableDataDangerActionMeta(action);
+        const { label, progressLabel } = getTableDataDangerActionMeta(action, t);
         Modal.confirm({
-            title: `确认${label}`,
-            content: `${label}会永久删除表 "${tableName}" 中的所有数据，操作不可逆，是否继续？`,
-            okText: '继续',
-            cancelText: '取消',
+            title: t('tableOverview.singleDangerTitle', { label }),
+            content: t('tableOverview.singleDangerContent', { label, table: tableName }),
+            okText: t('sidebar.modal.continue'),
+            cancelText: t('common.cancel'),
             okButtonProps: { danger: true },
             onOk: async () => {
                 const method = action === 'truncate' ? TruncateTables : ClearTables;
-                const hide = message.loading(`正在${progressLabel} ${tableName}...`, 0);
+                const hide = message.loading(t('tableOverview.singleDangerLoading', { label: progressLabel, table: tableName }), 0);
                 try {
                     const res = await method(buildRpcConnectionConfig(config), tab.dbName || '', [tableName]);
                     hide();
                     if (res.success) {
-                        message.success(`${progressLabel}成功`);
+                        message.success(t('tableOverview.singleDangerSuccess', { label: progressLabel }));
                         loadData();
                     } else {
-                        message.error(`${progressLabel}失败: ${res.message}`);
+                        message.error(t('tableOverview.singleDangerFailed', { label: progressLabel, message: res.message }));
                         return Promise.reject();
                     }
                 } catch (e: unknown) {
                     hide();
-                    message.error(`${progressLabel}失败: ${getErrorMessage(e)}`);
+                    message.error(t('tableOverview.singleDangerFailed', { label: progressLabel, message: getErrorMessage(e) }));
                     return Promise.reject();
                 }
             },
@@ -485,7 +494,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             return;
         }
 
-        const { label, progressLabel } = getTableDataDangerActionMeta(action);
+        const { label, progressLabel } = getTableDataDangerActionMeta(action, t);
         Modal.confirm({
             title: t('tableOverview.bulk.confirmDangerTitle', { label }),
             content: t('tableOverview.bulk.confirmDangerContent', { label, count: selectedTableNames.length }),
@@ -553,27 +562,27 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         if (!config) return;
         let newName = tableName;
         Modal.confirm({
-            title: '重命名表',
+            title: t('tableOverview.renameTitle'),
             content: (
                 <Input
                     {...noAutoCapInputProps}
                     defaultValue={tableName}
                     onChange={e => { newName = e.target.value; }}
-                    placeholder="输入新表名"
+                    placeholder={t('tableOverview.renamePlaceholder')}
                     autoFocus
                     style={{ marginTop: 8 }}
                 />
             ),
             onOk: async () => {
                 const trimmed = newName.trim();
-                if (!trimmed) { message.error('表名不能为空'); return Promise.reject(); }
-                if (trimmed === tableName) { message.warning('新旧表名相同'); return; }
+                if (!trimmed) { message.error(t('tableOverview.renameNameRequired')); return Promise.reject(); }
+                if (trimmed === tableName) { message.warning(t('tableOverview.renameSameName')); return; }
                 const res = await RenameTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName, trimmed);
                 if (res.success) {
-                    message.success('表重命名成功');
+                    message.success(t('tableOverview.renameSuccess'));
                     loadData();
                 } else {
-                    message.error('重命名失败: ' + res.message);
+                    message.error(t('tableOverview.renameFailed', { message: res.message }));
                 }
             },
         });
@@ -767,7 +776,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         setActiveContext({ connectionId: tab.connectionId, dbName: tab.dbName || '' });
         addTab({
             id: `query-${Date.now()}`,
-            title: '新建查询',
+            title: t('tableOverview.menu.newQuery'),
             type: 'query',
             connectionId: tab.connectionId,
             dbName: tab.dbName,
@@ -778,25 +787,25 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     const allowTruncate = supportsTableTruncateAction(connection?.config?.type || '', connection?.config?.driver);
 
     const buildTableMenuItems = useCallback((table: TableStatRow): MenuProps['items'] => [
-        { key: 'new-query', label: '新建查询', icon: <ConsoleSqlOutlined />, onClick: () => openNewQueryForTable(table.name) },
+        { key: 'new-query', label: t('tableOverview.menu.newQuery'), icon: <ConsoleSqlOutlined />, onClick: () => openNewQueryForTable(table.name) },
         { type: 'divider' },
-        { key: 'design-table', label: '设计表', icon: <EditOutlined />, onClick: () => openDesign(table) },
+        { key: 'design-table', label: t('tableOverview.menu.designTable'), icon: <EditOutlined />, onClick: () => openDesign(table) },
         { key: 'copy-table', label: t('tableOverview.copy.action'), icon: <CopyOutlined />, onClick: () => openCopyTablesModal([table.name]) },
         { key: 'copy-structure', label: t('tableOverview.copy.structureToClipboard'), icon: <CopyOutlined />, onClick: () => handleCopyStructure(table.name) },
-        { key: 'backup-table', label: '备份表 (SQL)', icon: <SaveOutlined />, onClick: () => handleExport(table.name, 'sql') },
-        { key: 'rename-table', label: '重命名表', icon: <EditOutlined />, onClick: () => handleRenameTable(table.name) },
-        { key: 'danger-zone', label: '危险操作', icon: <WarningOutlined />, children: [
-            ...(allowTruncate ? [{ key: 'truncate-table', label: '截断表', danger: true, onClick: () => handleTableDataDangerAction(table.name, 'truncate') }] : []),
-            { key: 'clear-table', label: '清空表', danger: true, onClick: () => handleTableDataDangerAction(table.name, 'clear') },
-            { key: 'drop-table', label: '删除表', icon: <DeleteOutlined />, danger: true, onClick: () => handleDeleteTable(table.name) }
+        { key: 'backup-table', label: t('tableOverview.menu.backupSql'), icon: <SaveOutlined />, onClick: () => handleExport(table.name, 'sql') },
+        { key: 'rename-table', label: t('tableOverview.menu.renameTable'), icon: <EditOutlined />, onClick: () => handleRenameTable(table.name) },
+        { key: 'danger-zone', label: t('tableOverview.menu.dangerZone'), icon: <WarningOutlined />, children: [
+            ...(allowTruncate ? [{ key: 'truncate-table', label: t('tableOverview.menu.truncateTable'), danger: true, onClick: () => handleTableDataDangerAction(table.name, 'truncate') }] : []),
+            { key: 'clear-table', label: t('tableOverview.menu.clearTable'), danger: true, onClick: () => handleTableDataDangerAction(table.name, 'clear') },
+            { key: 'drop-table', label: t('tableOverview.menu.deleteTable'), icon: <DeleteOutlined />, danger: true, onClick: () => handleDeleteTable(table.name) }
         ]},
         { type: 'divider' },
-        { key: 'export', label: '导出表数据', icon: <ExportOutlined />, children: [
-            { key: 'export-csv', label: '导出 CSV', onClick: () => handleExport(table.name, 'csv') },
-            { key: 'export-xlsx', label: '导出 Excel (XLSX)', onClick: () => handleExport(table.name, 'xlsx') },
-            { key: 'export-json', label: '导出 JSON', onClick: () => handleExport(table.name, 'json') },
-            { key: 'export-md', label: '导出 Markdown', onClick: () => handleExport(table.name, 'md') },
-            { key: 'export-html', label: '导出 HTML', onClick: () => handleExport(table.name, 'html') },
+        { key: 'export', label: t('tableOverview.menu.exportData'), icon: <ExportOutlined />, children: [
+            { key: 'export-csv', label: t('tableOverview.menu.exportCsv'), onClick: () => handleExport(table.name, 'csv') },
+            { key: 'export-xlsx', label: t('tableOverview.menu.exportXlsx'), onClick: () => handleExport(table.name, 'xlsx') },
+            { key: 'export-json', label: t('tableOverview.menu.exportJson'), onClick: () => handleExport(table.name, 'json') },
+            { key: 'export-md', label: t('tableOverview.menu.exportMarkdown'), onClick: () => handleExport(table.name, 'md') },
+            { key: 'export-html', label: t('tableOverview.menu.exportHtml'), onClick: () => handleExport(table.name, 'html') },
         ]},
     ], [allowTruncate, handleCopyStructure, handleDeleteTable, handleExport, handleRenameTable, handleTableDataDangerAction, openCopyTablesModal, openDesign, openNewQueryForTable, t]);
 
@@ -819,9 +828,9 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     };
 
     const sortMenuItems = [
-        { key: 'name', label: `按名称${sortField === 'name' ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : ''}`, onClick: () => toggleSort('name') },
-        { key: 'rows', label: `按行数${sortField === 'rows' ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : ''}`, onClick: () => toggleSort('rows') },
-        { key: 'dataSize', label: `按大小${sortField === 'dataSize' ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : ''}`, onClick: () => toggleSort('dataSize') },
+        { key: 'name', label: t('tableOverview.sort.name', { indicator: sortField === 'name' ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : '' }), onClick: () => toggleSort('name') },
+        { key: 'rows', label: t('tableOverview.sort.rows', { indicator: sortField === 'rows' ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : '' }), onClick: () => toggleSort('rows') },
+        { key: 'dataSize', label: t('tableOverview.sort.size', { indicator: sortField === 'dataSize' ? (sortOrder === 'asc' ? ' ↑' : ' ↓') : '' }), onClick: () => toggleSort('dataSize') },
     ];
 
     const bulkActionMenuItems = useMemo<MenuProps['items']>(() => [
@@ -903,7 +912,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
     if (loading) {
         return (
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: containerBg }}>
-                <Spin size="large" tip="加载表信息..." />
+                <Spin size="large" tip={t('tableOverview.loading')} />
             </div>
         );
     }
@@ -919,7 +928,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 <DatabaseOutlined style={{ fontSize: 16, color: accentColor }} />
                 <span style={{ fontSize: 14, fontWeight: 600, color: textPrimary }}>{tab.dbName}</span>
                 <span style={{ fontSize: 12, color: textMuted }}>
-                    {tables.length} 张表 · {formatRows(totalRows)} 行 · {formatSize(totalSize)}
+                    {t('tableOverview.summary', { tables: tables.length, rows: formatRows(totalRows), size: formatSize(totalSize) })}
                 </span>
                 {sortedFiltered.length > 0 && (
                     <Checkbox
@@ -940,7 +949,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                 <div style={{ flex: 1 }} />
                 <Input
                     {...noAutoCapInputProps}
-                    placeholder="搜索表名或注释..."
+                    placeholder={t('tableOverview.searchPlaceholder')}
                     prefix={<SearchOutlined style={{ color: textMuted }} />}
                     value={searchText}
                     onChange={e => setSearchText(e.target.value)}
@@ -949,9 +958,9 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                     size="small"
                 />
                 <Dropdown menu={{ items: sortMenuItems }} trigger={['click']}>
-                    <Tooltip title="排序"><SortAscendingOutlined style={{ fontSize: 16, color: textSecondary, cursor: 'pointer' }} /></Tooltip>
+                    <Tooltip title={t('tableOverview.sortTooltip')}><SortAscendingOutlined style={{ fontSize: 16, color: textSecondary, cursor: 'pointer' }} /></Tooltip>
                 </Dropdown>
-                <Tooltip title="刷新"><ReloadOutlined onClick={loadData} style={{ fontSize: 16, color: textSecondary, cursor: 'pointer' }} /></Tooltip>
+                <Tooltip title={t('common.refresh')}><ReloadOutlined onClick={loadData} style={{ fontSize: 16, color: textSecondary, cursor: 'pointer' }} /></Tooltip>
             </div>
 
             {/* Content Area */}
@@ -973,32 +982,32 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                     >
                         <span>
                             {isSearchPending
-                                ? '正在更新筛选结果...'
-                                : `匹配 ${sortedFiltered.length} 张表，当前渲染 ${visibleTables.length} 张`}
+                                ? t('tableOverview.filterUpdating')
+                                : t('tableOverview.filterMatchSummary', { matched: sortedFiltered.length, visible: visibleTables.length })}
                         </span>
                         {visibleOverview.hiddenCount > 0 && (
-                            <span>还有 {visibleOverview.hiddenCount} 张未渲染，可继续加载或缩小搜索范围</span>
+                            <span>{t('tableOverview.hiddenNotice', { count: visibleOverview.hiddenCount })}</span>
                         )}
                     </div>
                 )}
                 {sortedFiltered.length === 0 ? (
-                    <Empty description={searchText ? '无匹配结果' : '暂无表'} style={{ marginTop: 80 }} />
+                    <Empty description={searchText ? t('tableOverview.empty.noMatch') : t('tableOverview.empty.noTables')} style={{ marginTop: 80 }} />
                 ) : (
                     <div className="table-overview-list">
                         <div className="table-overview-frame">
                             <div className="table-overview-header" style={{ gridTemplateColumns: tableOverviewGridTemplate }}>
                                 <div />
-                                <div>表名</div>
-                                <div className="table-overview-header-cell">行数</div>
-                                <div className="table-overview-header-cell">数据大小</div>
-                                <div className="table-overview-header-cell">索引大小</div>
-                                <div className="table-overview-header-cell">相对大小</div>
+                                <div>{t('tableOverview.header.name')}</div>
+                                <div className="table-overview-header-cell">{t('tableOverview.header.rows')}</div>
+                                <div className="table-overview-header-cell">{t('tableOverview.header.dataSize')}</div>
+                                <div className="table-overview-header-cell">{t('tableOverview.header.indexSize')}</div>
+                                <div className="table-overview-header-cell">{t('tableOverview.header.relativeSize')}</div>
                             </div>
                             <div className="table-overview-body">
                             {visibleTables.map(t => {
                                 const combinedSize = t.dataSize + t.indexSize;
                                 const sizeRatio = maxCombinedSize > 0 ? combinedSize / maxCombinedSize : 0;
-                                const rowSecondary = t.comment || (t.engine ? `${t.engine} 表` : '双击打开数据，右键查看更多操作');
+                                const rowSecondary = t.comment || (t.engine ? translate(language, 'tableOverview.row.engineSuffix', { engine: t.engine }) : translate(language, 'tableOverview.row.defaultHint'));
 
                                 return (
                                     <Dropdown
@@ -1062,7 +1071,7 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
                             size="small"
                             onClick={() => setVisibleTableLimit(limit => limit + TABLE_OVERVIEW_RENDER_BATCH_SIZE)}
                         >
-                            显示更多表（剩余 {visibleOverview.hiddenCount}）
+                            {t('tableOverview.showMore', { count: visibleOverview.hiddenCount })}
                         </Button>
                     </div>
                 )}

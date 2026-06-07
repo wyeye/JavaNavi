@@ -402,6 +402,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                                 tableName,
                                 fetchDDL: () => DBShowCreateTable(rpcConfig, dbName, tableName),
                                 fetchColumns: () => DBGetColumns(rpcConfig, dbName, tableName),
+                                language,
                             });
                             if (schemaResult.success && schemaResult.content) {
                                 useStore.getState().addAIContext(connKey, { dbName, tableName, ddl: schemaResult.content });
@@ -792,7 +793,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 // Use the first 50 characters to avoid spending too many tokens on title generation.
                 const snippet = firstUserMsg.content.slice(0, 50);
                 const titleReq = [
-                    { role: 'system', content: 'You are a summarizer. Provide a short 3-6 word title for this prompt. Do not use quotes, punctuation, or explain. Just the title in the same language as the prompt.' },
+                    { role: 'system', content: aiTextForLanguage(language, 'ai.chat.titlePrompt') },
                     { role: 'user', content: snippet }
                 ];
                 const res = await Service.AIChatSend(titleReq);
@@ -1099,6 +1100,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                                     tableName: safeTable,
                                     fetchDDL: () => DBShowCreateTable(rpcConfig, safeDbName, safeTable),
                                     fetchColumns: () => DBGetColumns(rpcConfig, safeDbName, safeTable),
+                                    language,
                                 });
                                 resStr = toolResult.content;
                                 success = toolResult.success;

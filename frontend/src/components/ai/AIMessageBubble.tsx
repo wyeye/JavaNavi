@@ -14,6 +14,7 @@ import { useStore } from '../../store';
 import type { OverlayWorkbenchTheme } from '../../utils/overlayWorkbenchTheme';
 import { normalizeAiMarkdown } from '../../utils/aiMarkdown';
 import { buildAIReadonlyPreviewSQL } from '../../utils/aiSqlLimit';
+import { translate, type I18nKey, type I18nParams } from '../../i18n';
 
 // 🔧 性能优化：将 ReactMarkdown 包装为 Memo 组件并提取固定的 plugins
 const remarkPlugins = [remarkGfm];
@@ -33,6 +34,11 @@ const getErrorMessage = (error: unknown): string => (
 const syntaxThemeStyle = (darkMode: boolean): Record<string, React.CSSProperties> => (
     darkMode ? vscDarkPlus : vs
 );
+
+const useAIText = () => {
+    const language = useStore(state => state.language);
+    return React.useCallback((key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
+};
 
 const MemoizedMarkdown = React.memo(({ 
     content, 
@@ -89,6 +95,7 @@ interface AIMessageBubbleProps {
 }
 
 const AIToolResultItem: React.FC<{ resultMsg: AIChatMessage, darkMode: boolean, overlayTheme: OverlayWorkbenchTheme }> = ({ resultMsg, darkMode, overlayTheme }) => {
+    const t = useAIText();
     const [toolExpanded, setToolExpanded] = useState(false);
     const charCount = resultMsg.content ? resultMsg.content.length : 0;
     return (
@@ -106,8 +113,8 @@ const AIToolResultItem: React.FC<{ resultMsg: AIChatMessage, darkMode: boolean, 
             >
                 {toolExpanded ? <CaretDownOutlined /> : <CaretRightOutlined />}
                 <ApiOutlined style={{ color: '#1677ff' }} />
-                <span>探针执行结果 (<span style={{ fontFamily: 'monospace', color: overlayTheme.iconColor }}>{resultMsg.tool_name || 'unknown'}</span>)</span>
-                <span style={{ fontSize: 11, marginLeft: 8, opacity: 0.6 }}>{charCount > 0 ? `${charCount} 个字符` : '无数据'}</span>
+                <span>{t('ai.message.toolResultTitle', { tool: resultMsg.tool_name || 'unknown' })}</span>
+                <span style={{ fontSize: 11, marginLeft: 8, opacity: 0.6 }}>{charCount > 0 ? t('ai.message.toolResultChars', { count: charCount }) : t('ai.message.noData')}</span>
             </div>
             {toolExpanded && (
                 <div style={{ marginTop: 8, fontSize: 12, color: overlayTheme.mutedText, fontFamily: 'monospace', whiteSpace: 'pre-wrap', wordBreak: 'break-all', maxHeight: 300, overflowY: 'auto', background: darkMode ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.03)', padding: 8, borderRadius: 6 }}>
@@ -119,6 +126,7 @@ const AIToolResultItem: React.FC<{ resultMsg: AIChatMessage, darkMode: boolean, 
 };
 
 const MermaidRenderer = ({ chart, darkMode }: { chart: string, darkMode: boolean }) => {
+    const t = useAIText();
     const containerRef = React.useRef<HTMLDivElement>(null);
     const [errorText, setErrorText] = React.useState('');
 
@@ -137,7 +145,7 @@ const MermaidRenderer = ({ chart, darkMode }: { chart: string, darkMode: boolean
                         const parsed = new DOMParser().parseFromString(rawSvg, 'image/svg+xml');
                         const svg = parsed.documentElement;
                         if (svg?.tagName.toLowerCase() !== 'svg' || svg.querySelector('parsererror')) {
-                            throw new Error('Mermaid did not return valid SVG');
+                            throw new Error(t('ai.message.mermaidInvalidSvg'));
                         }
                         svg.querySelectorAll('script, foreignObject').forEach((node) => node.remove());
                         Array.from(svg.querySelectorAll('*')).forEach((node) => {
@@ -155,17 +163,17 @@ const MermaidRenderer = ({ chart, darkMode }: { chart: string, darkMode: boolean
                     }
                 })().catch((e: unknown) => {
                     if (active) {
-                        setErrorText(`Mermaid 解析失败: ${getErrorMessage(e)}`);
+                        setErrorText(t('ai.message.mermaidParseFailed', { message: getErrorMessage(e) }));
                     }
                 });
             } catch (e: unknown) {
-                setErrorText(`Mermaid 渲染异常: ${getErrorMessage(e)}`);
+                setErrorText(t('ai.message.mermaidRenderFailed', { message: getErrorMessage(e) }));
             }
         }
         return () => {
             active = false;
         };
-    }, [chart, darkMode]);
+    }, [chart, darkMode, t]);
 
     return (
         <>
@@ -180,6 +188,7 @@ const MermaidRenderer = ({ chart, darkMode }: { chart: string, darkMode: boolean
 };
 
 const CodeCopyBtn = ({ text }: { text: string }) => {
+    const t = useAIText();
     const [copied, setCopied] = useState(false);
     return (
         <span 
@@ -200,12 +209,13 @@ const CodeCopyBtn = ({ text }: { text: string }) => {
             onMouseLeave={(e) => { e.currentTarget.style.opacity = copied ? '1' : '0.6'; }}
         >
             {copied ? <CheckOutlined style={{ color: '#52c41a' }} /> : <CopyOutlined />} 
-            <span style={{ marginLeft: 4 }}>{copied ? '已复制' : '复制代码'}</span>
+            <span style={{ marginLeft: 4 }}>{copied ? t('ai.message.codeCopied') : t('ai.message.copyCode')}</span>
         </span>
     );
 };
 
 const CodeRunBtn = ({ text, connectionId, dbName }: { text: string; connectionId?: string; dbName?: string }) => {
+    const t = useAIText();
     // 解析 SQL 顶部的 @context 注释，格式：-- @context connectionId=xxx dbName=yyy
     const contextMatch = text.match(/^--\s*@context\s+connectionId=(\S+)\s+dbName=(\S+)/m);
     const resolvedConnId = contextMatch?.[1] || connectionId;
@@ -219,16 +229,16 @@ const CodeRunBtn = ({ text, connectionId, dbName }: { text: string; connectionId
             if (Service?.AICheckSQL) {
                 const result = await Service.AICheckSQL(text);
                 if (!result.allowed) {
-                    message.error(`🔒 安全策略拦截：当前安全级别不允许执行 ${result.operationType} 类型的 SQL。请在 AI 设置中调整安全级别。`);
+                    message.error(t('ai.message.securityBlocked', { type: result.operationType }));
                     return;
                 }
                 if (result.requiresConfirm) {
                     const { Modal } = await import('antd');
                     Modal.confirm({
-                        title: '⚠️ 安全确认',
-                        content: result.warningMessage || `此 SQL 为 ${result.operationType} 操作，确定要执行吗？`,
-                        okText: '确认执行',
-                        cancelText: '取消',
+                        title: t('ai.message.securityConfirmTitle'),
+                        content: result.warningMessage || t('ai.message.securityConfirmContent', { type: result.operationType }),
+                        okText: t('ai.message.confirmExecute'),
+                        cancelText: t('common.cancel'),
                         okButtonProps: { danger: true },
                         onOk: () => {
                             window.dispatchEvent(new CustomEvent('javanavi:insert-sql', { detail: sqlDetail(true) }));
@@ -247,7 +257,7 @@ const CodeRunBtn = ({ text, connectionId, dbName }: { text: string; connectionId
 
     return (
         <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-            <Tooltip title="将该段 SQL 注入查询工作区（可快捷修改或执行）">
+            <Tooltip title={t('ai.message.insertSqlTooltip')}>
                 <span 
                     className="ai-code-run-btn" 
                     onClick={() => {
@@ -261,10 +271,10 @@ const CodeRunBtn = ({ text, connectionId, dbName }: { text: string; connectionId
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
                 >
                     <PlayCircleOutlined /> 
-                    <span style={{ marginLeft: 4 }}>插入</span>
+                    <span style={{ marginLeft: 4 }}>{t('ai.message.insert')}</span>
                 </span>
             </Tooltip>
-            <Tooltip title="立即执行（受 AI 安全策略管控）">
+            <Tooltip title={t('ai.message.executeSqlTooltip')}>
                 <span 
                     className="ai-code-run-btn" 
                     onClick={handleExecute}
@@ -276,7 +286,7 @@ const CodeRunBtn = ({ text, connectionId, dbName }: { text: string; connectionId
                     onMouseLeave={(e) => { e.currentTarget.style.opacity = '0.6'; }}
                 >
                     <PlayCircleOutlined />
-                    <span style={{ marginLeft: 4 }}>执行</span>
+                    <span style={{ marginLeft: 4 }}>{t('ai.message.execute')}</span>
                 </span>
             </Tooltip>
         </div>
@@ -301,6 +311,7 @@ const AIBlockHashRender = ({
     activeConnectionId?: string;
     activeDbName?: string;
 }) => {
+    const t = useAIText();
     const codeText = String(children).replace(/\n$/, '');
     // 将 @context 注释行从显示文本中剔除，用户无需看到内部元数据
     const displayText = codeText.replace(/^--\s*@context\s+.*\n?/gm, '').trim();
@@ -337,10 +348,10 @@ const AIBlockHashRender = ({
                 setPreviewData(rows.slice(0, 20));
                 setPreviewExpanded(true);
             } else {
-                setPreviewError(res.message || '查询无结果');
+                setPreviewError(res.message || t('ai.message.previewNoResult'));
             }
         } catch (err: unknown) {
-            setPreviewError(getErrorMessage(err) || '执行失败');
+            setPreviewError(getErrorMessage(err) || t('ai.message.previewFailed'));
         } finally {
             setPreviewLoading(false);
         }
@@ -357,7 +368,7 @@ const AIBlockHashRender = ({
                 <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
                     {isSql && <CodeRunBtn text={codeText} connectionId={activeConnectionId} dbName={activeDbName} />}
                     {isSelectQuery && activeConnectionConfig && (
-                        <Tooltip title="在聊天内预览查询结果（最多20行）">
+                        <Tooltip title={t('ai.message.previewTooltip')}>
                             <span
                                 onClick={handleInlineExecute}
                                 style={{
@@ -368,7 +379,7 @@ const AIBlockHashRender = ({
                                 onMouseLeave={(e) => { if (!previewLoading) e.currentTarget.style.opacity = '0.6'; }}
                             >
                                 {previewLoading ? '⏳' : '👁'}
-                                <span style={{ marginLeft: 4 }}>{previewLoading ? '执行中...' : '预览'}</span>
+                                <span style={{ marginLeft: 4 }}>{previewLoading ? t('ai.message.previewRunning') : t('ai.message.preview')}</span>
                             </span>
                         </Tooltip>
                     )}
@@ -414,7 +425,7 @@ const AIBlockHashRender = ({
                         onClick={() => setExpanded(true)}
                     >
                         <span style={{ fontSize: 12, color: overlayTheme.iconColor, background: darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)', padding: '2px 8px', borderRadius: 12 }}>
-                            展开全部代码
+                            {t('ai.message.expandAllCode')}
                         </span>
                     </div>
                 )}
@@ -427,7 +438,7 @@ const AIBlockHashRender = ({
                         }}
                         onClick={() => setExpanded(false)}
                     >
-                        <span style={{ fontSize: 12, color: overlayTheme.iconColor }}>收起代码</span>
+                        <span style={{ fontSize: 12, color: overlayTheme.iconColor }}>{t('ai.message.collapseCode')}</span>
                     </div>
                 )}
             </div>
@@ -441,8 +452,8 @@ const AIBlockHashRender = ({
             {previewExpanded && previewData && previewData.length > 0 && (
                 <div style={{ borderTop: `1px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)'}` }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 12px', background: darkMode ? 'rgba(250,173,20,0.08)' : 'rgba(250,173,20,0.05)' }}>
-                        <span style={{ fontSize: 11, color: overlayTheme.mutedText }}>📊 预览结果（{previewData.length} 行 × {previewCols.length} 列）</span>
-                        <span style={{ fontSize: 11, color: overlayTheme.mutedText, cursor: 'pointer' }} onClick={() => setPreviewExpanded(false)}>收起 ▴</span>
+                        <span style={{ fontSize: 11, color: overlayTheme.mutedText }}>{t('ai.message.previewSummary', { rows: previewData.length, cols: previewCols.length })}</span>
+                        <span style={{ fontSize: 11, color: overlayTheme.mutedText, cursor: 'pointer' }} onClick={() => setPreviewExpanded(false)}>{t('ai.message.collapsePreview')}</span>
                     </div>
                     <div style={{ overflowX: 'auto', maxHeight: 200, overflowY: 'auto' }}>
                         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, fontFamily: 'monospace' }}>
@@ -475,7 +486,7 @@ const AIBlockHashRender = ({
                     style={{ padding: '4px 12px', cursor: 'pointer', fontSize: 11, color: overlayTheme.mutedText, background: darkMode ? 'rgba(250,173,20,0.05)' : 'rgba(250,173,20,0.03)', borderTop: `1px solid ${darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'}` }}
                     onClick={() => setPreviewExpanded(true)}
                 >
-                    📊 查看结果（{previewData.length} 行）▾
+                    {t('ai.message.viewResult', { rows: previewData.length })}
                 </div>
             )}
         </div>
@@ -484,6 +495,7 @@ const AIBlockHashRender = ({
 
 // 可折叠思考过程组件
 const ThinkingBlock: React.FC<{ displayThinking: string; totalLen: number; isTyping: boolean; isGlobalLoading: boolean; darkMode: boolean; overlayTheme: OverlayWorkbenchTheme; hasContent: boolean }> = ({ displayThinking, totalLen, isTyping, isGlobalLoading, darkMode, overlayTheme, hasContent }) => {
+    const t = useAIText();
     // 如果整体在loading，且尚未吐出content，我们认为真正的思考还在进行；如果吐出content了，思考框就算告一段落
     const isActivelyThinking = isGlobalLoading && !hasContent;
     const [expanded, setExpanded] = useState(isActivelyThinking);
@@ -520,9 +532,9 @@ const ThinkingBlock: React.FC<{ displayThinking: string; totalLen: number; isTyp
                 }}
             >
                 <span style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 10 }}>▶</span>
-                <span>💭 思考过程</span>
-                {isActivelyThinking && <span style={{ fontSize: 10, color: '#8b5cf6', animation: 'pulse 1.5s ease-in-out infinite' }}>思考中...</span>}
-                {!isActivelyThinking && <span style={{ fontSize: 10, opacity: 0.5 }}>({displayThinking.length} 字)</span>}
+                <span>{t('ai.message.thinkingTitle')}</span>
+                {isActivelyThinking && <span style={{ fontSize: 10, color: '#8b5cf6', animation: 'pulse 1.5s ease-in-out infinite' }}>{t('ai.message.thinking')}</span>}
+                {!isActivelyThinking && <span style={{ fontSize: 10, opacity: 0.5 }}>{t('ai.message.thinkingChars', { count: displayThinking.length })}</span>}
             </div>
             <div className={`ai-expand-transition ${expanded ? 'expanded' : 'collapsed'}`}>
                 <div ref={contentRef} style={{
@@ -545,6 +557,7 @@ const ThinkingBlock: React.FC<{ displayThinking: string; totalLen: number; isTyp
 
 // 工具调用进度面板聚合展示组件
 const AIToolCallingBlock: React.FC<{ tool_calls: AIToolCall[]; loading: boolean; allMessages: AIChatMessage[]; darkMode: boolean; overlayTheme: OverlayWorkbenchTheme; hasContent: boolean }> = ({ tool_calls, loading, allMessages, darkMode, overlayTheme, hasContent }) => {
+    const t = useAIText();
     const totalCalls = tool_calls.length;
     const allDone = tool_calls.every(tc => allMessages?.find(m => m.role === 'tool' && m.tool_call_id === tc.id));
     const [expanded, setExpanded] = useState(!allDone && loading);
@@ -556,9 +569,9 @@ const AIToolCallingBlock: React.FC<{ tool_calls: AIToolCall[]; loading: boolean;
 
     // 显示友好的人类可读动作名
     const getHumanActionName = (fname: string) => {
-        if (fname === 'get_connections') return '获取可用连接信息';
-        if (fname === 'get_databases') return '扫描数据库列表';
-        if (fname === 'get_tables') return '分析表结构信息';
+        if (fname === 'get_connections') return t('ai.message.tool.getConnections');
+        if (fname === 'get_databases') return t('ai.message.tool.getDatabases');
+        if (fname === 'get_tables') return t('ai.message.tool.getTables');
         return fname;
     };
 
@@ -584,7 +597,7 @@ const AIToolCallingBlock: React.FC<{ tool_calls: AIToolCall[]; loading: boolean;
                     ) : (
                         <CheckOutlined style={{ color: '#10b981' }} />
                     )}
-                    <span>{!allDone && loading ? '正在执行数据探针...' : `数据探针执行完毕 (${totalCalls} 项)`}</span>
+                    <span>{!allDone && loading ? t('ai.message.toolCallingRunning') : t('ai.message.toolCallingDone', { count: totalCalls })}</span>
                 </div>
                 <span style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', fontSize: 10, color: overlayTheme.mutedText }}>▶</span>
             </div>
@@ -618,6 +631,7 @@ const AIToolCallingBlock: React.FC<{ tool_calls: AIToolCall[]; loading: boolean;
 };
 
 export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg, darkMode, overlayTheme, textColor, onEdit, onRetry, onDelete, activeConnectionId, activeConnectionConfig, activeDbName, allMessages }) => {
+    const t = useAIText();
     const [isCopied, setIsCopied] = useState(false);
     const isUser = msg.role === 'user';
     
@@ -662,7 +676,7 @@ export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg
                         <div className="ai-wave-pulse">
                             <span /> <span /> <span />
                         </div>
-                        <span style={{ fontSize: 13, opacity: 0.8 }}>{msg.content || '正在建立连接'}...</span>
+                        <span style={{ fontSize: 13, opacity: 0.8 }}>{msg.content || t('ai.message.connecting')}...</span>
                     </div>
 
                     {/* 即使在波纹过渡态，如果有 thinking / tool_calls 也要显示出来，只是把它们压在波纹下面 */}
@@ -713,7 +727,7 @@ export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg
                     </div>
                     {/* 气泡操作栏 */}
                     <div className="ai-message-actions" style={{ display: 'flex', gap: 8, opacity: 0, transition: 'opacity 0.2s', padding: '0 4px' }}>
-                        <Tooltip title={isCopied ? "已复制" : "复制全文"}>
+                        <Tooltip title={isCopied ? t('ai.message.codeCopied') : t('ai.message.copyFullText')}>
                             {isCopied ? (
                                 <CheckOutlined className="ai-action-icon" style={{ color: '#10b981' }} />
                             ) : (
@@ -725,15 +739,15 @@ export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg
                             )}
                         </Tooltip>
                         {isUser ? (
-                            <Tooltip title="编辑此条消息（移除其后所有记录并重新发送）">
+                            <Tooltip title={t('ai.message.editTooltip')}>
                                 <EditOutlined className="ai-action-icon" onClick={() => onEdit(msg)} style={{ cursor: 'pointer', color: overlayTheme.mutedText }} onMouseEnter={e => e.currentTarget.style.color = textColor} onMouseLeave={e => e.currentTarget.style.color = overlayTheme.mutedText} />
                             </Tooltip>
                         ) : (
-                            <Tooltip title="重新生成（移除此条并触发上次用户输入重发）">
+                            <Tooltip title={t('ai.message.regenerateTooltip')}>
                                 <ReloadOutlined className="ai-action-icon" onClick={() => onRetry(msg)} style={{ cursor: 'pointer', color: overlayTheme.mutedText }} onMouseEnter={e => e.currentTarget.style.color = textColor} onMouseLeave={e => e.currentTarget.style.color = overlayTheme.mutedText} />
                             </Tooltip>
                         )}
-                        <Tooltip title="删除单条消息">
+                        <Tooltip title={t('ai.message.deleteTooltip')}>
                             <DeleteOutlined className="ai-action-icon" onClick={() => onDelete(msg.id)} style={{ cursor: 'pointer', color: overlayTheme.mutedText }} onMouseEnter={e => e.currentTarget.style.color = '#ef4444'} onMouseLeave={e => e.currentTarget.style.color = overlayTheme.mutedText} />
                         </Tooltip>
                     </div>
@@ -742,7 +756,7 @@ export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg
                     {msg.images && msg.images.length > 0 && (
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
                             {msg.images.map((img, i) => (
-                                <img key={i} src={img} alt={`Attached ${i}`} style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, objectFit: 'contain', border: overlayTheme.shellBorder }} />
+                                <img key={i} src={img} alt={t('ai.message.attachedImageAlt', { index: i + 1 })} style={{ maxWidth: 200, maxHeight: 200, borderRadius: 8, objectFit: 'contain', border: overlayTheme.shellBorder }} />
                             ))}
                         </div>
                     )}
@@ -777,7 +791,7 @@ export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg
                                 onClick={() => {
                                     navigator.clipboard.writeText(msg.rawError || '');
                                     const btn = document.getElementById(`raw-err-btn-${msg.id}`);
-                                    if (btn) { btn.textContent = '✅ 已复制'; setTimeout(() => { btn.textContent = '📋 复制报错原文'; }, 1500); }
+                                    if (btn) { btn.textContent = t('ai.message.rawErrorCopied'); setTimeout(() => { btn.textContent = t('ai.message.copyErrorRaw'); }, 1500); }
                                 }}
                                 id={`raw-err-btn-${msg.id}`}
                                 style={{
@@ -787,7 +801,7 @@ export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg
                                     color: overlayTheme.mutedText, transition: 'all 0.15s ease',
                                 }}
                             >
-                                📋 复制报错原文
+                                {t('ai.message.copyErrorRaw')}
                             </button>
                         </div>
                     )}

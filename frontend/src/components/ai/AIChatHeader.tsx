@@ -88,7 +88,7 @@ export const AIChatHeader: React.FC<AIChatHeaderProps> = ({
     return (
         <div className="ai-chat-header" style={{ borderBottom: 'none', padding: '10px 16px', background: darkMode ? 'rgba(255,255,255,0.02)' : 'rgba(0,0,0,0.01)' }}>
             <div className="ai-chat-header-left" style={{ gap: 8 }}>
-                <Tooltip title="历史会话">
+                <Tooltip title={t('ai.chat.historyTooltip')}>
                     <Button type="text" size="small" icon={<HistoryOutlined />} onClick={onHistoryClick} style={{ color: mutedColor }} />
                 </Tooltip>
                 <div className="ai-logo" style={{ background: overlayTheme.iconBg, color: overlayTheme.iconColor, display: 'flex', alignItems: 'center', justifyContent: 'center', width: 20, height: 20, borderRadius: 6, fontSize: 12 }}>

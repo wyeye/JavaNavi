@@ -3046,7 +3046,7 @@ const ConnectionModal: React.FC<{
                         description={(
                           <Space direction="vertical" size={4}>
                             <Text>
-                              Driver Class：
+                              {t("connectionModal.custom.driverClassLabel")}
                               {selectedCustomDataSource.driverClassName ||
                                 t("connectionModal.custom.driverClassMissing")}
                             </Text>
@@ -3055,7 +3055,7 @@ const ConnectionModal: React.FC<{
                             ) : null}
                             {selectedCustomDataSource.jarFileNames?.length ? (
                               <Text>
-                                Jar：{selectedCustomDataSource.jarFileNames.join("、")}
+                                {t("connectionModal.custom.jarLabel")} {selectedCustomDataSource.jarFileNames.join(", ")}
                               </Text>
                             ) : null}
                             {selectedCustomDataSourceRepairHints.length > 0 ? (
@@ -4000,17 +4000,17 @@ const ConnectionModal: React.FC<{
                             options: [
                               {
                                 value: "preferred",
-                                label: "Preferred",
+                                label: t("connectionModal.ssl.mode.preferred"),
                                 description: sslModeRiskDescription(LEGACY_COMPAT_SSL_MODE),
                               },
                               {
                                 value: "required",
-                                label: "Required",
+                                label: t("connectionModal.ssl.mode.required"),
                                 description: sslModeRiskDescription("required"),
                               },
                               {
                                 value: "skip-verify",
-                                label: "Skip Verify",
+                                label: t("connectionModal.ssl.mode.skipVerify"),
                                 description: sslModeRiskDescription("skip-verify"),
                               },
                             ],

@@ -1988,7 +1988,7 @@ const DataSyncModal: React.FC<{ open: boolean; initialDomain?: SyncDomain; onClo
                         }] : []),
                         {
                             key: 'sql',
-                            label: `SQL(${previewSql.statementCount})`,
+                            label: t('dataSync.sqlTabLabel', { count: previewSql.statementCount }),
                             children: (
                                 <div>
                                     <Alert

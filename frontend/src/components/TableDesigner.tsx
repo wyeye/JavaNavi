@@ -125,19 +125,19 @@ const SQLSERVER_INDEX_TYPE_OPTIONS: IndexTypeOption[] = [
     { label: 'NONCLUSTERED', value: 'NONCLUSTERED' },
 ];
 
-const CHARSETS = [
-    { label: 'utf8mb4 (Recommended)', value: 'utf8mb4' },
+const CHARSETS: CollationOption[] = [
+    { label: 'utf8mb4', labelKey: 'designer.charset.utf8mb4Recommended', value: 'utf8mb4' },
     { label: 'utf8', value: 'utf8' },
     { label: 'latin1', value: 'latin1' },
     { label: 'ascii', value: 'ascii' },
 ];
 
-type CollationOption = { label: string; value: string };
+type CollationOption = { label: string; value: string; labelKey?: I18nKey };
 type CharsetKey = 'utf8mb4' | 'utf8';
 
 const COLLATIONS: Record<CharsetKey, CollationOption[]> = {
     'utf8mb4': [
-        { label: 'utf8mb4_unicode_ci (Default)', value: 'utf8mb4_unicode_ci' },
+        { label: 'utf8mb4_unicode_ci', labelKey: 'designer.collation.utf8mb4UnicodeDefault', value: 'utf8mb4_unicode_ci' },
         { label: 'utf8mb4_general_ci', value: 'utf8mb4_general_ci' },
         { label: 'utf8mb4_bin', value: 'utf8mb4_bin' },
         { label: 'utf8mb4_0900_ai_ci', value: 'utf8mb4_0900_ai_ci' },
@@ -307,6 +307,8 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
   const language = useStore(state => state.language);
   const theme = useStore(state => state.theme);
   const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
+  const charsetOptions = useMemo(() => CHARSETS.map(option => ({ ...option, label: option.labelKey ? t(option.labelKey) : option.label })), [t]);
+  const getLocalizedCollationOptions = useCallback((value: string) => getCollationOptions(value).map(option => ({ ...option, label: option.labelKey ? t(option.labelKey) : option.label })), [t]);
   const darkMode = theme === 'dark';
   const resizeGuideColor = darkMode ? '#f6c453' : '#1890ff';
   const readOnly = !!tab.readOnly;
@@ -652,7 +654,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
     setLoading(true);
     const conn = connections.find(c => c.id === tab.connectionId);
     if (!conn) {
-        message.error("Connection not found");
+        message.error(t('queryEditor.connectionNotFound'));
         setLoading(false);
         return;
     }
@@ -2482,13 +2484,13 @@ END;`;
                             const cols = getCollationOptions(v);
                             if (cols && cols.length > 0) setCollation(cols[0].value);
                         }}
-                        options={CHARSETS}
+                        options={charsetOptions}
                         style={{ width: 120 }}
                     />
                     <Select
                         value={collation}
                         onChange={setCollation}
-                        options={getCollationOptions(charset)}
+                        options={getLocalizedCollationOptions(charset)}
                         style={{ width: 150 }}
                     />
                 </>
@@ -2796,13 +2798,13 @@ END;`;
                             const cols = getCollationOptions(v);
                             if (cols && cols.length > 0) setCopyCollation(cols[0].value);
                         }}
-                        options={CHARSETS}
+                        options={charsetOptions}
                         style={{ width: 160 }}
                     />
                     <Select
                         value={copyCollation}
                         onChange={setCopyCollation}
-                        options={getCollationOptions(copyCharset)}
+                        options={getLocalizedCollationOptions(copyCharset)}
                         style={{ width: 220 }}
                     />
                 </Space>

@@ -12,6 +12,7 @@ import { resolveAITableSchemaToolResult } from '../../utils/aiTableSchemaTool';
 import { getAIChatSendShortcutLabel } from '../../utils/aiChatSendShortcut';
 import type { ShortcutBinding } from '../../utils/shortcuts';
 import type { AIProviderConfig, ConnectionConfig } from '../../types';
+import { translate, type I18nKey, type I18nParams } from '../../i18n';
 
 type ActiveChatContext = {
     connectionId: string;
@@ -63,6 +64,8 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
     onModelChange, onFetchModels, textareaRef, darkMode, textColor, mutedColor, overlayTheme,
     contextUsageChars, maxContextChars
 }) => {
+    const language = useStore(state => state.language);
+    const t = React.useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
     const [contextOpen, setContextOpen] = React.useState(false);
     const [contextLoading, setContextLoading] = React.useState(false);
     const [contextTables, setContextTables] = React.useState<{name: string}[]>([]);
@@ -126,15 +129,15 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
     const [showSlashMenu, setShowSlashMenu] = React.useState(false);
     const [slashFilter, setSlashFilter] = React.useState('');
     const slashCommands = React.useMemo(() => [
-        { cmd: '/query',    label: '🔍 自然语言查询', desc: '用中文描述你想查什么',   prompt: '帮我写一条 SQL 查询：' },
-        { cmd: '/sql',      label: '📝 生成 SQL',     desc: '描述需求自动生成语句', prompt: '请根据以下需求生成 SQL：' },
-        { cmd: '/explain',  label: '💡 解释 SQL',     desc: '解释选中 SQL 的逻辑',  prompt: '请解释以下 SQL 的执行逻辑和每一步的作用：\n```sql\n\n```' },
-        { cmd: '/optimize', label: '⚡ 优化分析',     desc: '分析 SQL 性能瓶颈',    prompt: '请分析以下 SQL 的性能问题，并给出优化后的版本：\n```sql\n\n```' },
-        { cmd: '/schema',   label: '🏗️ 表设计评审',   desc: '评审表结构设计质量',   prompt: '请全面评审当前关联表的设计，包括字段类型、范式、索引策略等方面的改进建议：' },
-        { cmd: '/index',    label: '📊 索引建议',     desc: '推荐最优索引方案',      prompt: '请基于当前表结构和常见查询场景，推荐最优的索引方案并给出建表语句：' },
-        { cmd: '/diff',     label: '🔄 表对比',       desc: '对比两表差异生成变更',  prompt: '请对比以下两张表的结构差异，并生成从旧版本迁移到新版本的 ALTER 语句：' },
-        { cmd: '/mock',     label: '🎲 造测试数据',   desc: '生成 INSERT 测试数据', prompt: '请为当前关联的表生成 10 条符合业务语义的测试数据 INSERT 语句：' },
-    ], []);
+        { cmd: '/query',    label: t('ai.input.slash.query.label'),    desc: t('ai.input.slash.query.desc'),    prompt: t('ai.input.slash.query.prompt') },
+        { cmd: '/sql',      label: t('ai.input.slash.sql.label'),      desc: t('ai.input.slash.sql.desc'),      prompt: t('ai.input.slash.sql.prompt') },
+        { cmd: '/explain',  label: t('ai.input.slash.explain.label'),  desc: t('ai.input.slash.explain.desc'),  prompt: t('ai.input.slash.explain.prompt') },
+        { cmd: '/optimize', label: t('ai.input.slash.optimize.label'), desc: t('ai.input.slash.optimize.desc'), prompt: t('ai.input.slash.optimize.prompt') },
+        { cmd: '/schema',   label: t('ai.input.slash.schema.label'),   desc: t('ai.input.slash.schema.desc'),   prompt: t('ai.input.slash.schema.prompt') },
+        { cmd: '/index',    label: t('ai.input.slash.index.label'),    desc: t('ai.input.slash.index.desc'),    prompt: t('ai.input.slash.index.prompt') },
+        { cmd: '/diff',     label: t('ai.input.slash.diff.label'),     desc: t('ai.input.slash.diff.desc'),     prompt: t('ai.input.slash.diff.prompt') },
+        { cmd: '/mock',     label: t('ai.input.slash.mock.label'),     desc: t('ai.input.slash.mock.desc'),     prompt: t('ai.input.slash.mock.prompt') },
+    ], [t]);
     const filteredSlashCmds = slashCommands.filter(c => c.cmd.startsWith(slashFilter.toLowerCase()));
 
     const aiContexts = useStore(state => state.aiContexts);
@@ -152,7 +155,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
             if (res.success && Array.isArray(res.data)) {
                 setContextTables(res.data.map(r => ({ name: getFirstRowStringValue(r as QueryRow) })));
             } else {
-                message.error('获取表格失败: ' + res.message);
+                message.error(t('ai.input.message.fetchTablesFailed', { message: res.message || '' }));
                 setContextTables([]);
             }
         } catch (e: unknown) {
@@ -165,7 +168,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
 
     const handleOpenContext = async () => {
         if (!activeContext?.connectionId) {
-            message.warning('请先在左侧选择一个数据库作为所聊上下文');
+            message.warning(t('ai.input.message.selectDatabaseContext'));
             return;
         }
         const conn = useStore.getState().connections.find(c => c.id === activeContext.connectionId);
@@ -176,7 +179,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
         setSearchText('');
         // Store dbName::tableName composite keys
         setSelectedTableKeys(activeContextItems.map(c => `${c.dbName}::${c.tableName}`));
-        
+
         try {
             // Fetch databases
             const dbRes = await DBGetDatabases(buildRpcConnectionConfig(conn.config));
@@ -233,7 +236,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                     fetchColumns: () => DBGetColumns(rpcConfig, dbName, tableName),
                 });
                 if (!schemaResult.success) {
-                    message.error(`获取表 ${dbName}.${tableName} 结构失败: ${schemaResult.content}`);
+                    message.error(t('ai.input.message.tableSchemaFailed', { db: dbName, table: tableName, message: schemaResult.content }));
                 }
 
                 if (schemaResult.success && schemaResult.content) {
@@ -247,15 +250,15 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
             }
             if (addedCount > 0 || removedCount > 0) {
                 if (addedCount > 0 && removedCount === 0) {
-                    message.success(`已添加 ${addedCount} 张表的结构到上下文`);
+                    message.success(t('ai.input.message.contextAdded', { count: addedCount }));
                 } else if (removedCount > 0 && addedCount === 0) {
-                    message.success(`已从上下文移除 ${removedCount} 张表的结构`);
+                    message.success(t('ai.input.message.contextRemoved', { count: removedCount }));
                 } else {
-                    message.success(`上下文已同步更新：新增 ${addedCount}，移除 ${removedCount}`);
+                    message.success(t('ai.input.message.contextSynced', { added: addedCount, removed: removedCount }));
                 }
                 if (addedCount > 0) setContextExpanded(true);
             } else {
-                message.info('选中的表未发生变化');
+                message.info(t('ai.input.message.noContextChanges'));
             }
             setContextOpen(false);
         } catch (e: unknown) {
@@ -267,8 +270,8 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
 
     return (
         <div className="ai-chat-input-area" style={{ borderTop: 'none', padding: '12px 16px 20px' }}>
-            <div className="ai-chat-input-wrapper" style={{ 
-                borderColor: 'transparent', 
+            <div className="ai-chat-input-wrapper" style={{
+                borderColor: 'transparent',
                 background: 'transparent',
                 display: 'flex',
                 flexDirection: 'column',
@@ -278,20 +281,20 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
             }}>
                 <div className="ai-chat-input-preview-area" style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {activeContextItems.length > 0 && (
-                        <Tag 
+                        <Tag
                             onClick={() => setContextExpanded(!contextExpanded)}
                             style={{ background: darkMode ? 'rgba(24, 144, 255, 0.15)' : 'rgba(24, 144, 255, 0.08)', border: 'none', color: '#1890ff', borderRadius: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4, margin: 0, cursor: 'pointer', transition: 'all 0.3s' }}
                         >
                             <span style={{ fontSize: 13, fontWeight: 500, display: 'flex', alignItems: 'center', gap: 6 }}>
-                                <DatabaseOutlined /> 关联上下文 ({activeContextItems.length}) {contextExpanded ? '▴' : '▾'}
+                                <DatabaseOutlined /> {t('ai.input.contextBadge', { count: activeContextItems.length })} {contextExpanded ? '▴' : '▾'}
                             </span>
                         </Tag>
                     )}
 
                     {contextExpanded && activeContextItems.map((ctx, idx) => (
-                        <Tag 
-                            key={`ctx-${idx}`} 
-                            closable 
+                        <Tag
+                            key={`ctx-${idx}`}
+                            closable
                             onClose={(e) => { e.preventDefault(); removeAIContext(connectionKey, ctx.dbName, ctx.tableName); }}
                             style={{ background: darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)', border: 'none', color: textColor, borderRadius: 12, padding: '4px 10px', display: 'flex', alignItems: 'center', gap: 4, margin: 0 }}
                         >
@@ -300,8 +303,8 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                     ))}
                     {draftImages.map((b64, i) => (
                         <div key={i} style={{ position: 'relative', width: 60, height: 60, borderRadius: 6, overflow: 'hidden', border: overlayTheme.shellBorder }}>
-                            <img src={b64} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={`Draft ${i}`} />
-                            <div 
+                            <img src={b64} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt={t('ai.input.draftImageAlt', { index: i + 1 })} />
+                            <div
                                 onClick={() => setDraftImages(prev => prev.filter((_, idx) => idx !== i))}
                                 style={{ position: 'absolute', top: 2, right: 2, background: 'rgba(0,0,0,0.5)', color: '#fff', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', fontSize: 10 }}
                             >
@@ -402,7 +405,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                             }
                         }}
                         onKeyDown={handleKeyDown}
-                        placeholder={`输入消息... (${getAIChatSendShortcutLabel(sendShortcutBinding)}，Shift+Enter 换行，/ 快捷命令)`}
+                        placeholder={t('ai.input.placeholder', { shortcut: getAIChatSendShortcutLabel(sendShortcutBinding) })}
                         variant="borderless"
                         autoSize={{ minRows: 1, maxRows: 8 }}
                         style={{ color: textColor, width: '100%', padding: 0, resize: 'none' }}
@@ -411,7 +414,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
                         {activeConnName && (
-                            <Tooltip title="当前数据查询上下文">
+                            <Tooltip title={t('ai.input.currentContextTooltip')}>
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: 4,
                                     fontSize: 11, padding: '2px 8px', borderRadius: 12,
@@ -442,12 +445,12 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                 style={{ width: 130, fontSize: 11, background: 'transparent' }}
                                 dropdownStyle={{ minWidth: 200 }}
                                 showSearch
-                                placeholder="选择模型"
+                                placeholder={t('ai.input.modelPlaceholder')}
                             />
                         )}
 
                         {contextUsageChars !== undefined && maxContextChars !== undefined && (
-                            <Tooltip title={`当前会话记忆已用字符。达到限制（${(maxContextChars/1000).toFixed(0)}k）时将触发自动压缩。`}>
+                            <Tooltip title={t('ai.input.contextUsageTooltip', { limit: (maxContextChars/1000).toFixed(0) })}>
                                 <div style={{
                                     display: 'flex', alignItems: 'center', gap: 4,
                                     fontSize: 10, padding: '2px 6px', borderRadius: 12, border: '1px solid transparent',
@@ -463,39 +466,39 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                     </div>
 
                     <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
-                        <input 
-                            type="file" 
-                            accept="image/*" 
-                            multiple 
-                            ref={fileInputRef} 
-                            style={{ display: 'none' }} 
-                            onChange={handleImageUpload} 
+                        <input
+                            type="file"
+                            accept="image/*"
+                            multiple
+                            ref={fileInputRef}
+                            style={{ display: 'none' }}
+                            onChange={handleImageUpload}
                         />
-                        <Tooltip title="上传图片/截图">
-                            <Button 
-                                type="text" 
-                                icon={<PictureOutlined style={{ fontSize: 16 }} />} 
-                                onClick={() => fileInputRef.current?.click()} 
-                                style={{ color: overlayTheme.mutedText, border: 'none', background: 'transparent', padding: '0 4px', height: 26 }} 
-                                onMouseEnter={e => e.currentTarget.style.color = textColor} 
-                                onMouseLeave={e => e.currentTarget.style.color = overlayTheme.mutedText} 
+                        <Tooltip title={t('ai.input.uploadImageTooltip')}>
+                            <Button
+                                type="text"
+                                icon={<PictureOutlined style={{ fontSize: 16 }} />}
+                                onClick={() => fileInputRef.current?.click()}
+                                style={{ color: overlayTheme.mutedText, border: 'none', background: 'transparent', padding: '0 4px', height: 26 }}
+                                onMouseEnter={e => e.currentTarget.style.color = textColor}
+                                onMouseLeave={e => e.currentTarget.style.color = overlayTheme.mutedText}
                             />
                         </Tooltip>
-                        <Tooltip title="关联附带数据库表上下文">
-                            <Button 
-                                type="text" 
-                                icon={<TableOutlined style={{ fontSize: 16 }} />} 
-                                onClick={handleOpenContext} 
-                                style={{ color: overlayTheme.mutedText, border: 'none', background: 'transparent', padding: '0 4px', height: 26 }} 
-                                onMouseEnter={e => e.currentTarget.style.color = textColor} 
-                                onMouseLeave={e => e.currentTarget.style.color = overlayTheme.mutedText} 
+                        <Tooltip title={t('ai.input.linkTableContextTooltip')}>
+                            <Button
+                                type="text"
+                                icon={<TableOutlined style={{ fontSize: 16 }} />}
+                                onClick={handleOpenContext}
+                                style={{ color: overlayTheme.mutedText, border: 'none', background: 'transparent', padding: '0 4px', height: 26 }}
+                                onMouseEnter={e => e.currentTarget.style.color = textColor}
+                                onMouseLeave={e => e.currentTarget.style.color = overlayTheme.mutedText}
                             />
                         </Tooltip>
                         {sending ? (
                         <button
                             className="ai-chat-send-btn ai-chat-stop-btn"
                             onClick={onStop}
-                            title="停止生成"
+                            title={t('ai.input.stopTitle')}
                             style={{
                                 background: 'rgba(255,77,79,0.1)',
                                 color: '#ff4d4f', border: '1px solid rgba(255,77,79,0.2)',
@@ -510,7 +513,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                             className="ai-chat-send-btn"
                             onClick={() => onSend()}
                             disabled={!input.trim() && draftImages.length === 0}
-                            title="发送"
+                            title={t('ai.input.sendTitle')}
                             style={{
                                 background: (input.trim() || draftImages.length > 0) ? overlayTheme.iconBg : (darkMode ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.04)'),
                                 color: (input.trim() || draftImages.length > 0) ? overlayTheme.iconColor : mutedColor,
@@ -526,13 +529,13 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
             </div>
 
             <Modal
-                title={<span style={{ color: textColor }}>关联数据库表结构上下文</span>}
+                title={<span style={{ color: textColor }}>{t('ai.input.contextModalTitle')}</span>}
                 open={contextOpen}
                 onCancel={() => setContextOpen(false)}
                 onOk={handleAppendContext}
                 confirmLoading={appendingContext}
-                okText="同步所选表至上下文"
-                cancelText="取消"
+                okText={t('ai.input.syncSelectedTables')}
+                cancelText={t('common.cancel')}
                 centered
                 styles={{
                     content: { background: darkMode ? '#1e1e1e' : '#ffffff', border: overlayTheme.shellBorder },
@@ -543,7 +546,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                 <Spin spinning={contextLoading}>
                     <div style={{ marginBottom: 16, display: 'flex', gap: 12 }}>
                         {dbList.length > 0 && (
-                            <Select 
+                            <Select
                                 value={selectedDbName}
                                 onChange={val => {
                                     const c = useStore.getState().connections.find(conn => conn.id === activeContext?.connectionId);
@@ -551,13 +554,13 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                 }}
                                 options={dbList.map(d => ({ label: d, value: d }))}
                                 style={{ width: 160, flexShrink: 0 }}
-                                placeholder="切换数据库"
+                                placeholder={t('ai.input.switchDatabasePlaceholder')}
                                 showSearch
                             />
                         )}
-                        <Input 
-                            placeholder="在当前库搜索表名..." 
-                            prefix={<SearchOutlined style={{ color: overlayTheme.mutedText }} />} 
+                        <Input
+                            placeholder={t('ai.input.searchTablesPlaceholder')}
+                            prefix={<SearchOutlined style={{ color: overlayTheme.mutedText }} />}
                             value={searchText}
                             onChange={e => setSearchText(e.target.value)}
                             style={{ background: darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)', border: 'none', flexGrow: 1 }}
@@ -569,7 +572,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                 <Checkbox
                                     indeterminate={
                                         filteredTables.length > 0 &&
-                                        filteredTables.some(t => selectedTableKeys.includes(`${selectedDbName}::${t.name}`)) && 
+                                        filteredTables.some(t => selectedTableKeys.includes(`${selectedDbName}::${t.name}`)) &&
                                         !filteredTables.every(t => selectedTableKeys.includes(`${selectedDbName}::${t.name}`))
                                     }
                                     checked={filteredTables.length > 0 && filteredTables.every(t => selectedTableKeys.includes(`${selectedDbName}::${t.name}`))}
@@ -584,11 +587,11 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                     }}
                                     style={{ color: textColor, fontWeight: 'bold' }}
                                 >
-                                    全选匹配的表 ({filteredTables.length})
+                                    {t('ai.input.selectAllMatchedTables', { count: filteredTables.length })}
                                 </Checkbox>
-                                <Button 
-                                    type="link" 
-                                    size="small" 
+                                <Button
+                                    type="link"
+                                    size="small"
                                     style={{ padding: 0, height: 'auto', fontSize: 13 }}
                                     onClick={() => {
                                         const filteredKeys = filteredTables.map(t => `${selectedDbName}::${t.name}`);
@@ -597,7 +600,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                         setSelectedTableKeys([...remainingSelected, ...toAdd]);
                                     }}
                                 >
-                                    反选匹配结果
+                                    {t('ai.input.invertMatchedTables')}
                                 </Button>
                             </div>
                             <div style={{ maxHeight: 300, overflowY: 'auto', margin: '0 -24px', padding: '0 24px' }}>
@@ -606,11 +609,11 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                         const key = `${selectedDbName}::${t.name}`;
                                         const isSelected = selectedTableKeys.includes(key);
                                         return (
-                                        <div 
+                                        <div
                                             key={key}
-                                            style={{ 
-                                                padding: '6px 10px', 
-                                                borderRadius: 6, 
+                                            style={{
+                                                padding: '6px 10px',
+                                                borderRadius: 6,
                                                 transition: 'background 0.2s',
                                                 cursor: 'pointer'
                                             }}
@@ -626,7 +629,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                                                 }
                                             }}
                                         >
-                                            <Checkbox 
+                                            <Checkbox
                                                 checked={isSelected}
                                                 onChange={(e) => {
                                                     if (e.target.checked) setSelectedTableKeys([...selectedTableKeys, key]);
@@ -644,7 +647,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                         </div>
                     ) : (
                         <div style={{ padding: '40px 0', textAlign: 'center', color: overlayTheme.mutedText }}>
-                            没有找到匹配 '{searchText}' 的表
+                            {t('ai.input.noMatchedTables', { search: searchText })}
                         </div>
                     )}
                 </Spin>

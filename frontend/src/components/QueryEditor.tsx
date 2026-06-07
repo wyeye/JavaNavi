@@ -1366,7 +1366,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       const runStartTime = Date.now();
     const conn = connections.find(c => c.id === currentConnectionId);
     if (!conn) {
-        message.error("Connection not found");
+        message.error(t('queryEditor.connectionNotFound'));
         if (runSeqRef.current === runSeq) setLoading(false);
         return;
     }
@@ -1771,7 +1771,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
     }
     const conn = connections.find(c => c.id === currentConnectionId);
     if (!conn) {
-        message.error("Connection not found");
+        message.error(t('queryEditor.connectionNotFound'));
         return;
     }
     const rpcConfig = buildRpcConnectionConfig({

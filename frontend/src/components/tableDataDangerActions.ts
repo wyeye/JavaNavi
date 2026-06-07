@@ -1,3 +1,5 @@
+import type { I18nKey } from '../i18n';
+
 export type TableDataDangerActionKind = 'truncate' | 'clear';
 
 const resolveCustomDriverDialect = (driver: string): string => {
@@ -71,12 +73,21 @@ export const supportsTableTruncateAction = (type: string, driver?: string): bool
   }
 };
 
-export const getTableDataDangerActionMeta = (action: TableDataDangerActionKind): {
+export const getTableDataDangerActionMeta = (
+  action: TableDataDangerActionKind,
+  t?: (key: I18nKey) => string,
+): {
   label: string;
   progressLabel: string;
 } => {
   if (action === 'truncate') {
-    return { label: '截断表', progressLabel: '截断' };
+    return {
+      label: t?.('tableDataDanger.truncate.label') || 'Truncate table',
+      progressLabel: t?.('tableDataDanger.truncate.progress') || 'Truncate',
+    };
   }
-  return { label: '清空表', progressLabel: '清空' };
+  return {
+    label: t?.('tableDataDanger.clear.label') || 'Clear table',
+    progressLabel: t?.('tableDataDanger.clear.progress') || 'Clear',
+  };
 };

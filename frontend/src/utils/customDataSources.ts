@@ -376,7 +376,7 @@ export const createCustomDataSource = (draft: CustomDataSourceDraft): CustomData
   const now = Date.now();
   const name = normalizeText(draft.name);
   if (!name) {
-    throw new Error('自定义数据源名称不能为空');
+    throw new Error('Custom data source name cannot be empty');
   }
   const driverType = normalizeText(draft.driverType || draft.driver).toLowerCase();
   const version = normalizeOptionalText(draft.version || draft.driverVersion);

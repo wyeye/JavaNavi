@@ -1,8 +1,10 @@
+import type { I18nKey } from '../i18n';
+
 export type ExecutionPlanWarningKind = 'full-scan' | 'filesort' | 'temporary' | 'missing-index' | 'high-rows';
 
 export type ExecutionPlanWarning = {
   kind: ExecutionPlanWarningKind;
-  label: string;
+  labelKey: I18nKey;
   severity: 'warning' | 'danger';
 };
 
@@ -104,19 +106,19 @@ const warningsForStep = (step: Omit<ExecutionPlanStep, 'warnings'>): ExecutionPl
     || /\bSeq Scan\b/i.test(extra)
     || (/\bSCAN\b/i.test(extra) && !/\bUSING\s+(?:COVERING\s+)?INDEX\b/i.test(extra));
   if (hasFullScan) {
-    addWarning(warnings, { kind: 'full-scan', label: '全表扫描', severity: 'danger' });
+    addWarning(warnings, { kind: 'full-scan', labelKey: 'executionPlan.warning.fullScan', severity: 'danger' });
   }
   if (/filesort/i.test(extra)) {
-    addWarning(warnings, { kind: 'filesort', label: '文件排序', severity: 'warning' });
+    addWarning(warnings, { kind: 'filesort', labelKey: 'executionPlan.warning.filesort', severity: 'warning' });
   }
   if (/temporary/i.test(extra)) {
-    addWarning(warnings, { kind: 'temporary', label: '临时表', severity: 'warning' });
+    addWarning(warnings, { kind: 'temporary', labelKey: 'executionPlan.warning.temporary', severity: 'warning' });
   }
   if (step.possibleKeys && !step.indexName && hasFullScan) {
-    addWarning(warnings, { kind: 'missing-index', label: '未使用候选索引', severity: 'warning' });
+    addWarning(warnings, { kind: 'missing-index', labelKey: 'executionPlan.warning.missingIndex', severity: 'warning' });
   }
   if (typeof step.estimatedRows === 'number' && step.estimatedRows >= FULL_SCAN_ROW_THRESHOLD && hasFullScan) {
-    addWarning(warnings, { kind: 'high-rows', label: '扫描行数偏高', severity: 'warning' });
+    addWarning(warnings, { kind: 'high-rows', labelKey: 'executionPlan.warning.highRows', severity: 'warning' });
   }
   return warnings;
 };

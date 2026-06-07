@@ -2068,7 +2068,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
       pendingOpenSqlContextRef.current = null;
       if (!context || !file) return;
       if (!file.name.toLowerCase().endsWith('.sql')) {
-          message.error(t('sidebar.msg.readSqlFailed', { message: '请选择 .sql 文件' }));
+          message.error(t('sidebar.msg.selectSqlFile'));
           return;
       }
       const conn = connections.find(c => c.id === context.connectionId);

@@ -1,3 +1,5 @@
+import { DEFAULT_LANGUAGE, translate, type AppLanguage, type I18nParams } from '../i18n';
+
 type ToolQueryResult = {
   success?: boolean;
   data?: unknown;
@@ -8,10 +10,15 @@ type ResolveAITableSchemaToolResultParams = {
   tableName: string;
   fetchDDL: () => Promise<ToolQueryResult>;
   fetchColumns: () => Promise<ToolQueryResult>;
+  language?: AppLanguage;
 };
 
 const stringifyToolData = (data: unknown): string => (
   typeof data === 'string' ? data : JSON.stringify(data)
+);
+
+const schemaText = (language: AppLanguage | undefined, key: Parameters<typeof translate>[1], params?: I18nParams): string => (
+  translate(language || DEFAULT_LANGUAGE, key, params)
 );
 
 const firstStringValue = (row: Record<string, unknown>, keys: string[]): string => {
@@ -36,15 +43,15 @@ const normalizeAIColumn = (raw: unknown) => {
   };
 };
 
-const buildColumnFallbackContent = (tableName: string, ddlError: string, columns: unknown[]): string => {
+const buildColumnFallbackContent = (tableName: string, ddlError: string, columns: unknown[], language?: AppLanguage): string => {
   const normalizedColumns = columns.map(normalizeAIColumn).filter((column) => column.field.trim());
   const fieldNames = normalizedColumns.map((column) => column.field).join(', ');
   return [
-    `⚠️ 表 ${tableName} 的 DDL 获取失败，已降级为字段元数据摘要。`,
-    `DDL 错误：${ddlError || '未知错误'}`,
-    '该结果不包含完整索引、约束、触发器等 DDL 信息；请基于字段列表继续分析，不要因为 DDL 权限失败而停止。',
-    `可用字段：${fieldNames || '无'}`,
-    `详细信息：${JSON.stringify(normalizedColumns)}`,
+    schemaText(language, 'ai.tableSchemaTool.ddlFallbackNotice', { table: tableName }),
+    schemaText(language, 'ai.tableSchemaTool.ddlError', { message: ddlError || schemaText(language, 'message.unknownError') }),
+    schemaText(language, 'ai.tableSchemaTool.ddlFallbackGuide'),
+    schemaText(language, 'ai.tableSchemaTool.availableFields', { fields: fieldNames || schemaText(language, 'ai.tableSchemaTool.noFields') }),
+    schemaText(language, 'ai.tableSchemaTool.details', { details: JSON.stringify(normalizedColumns) }),
   ].join('\n');
 };
 
@@ -52,6 +59,7 @@ export const resolveAITableSchemaToolResult = async ({
   tableName,
   fetchDDL,
   fetchColumns,
+  language,
 }: ResolveAITableSchemaToolResultParams): Promise<{ success: boolean; content: string }> => {
   const ddlResult = await fetchDDL();
   if (ddlResult?.success) {
@@ -61,9 +69,9 @@ export const resolveAITableSchemaToolResult = async ({
   const ddlError = ddlResult?.message || 'Failed to fetch DDL';
   const columnResult = await fetchColumns();
   if (columnResult?.success && Array.isArray(columnResult.data)) {
-    return { success: true, content: buildColumnFallbackContent(tableName, ddlError, columnResult.data) };
+    return { success: true, content: buildColumnFallbackContent(tableName, ddlError, columnResult.data, language) };
   }
 
   const columnError = columnResult?.message || 'Failed to fetch columns';
-  return { success: false, content: `获取建表语句失败：${ddlError}；降级获取字段列表也失败：${columnError}` };
+  return { success: false, content: schemaText(language, 'ai.tableSchemaTool.ddlFallbackFailed', { ddlError, columnError }) };
 };

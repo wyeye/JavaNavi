@@ -1,3 +1,4 @@
+import { getRuntimeLanguage, translate } from '../i18n';
 import type { ConnectionConfig, SavedConnection } from '../types';
 
 export type ConnectionImportKind = 'app-managed-package' | 'encrypted-package' | 'legacy-json' | 'mysql-workbench-xml' | 'invalid';
@@ -25,8 +26,8 @@ const CONNECTION_PACKAGE_KIND = 'javanavi_connection_package';
 const CONNECTION_PACKAGE_SCHEMA_VERSION_V2 = 2;
 const CONNECTION_PACKAGE_PROTECTION_APP_MANAGED = 1;
 const CONNECTION_PACKAGE_PROTECTION_FILE_PASSWORD = 2;
-const CANCELED_MESSAGE = '已取消';
-const CONNECTION_PACKAGE_PASSWORD_REQUIRED_MESSAGE = '恢复包密码不能为空';
+const CANCELED_MESSAGE = translate('zh', 'export.cancelled');
+const CONNECTION_PACKAGE_PASSWORD_REQUIRED_MESSAGE = translate('zh', 'connection.package.passwordRequired').replace(/[。.]$/u, '');
 
 const isJsonObject = (value: unknown): value is JsonObject => (
   typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -184,12 +185,12 @@ export const resolveConnectionPackageExportResult = (
     kind: 'failed',
     error: isJsonObject(result) && typeof result.message === 'string' && result.message.trim()
       ? result.message
-      : '导出失败',
+      : translate(getRuntimeLanguage(), 'connection.export.failed'),
   };
 };
 
 const legacyExportRemovedError = (): never => {
-  throw new Error('Legacy connection JSON export has been removed. Use the recovery package flow instead.');
+  throw new Error(translate(getRuntimeLanguage(), 'connection.export.legacyRemoved'));
 };
 
 export const sanitizeConnectionConfigForExport = (_config: ConnectionConfig): never => legacyExportRemovedError();

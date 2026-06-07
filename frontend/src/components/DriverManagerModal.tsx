@@ -506,7 +506,7 @@ const buildVersionSelectOptions = (options: DriverVersionOption[]): VersionSelec
   });
 
   const grouped: VersionSelectGroup[] = sortedYears.map((year) => ({
-    label: `${year} 年`,
+    label: driverText('driverManager.yearGroup', { year }),
     options: yearGroups.get(year) || [],
   }));
   if (others.length > 0) {
@@ -522,8 +522,8 @@ const renderDefaultDriverLabel = (
 ) => (
   <span style={defaultDriverLabelStyle}>
     <span style={defaultDriverNameStyle}>{driverName}</span>
-    {showDefaultTag ? <Tag color="blue" style={defaultDriverTagStyle}>默认</Tag> : null}
-    {showReusedRuntimeTag ? <Tag color="default" style={defaultDriverTagStyle}>复用 runtime</Tag> : null}
+    {showDefaultTag ? <Tag color="blue" style={defaultDriverTagStyle}>{driverText('driverManager.default')}</Tag> : null}
+    {showReusedRuntimeTag ? <Tag color="default" style={defaultDriverTagStyle}>{driverText('driverManager.reuseRuntime')}</Tag> : null}
   </span>
 );
 
@@ -715,14 +715,14 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         try {
           const res = await GetDriverStatusList(downloadDirRef.current, '');
           if (!res?.success) {
-            throw new Error(res?.message || '拉取驱动状态失败');
+            throw new Error(res?.message || driverText('driverManager.loadDriverStatusFailed'));
           }
 
           const data = toRecord<DriverStatusResponseData>(res?.data);
           const resolvedDir = String(data.downloadDir || '').trim();
           const drivers: DriverStatusItem[] = Array.isArray(data.drivers) ? data.drivers.map((item) => toRecord<DriverStatusItem>(item)) : [];
           if (drivers.length === 0) {
-            throw new Error('驱动状态为空，请稍后重试');
+            throw new Error(driverText('driverManager.driverStatusEmpty'));
           }
 
           const effectiveDownloadDir = resolvedDir || downloadDirRef.current;
@@ -909,7 +909,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       const definition = extractBackendCustomDataSourceDefinition(res);
       const merged = definition ? createCustomDataSourceFromBackendDefinition(definition, source) : null;
       if (!merged) {
-        throw new Error('后端未返回可用的自定义数据源定义');
+        throw new Error(driverText('driverManager.noUsableCustomDataSourceDefinition'));
       }
       const nextSources = upsertCustomDataSource(loadCustomDataSources(), merged);
       setCustomDataSources(nextSources);
@@ -1014,7 +1014,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       const metadataBacked = data.metadataBacked === true;
       const metadataError = String(data.metadataError || '').trim();
       const limitedMessage = String(data.message || '').trim()
-        || (metadataError ? `Maven metadata 不可用，仅显示推荐版本：${metadataError}` : 'Maven metadata 不可用，仅显示推荐版本');
+        || (metadataError
+          ? driverText('driverManager.metadataUnavailableRecommendedOnlyWithMessage', { message: metadataError })
+          : driverText('driverManager.metadataUnavailableRecommendedOnly'));
       const installedVersions = new Set((row.installedVersions || []).map((item) => item.version).filter(Boolean));
       const activeVersion = String(row.installedVersion || '').trim();
       const options: DriverVersionOption[] = rawVersions
@@ -1028,9 +1030,9 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
           const active = !!version && activeVersion === version;
           const baseLabel = String(item.displayLabel || '').trim() || version || driverText('driverManager.defaultVersion');
           const displayLabel = active
-            ? `${baseLabel}（当前启用）`
+            ? driverText('driverManager.downloadedVersionStatus', { version: baseLabel, status: driverText('driverManager.currentlyActive') })
             : installed
-              ? `${baseLabel}（已下载）`
+              ? driverText('driverManager.downloadedVersionStatus', { version: baseLabel, status: driverText('driverManager.downloaded') })
               : baseLabel;
           return {
             version,
@@ -1288,7 +1290,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
           const version = currentValue.trim();
           if (!version) {
             message.error(driverText('driverManager.enterTheDriverVersionForTheUploadedJar'));
-            return Promise.reject(new Error('missing upload driver version'));
+            return Promise.reject(new Error(driverText('driverManager.uploadDriverVersionMissing')));
           }
           finish(version);
           return undefined;
@@ -1331,10 +1333,10 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       const fileNames = files.map((file) => String(file.name || '').trim()).filter(Boolean);
 
       setCustomDataSourceSaving(true);
-      appendOperationLog(driverType, `[START] 新增自定义数据源并上传 JDBC Jar（${version}）：${fileNames.join(', ')}`);
+      appendOperationLog(driverType, driverText('driverManager.customUploadStartLog', { version, files: fileNames.join(', ') }));
       const result = await UploadLocalDriverPackage(driverType, files, downloadDir, version);
       if (!result?.success) {
-        const errText = result?.message || '上传自定义数据源 JDBC Jar 失败';
+        const errText = result?.message || driverText('driverManager.uploadCustomJdbcJarFailed');
         appendOperationLog(driverType, `[ERROR] ${errText}`);
         message.error(errText);
         return;
@@ -1356,7 +1358,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         : source;
       const nextCustomDataSources = upsertCustomDataSource(latestSources, hydratedSource);
       setCustomDataSources(nextCustomDataSources);
-      appendOperationLog(driverType, `[DONE] 自定义数据源 ${hydratedSource.name} 已创建并启用`);
+      appendOperationLog(driverType, driverText('driverManager.customDataSourceCreatedEnabledLog', { name: hydratedSource.name }));
       message.success(driverText('driverManager.customDataSourceAdded', { name: hydratedSource.name }));
       setCustomDataSourceModalOpen(false);
       setCustomDataSourceFiles([]);
@@ -1586,11 +1588,11 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       ...prev,
       [row.type]: {
         status: 'start',
-        message: '开始安装',
+        message: driverText('driverManager.startInstall'),
         percent: 0,
       },
     }));
-    appendOperationLog(row.type, row.connectable ? '[START] 开始下载/切换 Maven 驱动版本' : '[START] 开始自动安装');
+    appendOperationLog(row.type, row.connectable ? driverText('driverManager.installStartDownloadSwitchLog') : driverText('driverManager.installStartAutoLog'));
     try {
       let options = versionMap[row.type] || [];
       if (options.length === 0) {
@@ -1611,8 +1613,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         message.error(errText);
         return;
       }
-      const versionTip = selectedVersion ? `（${selectedVersion}）` : '';
-      appendOperationLog(row.type, `[DONE] Maven 驱动版本已启用 ${versionTip}`);
+      const versionTip = selectedVersion ? `(${selectedVersion})` : '';
+      appendOperationLog(row.type, driverText('driverManager.mavenDriverEnabledLog', { version: versionTip }));
       message.success(driverText('driverManager.driverDownloadedEnabled', { name: row.name, version: versionTip }));
       refreshStatus(false);
     } finally {
@@ -1634,8 +1636,8 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       return;
     }
     setActionState({ driverType: row.type, kind: 'upload' });
-    const versionTip = selectedVersion ? `（${selectedVersion}）` : '';
-    appendOperationLog(row.type, `[START] 开始上传 JDBC Jar${versionTip}：${files.map((file) => file.name).join(', ')}`);
+    const versionTip = selectedVersion ? `(${selectedVersion})` : '';
+    appendOperationLog(row.type, driverText('driverManager.uploadJarStartLog', { version: versionTip, files: files.map((file) => file.name).join(', ') }));
     try {
       const result = await UploadLocalDriverPackage(row.type, files, downloadDir, selectedVersion);
       if (!result?.success) {
@@ -1644,7 +1646,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         message.error(errText);
         return;
       }
-      appendOperationLog(row.type, `[DONE] JDBC Jar 上传安装完成 ${versionTip}`.trim());
+      appendOperationLog(row.type, driverText('driverManager.uploadJarDoneLog', { version: versionTip }).trim());
       message.success(driverText('driverManager.jdbcJarUploadedEnabled', { name: row.name, version: versionTip }));
       await refreshStatus(false);
     } finally {
@@ -1656,7 +1658,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
     try {
       const res = await OpenDriverDownloadDirectory(downloadDir);
       if (!res?.success) {
-        throw new Error(res?.message || '打开驱动目录失败');
+        throw new Error(res?.message || driverText('driverManager.openDriverDirectoryFailedWithMessage', { message: '' }));
       }
       const data = toRecord<DriverDirectoryPayload>(res.data);
       const opened = !!data.opened;
@@ -1677,7 +1679,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
       }
       message.warning((responseMessage || driverText('driverManager.openDriverDirectoryManually', { path: pathText || '-' })));
     } catch (error) {
-      const errMsg = error instanceof Error ? error.message : String(error || '未知错误');
+      const errMsg = error instanceof Error ? error.message : String(error || driverText('message.unknownError'));
       message.error(driverText('driverManager.openDriverDirectoryFailedWithMessage', { message: errMsg }));
     }
   }, [downloadDir]);
@@ -1693,7 +1695,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
 
   const removeDriver = useCallback(async (row: DriverStatusRow) => {
     setActionState({ driverType: row.type, kind: 'remove' });
-    appendOperationLog(row.type, '[START] 开始移除驱动');
+    appendOperationLog(row.type, driverText('driverManager.removeDriverStartLog'));
     try {
       const result = await RemoveDriverPackage(row.type, downloadDir);
       if (!result?.success) {
@@ -1702,7 +1704,7 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
         message.error(errText);
         return;
       }
-      appendOperationLog(row.type, '[DONE] 驱动移除完成');
+      appendOperationLog(row.type, driverText('driverManager.removeDriverDoneLog'));
       message.success(driverText('driverManager.driverRemoved', { name: row.name }));
       setProgressMap((prev) => {
         const next = { ...prev };
@@ -1844,12 +1846,12 @@ const DriverManagerModal: React.FC<{ open: boolean; onClose: () => void }> = ({
   }, [searchedRows, statusFilter]);
   const filterSummaryText = useMemo(() => {
     const filterName = statusFilter === 'attention'
-      ? '待处理'
+      ? driverText('driverManager.needsAttention')
       : statusFilter === 'available'
-        ? '可用驱动'
+        ? driverText('driverManager.availableDrivers')
         : statusFilter === 'custom'
-          ? '自定义'
-          : '全部';
+          ? driverText('driverManager.custom')
+          : driverText('driverManager.all');
     if (normalizedSearchKeyword || statusFilter !== 'all') {
       return driverText('driverManager.filterMatches', { filter: filterName, matched: filteredRows.length, total: rows.length });
     }

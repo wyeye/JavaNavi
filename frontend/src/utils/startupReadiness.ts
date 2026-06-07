@@ -1,3 +1,5 @@
+import { getRuntimeLanguage, translate } from '../i18n';
+
 export interface ConnectionWorkbenchState {
   ready: boolean;
   message: string;
@@ -10,13 +12,13 @@ export function getConnectionWorkbenchState(
   if (!isStoreHydrated) {
     return {
       ready: false,
-      message: 'Loading local configuration…',
+      message: translate(getRuntimeLanguage(), 'startup.loadingLocalConfig'),
     };
   }
   if (!hasLoadedInitialConfig) {
     return {
       ready: false,
-      message: 'Loading application configuration…',
+      message: translate(getRuntimeLanguage(), 'startup.loadingAppConfig'),
     };
   }
   return {
