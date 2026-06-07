@@ -14,6 +14,11 @@ export type QueryExecutionOptions = {
   autoCommit?: boolean;
 };
 
+export type TableRenameInput = {
+  oldName: string;
+  newName: string;
+};
+
 const API_BASE = '/api/v1';
 
 type PostJsonOptions = {
@@ -611,6 +616,11 @@ export async function DBShowCreateTable(arg1: connection.ConnectionConfig, arg2:
   return apiEnvelopeToQueryResult(payload, 'Create table SQL loaded');
 }
 
+export async function DBShowCreateTables(arg1: connection.ConnectionConfig, arg2: string, arg3: Array<string>): Promise<connection.QueryResult> {
+  const payload = await postJson('/schema/show-create-tables', { connection: toConnectionPayload(arg1), database: arg2, tables: arg3 || [] });
+  return apiEnvelopeToQueryResult(payload, 'Create table SQL loaded');
+}
+
 export async function DataSync(arg1:sync.SyncConfig): Promise<sync.SyncResult> {
   return dataOrThrow<sync.SyncResult>(await postJson('/data-sync/run', arg1 || {}), 'Data sync failed.');
 }
@@ -702,6 +712,11 @@ export async function DropFunction(arg1:connection.ConnectionConfig,arg2:string,
 export async function DropTable(arg1:connection.ConnectionConfig,arg2:string,arg3:string): Promise<connection.QueryResult> {
   const payload = await postJson('/ddl/drop-table', { connection: toConnectionPayload(arg1), database: arg2, name: arg3 });
   return apiEnvelopeToQueryResult(payload, 'Table dropped');
+}
+
+export async function DropTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<string>): Promise<connection.QueryResult> {
+  const payload = await postJson('/ddl/drop-tables', { connection: toConnectionPayload(arg1), database: arg2, tables: arg3 || [] });
+  return apiEnvelopeToQueryResult(payload, 'Tables dropped');
 }
 
 export async function DropView(arg1:connection.ConnectionConfig,arg2:string,arg3:string): Promise<connection.QueryResult> {
@@ -1299,6 +1314,11 @@ export async function RenameDatabase(arg1:connection.ConnectionConfig,arg2:strin
 export async function RenameTable(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {
   const payload = await postJson('/ddl/rename-table', { connection: toConnectionPayload(arg1), database: arg2, name: arg3, newName: arg4 });
   return apiEnvelopeToQueryResult(payload, 'Table renamed');
+}
+
+export async function RenameTables(arg1:connection.ConnectionConfig,arg2:string,arg3:Array<TableRenameInput>): Promise<connection.QueryResult> {
+  const payload = await postJson('/ddl/rename-tables', { connection: toConnectionPayload(arg1), database: arg2, renames: arg3 || [] });
+  return apiEnvelopeToQueryResult(payload, 'Tables renamed');
 }
 
 export async function RenameView(arg1:connection.ConnectionConfig,arg2:string,arg3:string,arg4:string): Promise<connection.QueryResult> {

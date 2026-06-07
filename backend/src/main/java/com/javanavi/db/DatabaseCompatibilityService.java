@@ -20,6 +20,7 @@ import com.javanavi.model.QueryRequestDto;
 import com.javanavi.model.QueryResultDto;
 import com.javanavi.model.ResultSetDataDto;
 import com.javanavi.model.TableSummaryDto;
+import com.javanavi.model.TableRenameDto;
 import com.javanavi.model.TriggerDefinitionDto;
 import com.javanavi.model.UpdateRowDto;
 import com.javanavi.mongodb.MongoCompatibilityService;
@@ -269,6 +270,22 @@ public class DatabaseCompatibilityService {
         return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> showCreateTableOnConnection(connection, config, requestedDatabase, tableName)));
     }
 
+    public List<String> showCreateTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames) {
+        List<String> names = normalizedTableNames(tableNames);
+        if (isMongo(config)) {
+            return names.stream()
+                    .map(name -> requireMongoCompatibilityService().showCreateTable(requestedDatabase, name))
+                    .toList();
+        }
+        return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection -> {
+            List<String> ddls = new ArrayList<>();
+            for (String name : names) {
+                ddls.add(showCreateTableOnConnection(connection, config, requestedDatabase, name));
+            }
+            return ddls;
+        }));
+    }
+
     public QueryResultDto execute(QueryRequestDto request) {
         rejectUnsupportedNetworkTunnel(request == null ? null : request.connection());
         String queryId = normalizedQueryId(request.queryId());
@@ -378,6 +395,10 @@ public class DatabaseCompatibilityService {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "drop-table", tableName, null, requestedDatabase)));
     }
 
+    public DatabaseOperationResultDto dropTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames) {
+        return withRedactedSqlErrors(() -> withConnection(config, connection -> dropTablesOnConnection(connection, config, requestedDatabase, tableNames)));
+    }
+
     public DatabaseOperationResultDto dropView(ConnectionConfigDto config, String requestedDatabase, String viewName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "drop-view", viewName, null, requestedDatabase)));
     }
@@ -388,6 +409,10 @@ public class DatabaseCompatibilityService {
 
     public DatabaseOperationResultDto renameTable(ConnectionConfigDto config, String requestedDatabase, String tableName, String newName) {
         return withRedactedSqlErrors(() -> withConnection(config, connection -> executeDatabaseDdl(connection, config, "rename-table", tableName, newName, requestedDatabase)));
+    }
+
+    public DatabaseOperationResultDto renameTables(ConnectionConfigDto config, String requestedDatabase, List<TableRenameDto> renames) {
+        return withRedactedSqlErrors(() -> withConnection(config, connection -> renameTablesOnConnection(connection, config, requestedDatabase, renames)));
     }
 
     public DatabaseOperationResultDto copyTables(ConnectionConfigDto config, String requestedDatabase, List<String> tableNames, String targetPrefix, String targetSuffix, boolean includeData) {
@@ -1138,6 +1163,64 @@ public class DatabaseCompatibilityService {
             connection.setAutoCommit(previousAutoCommit);
         }
         return new DatabaseOperationResultDto(truncate ? "truncate" : "clear", names.size(), affected, names, executed);
+    }
+
+    private DatabaseOperationResultDto dropTablesOnConnection(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            List<String> tableNames
+    ) throws SQLException {
+        List<String> names = normalizedTableNames(tableNames);
+        String driver = jdbcConnectionFactory.normalizeDriver(config);
+        List<String> executed = new ArrayList<>();
+        int affected = 0;
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try (Statement statement = connection.createStatement()) {
+            for (String name : names) {
+                String sql = ddlSql(driver, config, "drop-table", name, null, requestedDatabase);
+                executed.add(sql);
+                affected += Math.max(statement.executeUpdate(sql), 0);
+            }
+            connection.commit();
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+        return new DatabaseOperationResultDto("drop-tables", names.size(), affected, names, executed);
+    }
+
+    private DatabaseOperationResultDto renameTablesOnConnection(
+            Connection connection,
+            ConnectionConfigDto config,
+            String requestedDatabase,
+            List<TableRenameDto> renames
+    ) throws SQLException {
+        List<TableRenameDto> pairs = normalizedTableRenames(renames);
+        String driver = jdbcConnectionFactory.normalizeDriver(config);
+        List<String> renamedTables = new ArrayList<>();
+        List<String> executed = new ArrayList<>();
+        int affected = 0;
+        boolean previousAutoCommit = connection.getAutoCommit();
+        connection.setAutoCommit(false);
+        try (Statement statement = connection.createStatement()) {
+            for (TableRenameDto pair : pairs) {
+                String sql = ddlSql(driver, config, "rename-table", pair.oldName(), pair.newName(), requestedDatabase);
+                executed.add(sql);
+                affected += Math.max(statement.executeUpdate(sql), 0);
+                renamedTables.add(pair.newName());
+            }
+            connection.commit();
+        } catch (SQLException | RuntimeException error) {
+            connection.rollback();
+            throw error;
+        } finally {
+            connection.setAutoCommit(previousAutoCommit);
+        }
+        return new DatabaseOperationResultDto("rename-tables", renamedTables.size(), affected, renamedTables, executed);
     }
 
     private DatabaseOperationResultDto executeDatabaseDdl(
@@ -2595,6 +2678,30 @@ public class DatabaseCompatibilityService {
             throw new IllegalArgumentException("At least one table is required.");
         }
         return names;
+    }
+
+    private static List<TableRenameDto> normalizedTableRenames(List<TableRenameDto> renames) {
+        if (renames == null || renames.isEmpty()) {
+            throw new IllegalArgumentException("At least one table rename is required.");
+        }
+        List<TableRenameDto> pairs = new ArrayList<>();
+        Set<String> oldNames = new LinkedHashSet<>();
+        for (TableRenameDto rename : renames) {
+            String oldName = requireText(rename == null ? null : rename.oldName(), "oldName");
+            String newName = requireText(rename == null ? null : rename.newName(), "newName");
+            if (oldName.equals(newName)) {
+                continue;
+            }
+            String key = oldName.toLowerCase(Locale.ROOT);
+            if (!oldNames.add(key)) {
+                throw new IllegalArgumentException("Duplicate source table in rename request: " + oldName);
+            }
+            pairs.add(new TableRenameDto(oldName, newName));
+        }
+        if (pairs.isEmpty()) {
+            throw new IllegalArgumentException("At least one changed table rename is required.");
+        }
+        return pairs;
     }
 
     private static String prefixedTableName(String sourceTable, String prefix, String suffix) {

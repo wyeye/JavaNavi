@@ -3,7 +3,7 @@ import { Input, Spin, Empty, Dropdown, message, Tooltip, Modal, Button, Checkbox
 import type { MenuProps } from 'antd';
 import { TableOutlined, SearchOutlined, ReloadOutlined, SortAscendingOutlined, DatabaseOutlined, ConsoleSqlOutlined, EditOutlined, CopyOutlined, SaveOutlined, DeleteOutlined, ExportOutlined, WarningOutlined, DownOutlined } from '@ant-design/icons';
 import { useStore } from '../store';
-import { ClearTables, CopyTables, DBQuery, DBShowCreateTable, ExportTable, ExportTablesDataSQL, ExportTablesSQL, DropTable, RenameTable, TruncateTables } from '@compat/javanaviApp';
+import { ClearTables, CopyTables, DBQuery, DBShowCreateTable, DBShowCreateTables, ExportTable, ExportTablesDataSQL, ExportTablesSQL, DropTable, DropTables, RenameTable, RenameTables, TruncateTables } from '@compat/javanaviApp';
 import type { ConnectionConfig, TabData } from '../types';
 import { useAutoFetchVisibility } from '../utils/autoFetchVisibility';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
@@ -410,17 +410,13 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
         }
         const hide = message.loading(t('tableOverview.bulk.copyStructureLoading', { count: selectedTableNames.length }), 0);
         try {
-            const structures: string[] = [];
-            for (const tableName of selectedTableNames) {
-                const res = await DBShowCreateTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
-                if (!res.success) {
-                    hide();
-                    message.error(t('tableOverview.bulk.copyStructureFailed', { name: tableName, message: res.message }));
-                    return;
-                }
-                structures.push(String(res.data || ''));
+            const res = await DBShowCreateTables(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames);
+            if (!res.success || !Array.isArray(res.data)) {
+                hide();
+                message.error(t('tableOverview.bulk.copyStructureFailed', { name: '', message: res.message }));
+                return;
             }
-            await navigator.clipboard.writeText(normalizeStructureClipboardText(structures));
+            await navigator.clipboard.writeText(normalizeStructureClipboardText(res.data.map(item => String(item || ''))));
             hide();
             message.success(t('tableOverview.bulk.copyStructureSuccess', { count: selectedTableNames.length }));
         } catch (e: unknown) {
@@ -534,15 +530,12 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
             onOk: async () => {
                 const hide = message.loading(t('tableOverview.bulk.deleteLoading', { count: selectedTableNames.length }), 0);
                 try {
-                    for (const tableName of selectedTableNames) {
-                        const res = await DropTable(buildRpcConnectionConfig(config), tab.dbName || '', tableName);
-                        if (!res.success) {
-                            hide();
-                            message.error(t('tableOverview.bulk.deleteFailed', { name: tableName, message: res.message }));
-                            return Promise.reject();
-                        }
-                    }
+                    const res = await DropTables(buildRpcConnectionConfig(config), tab.dbName || '', selectedTableNames);
                     hide();
+                    if (!res.success) {
+                        message.error(t('tableOverview.bulk.deleteFailed', { name: '', message: res.message }));
+                        return Promise.reject();
+                    }
                     message.success(t('tableOverview.bulk.deleteSuccess', { count: selectedTableNames.length }));
                     setSelectedTableNames([]);
                     await loadData();
@@ -614,15 +607,12 @@ const TableOverview: React.FC<TableOverviewProps> = ({ tab }) => {
 
         const hide = message.loading(t('tableOverview.bulk.renameLoading', { count: changedPairs.length }), 0);
         try {
-            for (const pair of changedPairs) {
-                const res = await RenameTable(buildRpcConnectionConfig(config), tab.dbName || '', pair.oldName, pair.newName);
-                if (!res.success) {
-                    hide();
-                    message.error(t('tableOverview.bulk.renameFailed', { name: pair.oldName, message: res.message }));
-                    return Promise.reject();
-                }
-            }
+            const res = await RenameTables(buildRpcConnectionConfig(config), tab.dbName || '', changedPairs);
             hide();
+            if (!res.success) {
+                message.error(t('tableOverview.bulk.renameFailed', { name: '', message: res.message }));
+                return Promise.reject();
+            }
             message.success(t('tableOverview.bulk.renameSuccess', { count: changedPairs.length }));
             setBulkRenameModalOpen(false);
             setBulkRenameValues({});

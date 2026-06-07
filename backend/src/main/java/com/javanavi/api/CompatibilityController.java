@@ -182,6 +182,11 @@ public class CompatibilityController {
         return ApiEnvelope.ok(databaseCompatibilityService.showCreateTable(request.connection(), request.database(), request.table()));
     }
 
+    @PostMapping("/schema/show-create-tables")
+    public ApiEnvelope<List<String>> showCreateTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
+        return ApiEnvelope.ok(databaseCompatibilityService.showCreateTables(request.connection(), request.database(), request.tables()));
+    }
+
     @PostMapping("/query")
     public ApiEnvelope<QueryResultDto> query(
             @Valid @RequestBody QueryRequestDto request,
@@ -265,6 +270,11 @@ public class CompatibilityController {
         return ApiEnvelope.ok(databaseCompatibilityService.dropTable(request.connection(), request.database(), request.name()));
     }
 
+    @PostMapping("/ddl/drop-tables")
+    public ApiEnvelope<DatabaseOperationResultDto> dropTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
+        return ApiEnvelope.ok(databaseCompatibilityService.dropTables(request.connection(), request.database(), request.tables()));
+    }
+
     @PostMapping("/ddl/drop-view")
     public ApiEnvelope<DatabaseOperationResultDto> dropView(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.dropView(request.connection(), request.database(), request.name()));
@@ -278,6 +288,11 @@ public class CompatibilityController {
     @PostMapping("/ddl/rename-table")
     public ApiEnvelope<DatabaseOperationResultDto> renameTable(@Valid @RequestBody DatabaseOperationRequestDto request) {
         return ApiEnvelope.ok(databaseCompatibilityService.renameTable(request.connection(), request.database(), request.name(), request.newName()));
+    }
+
+    @PostMapping("/ddl/rename-tables")
+    public ApiEnvelope<DatabaseOperationResultDto> renameTables(@Valid @RequestBody DatabaseOperationRequestDto request) {
+        return ApiEnvelope.ok(databaseCompatibilityService.renameTables(request.connection(), request.database(), request.renames()));
     }
 
     @PostMapping("/ddl/copy-tables")

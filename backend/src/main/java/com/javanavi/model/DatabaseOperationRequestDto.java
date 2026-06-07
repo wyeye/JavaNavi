@@ -13,6 +13,7 @@ public record DatabaseOperationRequestDto(
         List<String> tables,
         Boolean includeData,
         String targetPrefix,
-        String targetSuffix
+        String targetSuffix,
+        List<TableRenameDto> renames
 ) {
 }
