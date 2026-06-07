@@ -1406,8 +1406,6 @@ public class MongoCompatibilityService {
                 networkCredential(connection.get("sshConfig")),
                 nullableBoolean(connection.get("useProxy")),
                 networkProxy(connection.get("proxy")),
-                nullableBoolean(connection.get("useHttpTunnel")),
-                networkHttpTunnel(connection.get("httpTunnel")),
                 text(connection.get("uri")),
                 text(connection.get("dsn")),
                 stringList(connection.get("hosts")),
@@ -1441,18 +1439,6 @@ public class MongoCompatibilityService {
         }
         return new ConnectionConfigDto.NetworkProxyConfigDto(
                 text(map.get("type")),
-                text(map.get("host")),
-                nullableInt(text(map.get("port"))),
-                firstText(text(map.get("user")), text(map.get("username"))),
-                text(map.get("password"))
-        );
-    }
-
-    private static ConnectionConfigDto.NetworkHttpTunnelConfigDto networkHttpTunnel(Object value) {
-        if (!(value instanceof Map<?, ?> map)) {
-            return null;
-        }
-        return new ConnectionConfigDto.NetworkHttpTunnelConfigDto(
                 text(map.get("host")),
                 nullableInt(text(map.get("port"))),
                 firstText(text(map.get("user")), text(map.get("username"))),

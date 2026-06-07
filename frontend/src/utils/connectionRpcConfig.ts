@@ -7,13 +7,12 @@ export type RpcConnectionConfigOverrides = ConnectionConfigInput & {
 };
 type UnknownRecord = Record<string, unknown>;
 
-type NestedConnectionConfigInput = UnknownRecord | connection.SSHConfig | connection.ProxyConfig | connection.HTTPTunnelConfig;
+type NestedConnectionConfigInput = UnknownRecord | Partial<connection.SSHConfig> | Partial<connection.ProxyConfig>;
 
-type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ssh' | 'proxy' | 'httpTunnel' | 'globalProxy'>> & {
+type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ssh' | 'proxy' | 'globalProxy'>> & {
   id?: string;
   ssh?: NestedConnectionConfigInput;
   proxy?: NestedConnectionConfigInput;
-  httpTunnel?: NestedConnectionConfigInput;
   globalProxy?: NestedConnectionConfigInput;
   mongoSRV?: boolean;
   mongoReplicaSet?: string;
@@ -23,7 +22,6 @@ type ConnectionConfigKnownFields = Partial<Omit<connection.ConnectionConfig, 'ss
 export type ConnectionConfigInput = ConnectionConfigKnownFields | (UnknownRecord & ConnectionConfigKnownFields);
 type SSHConfigInput = Partial<connection.SSHConfig> | UnknownRecord;
 type ProxyConfigInput = Partial<connection.ProxyConfig> | UnknownRecord;
-type HttpTunnelConfigInput = Partial<connection.HTTPTunnelConfig> | UnknownRecord;
 
 const isInternalOptionKey = (key: string): boolean => {
   const normalized = key.replace(/[-_\s]/g, '').toLowerCase();
@@ -100,15 +98,6 @@ const normalizeProxyConfig = (value: unknown): connection.ProxyConfig => {
   });
 };
 
-const normalizeHttpTunnelConfig = (value: unknown): connection.HTTPTunnelConfig => {
-  const raw = (value ?? {}) as HttpTunnelConfigInput;
-  return new connection.HTTPTunnelConfig({
-    host: toStringValue(raw.host),
-    port: toOptionalInteger(raw.port, 8080) ?? 8080,
-    user: toStringValue(raw.user),
-    password: toStringValue(raw.password),
-  });
-};
 
 export function buildRpcConnectionConfig(
   config: ConnectionConfigInput,
@@ -122,10 +111,6 @@ export function buildRpcConnectionConfig(
     ...(config.proxy ?? {}),
     ...(overrides.proxy ?? {}),
   };
-  const mergedHttpTunnel = {
-    ...(config.httpTunnel ?? {}),
-    ...(overrides.httpTunnel ?? {}),
-  };
   const mergedGlobalProxy: NestedConnectionConfigInput | undefined = config.globalProxy || overrides.globalProxy
     ? {
         ...(config.globalProxy ?? {}),
@@ -137,7 +122,6 @@ export function buildRpcConnectionConfig(
     ...overrides,
     ssh: mergedSSH,
     proxy: mergedProxy,
-    httpTunnel: mergedHttpTunnel,
     globalProxy: mergedGlobalProxy,
   };
   const baseId = toStringValue(config.id).trim() || toStringValue(overrides.id).trim() || undefined;
@@ -160,8 +144,6 @@ export function buildRpcConnectionConfig(
     ssh: normalizeSSHConfig(merged.ssh),
     useProxy: merged.useProxy === true,
     proxy: normalizeProxyConfig(merged.proxy),
-    useHttpTunnel: merged.useHttpTunnel === true,
-    httpTunnel: normalizeHttpTunnelConfig(merged.httpTunnel),
     globalProxy: merged.globalProxy ? normalizeProxyConfig(merged.globalProxy) : undefined,
     driver: toOptionalStringValue(merged.driver),
     dsn: toOptionalStringValue(merged.dsn),

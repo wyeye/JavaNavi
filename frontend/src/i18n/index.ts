@@ -2122,7 +2122,7 @@ const zhOverrides = {
   'proxy.hostPlaceholder': '例如：127.0.0.1',
   'proxy.usernameOptional': '用户名（可选）',
   'proxy.passwordOptional': '密码（可选）',
-  'proxy.scopeHint': '* 作用于驱动管理，以及未配置代理、HTTP 隧道或 SSH 隧道的 JDBC 连接。连接级设置优先。',
+  'proxy.scopeHint': '* 作用于驱动管理，以及未配置代理或 SSH 隧道的 JDBC 连接。连接级设置优先。',
   'message.unknownError': '未知错误',
   'message.loadDataRootFailed': '加载数据根目录信息失败',
   'message.loadDataRootFailedWithMessage': '加载数据根目录信息失败：{message}',

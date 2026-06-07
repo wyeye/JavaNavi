@@ -121,7 +121,6 @@ type ConnectionSecretKey =
   | "primaryPassword"
   | "sshPassword"
   | "proxyPassword"
-  | "httpTunnelPassword"
   | "mysqlReplicaPassword"
   | "mongoReplicaPassword"
   | "opaqueURI"
@@ -134,7 +133,6 @@ const createEmptyConnectionSecretClearState =
     primaryPassword: false,
     sshPassword: false,
     proxyPassword: false,
-    httpTunnelPassword: false,
     mysqlReplicaPassword: false,
     mongoReplicaPassword: false,
     opaqueURI: false,
@@ -263,7 +261,6 @@ const toSavedConnection = (value: connection.SavedConnectionView): SavedConnecti
     hasPrimaryPassword: raw.hasPrimaryPassword === true,
     hasSSHPassword: raw.hasSSHPassword === true,
     hasProxyPassword: raw.hasProxyPassword === true,
-    hasHttpTunnelPassword: raw.hasHttpTunnelPassword === true,
     hasMySQLReplicaPassword: raw.hasMySQLReplicaPassword === true,
     hasMongoReplicaPassword: raw.hasMongoReplicaPassword === true,
     hasOpaqueURI: raw.hasOpaqueURI === true,
@@ -292,7 +289,6 @@ const ConnectionModal: React.FC<{
   const [useSSL, setUseSSL] = useState(false);
   const [useSSH, setUseSSH] = useState(false);
   const [useProxy, setUseProxy] = useState(false);
-  const [useHttpTunnel, setUseHttpTunnel] = useState(false);
   const [dbType, setDbType] = useState("mysql");
   const [step, setStep] = useState(1); // 1: Select Type, 2: Configure
   const [activeGroup, setActiveGroup] = useState(0); // Active category index in step 1
@@ -306,7 +302,7 @@ const ConnectionModal: React.FC<{
     undefined,
   );
   const [activeNetworkConfig, setActiveNetworkConfig] = useState<
-    "ssl" | "ssh" | "proxy" | "httpTunnel"
+    "ssl" | "ssh" | "proxy"
   >("ssl");
   const [testResult, setTestResult] = useState<{
     type: "success" | "error";
@@ -1325,8 +1321,7 @@ const ConnectionModal: React.FC<{
         const redisIsCluster =
           String(config.topology || "").toLowerCase() === "cluster" ||
           redisHosts.length > 0;
-        const hasHttpTunnel = !!config.useHttpTunnel;
-        const hasProxy = !hasHttpTunnel && !!config.useProxy;
+        const hasProxy = !!config.useProxy;
         const initialConnectionInputMode: ConnectionInputMode =
           String(config.uri || "").trim() || initialValues.hasOpaqueURI
             ? "url"
@@ -1359,11 +1354,6 @@ const ConnectionModal: React.FC<{
           proxyPort: config.proxy?.port,
           proxyUser: config.proxy?.user,
           proxyPassword: config.proxy?.password,
-          useHttpTunnel: hasHttpTunnel,
-          httpTunnelHost: config.httpTunnel?.host,
-          httpTunnelPort: config.httpTunnel?.port || 8080,
-          httpTunnelUser: config.httpTunnel?.user,
-          httpTunnelPassword: config.httpTunnel?.password,
           customDataSourceId: selectedInitialCustomDataSource?.id,
           driver: config.driver,
           dsn: config.dsn,
@@ -1393,7 +1383,6 @@ const ConnectionModal: React.FC<{
         setCustomIconColor(initialValues.iconColor);
         setUseSSH(config.useSSH || false);
         setUseProxy(hasProxy);
-        setUseHttpTunnel(hasHttpTunnel);
         setDbType(configType);
         if (config.useSSL && supportsSSLForType(configType)) {
           setActiveNetworkConfig("ssl");
@@ -1401,8 +1390,6 @@ const ConnectionModal: React.FC<{
           setActiveNetworkConfig("ssh");
         } else if (hasProxy) {
           setActiveNetworkConfig("proxy");
-        } else if (hasHttpTunnel) {
-          setActiveNetworkConfig("httpTunnel");
         } else {
           setActiveNetworkConfig("ssl");
         }
@@ -1418,8 +1405,7 @@ const ConnectionModal: React.FC<{
         setUseSSL(false);
         setUseSSH(false);
         setUseProxy(false);
-        setUseHttpTunnel(false);
-        setDbType("mysql");
+          setDbType("mysql");
         form.setFieldsValue({
           customDataSourceId: undefined,
           driver: undefined,
@@ -1466,12 +1452,6 @@ const ConnectionModal: React.FC<{
       valueInput: config.proxy?.password,
       clearSecret: clearSecrets.proxyPassword,
       forceClear: !config.useProxy,
-    });
-    const httpTunnelDraft = resolveConnectionSecretDraft({
-      hasSecret: initialValues?.hasHttpTunnelPassword,
-      valueInput: config.httpTunnel?.password,
-      clearSecret: clearSecrets.httpTunnelPassword,
-      forceClear: !config.useHttpTunnel,
     });
     const mysqlReplicaEnabled =
       (config.type === "mysql" ||
@@ -1544,15 +1524,6 @@ const ConnectionModal: React.FC<{
         }),
         password: proxyDraft.value,
       },
-      httpTunnel: {
-        ...(config.httpTunnel || {
-          host: "",
-          port: 8080,
-          user: "",
-          password: "",
-        }),
-        password: httpTunnelDraft.value,
-      },
       uri: opaqueUriDraft.value,
       dsn: opaqueDsnDraft.value,
       mysqlReplicaPassword: mysqlReplicaDraft.value,
@@ -1574,7 +1545,6 @@ const ConnectionModal: React.FC<{
       clearPrimaryPassword: primaryDraft.clearStoredSecret,
       clearSSHPassword: sshDraft.clearStoredSecret,
       clearProxyPassword: proxyDraft.clearStoredSecret,
-      clearHttpTunnelPassword: httpTunnelDraft.clearStoredSecret,
       clearMySQLReplicaPassword: mysqlReplicaDraft.clearStoredSecret,
       clearMongoReplicaPassword: mongoReplicaDraft.clearStoredSecret,
       clearOpaqueURI: opaqueUriDraft.clearStoredSecret,
@@ -1625,7 +1595,6 @@ const ConnectionModal: React.FC<{
       setUseSSL(false);
       setUseSSH(false);
       setUseProxy(false);
-      setUseHttpTunnel(false);
       setDbType("mysql");
       setStep(1);
       setClearSecrets(createEmptyConnectionSecretClearState());
@@ -1691,17 +1660,9 @@ const ConnectionModal: React.FC<{
     if (
       clearSecrets.proxyPassword &&
       values.useProxy &&
-      !values.useHttpTunnel &&
       String(values.proxyPassword ?? "") === ""
     ) {
       return "测试连接前请填写新的代理密码，或取消清除已保存代理密码";
-    }
-    if (
-      clearSecrets.httpTunnelPassword &&
-      values.useHttpTunnel &&
-      String(values.httpTunnelPassword ?? "") === ""
-    ) {
-      return "测试连接前请填写新的隧道密码，或取消清除已保存隧道密码";
     }
     if (
       clearSecrets.mysqlReplicaPassword &&
@@ -2115,10 +2076,7 @@ const ConnectionModal: React.FC<{
           keyPath: String(mergedValues.sshKeyPath || ""),
         }
       : { host: "", port: 22, user: "", password: "", keyPath: "" };
-    const effectiveUseHttpTunnel =
-      !isFileDbType && !!mergedValues.useHttpTunnel;
-    const effectiveUseProxy =
-      !isFileDbType && !!mergedValues.useProxy && !effectiveUseHttpTunnel;
+    const effectiveUseProxy = !isFileDbType && !!mergedValues.useProxy;
     const proxyTypeRaw = String(
       mergedValues.proxyType || "socks5",
     ).toLowerCase();
@@ -2142,32 +2100,6 @@ const ConnectionModal: React.FC<{
             user: "",
             password: "",
           };
-    const httpTunnelConfig: NonNullable<ConnectionConfig["httpTunnel"]> =
-      effectiveUseHttpTunnel
-        ? {
-            host: String(mergedValues.httpTunnelHost || "").trim(),
-            port: Number(mergedValues.httpTunnelPort || 8080),
-            user: String(mergedValues.httpTunnelUser || "").trim(),
-            password: String(mergedValues.httpTunnelPassword || ""),
-          }
-        : {
-            host: "",
-            port: 8080,
-            user: "",
-            password: "",
-          };
-    if (effectiveUseHttpTunnel) {
-      if (!httpTunnelConfig.host) {
-        throw new Error("HTTP 隧道主机不能为空");
-      }
-      if (
-        !Number.isFinite(httpTunnelConfig.port) ||
-        httpTunnelConfig.port <= 0 ||
-        httpTunnelConfig.port > 65535
-      ) {
-        throw new Error("HTTP 隧道端口必须在 1-65535 之间");
-      }
-    }
 
     const keepPassword = !forPersist || savePassword;
     const normalizedConfigType = normalizeDriverType(type);
@@ -2230,8 +2162,6 @@ const ConnectionModal: React.FC<{
       ssh: sshConfig,
       useProxy: effectiveUseProxy,
       proxy: proxyConfig,
-      useHttpTunnel: effectiveUseHttpTunnel,
-      httpTunnel: httpTunnelConfig,
       driver: selectedDriverForConfig,
       dsn: String(mergedValues.dsn || "").trim(),
       options: customConnectionOptions,
@@ -2292,7 +2222,6 @@ const ConnectionModal: React.FC<{
       setUseSSL(false);
       setUseSSH(false);
       setUseProxy(false);
-      setUseHttpTunnel(false);
       form.setFieldsValue({
         host: "",
         port: 0,
@@ -2315,11 +2244,6 @@ const ConnectionModal: React.FC<{
         proxyPort: 1080,
         proxyUser: "",
         proxyPassword: "",
-        useHttpTunnel: false,
-        httpTunnelHost: "",
-        httpTunnelPort: 8080,
-        httpTunnelUser: "",
-        httpTunnelPassword: "",
         connectionInputMode: "target",
         uri: "",
         mysqlTopology: "single",
@@ -2344,7 +2268,6 @@ const ConnectionModal: React.FC<{
       setUseSSL(false);
       setUseSSH(false);
       setUseProxy(false);
-      setUseHttpTunnel(false);
       form.setFieldsValue({
         host: "",
         port: 0,
@@ -2367,11 +2290,6 @@ const ConnectionModal: React.FC<{
         proxyPort: 1080,
         proxyUser: "",
         proxyPassword: "",
-        useHttpTunnel: false,
-        httpTunnelHost: "",
-        httpTunnelPort: 8080,
-        httpTunnelUser: "",
-        httpTunnelPassword: "",
         timeout: 30,
         connectionInputMode: "target",
         uri: "",
@@ -2398,7 +2316,6 @@ const ConnectionModal: React.FC<{
         type === "clickhouse" ? "default" : type === "redis" ? "" : "root";
       const sslCapableType = supportsSSLForType(type);
       setUseSSL(false);
-      setUseHttpTunnel(false);
       form.setFieldsValue({
         user: defaultUser,
         database: "",
@@ -2407,11 +2324,6 @@ const ConnectionModal: React.FC<{
         sslMode: sslCapableType ? DEFAULT_SSL_MODE : undefined,
         sslCertPath: sslCapableType ? "" : undefined,
         sslKeyPath: sslCapableType ? "" : undefined,
-        useHttpTunnel: false,
-        httpTunnelHost: "",
-        httpTunnelPort: 8080,
-        httpTunnelUser: "",
-        httpTunnelPassword: "",
         connectionInputMode: "target",
         uri: "",
         mysqlTopology: "single",
@@ -3962,7 +3874,7 @@ const ConnectionModal: React.FC<{
       !isFileDb
         ? (() => {
             const networkItems: Array<{
-              key: "ssl" | "ssh" | "proxy" | "httpTunnel";
+              key: "ssl" | "ssh" | "proxy";
               title: string;
               description: string;
               enabled: boolean;
@@ -3988,12 +3900,6 @@ const ConnectionModal: React.FC<{
                 title: "代理",
                 description: "SOCKS5 / HTTP CONNECT",
                 enabled: useProxy,
-              },
-              {
-                key: "httpTunnel",
-                title: "HTTP 隧道",
-                description: "独立 HTTP CONNECT 路由",
-                enabled: useHttpTunnel,
               },
             ];
             const resolvedNetworkConfig = networkItems.some(
@@ -4251,7 +4157,7 @@ const ConnectionModal: React.FC<{
                       代理
                     </div>
                     <div style={{ ...modalMutedTextStyle, marginBottom: 14 }}>
-                      适合借助本地代理软件或中间网关转发数据库流量。
+                      通过 SOCKS5 或 HTTP CONNECT 代理转发数据库流量。
                     </div>
                     {!useProxy ? (
                       <div
@@ -4302,7 +4208,7 @@ const ConnectionModal: React.FC<{
                                 {
                                   value: "http",
                                   label: "HTTP CONNECT",
-                                  description: "通过 HTTP CONNECT 建立隧道。",
+                                  description: "通过 HTTP CONNECT 建立 TCP 通道。",
                                 },
                               ],
                             })}
@@ -4368,126 +4274,7 @@ const ConnectionModal: React.FC<{
                   </div>
                 );
               }
-              return (
-                <div style={{ ...modalInnerSectionStyle, padding: 14 }}>
-                  <div
-                    style={{
-                      marginBottom: 8,
-                      color: darkMode ? "#f5f7ff" : "#162033",
-                      fontSize: 14,
-                      fontWeight: 700,
-                    }}
-                  >
-                    HTTP 隧道
-                  </div>
-                  <div style={{ ...modalMutedTextStyle, marginBottom: 14 }}>
-                    与代理模式互斥，适合单独指定一条 HTTP CONNECT 隧道路由。
-                  </div>
-                  {!useHttpTunnel ? (
-                    <div
-                      style={{
-                        ...modalMutedTextStyle,
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        background: darkMode
-                          ? "rgba(255,255,255,0.03)"
-                          : "rgba(16,24,40,0.04)",
-                      }}
-                    >
-                      左侧勾选“HTTP 隧道”后，可在这里填写隧道目标与认证信息。
-                    </div>
-                  ) : (
-                    <div style={tunnelSectionStyle}>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "minmax(0, 1fr) 120px",
-                          gap: 16,
-                        }}
-                      >
-                        <Form.Item
-                          name="httpTunnelHost"
-                          label="隧道主机"
-                          rules={[
-                            {
-                              required: useHttpTunnel,
-                              message: "请输入隧道主机",
-                            },
-                          ]}
-                          style={{ flex: 1 }}
-                        >
-                          <Input
-                            {...noAutoCapInputProps}
-                            placeholder="例如: tunnel.company.com 或 127.0.0.1"
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          name="httpTunnelPort"
-                          label="端口"
-                          rules={[
-                            {
-                              required: useHttpTunnel,
-                              message: "请输入隧道端口",
-                            },
-                          ]}
-                          style={{ width: 120 }}
-                        >
-                          <InputNumber
-                            style={{ width: "100%" }}
-                            min={1}
-                            max={65535}
-                          />
-                        </Form.Item>
-                      </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                          gap: 16,
-                        }}
-                      >
-                        <Form.Item
-                          name="httpTunnelUser"
-                          label="隧道用户名（可选）"
-                          style={{ flex: 1 }}
-                        >
-                          <Input
-                            {...noAutoCapInputProps}
-                            placeholder="留空表示无认证"
-                          />
-                        </Form.Item>
-                        <Form.Item
-                          name="httpTunnelPassword"
-                          label="隧道密码（可选）"
-                          style={{ flex: 1 }}
-                        >
-                          <Input.Password
-                            {...noAutoCapInputProps}
-                            placeholder={getStoredSecretPlaceholder({
-                              hasStoredSecret:
-                                initialValues?.hasHttpTunnelPassword,
-                              emptyPlaceholder: "留空表示无认证",
-                              retainedLabel: "已保存隧道密码",
-                            })}
-                          />
-                        </Form.Item>
-                      </div>
-                      {renderStoredSecretControls({
-                        fieldName: "httpTunnelPassword",
-                        clearKey: "httpTunnelPassword",
-                        hasStoredSecret: initialValues?.hasHttpTunnelPassword,
-                        clearLabel: "清除已保存隧道密码",
-                        description:
-                          "当前已保存隧道密码。留空表示继续沿用，输入新值表示替换。",
-                      })}
-                      <Text type="secondary" style={{ fontSize: 12 }}>
-                        与“使用代理”互斥，启用后将通过 HTTP CONNECT
-                        建立独立隧道。
-                      </Text>
-                    </div>
-                  )}
-                </div>
-              );
+              return null;
             };
 
             return (
@@ -4587,9 +4374,7 @@ const ConnectionModal: React.FC<{
                                   ? "useSSL"
                                   : item.key === "ssh"
                                     ? "useSSH"
-                                    : item.key === "proxy"
-                                      ? "useProxy"
-                                      : "useHttpTunnel"
+                                    : "useProxy"
                               }
                               valuePropName="checked"
                               noStyle
@@ -4730,8 +4515,6 @@ const ConnectionModal: React.FC<{
           useProxy: false,
           proxyType: "socks5",
           proxyPort: 1080,
-          useHttpTunnel: false,
-          httpTunnelPort: 8080,
           timeout: 30,
           connectionInputMode: "target",
           uri: "",
@@ -4769,16 +4552,25 @@ const ConnectionModal: React.FC<{
             }
           }
           if (changed.useSSH !== undefined) {
-            setUseSSH(changed.useSSH);
-            if (changed.useSSH) setActiveNetworkConfig("ssh");
+            const enabledSSH = !!changed.useSSH;
+            setUseSSH(enabledSSH);
+            if (enabledSSH) {
+              setActiveNetworkConfig("ssh");
+              if (form.getFieldValue("useProxy")) {
+                form.setFieldValue("useProxy", false);
+                setUseProxy(false);
+              }
+            }
           }
           if (changed.useProxy !== undefined) {
             const enabledProxy = !!changed.useProxy;
             setUseProxy(enabledProxy);
-            if (enabledProxy) setActiveNetworkConfig("proxy");
-            if (enabledProxy && form.getFieldValue("useHttpTunnel")) {
-              form.setFieldValue("useHttpTunnel", false);
-              setUseHttpTunnel(false);
+            if (enabledProxy) {
+              setActiveNetworkConfig("proxy");
+              if (form.getFieldValue("useSSH")) {
+                form.setFieldValue("useSSH", false);
+                setUseSSH(false);
+              }
             }
           }
           if (changed.proxyType !== undefined) {
@@ -4794,23 +4586,6 @@ const ConnectionModal: React.FC<{
               const currentPort = Number(form.getFieldValue("proxyPort") || 0);
               if (!currentPort || currentPort === 8080) {
                 form.setFieldValue("proxyPort", 1080);
-              }
-            }
-          }
-          if (changed.useHttpTunnel !== undefined) {
-            const enabledHttpTunnel = !!changed.useHttpTunnel;
-            setUseHttpTunnel(enabledHttpTunnel);
-            if (enabledHttpTunnel) setActiveNetworkConfig("httpTunnel");
-            if (enabledHttpTunnel && form.getFieldValue("useProxy")) {
-              form.setFieldValue("useProxy", false);
-              setUseProxy(false);
-            }
-            if (enabledHttpTunnel) {
-              const currentPort = Number(
-                form.getFieldValue("httpTunnelPort") || 0,
-              );
-              if (!currentPort || currentPort <= 0) {
-                form.setFieldValue("httpTunnelPort", 8080);
               }
             }
           }

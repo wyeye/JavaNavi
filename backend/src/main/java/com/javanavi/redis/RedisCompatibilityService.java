@@ -428,7 +428,7 @@ public class RedisCompatibilityService {
     private List<RedisConfig> resolveConfigs(Map<String, Object> input, Integer databaseOverride) {
         Map<String, Object> connection = map(value(input, "connection"));
         Map<String, Object> options = map(connection.get("options"));
-        if (bool(connection.get("useSSH")) || bool(connection.get("useProxy")) || bool(connection.get("useHttpTunnel"))) {
+        if (bool(connection.get("useSSH")) || bool(connection.get("useProxy"))) {
             throw new RedisOperationException(messages.message("redis.runtimeExclusion"));
         }
 

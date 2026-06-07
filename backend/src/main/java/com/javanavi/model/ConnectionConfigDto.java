@@ -26,8 +26,6 @@ public record ConnectionConfigDto(
         NetworkCredentialConfigDto sshConfig,
         @JsonAlias({"useProxy"}) Boolean useProxy,
         NetworkProxyConfigDto proxy,
-        @JsonAlias({"useHttpTunnel"}) Boolean useHttpTunnel,
-        NetworkHttpTunnelConfigDto httpTunnel,
         NetworkProxyConfigDto globalProxy,
         String uri,
         String dsn,
@@ -65,8 +63,6 @@ public record ConnectionConfigDto(
                 password,
                 options,
                 timeout,
-                null,
-                null,
                 null,
                 null,
                 null,
@@ -124,8 +120,6 @@ public record ConnectionConfigDto(
             NetworkCredentialConfigDto sshConfig,
             Boolean useProxy,
             NetworkProxyConfigDto proxy,
-            Boolean useHttpTunnel,
-            NetworkHttpTunnelConfigDto httpTunnel,
             String uri,
             String dsn,
             List<String> hosts,
@@ -159,8 +153,6 @@ public record ConnectionConfigDto(
                 sshConfig,
                 useProxy,
                 proxy,
-                useHttpTunnel,
-                httpTunnel,
                 null,
                 uri,
                 dsn,
@@ -202,8 +194,7 @@ public record ConnectionConfigDto(
             String mongoReplicaUser,
             String mongoReplicaPassword,
             Boolean useSSH,
-            Boolean useProxy,
-            Boolean useHttpTunnel
+            Boolean useProxy
     ) {
         this(
                 id,
@@ -225,8 +216,6 @@ public record ConnectionConfigDto(
                 null,
                 null,
                 useProxy,
-                null,
-                useHttpTunnel,
                 null,
                 null,
                 uri,
@@ -291,8 +280,6 @@ public record ConnectionConfigDto(
                 null,
                 null,
                 null,
-                null,
-                null,
                 uri,
                 dsn,
                 hosts,
@@ -319,7 +306,7 @@ public record ConnectionConfigDto(
     public ConnectionConfigDto withEndpoint(String host, Integer port) {
         return new ConnectionConfigDto(
                 id, name, driverType, driver, host, port, database, username, password, options, timeout,
-                useSSL, sslMode, sslCertPath, sslKeyPath, useSSH, ssh, sshConfig, useProxy, proxy, useHttpTunnel, httpTunnel, globalProxy,
+                useSSL, sslMode, sslCertPath, sslKeyPath, useSSH, ssh, sshConfig, useProxy, proxy, globalProxy,
                 uri, dsn, hosts, topology, replicaSet, authSource, readPreference, mongoSrv,
                 mongoAuthMechanism, mongoReplicaUser, mongoReplicaPassword
         );
@@ -331,10 +318,6 @@ public record ConnectionConfigDto(
 
     public boolean proxyEnabled() {
         return Boolean.TRUE.equals(useProxy) && proxy != null && text(proxy.host()) != null;
-    }
-
-    public boolean httpTunnelEnabled() {
-        return Boolean.TRUE.equals(useHttpTunnel) && httpTunnel != null && text(httpTunnel.host()) != null;
     }
 
     private static String text(String value) {
@@ -363,8 +346,6 @@ public record ConnectionConfigDto(
                 sshConfig,
                 useProxy,
                 proxy,
-                useHttpTunnel,
-                httpTunnel,
                 globalProxy,
                 uri,
                 dsn,
@@ -402,8 +383,6 @@ public record ConnectionConfigDto(
                 sshConfig,
                 useProxy,
                 proxy,
-                useHttpTunnel,
-                httpTunnel,
                 globalProxy,
                 uri,
                 dsn,
@@ -441,8 +420,6 @@ public record ConnectionConfigDto(
                 sshConfig,
                 useProxy,
                 proxy,
-                useHttpTunnel,
-                httpTunnel,
                 globalProxy,
                 uri,
                 dsn,
@@ -469,14 +446,6 @@ public record ConnectionConfigDto(
 
     public record NetworkProxyConfigDto(
             String type,
-            String host,
-            Integer port,
-            @JsonAlias({"user"}) String user,
-            String password
-    ) {
-    }
-
-    public record NetworkHttpTunnelConfigDto(
             String host,
             Integer port,
             @JsonAlias({"user"}) String user,

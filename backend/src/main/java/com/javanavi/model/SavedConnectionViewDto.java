@@ -15,7 +15,6 @@ public record SavedConnectionViewDto(
         boolean hasPrimaryPassword,
         boolean hasSSHPassword,
         boolean hasProxyPassword,
-        boolean hasHttpTunnelPassword,
         boolean hasMySQLReplicaPassword,
         boolean hasMongoReplicaPassword,
         boolean hasOpaqueURI,

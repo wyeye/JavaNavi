@@ -223,24 +223,6 @@ export namespace connection {
 	    }
 
 	}
-	export class HTTPTunnelConfig {
-	    host: string;
-	    port: number;
-	    user?: string;
-	    password?: string;
-
-	    static createFrom(source: CompatModelSource = {}) {
-	        return new HTTPTunnelConfig(source);
-	    }
-
-	    constructor(source: CompatModelSource = {}) {
-	        const sourceRecord = parseModelSource(source);
-	        this.host = sourceRecord["host"];
-	        this.port = sourceRecord["port"];
-	        this.user = sourceRecord["user"];
-	        this.password = sourceRecord["password"];
-	    }
-	}
 	export class ProxyConfig {
 	    type: string;
 	    host: string;
@@ -298,9 +280,7 @@ export namespace connection {
 	    ssh?: SSHConfig;
 	    useProxy?: boolean;
 	    proxy?: ProxyConfig;
-	    useHttpTunnel?: boolean;
-	    httpTunnel?: HTTPTunnelConfig;
-	    globalProxy?: ProxyConfig;
+			    globalProxy?: ProxyConfig;
 	    driver?: string;
 	    dsn?: string;
 	    options?: Record<string, string>;
@@ -341,9 +321,7 @@ export namespace connection {
 	        this.ssh = convertCompatValues(sourceRecord["ssh"], SSHConfig) as SSHConfig | undefined;
 	        this.useProxy = sourceRecord["useProxy"];
 	        this.proxy = convertCompatValues(sourceRecord["proxy"], ProxyConfig) as ProxyConfig | undefined;
-	        this.useHttpTunnel = sourceRecord["useHttpTunnel"];
-	        this.httpTunnel = convertCompatValues(sourceRecord["httpTunnel"], HTTPTunnelConfig) as HTTPTunnelConfig | undefined;
-	        this.globalProxy = convertCompatValues(sourceRecord["globalProxy"], ProxyConfig) as ProxyConfig | undefined;
+			        this.globalProxy = convertCompatValues(sourceRecord["globalProxy"], ProxyConfig) as ProxyConfig | undefined;
 	        this.driver = sourceRecord["driver"];
 	        this.dsn = sourceRecord["dsn"];
 	        this.options = sourceRecord["options"];
@@ -463,8 +441,7 @@ export namespace connection {
 	    clearPrimaryPassword?: boolean;
 	    clearSSHPassword?: boolean;
 	    clearProxyPassword?: boolean;
-	    clearHttpTunnelPassword?: boolean;
-	    clearMySQLReplicaPassword?: boolean;
+		    clearMySQLReplicaPassword?: boolean;
 	    clearMongoReplicaPassword?: boolean;
 	    clearOpaqueURI?: boolean;
 	    clearOpaqueDSN?: boolean;
@@ -485,8 +462,7 @@ export namespace connection {
 	        this.clearPrimaryPassword = sourceRecord["clearPrimaryPassword"];
 	        this.clearSSHPassword = sourceRecord["clearSSHPassword"];
 	        this.clearProxyPassword = sourceRecord["clearProxyPassword"];
-	        this.clearHttpTunnelPassword = sourceRecord["clearHttpTunnelPassword"];
-	        this.clearMySQLReplicaPassword = sourceRecord["clearMySQLReplicaPassword"];
+		        this.clearMySQLReplicaPassword = sourceRecord["clearMySQLReplicaPassword"];
 	        this.clearMongoReplicaPassword = sourceRecord["clearMongoReplicaPassword"];
 	        this.clearOpaqueURI = sourceRecord["clearOpaqueURI"];
 	        this.clearOpaqueDSN = sourceRecord["clearOpaqueDSN"];
@@ -505,8 +481,7 @@ export namespace connection {
 	    hasPrimaryPassword?: boolean;
 	    hasSSHPassword?: boolean;
 	    hasProxyPassword?: boolean;
-	    hasHttpTunnelPassword?: boolean;
-	    hasMySQLReplicaPassword?: boolean;
+		    hasMySQLReplicaPassword?: boolean;
 	    hasMongoReplicaPassword?: boolean;
 	    hasOpaqueURI?: boolean;
 	    hasOpaqueDSN?: boolean;
@@ -528,8 +503,7 @@ export namespace connection {
 	        this.hasPrimaryPassword = sourceRecord["hasPrimaryPassword"];
 	        this.hasSSHPassword = sourceRecord["hasSSHPassword"];
 	        this.hasProxyPassword = sourceRecord["hasProxyPassword"];
-	        this.hasHttpTunnelPassword = sourceRecord["hasHttpTunnelPassword"];
-	        this.hasMySQLReplicaPassword = sourceRecord["hasMySQLReplicaPassword"];
+		        this.hasMySQLReplicaPassword = sourceRecord["hasMySQLReplicaPassword"];
 	        this.hasMongoReplicaPassword = sourceRecord["hasMongoReplicaPassword"];
 	        this.hasOpaqueURI = sourceRecord["hasOpaqueURI"];
 	        this.hasOpaqueDSN = sourceRecord["hasOpaqueDSN"];

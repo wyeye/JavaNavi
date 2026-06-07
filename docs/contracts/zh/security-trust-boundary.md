@@ -26,7 +26,6 @@ JavaNavi 当前本地 Web 包会通过 loopback HTTP 边界暴露带凭据的数
 - `ssh.password`
 - `ssh.keyPath` when logged
 - `proxy.password`
-- `httpTunnel.password`
 - `uri` 与 `dsn` 中携带凭据时
 - `mysqlReplicaPassword`
 - `mongoReplicaPassword`

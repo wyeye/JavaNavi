@@ -16,12 +16,6 @@ export interface ProxyConfig {
   password?: string;
 }
 
-export interface HTTPTunnelConfig {
-  host: string;
-  port: number;
-  user?: string;
-  password?: string;
-}
 
 export interface ConnectionConfig {
   id?: string;
@@ -40,8 +34,6 @@ export interface ConnectionConfig {
   ssh?: SSHConfig;
   useProxy?: boolean;
   proxy?: ProxyConfig;
-  useHttpTunnel?: boolean;
-  httpTunnel?: HTTPTunnelConfig;
   globalProxy?: ProxyConfig;
   driver?: string;
   dsn?: string;
@@ -79,7 +71,6 @@ export interface SavedConnection {
   hasPrimaryPassword?: boolean;
   hasSSHPassword?: boolean;
   hasProxyPassword?: boolean;
-  hasHttpTunnelPassword?: boolean;
   hasMySQLReplicaPassword?: boolean;
   hasMongoReplicaPassword?: boolean;
   hasOpaqueURI?: boolean;

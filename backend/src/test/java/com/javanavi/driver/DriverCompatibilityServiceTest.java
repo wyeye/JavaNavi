@@ -239,9 +239,6 @@ class DriverCompatibilityServiceTest {
                 null,
                 null,
                 null,
-                null,
-                null,
-                null,
                 null
         );
 
@@ -254,36 +251,36 @@ class DriverCompatibilityServiceTest {
     void jdbcConnectionFactoryMapsSslModesToDriverProperties() {
         JdbcConnectionFactory factory = new JdbcConnectionFactory();
 
-        ConnectionConfigDto mysql = jdbcConfig("mysql", 3306, true, "required", null, null, null, null);
+        ConnectionConfigDto mysql = jdbcConfig("mysql", 3306, true, "required", null, null, null);
         assertThat(factory.jdbcUrl(mysql)).doesNotContain("useSSL=false");
         assertThat(factory.connectionProperties(mysql))
                 .containsEntry("sslMode", "VERIFY_IDENTITY")
                 .containsEntry("useSSL", "true")
                 .containsEntry("requireSSL", "true");
 
-        ConnectionConfigDto mysqlSkipVerify = jdbcConfig("mysql", 3306, true, "skip-verify", null, null, null, null);
+        ConnectionConfigDto mysqlSkipVerify = jdbcConfig("mysql", 3306, true, "skip-verify", null, null, null);
         assertThat(factory.connectionProperties(mysqlSkipVerify))
                 .containsEntry("sslMode", "REQUIRED")
                 .containsEntry("verifyServerCertificate", "false");
 
-        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "preferred", null, null, null, null)))
+        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "preferred", null, null, null)))
                 .containsEntry("sslmode", "prefer");
-        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "skip-verify", null, null, null, null)))
+        assertThat(factory.connectionProperties(jdbcConfig("postgresql", 5432, true, "skip-verify", null, null, null)))
                 .containsEntry("sslmode", "require")
                 .containsEntry("sslfactory", "org.postgresql.ssl.NonValidatingFactory");
 
-        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "required", null, null, null, null)))
+        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "required", null, null, null)))
                 .contains("encrypt=true")
                 .contains("trustServerCertificate=false");
-        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "skip-verify", null, null, null, null)))
+        assertThat(factory.jdbcUrl(jdbcConfig("sqlserver", 1433, true, "skip-verify", null, null, null)))
                 .contains("encrypt=true")
                 .contains("trustServerCertificate=true");
 
-        assertThat(factory.connectionProperties(jdbcConfig("clickhouse", 8123, true, "skip-verify", null, null, null, null)))
+        assertThat(factory.connectionProperties(jdbcConfig("clickhouse", 8123, true, "skip-verify", null, null, null)))
                 .containsEntry("ssl", "true")
                 .containsEntry("sslmode", "none");
 
-        ConnectionConfigDto dameng = jdbcConfig("dameng", 5236, true, "required", null, null, "/tmp/client.crt", "/tmp/client.key");
+        ConnectionConfigDto dameng = jdbcConfig("dameng", 5236, true, "required", null, "/tmp/client.crt", "/tmp/client.key");
         assertThat(factory.connectionProperties(dameng))
                 .containsEntry("sslMode", "required")
                 .containsEntry("sslFilesPath", "/tmp/client.crt")
@@ -296,9 +293,9 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
-    void globalProxyAppliesOnlyWhenConnectionHasNoProxyOrTunnel() {
+    void globalProxyAppliesOnlyWhenConnectionHasNoConnectionNetwork() {
         JdbcConnectionFactory factory = new JdbcConnectionFactory();
-        ConnectionConfigDto globalOnly = jdbcConfig("postgresql", 5432, false, "disable", null, null, null, null)
+        ConnectionConfigDto globalOnly = jdbcConfig("postgresql", 5432, false, "disable", null, null, null)
                 .withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, "global-user", "global-secret"));
 
         assertThat(factory.connectionProperties(globalOnly))
@@ -311,7 +308,6 @@ class DriverCompatibilityServiceTest {
         ConnectionConfigDto connectionProxy = jdbcConfig("postgresql", 5432, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "connection.proxy", 1080, null, null),
                 null,
-                null,
                 null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, null, null));
 
         assertThat(factory.connectionProperties(connectionProxy))
@@ -319,23 +315,24 @@ class DriverCompatibilityServiceTest {
                 .containsEntry("javanavi.proxy.host", "connection.proxy")
                 .containsEntry("javanavi.proxy.port", "1080");
 
-        ConnectionConfigDto httpTunnel = jdbcConfig("postgresql", 5432, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("connection.tunnel", 18080, null, null),
+        ConnectionConfigDto httpProxy = jdbcConfig("postgresql", 5432, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "connection.proxy", 18080, null, null),
                 null,
                 null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, null, null));
 
-        assertThat(factory.connectionProperties(httpTunnel))
-                .containsEntry("javanavi.proxy.type", "http-connect")
-                .containsEntry("javanavi.proxy.host", "connection.tunnel")
+        assertThat(factory.connectionProperties(httpProxy))
+                .containsEntry("javanavi.proxy.type", "http")
+                .containsEntry("javanavi.proxy.host", "connection.proxy")
                 .containsEntry("javanavi.proxy.port", "18080");
 
         ConnectionConfigDto ssh = new ConnectionConfigDto(
                 "postgres-ssh", "Postgres SSH", "postgresql", null, "db.local", 5432, "demo", "user", "password", Map.of(), 30,
-                false, "disable", true,
+                false, "disable",
+                true,
                 new ConnectionConfigDto.NetworkCredentialConfigDto("ssh.local", 22, "ssh-user", "ssh-secret", null),
                 null,
-                false, null, false, null,
+                false,
+                null,
                 null, null, List.of(), null, null, null, null, null, null, null, null
         ).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global.proxy", 8080, null, null));
 
@@ -353,7 +350,7 @@ class DriverCompatibilityServiceTest {
                 globalProxyProvider(globalProxy)
         );
 
-        Properties properties = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable", null, null, null, null));
+        Properties properties = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable", null, null, null));
 
         assertThat(properties)
                 .containsEntry("javanavi.proxy.type", "http")
@@ -364,41 +361,40 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
-    void jdbcNetworkProxyAndHttpTunnelValidateForJdbcWithoutGenericRejection() {
+    void jdbcNetworkProxyValidatesForJdbcWithoutGenericRejection() {
         JdbcConnectionFactory factory = new JdbcConnectionFactory();
 
         ConnectionConfigDto proxy = jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
                 null,
-                null,
                 null);
         factory.connectionProperties(proxy);
 
-        ConnectionConfigDto httpTunnel = jdbcConfig("postgresql", 5432, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, "tunnel-user", "secret"),
+        ConnectionConfigDto httpProxy = jdbcConfig("postgresql", 5432, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
                 null);
-        factory.connectionProperties(httpTunnel);
+        factory.connectionProperties(httpProxy);
 
         ConnectionConfigDto invalidProxy = jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", " ", 1080, null, null),
-                null,
                 null,
                 null);
         assertThatThrownBy(() -> factory.connectionProperties(invalidProxy))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("Proxy host is required");
 
-        ConnectionConfigDto both = new ConnectionConfigDto(
+        ConnectionConfigDto sshAndProxy = new ConnectionConfigDto(
                 "mysql-1", "MySQL", "mysql", null, "db.local", 3306, "demo", "user", "password", Map.of(), 30,
-                false, "disable", false, null, null, true,
-                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
+                false, "disable",
                 true,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, null, null),
+                new ConnectionConfigDto.NetworkCredentialConfigDto("ssh.local", 22, "ssh-user", "ssh-secret", null),
+                null,
+                true,
+                new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
                 null, null, List.of(), null, null, null, null, null, null, null, null
         );
-        assertThatThrownBy(() -> factory.connectionProperties(both))
+        assertThatThrownBy(() -> factory.connectionProperties(sshAndProxy))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("mutually exclusive");
     }
@@ -409,7 +405,6 @@ class DriverCompatibilityServiceTest {
 
         Properties mysql = factory.connectionProperties(jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
-                null,
                 null,
                 null));
         assertThat(mysql)
@@ -424,7 +419,6 @@ class DriverCompatibilityServiceTest {
         Properties postgres = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
                 null,
-                null,
                 null));
         assertThat(postgres)
                 .containsEntry("socketFactory", "com.javanavi.db.ProxySocketFactory")
@@ -432,7 +426,6 @@ class DriverCompatibilityServiceTest {
 
         Properties sqlserver = factory.connectionProperties(jdbcConfig("sqlserver", 1433, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, null, null),
-                null,
                 null,
                 null));
         assertThat(sqlserver)
@@ -442,7 +435,6 @@ class DriverCompatibilityServiceTest {
         Properties clickhouse = factory.connectionProperties(jdbcConfig("clickhouse", 8123, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
-                null,
                 null));
         assertThat(clickhouse)
                 .containsEntry("proxy_type", "HTTP")
@@ -450,21 +442,19 @@ class DriverCompatibilityServiceTest {
                 .containsEntry("proxy_port", "8080")
                 .containsEntry("proxy_username", "proxy-user");
 
-        Properties httpTunnel = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, "tunnel-user", "secret"),
+        Properties httpProxy = factory.connectionProperties(jdbcConfig("postgresql", 5432, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
                 null));
-        assertThat(httpTunnel)
+        assertThat(httpProxy)
                 .containsEntry("socketFactory", "com.javanavi.db.ProxySocketFactory")
-                .containsEntry("javanavi.proxy.type", "http-connect")
-                .containsEntry("javanavi.proxy.host", "tunnel.local")
+                .containsEntry("javanavi.proxy.type", "http")
+                .containsEntry("javanavi.proxy.host", "proxy.local")
                 .containsEntry("javanavi.proxy.port", "8080")
-                .containsEntry("javanavi.proxy.user", "tunnel-user");
+                .containsEntry("javanavi.proxy.user", "proxy-user");
 
         Properties custom = factory.connectionProperties(jdbcConfig("custom", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, null, null),
-                null,
                 null,
                 null));
         assertThat(custom)
@@ -494,42 +484,37 @@ class DriverCompatibilityServiceTest {
     }
 
     @Test
-    void jdbcPoolFingerprintIncludesProxyAndHttpTunnelConfig() throws Exception {
+    void jdbcPoolFingerprintIncludesProxyConfig() throws Exception {
         JdbcConnectionPoolRegistry registry = new JdbcConnectionPoolRegistry(new JdbcConnectionFactory());
         Method fingerprint = JdbcConnectionPoolRegistry.class.getDeclaredMethod("fingerprint", ConnectionConfigDto.class);
         fingerprint.setAccessible(true);
 
-        String direct = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable", null, null, null, null)));
+        String direct = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable", null, null, null)));
         String proxy = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
-                null,
                 null,
                 null)));
         String otherProxy = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "other-proxy.local", 1080, "proxy-user", "secret"),
                 null,
-                null,
                 null)));
-        String httpTunnel = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
-                null,
-                new ConnectionConfigDto.NetworkHttpTunnelConfigDto("tunnel.local", 8080, "tunnel-user", "secret"),
+        String httpProxy = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
+                new ConnectionConfigDto.NetworkProxyConfigDto("http", "proxy.local", 8080, "proxy-user", "secret"),
                 null,
                 null)));
         String connectionProxyGlobalA = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
                 null,
-                null,
                 null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global-a", 8080, null, null))));
         String connectionProxyGlobalB = String.valueOf(fingerprint.invoke(registry, jdbcConfig("mysql", 3306, false, "disable",
                 new ConnectionConfigDto.NetworkProxyConfigDto("socks5", "proxy.local", 1080, "proxy-user", "secret"),
-                null,
                 null,
                 null).withGlobalProxy(new ConnectionConfigDto.NetworkProxyConfigDto("http", "global-b", 8080, null, null))));
 
         assertThat(proxy).isNotEqualTo(direct);
         assertThat(otherProxy).isNotEqualTo(proxy);
-        assertThat(httpTunnel).isNotEqualTo(proxy);
-        assertThat(httpTunnel).isNotEqualTo(direct);
+        assertThat(httpProxy).isNotEqualTo(proxy);
+        assertThat(httpProxy).isNotEqualTo(direct);
         assertThat(connectionProxyGlobalA).isEqualTo(connectionProxyGlobalB);
     }
 
@@ -593,7 +578,6 @@ class DriverCompatibilityServiceTest {
             boolean useSSL,
             String sslMode,
             ConnectionConfigDto.NetworkProxyConfigDto proxy,
-            ConnectionConfigDto.NetworkHttpTunnelConfigDto httpTunnel,
             String sslCertPath,
             String sslKeyPath
     ) {
@@ -623,8 +607,6 @@ class DriverCompatibilityServiceTest {
                 null,
                 proxy != null,
                 proxy,
-                httpTunnel != null,
-                httpTunnel,
                 null,
                 null,
                 List.of(),
@@ -664,8 +646,6 @@ class DriverCompatibilityServiceTest {
                 sslMode,
                 false,
                 null,
-                null,
-                false,
                 null,
                 false,
                 null,

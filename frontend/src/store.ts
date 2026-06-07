@@ -295,21 +295,8 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     user: toTrimmedString(proxyRaw.user),
     password: toTrimmedString(proxyRaw.password),
   };
-  const rawHttpTunnel = toUnknownRecord(raw.httpTunnel);
-  const httpTunnelRaw = Object.keys(rawHttpTunnel).length > 0
-    ? rawHttpTunnel
-    : toUnknownRecord(raw.HTTPTunnel);
-  const httpTunnel = {
-    host: toTrimmedString(httpTunnelRaw.host ?? raw.httpTunnelHost),
-    port: normalizePort(httpTunnelRaw.port ?? raw.httpTunnelPort, 8080),
-    user: toTrimmedString(httpTunnelRaw.user ?? raw.httpTunnelUser),
-    password: toTrimmedString(httpTunnelRaw.password ?? raw.httpTunnelPassword),
-  };
   const supportsNetworkTunnel = type !== "sqlite" && type !== "duckdb";
-  const useHttpTunnel =
-    supportsNetworkTunnel &&
-    (raw.useHttpTunnel === true || raw.UseHTTPTunnel === true);
-  const useProxy = supportsNetworkTunnel && !!raw.useProxy && !useHttpTunnel;
+  const useProxy = supportsNetworkTunnel && !!raw.useProxy;
 
   const safeConfig: ConnectionConfig & Record<string, unknown> = {
     ...raw,
@@ -329,8 +316,6 @@ const sanitizeConnectionConfig = (value: unknown): ConnectionConfig => {
     ssh,
     useProxy,
     proxy,
-    useHttpTunnel,
-    httpTunnel,
     uri: toTrimmedString(raw.uri).slice(0, MAX_URI_LENGTH),
     hosts: sanitizeAddressList(raw.hosts),
     topology:
@@ -431,7 +416,6 @@ const sanitizeSavedConnection = (
     hasPrimaryPassword: raw.hasPrimaryPassword === true,
     hasSSHPassword: raw.hasSSHPassword === true,
     hasProxyPassword: raw.hasProxyPassword === true,
-    hasHttpTunnelPassword: raw.hasHttpTunnelPassword === true,
     hasMySQLReplicaPassword: raw.hasMySQLReplicaPassword === true,
     hasMongoReplicaPassword: raw.hasMongoReplicaPassword === true,
     hasOpaqueURI: raw.hasOpaqueURI === true,
@@ -727,13 +711,11 @@ const hasLegacyConnectionSecrets = (
     const config = toUnknownRecord(connection?.config);
     const ssh = toUnknownRecord(config.ssh);
     const proxy = toUnknownRecord(config.proxy);
-    const httpTunnel = toUnknownRecord(config.httpTunnel);
 
     return (
       toTrimmedString(config.password) !== "" ||
       toTrimmedString(ssh.password) !== "" ||
       toTrimmedString(proxy.password) !== "" ||
-      toTrimmedString(httpTunnel.password) !== "" ||
       toTrimmedString(config.mysqlReplicaPassword) !== "" ||
       toTrimmedString(config.mongoReplicaPassword) !== "" ||
       toTrimmedString(config.uri) !== "" ||

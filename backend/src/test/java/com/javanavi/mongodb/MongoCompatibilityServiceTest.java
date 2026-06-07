@@ -46,9 +46,6 @@ class MongoCompatibilityServiceTest {
                 false,
                 "SCRAM-SHA-256",
                 null,
-                null,
-                null,
-                null,
                 null
         ));
 
@@ -83,9 +80,6 @@ class MongoCompatibilityServiceTest {
                 null,
                 false,
                 "SCRAM-SHA-256",
-                null,
-                null,
-                null,
                 null,
                 null
         ));
@@ -123,9 +117,6 @@ class MongoCompatibilityServiceTest {
                 false,
                 "SCRAM-SHA-256",
                 null,
-                null,
-                null,
-                null,
                 null
         ));
 
@@ -161,9 +152,6 @@ class MongoCompatibilityServiceTest {
                 null,
                 false,
                 "",
-                null,
-                null,
-                null,
                 null,
                 null
         )));

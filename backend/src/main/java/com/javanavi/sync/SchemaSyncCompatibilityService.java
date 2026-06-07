@@ -860,8 +860,6 @@ public class SchemaSyncCompatibilityService {
                     networkCredential(source.get("sshConfig")),
                     booleanValue(source.get("useProxy")),
                     networkProxy(source.get("proxy")),
-                    booleanValue(source.get("useHttpTunnel")),
-                    networkHttpTunnel(source.get("httpTunnel")),
                     networkProxy(source.get("globalProxy")),
                     text(source.get("uri")),
                     text(source.get("dsn")),
@@ -903,16 +901,15 @@ public class SchemaSyncCompatibilityService {
             );
         }
 
-        private static ConnectionConfigDto.NetworkHttpTunnelConfigDto networkHttpTunnel(Object value) {
-            if (!(value instanceof Map<?, ?> map)) {
+        private static Integer integer(Object value) {
+            if (value == null || text(value).isBlank()) {
                 return null;
             }
-            return new ConnectionConfigDto.NetworkHttpTunnelConfigDto(
-                    text(map.get("host")),
-                    integer(map.get("port")),
-                    firstText(text(map.get("user")), text(map.get("username"))),
-                    text(map.get("password"))
-            );
+            try {
+                return Integer.parseInt(text(value));
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
         }
 
         private static Map<String, String> stringMap(Object value) {
@@ -920,15 +917,8 @@ public class SchemaSyncCompatibilityService {
                 return Map.of();
             }
             Map<String, String> result = new LinkedHashMap<>();
-            map.forEach((key, item) -> result.put(String.valueOf(key), item == null ? "" : String.valueOf(item)));
+            map.forEach((key, item) -> result.put(String.valueOf(key), text(item)));
             return result;
-        }
-
-        private static Integer integer(Object value) {
-            if (value == null || text(value).isBlank()) {
-                return null;
-            }
-            return Integer.parseInt(text(value).trim());
         }
 
         private static Boolean booleanValue(Object value) {

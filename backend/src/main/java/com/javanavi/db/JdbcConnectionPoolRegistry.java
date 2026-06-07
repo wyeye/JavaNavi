@@ -251,14 +251,6 @@ public class JdbcConnectionPoolRegistry {
             value.append("proxy.user=").append(nullToEmpty(proxy.user())).append('\n');
             value.append("proxy.password=").append(nullToEmpty(proxy.password())).append('\n');
         }
-        value.append("useHttpTunnel=").append(config.useHttpTunnel()).append('\n');
-        ConnectionConfigDto.NetworkHttpTunnelConfigDto httpTunnel = config.httpTunnel();
-        if (httpTunnel != null) {
-            value.append("httpTunnel.host=").append(nullToEmpty(httpTunnel.host())).append('\n');
-            value.append("httpTunnel.port=").append(httpTunnel.port()).append('\n');
-            value.append("httpTunnel.user=").append(nullToEmpty(httpTunnel.user())).append('\n');
-            value.append("httpTunnel.password=").append(nullToEmpty(httpTunnel.password())).append('\n');
-        }
         ConnectionConfigDto.NetworkProxyConfigDto globalProxy = config.globalProxy();
         if (globalProxy != null) {
             value.append("globalProxy.type=").append(nullToEmpty(globalProxy.type())).append('\n');

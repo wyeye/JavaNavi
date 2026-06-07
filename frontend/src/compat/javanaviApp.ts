@@ -304,8 +304,6 @@ function toConnectionPayload(config: unknown = {}): ConnectionPayload {
     ssh: fieldValue(config, 'ssh'),
     useProxy: booleanField(config, 'useProxy'),
     proxy: fieldValue(config, 'proxy'),
-    useHttpTunnel: booleanField(config, 'useHttpTunnel'),
-    httpTunnel: fieldValue(config, 'httpTunnel'),
     globalProxy: fieldValue(config, 'globalProxy'),
   };
 }

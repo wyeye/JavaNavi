@@ -202,7 +202,7 @@ public class JdbcConnectionFactory {
         if (config == null) {
             return config;
         }
-        boolean hasConnectionNetwork = config.sshEnabled() || config.proxyEnabled() || config.httpTunnelEnabled();
+        boolean hasConnectionNetwork = config.sshEnabled() || config.proxyEnabled();
         if (hasConnectionNetwork) {
             return config.globalProxy() == null ? config : config.withGlobalProxy(null);
         }
