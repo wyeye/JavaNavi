@@ -39,7 +39,6 @@ import {
 import {
   getDbIcon,
   getDbDefaultColor,
-  getDbIconLabel,
   DB_ICON_TYPES,
   PRESET_ICON_COLORS,
 } from "./DatabaseIcons";
@@ -105,6 +104,7 @@ import {
 } from "@compat/javanaviApp";
 import type { ConnectionConfig, MongoMemberInfo, SavedConnection } from "../types";
 import { connection } from "@compat/models";
+import { translate, type I18nKey, type I18nParams } from "../i18n";
 
 const { Text } = Typography;
 type ChoiceCardOption = {
@@ -212,7 +212,7 @@ const toRecord = (value: unknown): UnknownRecord => (
   value && typeof value === "object" && !Array.isArray(value) ? value as UnknownRecord : {}
 );
 
-const getErrorMessage = (error: unknown, fallback = "未知错误"): string => {
+const getErrorMessage = (error: unknown, fallback = "Unknown error"): string => {
   if (error instanceof Error) return error.message || fallback;
   if (typeof error === "string") return error || fallback;
   const messageValue = toRecord(error).message;
@@ -340,6 +340,51 @@ const ConnectionModal: React.FC<{
   const updateConnection = useStore((state) => state.updateConnection);
   const theme = useStore((state) => state.theme);
   const appearance = useStore((state) => state.appearance);
+  const language = useStore((state) => state.language);
+  const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
+  const getLocalizedDbIconLabel = (type: string): string => {
+    const key = normalizeDriverType(type);
+    switch (key) {
+      case "mysql":
+        return "MySQL";
+      case "mariadb":
+        return "MariaDB";
+      case "postgres":
+        return "PostgreSQL";
+      case "redis":
+        return "Redis";
+      case "mongodb":
+        return "MongoDB";
+      case "oracle":
+        return "Oracle";
+      case "sqlserver":
+        return "SQL Server";
+      case "clickhouse":
+        return "ClickHouse";
+      case "sqlite":
+        return "SQLite";
+      case "duckdb":
+        return "DuckDB";
+      case "diros":
+        return "Doris";
+      case "sphinx":
+        return "Sphinx";
+      case "kingbase":
+        return t("connectionModal.dbName.kingbase");
+      case "dameng":
+        return t("connectionModal.dbName.dameng");
+      case "vastbase":
+        return t("connectionModal.dbName.vastbase");
+      case "highgo":
+        return t("connectionModal.dbName.highgo");
+      case "tdengine":
+        return "TDengine";
+      case "custom":
+        return t("connectionModal.dbName.custom");
+      default:
+        return String(type || "");
+    }
+  };
   const nativeApp: NativeAppBridge | null =
     typeof window !== "undefined" ? window.go?.app?.App ?? null : null;
   const canBrowseDatabaseFile =
@@ -385,14 +430,14 @@ const ConnectionModal: React.FC<{
     dbType === "sphinx";
   const isSSLType = supportsSSLForType(dbType);
   const sslHintText = isMySQLLike
-    ? "当 MySQL/MariaDB/Doris/Sphinx 开启安全传输策略时，请启用 SSL；本地自签证书场景可先用 Preferred 或 Skip Verify。"
+    ? t("connectionModal.ssl.hint.mysqlLike")
     : dbType === "dameng"
-      ? "达梦驱动启用 SSL 需要客户端证书与私钥路径（sslCertPath / sslKeyPath）。"
+      ? t("connectionModal.ssl.hint.dameng")
       : dbType === "sqlserver"
-        ? "SQL Server 推荐在生产环境使用 Required，并关闭 TrustServerCertificate。"
+        ? t("connectionModal.ssl.hint.sqlserver")
         : dbType === "mongodb"
-          ? "MongoDB 可通过 TLS 保护连接，证书校验异常时可先用 Skip Verify 验证连通性。"
-          : "建议优先使用 Required；仅在测试环境或自签证书场景使用 Skip Verify。";
+          ? t("connectionModal.ssl.hint.mongodb")
+          : t("connectionModal.ssl.hint.default");
 
   const getSectionBg = (darkHex: string) => {
     if (!darkMode) {
@@ -528,7 +573,7 @@ const ConnectionModal: React.FC<{
                 }}
               >
                 {hasDraftValue
-                  ? "已输入新值，保存时会替换当前已保存内容。"
+                  ? t("connectionModal.secret.newValueNotice")
                   : description}
               </div>
               <Checkbox
@@ -680,7 +725,7 @@ const ConnectionModal: React.FC<{
     children: React.ReactNode;
     badge?: React.ReactNode;
   }) => {
-    const copy = getConnectionConfigSectionCopy(sectionKey);
+    const copy = getConnectionConfigSectionCopy(sectionKey, language);
     return (
       <div
         data-connection-config-section={sectionKey}
@@ -866,7 +911,7 @@ const ConnectionModal: React.FC<{
             >
               <Space size={8} wrap>
                 <Text strong>{option.label}</Text>
-                {active ? <Tag color="blue">当前</Tag> : null}
+                {active ? <Tag color="blue">{t("connectionModal.common.current")}</Tag> : null}
               </Space>
               {option.description ? (
                 <div style={{ ...modalMutedTextStyle, marginTop: 6 }}>
@@ -984,19 +1029,19 @@ const ConnectionModal: React.FC<{
     }
     return (
       status.message ||
-      `${status.name || normalized} 驱动未安装启用，请先在驱动管理中安装`
+      t("connectionModal.driver.unavailableReason", { driver: status.name || normalized })
     );
   };
 
   const promptInstallDriver = (driverType: string, reason: string) => {
     const normalized = normalizeDriverType(driverType);
     const snapshot = driverStatusMap[normalized];
-    const driverName = snapshot?.name || normalized || "当前";
+    const driverName = snapshot?.name || normalized || t("connectionModal.common.current");
     Modal.confirm({
-      title: `${driverName} 驱动不可用`,
-      content: reason || `${driverName} 驱动未安装启用，请先在驱动管理中安装`,
-      okText: "去驱动管理安装",
-      cancelText: "取消",
+      title: t("connectionModal.driver.unavailableTitle", { driver: driverName }),
+      content: reason || t("connectionModal.driver.unavailableReason", { driver: driverName }),
+      okText: t("connectionModal.driver.installAction"),
+      cancelText: t("common.cancel"),
       onOk: () => {
         onOpenDriverManager?.();
       },
@@ -1043,7 +1088,7 @@ const ConnectionModal: React.FC<{
           return keepsStoredUri
             ? Promise.resolve()
             : Promise.reject(
-                new Error("请输入连接 URL，或切换到目标地址填写"),
+                new Error(t("connectionModal.validation.uriRequired")),
               );
         }
         const type = String(getFieldValue("type") || dbType)
@@ -1052,7 +1097,7 @@ const ConnectionModal: React.FC<{
         return parseUriToValues(uriText, type)
           ? Promise.resolve()
           : Promise.reject(
-              new Error("连接 URL 格式不支持；请检查 URL 或切换到目标地址填写"),
+              new Error(t("connectionModal.validation.uriInvalid")),
             );
       },
     });
@@ -1075,9 +1120,9 @@ const ConnectionModal: React.FC<{
       const values = form.getFieldsValue(true);
       const uri = buildUriFromValues(values);
       form.setFieldValue("uri", uri);
-      setUriFeedback({ type: "success", message: "URI 已生成" });
+      setUriFeedback({ type: "success", message: t("connectionModal.uri.generated") });
     } catch {
-      setUriFeedback({ type: "error", message: "生成 URI 失败" });
+      setUriFeedback({ type: "error", message: t("connectionModal.uri.generateFailed") });
     }
   };
 
@@ -1088,14 +1133,14 @@ const ConnectionModal: React.FC<{
         .trim()
         .toLowerCase();
       if (!uriText) {
-        setUriFeedback({ type: "warning", message: "请先输入 URI" });
+        setUriFeedback({ type: "warning", message: t("connectionModal.uri.inputRequired") });
         return;
       }
       const parsedValues = parseUriToValues(uriText, type);
       if (!parsedValues) {
         setUriFeedback({
           type: "error",
-          message: "当前 URI 与数据源类型不匹配，或 URI 格式不支持",
+          message: t("connectionModal.uri.typeMismatch"),
         });
         return;
       }
@@ -1103,11 +1148,11 @@ const ConnectionModal: React.FC<{
       if (testResult) {
         setTestResult(null);
       }
-      setUriFeedback({ type: "success", message: "已根据 URI 回填连接参数" });
+      setUriFeedback({ type: "success", message: t("connectionModal.uri.parsed") });
     } catch {
       setUriFeedback({
         type: "error",
-        message: "URI 解析失败，请检查格式后重试",
+        message: t("connectionModal.uri.parseFailed"),
       });
     }
   };
@@ -1120,14 +1165,14 @@ const ConnectionModal: React.FC<{
       form.setFieldValue("uri", uriText);
     }
     if (!uriText) {
-      setUriFeedback({ type: "warning", message: "没有可复制的 URI" });
+      setUriFeedback({ type: "warning", message: t("connectionModal.uri.copyEmpty") });
       return;
     }
     try {
       await navigator.clipboard.writeText(uriText);
-      setUriFeedback({ type: "success", message: "URI 已复制" });
+      setUriFeedback({ type: "success", message: t("connectionModal.uri.copied") });
     } catch {
-      setUriFeedback({ type: "error", message: "复制失败" });
+      setUriFeedback({ type: "error", message: t("connectionModal.clipboard.copyFailed") });
     }
   };
 
@@ -1150,7 +1195,7 @@ const ConnectionModal: React.FC<{
       }
       sshKeyUploadInputRef.current?.click();
     } catch (e: unknown) {
-      message.error(`选择私钥文件失败: ${getErrorMessage(e)}`);
+      message.error(t("connectionModal.ssh.keySelectFailed", { message: getErrorMessage(e, t("message.unknownError")) }));
     } finally {
       setSelectingSSHKey(false);
     }
@@ -1161,7 +1206,7 @@ const ConnectionModal: React.FC<{
     event.target.value = "";
     if (!file) return;
     form.setFieldValue("sshKeyPath", file.name);
-    message.info("Web 模式已记录私钥文件名；桌面壳可选择本机绝对路径");
+    message.info(t("connectionModal.ssh.webKeyRecorded"));
   };
 
   const handleTestSSHConnection = async () => {
@@ -1190,7 +1235,7 @@ const ConnectionModal: React.FC<{
         },
       } as ConnectionConfig;
       if (!sshConfig.ssh?.host || !sshConfig.ssh?.user) {
-        message.error("请先填写 SSH 主机和用户");
+        message.error(t("connectionModal.ssh.hostUserRequired"));
         return;
       }
       setLoading(true);
@@ -1202,15 +1247,15 @@ const ConnectionModal: React.FC<{
       const res = await withClientTimeout(
         TestSSHConnection(buildRpcConnectionConfig(sshConfig)),
         (timeoutSeconds + 5) * 1000,
-        `SSH 测试超时（>${timeoutSeconds} 秒），请检查主机、端口、用户和认证配置`,
+        t("connectionModal.ssh.testTimeout", { seconds: timeoutSeconds }),
       );
       if (res.success) {
-        message.success("SSH 连接成功");
+        message.success(t("connectionModal.ssh.success"));
       } else {
-        message.error(`SSH 连接失败：${getErrorMessage(res.message, "未知错误")}`);
+        message.error(t("connectionModal.ssh.failed", { message: getErrorMessage(res.message, t("message.unknownError")) }));
       }
     } catch (e: unknown) {
-      message.error(`SSH 连接失败：${getErrorMessage(e, "未知错误")}`);
+      message.error(t("connectionModal.ssh.failed", { message: getErrorMessage(e, t("message.unknownError")) }));
     } finally {
       setLoading(false);
     }
@@ -1221,7 +1266,7 @@ const ConnectionModal: React.FC<{
       return;
     }
     if (typeof nativeApp?.SelectDatabaseFile !== "function") {
-      message.warning("Web 模式请手动填写后端可访问的本机绝对路径");
+      message.warning(t("connectionModal.file.webPathRequired"));
       return;
     }
     try {
@@ -1238,11 +1283,11 @@ const ConnectionModal: React.FC<{
         if (selectedPath) {
           form.setFieldValue("host", normalizeFileDbPath(selectedPath));
         }
-      } else if (res?.message !== "已取消") {
-        message.error(`选择数据库文件失败: ${res?.message || "未知错误"}`);
+      } else if (!new Set([t("connectionModal.file.selectCancelled"), translate("zh", "connectionModal.file.selectCancelled")]).has(String(res?.message || ""))) {
+        message.error(t("connectionModal.file.selectFailed", { message: String(res?.message || t("message.unknownError")) }));
       }
     } catch (e: unknown) {
-      message.error(`选择数据库文件失败: ${getErrorMessage(e)}`);
+      message.error(t("connectionModal.file.selectFailed", { message: getErrorMessage(e, t("message.unknownError")) }));
     } finally {
       setSelectingDbFile(false);
     }
@@ -1395,7 +1440,7 @@ const ConnectionModal: React.FC<{
         } else {
           setActiveNetworkConfig("ssl");
         }
-        // 如果是 Redis 编辑模式，设置已保存的 Redis 数据库列表
+        // In Redis edit mode, restore the saved Redis database list.
         if (configType === "redis") {
           setRedisDbList(Array.from({ length: 16 }, (_, i) => i));
         }
@@ -1571,15 +1616,15 @@ const ConnectionModal: React.FC<{
       const payload = buildSavedConnectionInput(config, values);
       const savedConnection = toSavedConnection(await SaveConnection(payload));
       if (!savedConnection) {
-        throw new Error("保存连接失败：后端接口不可用");
+        throw new Error(t("connectionModal.save.backendUnavailable"));
       }
 
       if (initialValues) {
         updateConnection(savedConnection);
-        message.success("配置已更新（未连接）");
+        message.success(t("connectionModal.save.updatedOffline"));
       } else {
         addConnection(savedConnection);
-        message.success("配置已保存（未连接）");
+        message.success(t("connectionModal.save.createdOffline"));
       }
 
       if (onSaved) {
@@ -1587,7 +1632,7 @@ const ConnectionModal: React.FC<{
           (error: unknown) => {
             console.warn("Failed to refresh post-save state", error);
             void message.warning(
-              "配置已保存，但界面状态暂未刷新，请稍后重新检查",
+              t("connectionModal.save.refreshStateWarning"),
             );
           },
         );
@@ -1603,7 +1648,7 @@ const ConnectionModal: React.FC<{
       onClose();
     } catch (e: unknown) {
       message.error(
-        normalizeConnectionSecretErrorMessage(getErrorMessage(e), "保存失败"),
+        normalizeConnectionSecretErrorMessage(getErrorMessage(e), t("connectionModal.error.saveFailed"), language),
       );
     } finally {
       setLoading(false);
@@ -1650,21 +1695,21 @@ const ConnectionModal: React.FC<{
       !isFileDatabaseType(String(values.type || "")) &&
       String(values.password ?? "") === ""
     ) {
-      return "测试连接前请填写新的密码，或取消清除已保存密码";
+      return t("connectionModal.secret.blockPrimary");
     }
     if (
       clearSecrets.sshPassword &&
       values.useSSH &&
       String(values.sshPassword ?? "") === ""
     ) {
-      return "测试连接前请填写新的 SSH 密码，或取消清除已保存 SSH 密码";
+      return t("connectionModal.secret.blockSsh");
     }
     if (
       clearSecrets.proxyPassword &&
       values.useProxy &&
       String(values.proxyPassword ?? "") === ""
     ) {
-      return "测试连接前请填写新的代理密码，或取消清除已保存代理密码";
+      return t("connectionModal.secret.blockProxy");
     }
     if (
       clearSecrets.mysqlReplicaPassword &&
@@ -1675,7 +1720,7 @@ const ConnectionModal: React.FC<{
       values.mysqlTopology === "replica" &&
       String(values.mysqlReplicaPassword ?? "") === ""
     ) {
-      return "测试连接前请填写新的从库密码，或取消清除已保存从库密码";
+      return t("connectionModal.secret.blockMysqlReplica");
     }
     if (
       clearSecrets.mongoReplicaPassword &&
@@ -1683,7 +1728,7 @@ const ConnectionModal: React.FC<{
       values.mongoTopology === "replica" &&
       String(values.mongoReplicaPassword ?? "") === ""
     ) {
-      return "测试连接前请填写新的副本集密码，或取消清除已保存副本集密码";
+      return t("connectionModal.secret.blockMongoReplica");
     }
     if (
       values.type === "mongodb" &&
@@ -1691,7 +1736,7 @@ const ConnectionModal: React.FC<{
       initialValues?.hasPrimaryPassword &&
       String(values.password ?? "") === ""
     ) {
-      return "测试连接前请填写新的 MongoDB 密码，或重新勾选保存密码";
+      return t("connectionModal.secret.blockMongoPasswordSave");
     }
     return null;
   };
@@ -1714,7 +1759,8 @@ const ConnectionModal: React.FC<{
           resolveConnectionTestFailureFeedback({
             kind: "driver_unavailable",
             reason: unavailableReason,
-            fallback: "驱动未安装启用",
+            fallback: t("connectionModal.error.driverUnavailable"),
+            language,
           }),
         );
         promptInstallDriver(values.type, unavailableReason);
@@ -1726,7 +1772,8 @@ const ConnectionModal: React.FC<{
           resolveConnectionTestFailureFeedback({
             kind: "secret_blocked",
             reason: blockingSecretClearMessage,
-            fallback: "连接参数不完整",
+            fallback: t("connectionModal.error.connectionParamsIncomplete"),
+            language,
           }),
         );
         return;
@@ -1751,7 +1798,7 @@ const ConnectionModal: React.FC<{
           ? RedisConnect(rpcConfig)
           : TestConnection(rpcConfig),
         rpcTimeoutMs,
-        `连接测试超时（>${timeoutSeconds} 秒），请检查网络/代理/SSH配置后重试`,
+        t("connectionModal.test.timeout", { seconds: timeoutSeconds }),
       );
 
       if (res.success) {
@@ -1788,7 +1835,7 @@ const ConnectionModal: React.FC<{
           const dbRes = await withClientTimeout(
             DBGetDatabases(rpcConfig),
             rpcTimeoutMs,
-            `连接成功但拉取数据库列表超时（>${timeoutSeconds} 秒）`,
+            t("connectionModal.test.databaseListTimeout", { seconds: timeoutSeconds }),
           );
           if (dbRes.success) {
             const dbRows = queryArrayData<DatabaseRow>(dbRes);
@@ -1801,14 +1848,14 @@ const ConnectionModal: React.FC<{
             if (dbs.length === 0) {
               message.warning(
                 values.type === "dameng"
-                  ? "连接成功，但未获取到可见 schema；请检查当前账号权限或默认 schema 配置"
-                  : "连接成功，但未获取到可见数据库列表",
+                  ? t("connectionModal.test.noVisibleSchema")
+                  : t("connectionModal.test.noVisibleDatabases"),
               );
             }
           } else {
             setDbList([]);
             message.warning(
-              `连接成功，但获取数据库列表失败：${normalizeConnectionSecretErrorMessage(dbRes.message, "未知错误")}`,
+              t("connectionModal.test.databaseListFailed", { message: normalizeConnectionSecretErrorMessage(dbRes.message, t("message.unknownError"), language) }),
             );
           }
         }
@@ -1817,7 +1864,8 @@ const ConnectionModal: React.FC<{
           resolveConnectionTestFailureFeedback({
             kind: "runtime",
             reason: res?.message,
-            fallback: "连接被拒绝或参数无效，请检查后重试",
+            fallback: t("connectionModal.error.connectionRejected"),
+            language,
           }),
         );
       }
@@ -1827,18 +1875,20 @@ const ConnectionModal: React.FC<{
           resolveConnectionTestFailureFeedback({
             kind: "validation",
             reason: "",
-            fallback: "请先完善必填项后再测试连接",
+            fallback: t("connectionModal.error.requiredFields"),
+            language,
           }),
         );
         return;
       }
       const reason =
-        e instanceof Error ? e.message : typeof e === "string" ? e : "未知异常";
+        e instanceof Error ? e.message : typeof e === "string" ? e : t("connectionModal.error.unknownException");
       applyTestFailureFeedback(
         resolveConnectionTestFailureFeedback({
           kind: "runtime",
           reason,
-          fallback: "未知异常",
+          fallback: t("connectionModal.error.unknownException"),
+          language,
         }),
       );
     } finally {
@@ -1867,7 +1917,7 @@ const ConnectionModal: React.FC<{
       const result = await MongoDiscoverMembers(buildRpcConnectionConfig(config));
       if (!result.success) {
         message.error(
-          normalizeConnectionSecretErrorMessage(result.message, "成员发现失败"),
+          normalizeConnectionSecretErrorMessage(result.message, t("connectionModal.error.memberDiscoveryFailed"), language),
         );
         return;
       }
@@ -1887,12 +1937,13 @@ const ConnectionModal: React.FC<{
       if (!form.getFieldValue("mongoReplicaSet") && data.replicaSet) {
         form.setFieldValue("mongoReplicaSet", String(data.replicaSet));
       }
-      message.success(result.message || `发现 ${members.length} 个成员`);
+      message.success(result.message || t("connectionModal.mongo.membersDiscovered", { count: members.length }));
     } catch (error: unknown) {
       message.error(
         normalizeConnectionSecretErrorMessage(
           getErrorMessage(error),
-          "成员发现失败",
+          t("connectionModal.error.memberDiscoveryFailed"),
+          language,
         ),
       );
     } finally {
@@ -1918,8 +1969,8 @@ const ConnectionModal: React.FC<{
       : null;
     if (parsedUriValues) {
       Object.entries(parsedUriValues).forEach(([key, value]) => {
-        // 连接 URL / 目标地址由显式模式二选一；只有 URL 模式才用解析结果
-        // 覆盖目标地址字段，目标地址模式会清空并忽略历史 URL。
+        // Connection URL and target address are mutually exclusive; only URL mode uses parsed values.
+        // Parsed URL values overwrite target address fields; target mode clears and ignores the historical URL.
         if (value !== undefined && value !== null) {
           mergedValues[key] = value as ConnectionUriValues[keyof ConnectionUriValues];
         }
@@ -1930,8 +1981,8 @@ const ConnectionModal: React.FC<{
     const isFileDbType = isFileDatabaseType(type);
     const sslCapableType = supportsSSLForType(type);
 
-    // Redis 默认不展示用户名字段；若 URI 可解析则以 URI 为准覆盖 user，
-    // 同时清理历史默认值 root，避免 go-redis 发送 ACL AUTH(user, pass) 导致 WRONGPASS。
+    // Redis does not show the username by default. If the URI is parsed, use its user value.
+    // Also clear the legacy default root user to avoid go-redis sending ACL AUTH(user, pass) and triggering WRONGPASS.
     if (type === "redis") {
       if (
         parsedUriValues &&
@@ -1951,13 +2002,13 @@ const ConnectionModal: React.FC<{
       ? String(mergedValues.sslKeyPath || "").trim()
       : "";
     if (type === "dameng" && effectiveUseSSL && (!sslCertPath || !sslKeyPath)) {
-      throw new Error("达梦启用 SSL 时必须填写证书路径与私钥路径");
+      throw new Error(t("connectionModal.error.damengSslRequired"));
     }
 
     let primaryHost = "localhost";
     let primaryPort = defaultPort;
     if (isFileDbType) {
-      // 文件型数据库（sqlite/duckdb）这里的 host 即数据库文件路径，不应参与 host:port 拼接与解析。
+      // For file databases (sqlite/duckdb), host stores the database file path and must not be parsed as host:port.
       primaryHost = normalizeFileDbPath(String(mergedValues.host || "").trim());
       primaryPort = 0;
     } else {
@@ -2193,7 +2244,7 @@ const ConnectionModal: React.FC<{
       const driverName = snapshot.name || type;
       const reason =
         snapshot.message ||
-        `${driverName} 驱动未安装启用，请先在驱动管理中安装`;
+        t("connectionModal.driver.unavailableReason", { driver: driverName });
       setTypeSelectWarning({ driverName, reason });
       return;
     }
@@ -2383,7 +2434,7 @@ const ConnectionModal: React.FC<{
     currentDriverSnapshot &&
     !currentDriverSnapshot.connectable
       ? currentDriverSnapshot.message ||
-        `${currentDriverSnapshot.name || dbType} 驱动未安装启用`
+        t("connectionModal.error.driverUnavailable")
       : "";
   const driverStatusChecking =
     currentDriverType !== "custom" && !driverStatusLoaded && step === 2;
@@ -2431,7 +2482,7 @@ const ConnectionModal: React.FC<{
 
   const dbTypeGroups = [
     {
-      label: "关系型数据库",
+      label: t("connectionModal.dbGroup.relational"),
       items: [
         {
           key: "mysql",
@@ -2486,26 +2537,26 @@ const ConnectionModal: React.FC<{
       ],
     },
     {
-      label: "国产数据库",
+      label: t("connectionModal.dbGroup.domestic"),
       items: [
         {
           key: "dameng",
-          name: "Dameng (达梦)",
+          name: t("connectionModal.dbName.dameng"),
           icon: getDbIcon("dameng", undefined, 36),
         },
         {
           key: "kingbase",
-          name: "Kingbase (人大金仓)",
+          name: t("connectionModal.dbName.kingbase"),
           icon: getDbIcon("kingbase", undefined, 36),
         },
         {
           key: "highgo",
-          name: "HighGo (瀚高)",
+          name: t("connectionModal.dbName.highgo"),
           icon: getDbIcon("highgo", undefined, 36),
         },
         {
           key: "vastbase",
-          name: "Vastbase (海量)",
+          name: t("connectionModal.dbName.vastbase"),
           icon: getDbIcon("vastbase", undefined, 36),
         },
       ],
@@ -2526,7 +2577,7 @@ const ConnectionModal: React.FC<{
       ],
     },
     {
-      label: "时序数据库",
+      label: t("connectionModal.dbGroup.timeSeries"),
       items: [
         {
           key: "tdengine",
@@ -2536,11 +2587,11 @@ const ConnectionModal: React.FC<{
       ],
     },
     {
-      label: "其他",
+      label: t("connectionModal.dbGroup.other"),
       items: [
         {
           key: "custom",
-          name: "自定义数据源",
+          name: t("connectionModal.dbName.custom"),
           icon: getDbIcon("custom", undefined, 36),
         },
       ],
@@ -2551,16 +2602,16 @@ const ConnectionModal: React.FC<{
   const getDbTypeHint = (type: string) => {
     switch (type) {
       case "custom":
-        return "先选数据源，再填驱动/DSN";
+        return t("connectionModal.dbHint.custom");
       case "redis":
-        return "单机 / 集群";
+        return t("connectionModal.dbHint.redis");
       case "mongodb":
-        return "单机 / 副本集";
+        return t("connectionModal.dbHint.mongodb");
       case "sqlite":
       case "duckdb":
-        return "本地文件连接";
+        return t("connectionModal.dbHint.file");
       default:
-        return "标准连接配置";
+        return t("connectionModal.dbHint.standard");
     }
   };
 
@@ -2582,10 +2633,10 @@ const ConnectionModal: React.FC<{
             fontWeight: 700,
           }}
         >
-          选择数据源
+          {t("connectionModal.step1.title")}
         </div>
         <div style={modalMutedTextStyle}>
-          先选择目标数据库或中间件类型，再进入详细连接参数配置。
+          {t("connectionModal.step1.description")}
         </div>
       </div>
       {typeSelectWarning && (
@@ -2593,7 +2644,7 @@ const ConnectionModal: React.FC<{
           type="warning"
           showIcon
           closable
-          message={`${typeSelectWarning.driverName} 驱动未启用`}
+          message={t("connectionModal.driver.disabledMessage", { driver: typeSelectWarning.driverName })}
           description={
             <Space size={8}>
               <span>{typeSelectWarning.reason}</span>
@@ -2602,7 +2653,7 @@ const ConnectionModal: React.FC<{
                 size="small"
                 onClick={() => onOpenDriverManager?.()}
               >
-                去驱动管理安装
+                {t("connectionModal.driver.installAction")}
               </Button>
             </Space>
           }
@@ -2618,7 +2669,7 @@ const ConnectionModal: React.FC<{
           padding: 12,
         }}
       >
-        {/* 左侧分类导航 */}
+        {/* Left category navigation */}
         <div
           style={{
             width: 148,
@@ -2650,7 +2701,7 @@ const ConnectionModal: React.FC<{
             </div>
           ))}
         </div>
-        {/* 右侧数据源卡片 */}
+        {/* Data source cards */}
         <div
           style={{
             flex: 1,
@@ -2742,10 +2793,10 @@ const ConnectionModal: React.FC<{
             fontWeight: 700,
           }}
         >
-          基础信息
+          {t("connectionModal.baseInfo.title")}
         </div>
         <div style={{ ...modalMutedTextStyle, marginBottom: 16 }}>
-          常用参数集中在左侧，优先完成连接建立所需的最小输入。
+          {t("connectionModal.baseInfo.description")}
         </div>
 
         <div style={{ display: "grid", gap: 16 }}>
@@ -2754,14 +2805,14 @@ const ConnectionModal: React.FC<{
             icon: <ApiOutlined />,
             badge: (
               <Tag>
-                {getConnectionConfigLayoutKindLabel(connectionConfigLayout.kind)}
+                {getConnectionConfigLayoutKindLabel(connectionConfigLayout.kind, language)}
               </Tag>
             ),
             children: (
-              <Form.Item name="name" label="连接名称" style={{ marginBottom: 0 }}>
+              <Form.Item name="name" label={t("connectionModal.identity.nameLabel")} style={{ marginBottom: 0 }}>
                 <Input
                   {...noAutoCapInputProps}
-                  placeholder="例如：本地测试库"
+                  placeholder={t("connectionModal.identity.namePlaceholder")}
                 />
               </Form.Item>
             ),
@@ -2775,19 +2826,19 @@ const ConnectionModal: React.FC<{
                 <>
                   <Form.Item
                     name="connectionInputMode"
-                    label="填写方式"
-                    help="选择连接 URL 或目标地址其中一种方式填写；保存/测试只读取当前选中的方式。"
+                    label={t("connectionModal.uri.inputModeLabel")}
+                    help={t("connectionModal.uri.inputModeHelp")}
                     style={{ marginBottom: isConnectionUrlMode ? 14 : 0 }}
                   >
                     <Segmented
                       block
                       options={[
                         {
-                          label: "连接 URL",
+                          label: t("connectionModal.uri.urlOption"),
                           value: "url",
                         },
                         {
-                          label: isFileDb ? "数据库文件" : "目标地址",
+                          label: isFileDb ? t("connectionModal.uri.fileOption") : t("connectionModal.uri.targetOption"),
                           value: "target",
                         },
                       ]}
@@ -2800,23 +2851,23 @@ const ConnectionModal: React.FC<{
                       type="info"
                       message={
                         isFileDb
-                          ? "当前使用数据库文件路径"
-                          : "当前使用目标地址"
+                          ? t("connectionModal.uri.fileModeMessage")
+                          : t("connectionModal.uri.targetModeMessage")
                       }
-                      description="切换到目标地址会清空连接 URL，避免历史 URL 在保存或测试时覆盖下方主机、端口或文件路径。"
+                      description={t("connectionModal.uri.targetModeDescription")}
                     />
                   )}
                   {isConnectionUrlMode && (
                     <>
                       <Form.Item
                         name="uri"
-                        label="连接 URL（可复制粘贴）"
+                        label={t("connectionModal.uri.urlLabel")}
                         help={
                           hasConnectionUriDraft
-                            ? "URL 模式下保存/测试仅使用此连接 URL；如要填写主机、端口或文件路径，请切换到目标地址。"
+                            ? t("connectionModal.uri.urlHelpDraft")
                             : keepsStoredConnectionUri
-                              ? "当前保留已保存连接 URL；输入新 URL 可替换，或切换到目标地址清除已保存 URL。"
-                              : "URL 模式下必须填写连接 URL；支持从参数生成、复制到剪贴板，或粘贴后一键解析回填参数。"
+                              ? t("connectionModal.uri.urlHelpStored")
+                              : t("connectionModal.uri.urlHelpEmpty")
                         }
                         rules={[createConnectionUriRule()]}
                       >
@@ -2831,9 +2882,9 @@ const ConnectionModal: React.FC<{
                         style={{ marginBottom: uriFeedback ? 12 : 16 }}
                         wrap
                       >
-                        <Button onClick={handleGenerateURI}>生成 URL</Button>
-                        <Button onClick={handleParseURI}>从 URL 解析</Button>
-                        <Button onClick={handleCopyURI}>复制 URL</Button>
+                        <Button onClick={handleGenerateURI}>{t("connectionModal.uri.generateButton")}</Button>
+                        <Button onClick={handleParseURI}>{t("connectionModal.uri.parseButton")}</Button>
+                        <Button onClick={handleCopyURI}>{t("connectionModal.uri.copyButton")}</Button>
                       </Space>
                       {uriFeedback && (
                         <Alert
@@ -2849,9 +2900,9 @@ const ConnectionModal: React.FC<{
                         fieldName: "uri",
                         clearKey: "opaqueURI",
                         hasStoredSecret: initialValues?.hasOpaqueURI,
-                        clearLabel: "清除已保存 URL",
+                        clearLabel: t("connectionModal.uri.clearStoredUrl"),
                         description:
-                          "当前已保存连接 URL。留空表示继续沿用，输入新值表示替换。",
+                          t("connectionModal.uri.storedUrlDescription"),
                       })}
                     </>
                   )}
@@ -2865,27 +2916,27 @@ const ConnectionModal: React.FC<{
               icon: <ClusterOutlined />,
               badge: currentDriverSnapshot?.defaultDriverName ? (
                 <Tag color="blue">
-                  默认：{currentDriverSnapshot.defaultDriverName}
+                  {t("connectionModal.jdbc.defaultBadge", { name: currentDriverSnapshot.defaultDriverName })}
                 </Tag>
               ) : undefined,
               children: (
                 <Form.Item
                   name="driver"
-                  label="JDBC 驱动"
-                  help="该数据源有多个可用兼容驱动；未选择时使用驱动管理中的默认驱动。"
+                  label={t("connectionModal.jdbc.driverLabel")}
+                  help={t("connectionModal.jdbc.driverHelp")}
                   style={{ marginBottom: 0 }}
                 >
                   <Select
-                    placeholder="选择 JDBC 驱动"
+                    placeholder={t("connectionModal.jdbc.driverPlaceholder")}
                     popupMatchSelectWidth={false}
                     options={currentAvailableDriverOptions.map((option) => ({
                       value: option.driverType,
                       label: (
                         <Space size={6} wrap>
                           <span>{option.driverName}</span>
-                          {option.default ? <Tag color="blue">默认</Tag> : null}
+                          {option.default ? <Tag color="blue">{t("common.default")}</Tag> : null}
                           {option.reusedRuntime ? (
-                            <Tag color="default">复用 runtime</Tag>
+                            <Tag color="default">{t("connectionModal.jdbc.reuseRuntime")}</Tag>
                           ) : null}
                         </Space>
                       ),
@@ -2909,21 +2960,21 @@ const ConnectionModal: React.FC<{
                     <Alert
                       showIcon
                       type="info"
-                      message="先在驱动管理新增自定义数据源，然后在这里直接选择"
-                      description="自定义数据源的 Jar、名称与 DSN 模板都在驱动管理中维护；新建连接只选择已有数据源并填写实际 DSN。"
+                      message={t("connectionModal.custom.noticeTitle")}
+                      description={t("connectionModal.custom.noticeDescription")}
                       style={{ marginBottom: 16 }}
                     />
                     {customDataSources.length === 0 && (
                       <Alert
                         showIcon
                         type="warning"
-                        message="还没有自定义数据源"
-                        description="请先到驱动管理点击“新增自定义数据源”，上传 Jar 并填写 DSN 模板。"
+                        message={t("connectionModal.custom.emptyTitle")}
+                        description={t("connectionModal.custom.emptyDescription")}
                         style={{ marginBottom: 16 }}
                         action={
                           onOpenDriverManager ? (
                             <Button size="small" onClick={onOpenDriverManager}>
-                              打开驱动管理
+                              {t("connectionModal.custom.openDriverManager")}
                             </Button>
                           ) : undefined
                         }
@@ -2931,43 +2982,43 @@ const ConnectionModal: React.FC<{
                     )}
                     <Form.Item
                       name="customDataSourceId"
-                      label="自定义数据源"
+                      label={t("connectionModal.custom.dataSourceLabel")}
                       rules={[
                         {
                           required: true,
-                          message: "请先选择自定义数据源",
+                          message: t("connectionModal.custom.required"),
                         },
                       ]}
                     >
                       <Select
-                        placeholder="选择已在驱动管理中创建的数据源"
+                        placeholder={t("connectionModal.custom.placeholder")}
                         popupMatchSelectWidth={false}
                         options={customDataSources.map((source) => ({
                           value: source.id,
-                          label: `${source.name}（驱动：${source.driverType || source.driver || "未识别"}）`,
+                          label: t("connectionModal.custom.selectOptionLabel", { name: source.name, driver: source.driverType || source.driver || t("connectionModal.custom.unidentifiedDriver") }),
                         }))}
                         onChange={handleCustomDataSourceSelect}
-                        notFoundContent="暂无自定义数据源，请先到驱动管理新增"
+                        notFoundContent={t("connectionModal.custom.notFound")}
                       />
                     </Form.Item>
                     <Space size={8} wrap style={{ marginBottom: 16 }}>
                       {onOpenDriverManager ? (
-                        <Button onClick={onOpenDriverManager}>打开驱动管理</Button>
+                        <Button onClick={onOpenDriverManager}>{t("connectionModal.custom.openDriverManager")}</Button>
                       ) : null}
-                      <Button onClick={refreshCustomDataSources}>刷新列表</Button>
+                      <Button onClick={refreshCustomDataSources}>{t("connectionModal.custom.refreshList")}</Button>
                       {selectedCustomDataSource ? (
                         <Tag color="blue">
-                          当前：{selectedCustomDataSource.name}
+                          {t("connectionModal.custom.currentSource", { name: selectedCustomDataSource.name })}
                         </Tag>
                       ) : (
-                        <Tag>未选择数据源</Tag>
+                        <Tag>{t("connectionModal.custom.notSelected")}</Tag>
                       )}
                       {selectedCustomDataSourceStatus?.definitionUsable ? (
-                        <Tag color="success">定义可用</Tag>
+                        <Tag color="success">{t("connectionModal.custom.definitionUsable")}</Tag>
                       ) : selectedCustomDataSourceStatus?.driverLoadable ? (
-                        <Tag color="warning">驱动可加载</Tag>
+                        <Tag color="warning">{t("connectionModal.custom.driverLoadable")}</Tag>
                       ) : selectedCustomDataSource ? (
-                        <Tag color="error">需修复/待校验</Tag>
+                        <Tag color="error">{t("connectionModal.custom.repairNeeded")}</Tag>
                       ) : null}
                     </Space>
                     {selectedCustomDataSource?.description && (
@@ -2990,17 +3041,17 @@ const ConnectionModal: React.FC<{
                         }
                         message={
                           selectedCustomDataSourceStatus?.message ||
-                          "自定义数据源定义状态未知，请在驱动管理中校验"
+                          t("connectionModal.custom.statusUnknown")
                         }
                         description={(
                           <Space direction="vertical" size={4}>
                             <Text>
                               Driver Class：
                               {selectedCustomDataSource.driverClassName ||
-                                "未发现/未记录"}
+                                t("connectionModal.custom.driverClassMissing")}
                             </Text>
                             {selectedCustomDataSource.version ? (
-                              <Text>版本：{selectedCustomDataSource.version}</Text>
+                              <Text>{t("connectionModal.custom.versionLabel", { version: selectedCustomDataSource.version })}</Text>
                             ) : null}
                             {selectedCustomDataSource.jarFileNames?.length ? (
                               <Text>
@@ -3009,7 +3060,7 @@ const ConnectionModal: React.FC<{
                             ) : null}
                             {selectedCustomDataSourceRepairHints.length > 0 ? (
                               <Text type="secondary">
-                                修复建议：{selectedCustomDataSourceRepairHints.join("；")}
+                                {t("connectionModal.custom.repairHintsLabel", { hints: selectedCustomDataSourceRepairHints.join("; ") })}
                               </Text>
                             ) : null}
                           </Space>
@@ -3019,20 +3070,20 @@ const ConnectionModal: React.FC<{
                     ) : null}
                     <Form.Item
                       name="driver"
-                      label="驱动标识"
+                      label={t("connectionModal.custom.driverFieldLabel")}
                       rules={[
                         {
                           required: true,
-                          message: "请选择包含驱动标识的自定义数据源",
+                          message: t("connectionModal.custom.driverFieldRequired"),
                         },
                       ]}
-                      help="由驱动管理上传 Jar 后自动生成；如需变更，请回到驱动管理重新新增自定义数据源。"
+                      help={t("connectionModal.custom.driverFieldHelp")}
                       style={{ marginBottom: 0 }}
                     >
                       <Input
                         {...noAutoCapInputProps}
                         disabled
-                        placeholder="选择自定义数据源后自动带出"
+                        placeholder={t("connectionModal.custom.driverFieldPlaceholder")}
                       />
                     </Form.Item>
                   </>
@@ -3045,12 +3096,12 @@ const ConnectionModal: React.FC<{
                   <>
                     <Form.Item
                       name="dsn"
-                      label="连接字符串 (DSN)"
+                      label={t("connectionModal.custom.dsnLabel")}
                       rules={[createCustomDsnRule()]}
                       help={
                         selectedCustomDataSource?.dsnTemplate
-                          ? `当前数据源模板：${selectedCustomDataSource.dsnTemplate}`
-                          : "填写该自定义数据源对应驱动要求的 JDBC URL 或 DSN。"
+                          ? t("connectionModal.custom.dsnTemplateHelp", { template: selectedCustomDataSource.dsnTemplate })
+                          : t("connectionModal.custom.dsnHelpDefault")
                       }
                     >
                       <Input.TextArea
@@ -3058,7 +3109,7 @@ const ConnectionModal: React.FC<{
                         rows={4}
                         placeholder={
                           selectedCustomDataSource?.dsnTemplate ||
-                          "例如: jdbc:trino://localhost:8080/catalog/schema"
+                          t("connectionModal.custom.dsnPlaceholder")
                         }
                       />
                     </Form.Item>
@@ -3066,7 +3117,7 @@ const ConnectionModal: React.FC<{
                       <Alert
                         showIcon
                         type="info"
-                        message="DSN 填写说明"
+                        message={t("connectionModal.custom.dsnHelpTitle")}
                         description={selectedCustomDataSource.dsnHelp}
                         style={{ marginBottom: 16 }}
                       />
@@ -3075,9 +3126,9 @@ const ConnectionModal: React.FC<{
                       fieldName: "dsn",
                       clearKey: "opaqueDSN",
                       hasStoredSecret: initialValues?.hasOpaqueDSN,
-                      clearLabel: "清除已保存 DSN",
+                      clearLabel: t("connectionModal.custom.clearStoredDsn"),
                       description:
-                        "当前已保存连接字符串。留空表示继续沿用，输入新值表示替换。",
+                        t("connectionModal.custom.storedDsnDescription"),
                     })}
                   </>
                 ),
@@ -3096,28 +3147,28 @@ const ConnectionModal: React.FC<{
                     >
                       <Form.Item
                         name="user"
-                        label="用户名 (可选)"
+                        label={t("connectionModal.custom.usernameLabel")}
                         style={{ marginBottom: 0 }}
-                        help="如果所选 JDBC 驱动支持 user 属性，可在这里填写；也可以继续放在 DSN 中。"
+                        help={t("connectionModal.custom.usernameHelp")}
                       >
                         <Input
                           {...noAutoCapInputProps}
-                          placeholder="例如：db_user"
+                          placeholder={t("connectionModal.custom.usernamePlaceholder")}
                         />
                       </Form.Item>
                       <Form.Item
                         name="password"
-                        label="密码 (可选)"
+                        label={t("connectionModal.custom.passwordLabel")}
                         style={{ marginBottom: 0 }}
-                        help="保存后走现有密文存储；留空不覆盖已保存密码。"
+                        help={t("connectionModal.custom.passwordHelp")}
                       >
                         <Input.Password
                           {...noAutoCapInputProps}
                           placeholder={getStoredSecretPlaceholder({
                             hasStoredSecret: initialValues?.hasPrimaryPassword,
-                            emptyPlaceholder: "数据库密码",
-                            retainedLabel: "已保存密码",
-                          })}
+                            emptyPlaceholder: t("connectionModal.custom.passwordPlaceholder"),
+                            retainedLabel: t("connectionModal.custom.retainedPasswordLabel"),
+                          }, language)}
                         />
                       </Form.Item>
                     </div>
@@ -3125,15 +3176,15 @@ const ConnectionModal: React.FC<{
                       fieldName: "password",
                       clearKey: "primaryPassword",
                       hasStoredSecret: initialValues?.hasPrimaryPassword,
-                      clearLabel: "清除已保存密码",
+                      clearLabel: t("connectionModal.custom.clearSavedPassword"),
                       description:
-                        "当前已保存自定义连接密码。留空表示继续沿用，输入新值表示替换。",
+                        t("connectionModal.custom.storedPasswordDescription"),
                     })}
                     <Alert
                       showIcon
                       type="info"
-                      message="密码也可以继续写在 DSN 中"
-                      description="这里填写的用户名/密码会作为 JDBC connection properties 传给驱动；少数驱动如果只接受 DSN 参数，请按驱动文档在 DSN 中配置。"
+                      message={t("connectionModal.custom.credentialsNoticeTitle")}
+                      description={t("connectionModal.custom.credentialsNoticeDescription")}
                       style={{ marginTop: 16, marginBottom: 0 }}
                     />
                   </>
@@ -3161,12 +3212,12 @@ const ConnectionModal: React.FC<{
                       <Form.Item
                         name="host"
                         label={
-                          isFileDb ? "文件路径 (绝对路径)" : "主机地址 (Host)"
+                          isFileDb ? t("connectionModal.target.filePathLabel") : t("connectionModal.target.hostLabel")
                         }
-                        rules={[createUriAwareRequiredRule("请输入地址/路径")]}
+                        rules={[createUriAwareRequiredRule(t("connectionModal.target.addressRequired"))]}
                         extra={
                           isFileDb && !canBrowseDatabaseFile
-                            ? "请选择后端可访问的本机绝对路径"
+                            ? t("connectionModal.target.fileAbsolutePathHelp")
                             : undefined
                         }
                         style={{ marginBottom: 0 }}
@@ -3189,16 +3240,16 @@ const ConnectionModal: React.FC<{
                             onClick={handleSelectDatabaseFile}
                             loading={selectingDbFile}
                           >
-                            浏览...
+                            {t("connectionModal.target.browse")}
                           </Button>
                         </Form.Item>
                       ) : !isFileDb ? (
                         <Form.Item
                           name="port"
-                          label="端口 (Port)"
+                          label={t("connectionModal.target.portLabel")}
                           rules={[
                             createUriAwareRequiredRule(
-                              "请输入端口号",
+                              t("connectionModal.target.portRequired"),
                               (value) => Number(value) > 0,
                             ),
                           ]}
@@ -3221,11 +3272,11 @@ const ConnectionModal: React.FC<{
                   children: (
                     <Form.Item
                       name="database"
-                      label="默认连接数据库（可选）"
-                      help="留空会自动尝试 postgres、template1、与当前用户名同名数据库"
+                      label={t("connectionModal.service.defaultDatabaseLabel")}
+                      help={t("connectionModal.service.defaultDatabaseHelp")}
                       style={{ marginBottom: 0 }}
                     >
-                      <Input {...noAutoCapInputProps} placeholder="例如：appdb" />
+                      <Input {...noAutoCapInputProps} placeholder={t("connectionModal.service.defaultDatabasePlaceholder")} />
                     </Form.Item>
                   ),
                 })}
@@ -3237,18 +3288,18 @@ const ConnectionModal: React.FC<{
                   children: (
                     <Form.Item
                       name="database"
-                      label="服务名 (Service Name)"
+                      label={t("connectionModal.service.oracleServiceNameLabel")}
                       rules={[
                         createUriAwareRequiredRule(
-                          "请输入 Oracle 服务名（例如 ORCLPDB1）",
+                          t("connectionModal.service.oracleServiceNameRequired"),
                         ),
                       ]}
-                      help="请填写监听器注册的 SERVICE_NAME（不是用户名）。例如：ORCLPDB1"
+                      help={t("connectionModal.service.oracleServiceNameHelp")}
                       style={{ marginBottom: 0 }}
                     >
                       <Input
                         {...noAutoCapInputProps}
-                        placeholder="例如：ORCLPDB1"
+                        placeholder={t("connectionModal.service.oracleServiceNamePlaceholder")}
                       />
                     </Form.Item>
                   ),
@@ -3264,13 +3315,13 @@ const ConnectionModal: React.FC<{
                     options: [
                       {
                         value: "single",
-                        label: "单机模式",
-                        description: "只连接一个主库地址，适合本地和单实例。",
+                        label: t("connectionModal.topology.singleLabel"),
+                        description: t("connectionModal.topology.mysqlSingleDescription"),
                       },
                       {
                         value: "replica",
-                        label: "主从模式",
-                        description: "主库优先，可配置从库地址用于切换。",
+                        label: t("connectionModal.topology.primaryReplicaLabel"),
+                        description: t("connectionModal.topology.mysqlReplicaDescription"),
                       },
                     ],
                   }),
@@ -3285,12 +3336,12 @@ const ConnectionModal: React.FC<{
                     <>
                       <Form.Item
                         name="mysqlReplicaHosts"
-                        label="从库地址列表"
-                        help="可输入多个从库地址，格式：host:port（回车确认）"
+                        label={t("connectionModal.mysql.replicaHostsLabel")}
+                        help={t("connectionModal.mysql.replicaHostsHelp")}
                       >
                         <Select
                           mode="tags"
-                          placeholder="例如：10.10.0.12:3306、10.10.0.13:3306"
+                          placeholder={t("connectionModal.mysql.replicaHostsPlaceholder")}
                           tokenSeparators={[",", ";", " "]}
                         />
                       </Form.Item>
@@ -3303,17 +3354,17 @@ const ConnectionModal: React.FC<{
                       >
                         <Form.Item
                           name="mysqlReplicaUser"
-                          label="从库用户名（可选）"
+                          label={t("connectionModal.mysql.replicaUserLabel")}
                           style={{ marginBottom: 0 }}
                         >
                           <Input
                             {...noAutoCapInputProps}
-                            placeholder="留空沿用主库用户名"
+                            placeholder={t("connectionModal.mysql.replicaUserPlaceholder")}
                           />
                         </Form.Item>
                         <Form.Item
                           name="mysqlReplicaPassword"
-                          label="从库密码（可选）"
+                          label={t("connectionModal.mysql.replicaPasswordLabel")}
                           style={{ marginBottom: 0 }}
                         >
                           <Input.Password
@@ -3321,9 +3372,9 @@ const ConnectionModal: React.FC<{
                             placeholder={getStoredSecretPlaceholder({
                               hasStoredSecret:
                                 initialValues?.hasMySQLReplicaPassword,
-                              emptyPlaceholder: "留空沿用主库密码",
-                              retainedLabel: "已保存从库密码",
-                            })}
+                              emptyPlaceholder: t("connectionModal.mysql.replicaPasswordPlaceholder"),
+                              retainedLabel: t("connectionModal.mysql.retainedReplicaPasswordLabel"),
+                            }, language)}
                           />
                         </Form.Item>
                       </div>
@@ -3331,9 +3382,9 @@ const ConnectionModal: React.FC<{
                         fieldName: "mysqlReplicaPassword",
                         clearKey: "mysqlReplicaPassword",
                         hasStoredSecret: initialValues?.hasMySQLReplicaPassword,
-                        clearLabel: "清除已保存从库密码",
+                        clearLabel: t("connectionModal.mysql.clearReplicaPassword"),
                         description:
-                          "当前已保存从库密码。留空表示继续沿用，输入新值表示替换。",
+                          t("connectionModal.mysql.storedReplicaPasswordDescription"),
                       })}
                     </>
                   ),
@@ -3349,13 +3400,13 @@ const ConnectionModal: React.FC<{
                     options: [
                       {
                         value: "single",
-                        label: "单机模式",
-                        description: "只连接一个 MongoDB 节点。",
+                        label: t("connectionModal.topology.singleLabel"),
+                        description: t("connectionModal.topology.mongodbSingleDescription"),
                       },
                       {
                         value: "replica",
-                        label: "副本集 / 多节点",
-                        description: "配置副本集名称和多个候选节点。",
+                        label: t("connectionModal.topology.mongodbReplicaLabel"),
+                        description: t("connectionModal.topology.mongodbReplicaDescription"),
                       },
                     ],
                   }),
@@ -3381,14 +3432,14 @@ const ConnectionModal: React.FC<{
                         {[
                           {
                             value: false,
-                            label: "标准地址",
-                            description: "使用 host:port 直连或副本集节点列表。",
+                            label: t("connectionModal.mongo.discovery.standardLabel"),
+                            description: t("connectionModal.mongo.discovery.standardDescription"),
                           },
                           {
                             value: true,
-                            label: "SRV 地址",
+                            label: t("connectionModal.mongo.discovery.srvLabel"),
                             description:
-                              "使用 mongodb+srv，由 DNS 发现目标节点。",
+                              t("connectionModal.mongo.discovery.srvDescription"),
                           },
                         ].map((option) => {
                           const active = mongoSrv === option.value;
@@ -3424,7 +3475,7 @@ const ConnectionModal: React.FC<{
                             >
                               <Space size={8} wrap>
                                 <Text strong>{option.label}</Text>
-                                {active ? <Tag color="blue">当前</Tag> : null}
+                                {active ? <Tag color="blue">{t("connectionModal.common.current")}</Tag> : null}
                               </Space>
                               <div
                                 style={{
@@ -3443,7 +3494,7 @@ const ConnectionModal: React.FC<{
                           type="warning"
                           showIcon
                           style={{ marginTop: 12 }}
-                          message="SRV 与 SSH 隧道同时启用时，可能依赖本地 DNS 解析能力"
+                          message={t("connectionModal.mongo.discovery.srvSshWarning")}
                         />
                       )}
                     </>
@@ -3460,20 +3511,20 @@ const ConnectionModal: React.FC<{
                       <Form.Item
                         name="mongoHosts"
                         label={
-                          mongoSrv ? "附加 SRV 主机（可选）" : "附加节点地址"
+                          mongoSrv ? t("connectionModal.mongo.hostsSrvLabel") : t("connectionModal.mongo.hostsLabel")
                         }
                         help={
                           mongoSrv
-                            ? "可输入多个候选主机名，格式：host；若留空则仅使用上方主机。"
-                            : "可输入多个节点地址，格式：host:port（回车确认）"
+                            ? t("connectionModal.mongo.hostsSrvHelp")
+                            : t("connectionModal.mongo.hostsHelp")
                         }
                       >
                         <Select
                           mode="tags"
                           placeholder={
                             mongoSrv
-                              ? "例如：cluster-a.example.com、cluster-b.example.com"
-                              : "例如：10.10.0.12:27017、10.10.0.13:27017"
+                              ? t("connectionModal.mongo.hostsSrvPlaceholder")
+                              : t("connectionModal.mongo.hostsPlaceholder")
                           }
                           tokenSeparators={[",", ";", " "]}
                         />
@@ -3487,28 +3538,28 @@ const ConnectionModal: React.FC<{
                       >
                         <Form.Item
                           name="mongoReplicaSet"
-                          label="副本集名称（可选）"
+                          label={t("connectionModal.mongo.replicaSetLabel")}
                           style={{ marginBottom: 0 }}
                         >
                           <Input
                             {...noAutoCapInputProps}
-                            placeholder="例如：rs0"
+                            placeholder={t("connectionModal.mongo.replicaSetPlaceholder")}
                           />
                         </Form.Item>
                         <Form.Item
                           name="mongoReplicaUser"
-                          label="副本集用户名（可选）"
+                          label={t("connectionModal.mongo.replicaUserLabel")}
                           style={{ marginBottom: 0 }}
                         >
                           <Input
                             {...noAutoCapInputProps}
-                            placeholder="留空沿用主用户名"
+                            placeholder={t("connectionModal.mongo.replicaUserPlaceholder")}
                           />
                         </Form.Item>
                       </div>
                       <Form.Item
                         name="mongoReplicaPassword"
-                        label="副本集密码（可选）"
+                        label={t("connectionModal.mongo.replicaPasswordLabel")}
                         style={{ marginTop: 16, marginBottom: 0 }}
                       >
                         <Input.Password
@@ -3516,18 +3567,18 @@ const ConnectionModal: React.FC<{
                           placeholder={getStoredSecretPlaceholder({
                             hasStoredSecret:
                               initialValues?.hasMongoReplicaPassword,
-                            emptyPlaceholder: "留空沿用主密码",
-                            retainedLabel: "已保存副本集密码",
-                          })}
+                            emptyPlaceholder: t("connectionModal.mongo.replicaPasswordPlaceholder"),
+                            retainedLabel: t("connectionModal.mongo.retainedReplicaPasswordLabel"),
+                          }, language)}
                         />
                       </Form.Item>
                       {renderStoredSecretControls({
                         fieldName: "mongoReplicaPassword",
                         clearKey: "mongoReplicaPassword",
                         hasStoredSecret: initialValues?.hasMongoReplicaPassword,
-                        clearLabel: "清除已保存副本集密码",
+                        clearLabel: t("connectionModal.mongo.clearReplicaPassword"),
                         description:
-                          "当前已保存副本集密码。留空表示继续沿用，输入新值表示替换。",
+                          t("connectionModal.mongo.storedReplicaPasswordDescription"),
                       })}
                       <Space
                         size={8}
@@ -3537,7 +3588,7 @@ const ConnectionModal: React.FC<{
                           onClick={handleDiscoverMongoMembers}
                           loading={discoveringMembers}
                         >
-                          自动发现成员
+                          {t("connectionModal.mongo.discoverMembers")}
                         </Button>
                       </Space>
                       {mongoMembers.length > 0 && (
@@ -3550,7 +3601,7 @@ const ConnectionModal: React.FC<{
                           columns={[
                             { title: "Host", dataIndex: "host", width: "48%" },
                             {
-                              title: "角色",
+                              title: t("connectionModal.mongo.memberRole"),
                               dataIndex: "role",
                               width: "32%",
                               render: (
@@ -3565,12 +3616,12 @@ const ConnectionModal: React.FC<{
                               ),
                             },
                             {
-                              title: "健康",
+                              title: t("connectionModal.mongo.memberHealth"),
                               dataIndex: "healthy",
                               width: "20%",
                               render: (value: boolean) => (
                                 <Tag color={value ? "success" : "error"}>
-                                  {value ? "正常" : "异常"}
+                                  {value ? t("connectionModal.mongo.memberHealthOk") : t("connectionModal.mongo.memberHealthBad")}
                                 </Tag>
                               ),
                             },
@@ -3595,16 +3646,16 @@ const ConnectionModal: React.FC<{
                     >
                       <Form.Item
                         name="mongoAuthSource"
-                        label="认证库 (authSource)"
+                        label={t("connectionModal.mongo.authSourceLabel")}
                         style={{ marginBottom: 0 }}
                       >
                         <Input
                           {...noAutoCapInputProps}
-                          placeholder="默认使用 database 或 admin"
+                          placeholder={t("connectionModal.mongo.authSourcePlaceholder")}
                         />
                       </Form.Item>
                       <div style={{ display: "grid", gap: 8 }}>
-                        <Text strong>读偏好 (readPreference)</Text>
+                        <Text strong>{t("connectionModal.mongo.readPreferenceLabel")}</Text>
                         {renderChoiceCards({
                           fieldName: "mongoReadPreference",
                           value: String(mongoReadPreference),
@@ -3613,27 +3664,27 @@ const ConnectionModal: React.FC<{
                             {
                               value: "primary",
                               label: "primary",
-                              description: "只读主节点。",
+                              description: t("connectionModal.mongo.readPreference.primaryDescription"),
                             },
                             {
                               value: "primaryPreferred",
                               label: "primaryPreferred",
-                              description: "主节点优先。",
+                              description: t("connectionModal.mongo.readPreference.primaryPreferredDescription"),
                             },
                             {
                               value: "secondary",
                               label: "secondary",
-                              description: "只读从节点。",
+                              description: t("connectionModal.mongo.readPreference.secondaryDescription"),
                             },
                             {
                               value: "secondaryPreferred",
                               label: "secondaryPreferred",
-                              description: "从节点优先。",
+                              description: t("connectionModal.mongo.readPreference.secondaryPreferredDescription"),
                             },
                             {
                               value: "nearest",
                               label: "nearest",
-                              description: "选择最近节点。",
+                              description: t("connectionModal.mongo.readPreference.nearestDescription"),
                             },
                           ],
                         })}
@@ -3654,26 +3705,26 @@ const ConnectionModal: React.FC<{
                         options: [
                           {
                             value: "single",
-                            label: "单机模式",
-                            description: "只连接一个 Redis 节点。",
+                            label: t("connectionModal.topology.singleLabel"),
+                            description: t("connectionModal.topology.redisSingleDescription"),
                           },
                           {
                             value: "cluster",
-                            label: "集群模式",
-                            description: "Redis Cluster，配置多个种子节点。",
+                            label: t("connectionModal.redis.clusterLabel"),
+                            description: t("connectionModal.redis.clusterDescription"),
                           },
                         ],
                       })}
                       {redisTopology === "cluster" && (
                         <Form.Item
                           name="redisHosts"
-                          label="集群附加节点地址"
-                          help="主节点使用上方主机地址；这里填写其他种子节点，格式：host:port"
+                          label={t("connectionModal.redis.hostsLabel")}
+                          help={t("connectionModal.redis.hostsHelp")}
                           style={{ marginTop: 16, marginBottom: 0 }}
                         >
                           <Select
                             mode="tags"
-                            placeholder="例如：10.10.0.12:6379、10.10.0.13:6379"
+                            placeholder={t("connectionModal.redis.hostsPlaceholder")}
                             tokenSeparators={[",", ";", " "]}
                           />
                         </Form.Item>
@@ -3688,24 +3739,24 @@ const ConnectionModal: React.FC<{
                   icon: <SafetyCertificateOutlined />,
                   children: (
                     <>
-                      <Form.Item name="password" label="密码 (可选)">
+                      <Form.Item name="password" label={t("connectionModal.custom.passwordLabel")}>
                         <Input.Password
                           {...noAutoCapInputProps}
                           placeholder={getStoredSecretPlaceholder({
                             hasStoredSecret: initialValues?.hasPrimaryPassword,
                             emptyPlaceholder:
-                              "Redis 密码（如果设置了 requirepass）",
-                            retainedLabel: "已保存 Redis 密码",
-                          })}
+                              t("connectionModal.redis.passwordPlaceholder"),
+                            retainedLabel: t("connectionModal.redis.retainedPasswordLabel"),
+                          }, language)}
                         />
                       </Form.Item>
                       {renderStoredSecretControls({
                         fieldName: "password",
                         clearKey: "primaryPassword",
                         hasStoredSecret: initialValues?.hasPrimaryPassword,
-                        clearLabel: "清除已保存密码",
+                        clearLabel: t("connectionModal.custom.clearSavedPassword"),
                         description:
-                          "当前已保存 Redis 密码。留空表示继续沿用，输入新值表示替换。",
+                          t("connectionModal.redis.storedPasswordDescription"),
                       })}
                     </>
                   ),
@@ -3718,13 +3769,13 @@ const ConnectionModal: React.FC<{
                   children: (
                     <Form.Item
                       name="includeRedisDatabases"
-                      label="显示数据库 (留空显示全部)"
-                      help="连接测试成功后可选择"
+                      label={t("connectionModal.databaseScope.label")}
+                      help={t("connectionModal.databaseScope.help")}
                       style={{ marginBottom: 0 }}
                     >
                       <Select
                         mode="multiple"
-                        placeholder="选择显示的数据库 (0-15)"
+                        placeholder={t("connectionModal.databaseScope.redisPlaceholder")}
                         allowClear
                       >
                         {redisDbList.map((db) => (
@@ -3756,11 +3807,11 @@ const ConnectionModal: React.FC<{
                       >
                         <Form.Item
                           name="user"
-                          label="用户名"
+                          label={t("connectionModal.credentials.usernameLabel")}
                           rules={
                             dbType === "mongodb"
                               ? []
-                              : [createUriAwareRequiredRule("请输入用户名")]
+                              : [createUriAwareRequiredRule(t("connectionModal.credentials.usernameRequired"))]
                           }
                           style={{ marginBottom: 0 }}
                         >
@@ -3768,7 +3819,7 @@ const ConnectionModal: React.FC<{
                         </Form.Item>
                         <Form.Item
                           name="password"
-                          label="密码"
+                          label={t("connectionModal.credentials.passwordLabel")}
                           style={{ marginBottom: 0 }}
                         >
                           <Input.Password
@@ -3776,14 +3827,14 @@ const ConnectionModal: React.FC<{
                             placeholder={getStoredSecretPlaceholder({
                               hasStoredSecret:
                                 initialValues?.hasPrimaryPassword,
-                              emptyPlaceholder: "密码",
-                              retainedLabel: "已保存密码",
-                            })}
+                              emptyPlaceholder: t("connectionModal.credentials.passwordPlaceholder"),
+                              retainedLabel: t("connectionModal.custom.retainedPasswordLabel"),
+                            }, language)}
                           />
                         </Form.Item>
                         {dbType === "mongodb" && (
                           <div style={{ display: "grid", gap: 8 }}>
-                            <Text strong>验证方式</Text>
+                            <Text strong>{t("connectionModal.mongo.authMechanismLabel")}</Text>
                             {renderChoiceCards({
                               fieldName: "mongoAuthMechanism",
                               value: String(mongoAuthMechanism),
@@ -3791,28 +3842,28 @@ const ConnectionModal: React.FC<{
                               options: [
                                 {
                                   value: "",
-                                  label: "自动协商",
-                                  description: "交给驱动按服务端能力选择。",
+                                  label: t("connectionModal.mongo.auth.autoLabel"),
+                                  description: t("connectionModal.mongo.auth.autoDescription"),
                                 },
                                 {
                                   value: "NONE",
-                                  label: "无认证",
-                                  description: "不发送认证信息。",
+                                  label: t("connectionModal.mongo.auth.noneLabel"),
+                                  description: t("connectionModal.mongo.auth.noneDescription"),
                                 },
                                 {
                                   value: "SCRAM-SHA-1",
                                   label: "SCRAM-SHA-1",
-                                  description: "兼容旧版本 MongoDB。",
+                                  description: t("connectionModal.mongo.auth.scramSha1Description"),
                                 },
                                 {
                                   value: "SCRAM-SHA-256",
                                   label: "SCRAM-SHA-256",
-                                  description: "推荐的 SCRAM 认证。",
+                                  description: t("connectionModal.mongo.auth.scramSha256Description"),
                                 },
                                 {
                                   value: "MONGODB-AWS",
                                   label: "MONGODB-AWS",
-                                  description: "AWS IAM 认证。",
+                                  description: t("connectionModal.mongo.auth.awsDescription"),
                                 },
                               ],
                             })}
@@ -3823,9 +3874,9 @@ const ConnectionModal: React.FC<{
                         fieldName: "password",
                         clearKey: "primaryPassword",
                         hasStoredSecret: initialValues?.hasPrimaryPassword,
-                        clearLabel: "清除已保存密码",
+                        clearLabel: t("connectionModal.custom.clearSavedPassword"),
                         description:
-                          "当前已保存主连接密码。留空表示继续沿用，输入新值表示替换。",
+                          t("connectionModal.credentials.storedPrimaryPasswordDescription"),
                       })}
                       {dbType === "mongodb" && (
                         <Form.Item
@@ -3833,7 +3884,7 @@ const ConnectionModal: React.FC<{
                           valuePropName="checked"
                           style={{ marginTop: 12, marginBottom: 0 }}
                         >
-                          <Checkbox>保存密码</Checkbox>
+                          <Checkbox>{t("connectionModal.credentials.savePassword")}</Checkbox>
                         </Form.Item>
                       )}
                     </>
@@ -3848,13 +3899,13 @@ const ConnectionModal: React.FC<{
                   children: (
                     <Form.Item
                       name="includeDatabases"
-                      label="显示数据库 (留空显示全部)"
-                      help="连接测试成功后可选择"
+                      label={t("connectionModal.databaseScope.label")}
+                      help={t("connectionModal.databaseScope.help")}
                       style={{ marginBottom: 0 }}
                     >
                       <Select
                         mode="multiple"
-                        placeholder="选择显示的数据库"
+                        placeholder={t("connectionModal.databaseScope.placeholder")}
                         allowClear
                       >
                         {dbList.map((db) => (
@@ -3886,21 +3937,21 @@ const ConnectionModal: React.FC<{
                     {
                       key: "ssl" as const,
                       title: "SSL/TLS",
-                      description: "加密与证书校验",
+                      description: t("connectionModal.network.ssl.description"),
                       enabled: useSSL,
                     },
                   ]
                 : []),
               {
                 key: "ssh",
-                title: "SSH 隧道",
-                description: "跳板机 / 堡垒机转发",
+                title: t("connectionModal.network.ssh.title"),
+                description: t("connectionModal.network.ssh.description"),
                 enabled: useSSH,
               },
               {
                 key: "proxy",
-                title: "代理",
-                description: "SOCKS5 / HTTP CONNECT",
+                title: t("connectionModal.network.proxy.title"),
+                description: t("connectionModal.network.proxy.description"),
                 enabled: useProxy,
               },
             ];
@@ -3924,7 +3975,7 @@ const ConnectionModal: React.FC<{
                       SSL/TLS
                     </div>
                     <div style={{ ...modalMutedTextStyle, marginBottom: 14 }}>
-                      为连接链路增加加密与证书校验控制，适合生产或跨网络访问场景。
+                      {t("connectionModal.ssl.sectionDescription")}
                     </div>
                     {!useSSL ? (
                       <div
@@ -3937,12 +3988,12 @@ const ConnectionModal: React.FC<{
                             : "rgba(16,24,40,0.04)",
                         }}
                       >
-                        左侧勾选“SSL/TLS”后，可在这里配置模式、证书与校验策略。
+                        {t("connectionModal.ssl.disabledDescription")}
                       </div>
                     ) : (
                       <div style={tunnelSectionStyle}>
                         <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
-                          <Text strong>SSL 模式</Text>
+                          <Text strong>{t("connectionModal.ssl.modeLabel")}</Text>
                           {renderChoiceCards({
                             fieldName: "sslMode",
                             value: String(sslMode),
@@ -3969,34 +4020,34 @@ const ConnectionModal: React.FC<{
                           <>
                             <Form.Item
                               name="sslCertPath"
-                              label="客户端证书路径 (SSL_CERT_PATH)"
+                              label={t("connectionModal.ssl.certPathLabel")}
                               rules={[
                                 {
                                   required: true,
-                                  message: "达梦 SSL 需要证书路径",
+                                  message: t("connectionModal.ssl.certPathRequired"),
                                 },
                               ]}
                               style={{ marginBottom: 8 }}
                             >
                               <Input
                                 {...noAutoCapInputProps}
-                                placeholder="例如: C:\certs\client-cert.pem"
+                                placeholder={t("connectionModal.ssl.certPathPlaceholder")}
                               />
                             </Form.Item>
                             <Form.Item
                               name="sslKeyPath"
-                              label="客户端私钥路径 (SSL_KEY_PATH)"
+                              label={t("connectionModal.ssl.keyPathLabel")}
                               rules={[
                                 {
                                   required: true,
-                                  message: "达梦 SSL 需要私钥路径",
+                                  message: t("connectionModal.ssl.keyPathRequired"),
                                 },
                               ]}
                               style={{ marginBottom: 8 }}
                             >
                               <Input
                                 {...noAutoCapInputProps}
-                                placeholder="例如: C:\certs\client-key.pem"
+                                placeholder={t("connectionModal.ssl.keyPathPlaceholder")}
                               />
                             </Form.Item>
                           </>
@@ -4020,10 +4071,10 @@ const ConnectionModal: React.FC<{
                         fontWeight: 700,
                       }}
                     >
-                      SSH 隧道
+                      {t("connectionModal.network.ssh.title")}
                     </div>
                     <div style={{ ...modalMutedTextStyle, marginBottom: 14 }}>
-                      通过跳板机或堡垒机转发数据库连接，适合内网或受限网络环境。
+                      {t("connectionModal.ssh.sectionDescription")}
                     </div>
                     {!useSSH ? (
                       <div
@@ -4036,8 +4087,7 @@ const ConnectionModal: React.FC<{
                             : "rgba(16,24,40,0.04)",
                         }}
                       >
-                        左侧勾选“SSH
-                        隧道”后，可在这里填写主机、端口、用户名、密码和私钥路径。
+                        {t("connectionModal.ssh.disabledDescription")}
                       </div>
                     ) : (
                       <div style={tunnelSectionStyle}>
@@ -4050,22 +4100,22 @@ const ConnectionModal: React.FC<{
                         >
                           <Form.Item
                             name="sshHost"
-                            label="SSH 主机 (域名或IP)"
+                            label={t("connectionModal.ssh.hostLabel")}
                             rules={[
-                              { required: useSSH, message: "请输入SSH主机" },
+                              { required: useSSH, message: t("connectionModal.ssh.hostRequired") },
                             ]}
                             style={{ flex: 1 }}
                           >
                             <Input
                               {...noAutoCapInputProps}
-                              placeholder="例如: ssh.example.com 或 192.168.1.100"
+                              placeholder={t("connectionModal.ssh.hostPlaceholder")}
                             />
                           </Form.Item>
                           <Form.Item
                             name="sshPort"
-                            label="端口"
+                            label={t("connectionModal.network.portLabel")}
                             rules={[
-                              { required: useSSH, message: "请输入SSH端口" },
+                              { required: useSSH, message: t("connectionModal.ssh.portRequired") },
                             ]}
                             style={{ width: 100 }}
                           >
@@ -4081,9 +4131,9 @@ const ConnectionModal: React.FC<{
                         >
                           <Form.Item
                             name="sshUser"
-                            label="SSH 用户"
+                            label={t("connectionModal.ssh.userLabel")}
                             rules={[
-                              { required: useSSH, message: "请输入SSH用户" },
+                              { required: useSSH, message: t("connectionModal.ssh.userRequired") },
                             ]}
                             style={{ flex: 1 }}
                           >
@@ -4094,41 +4144,41 @@ const ConnectionModal: React.FC<{
                           </Form.Item>
                           <Form.Item
                             name="sshPassword"
-                            label="SSH 密码"
+                            label={t("connectionModal.ssh.passwordLabel")}
                             style={{ flex: 1 }}
                           >
                             <Input.Password
                               {...noAutoCapInputProps}
                               placeholder={getStoredSecretPlaceholder({
                                 hasStoredSecret: initialValues?.hasSSHPassword,
-                                emptyPlaceholder: "密码",
-                                retainedLabel: "已保存 SSH 密码",
-                              })}
+                                emptyPlaceholder: t("connectionModal.credentials.passwordPlaceholder"),
+                                retainedLabel: t("connectionModal.ssh.retainedPasswordLabel"),
+                              }, language)}
                             />
                           </Form.Item>
                         </div>
                         <Form.Item
-                          label="私钥路径 (可选)"
-                          help="例如: /Users/name/.ssh/id_rsa"
+                          label={t("connectionModal.ssh.privateKeyPathLabel")}
+                          help={t("connectionModal.ssh.privateKeyPathHelp")}
                         >
                           <Space.Compact style={{ width: "100%" }}>
                             <Form.Item name="sshKeyPath" noStyle>
                               <Input
                                 {...noAutoCapInputProps}
-                                placeholder="绝对路径"
+                                placeholder={t("connectionModal.ssh.privateKeyPathPlaceholder")}
                               />
                             </Form.Item>
                             <Button
                               onClick={handleSelectSSHKeyFile}
                               loading={selectingSSHKey}
                             >
-                              浏览...
+                              {t("connectionModal.target.browse")}
                             </Button>
                             <Button
                               onClick={handleTestSSHConnection}
                               loading={loading}
                             >
-                              测试SSH
+                              {t("connectionModal.ssh.testButton")}
                             </Button>
                           </Space.Compact>
                         </Form.Item>
@@ -4136,9 +4186,8 @@ const ConnectionModal: React.FC<{
                           fieldName: "sshPassword",
                           clearKey: "sshPassword",
                           hasStoredSecret: initialValues?.hasSSHPassword,
-                          clearLabel: "清除已保存 SSH 密码",
-                          description:
-                            "当前已保存 SSH 密码。留空表示继续沿用，输入新值表示替换。",
+                          clearLabel: t("connectionModal.ssh.clearSavedPassword"),
+                          description: t("connectionModal.ssh.storedPasswordDescription"),
                         })}
                       </div>
                     )}
@@ -4156,10 +4205,10 @@ const ConnectionModal: React.FC<{
                         fontWeight: 700,
                       }}
                     >
-                      代理
+                      {t("connectionModal.network.proxy.title")}
                     </div>
                     <div style={{ ...modalMutedTextStyle, marginBottom: 14 }}>
-                      通过 SOCKS5 或 HTTP CONNECT 代理转发数据库流量。
+                      {t("connectionModal.proxy.sectionDescription")}
                     </div>
                     {!useProxy ? (
                       <div
@@ -4172,20 +4221,20 @@ const ConnectionModal: React.FC<{
                             : "rgba(16,24,40,0.04)",
                         }}
                       >
-                        左侧勾选“代理”后，可在这里选择代理类型并填写主机、端口与认证信息。
+                        {t("connectionModal.proxy.disabledDescription")}
                       </div>
                     ) : (
                       <div style={tunnelSectionStyle}>
                         <Form.Item
                           name="proxyHost"
-                          label="代理主机"
+                          label={t("connectionModal.proxy.hostLabel")}
                           rules={[
-                            { required: useProxy, message: "请输入代理主机" },
+                            { required: useProxy, message: t("connectionModal.proxy.hostRequired") },
                           ]}
                         >
                           <Input
                             {...noAutoCapInputProps}
-                            placeholder="例如: 127.0.0.1 或 proxy.company.com"
+                            placeholder={t("connectionModal.proxy.hostPlaceholder")}
                           />
                         </Form.Item>
                         <div
@@ -4196,7 +4245,7 @@ const ConnectionModal: React.FC<{
                           }}
                         >
                           <div style={{ display: "grid", gap: 8 }}>
-                            <Text strong>代理类型</Text>
+                            <Text strong>{t("connectionModal.proxy.typeLabel")}</Text>
                             {renderChoiceCards({
                               fieldName: "proxyType",
                               value: String(proxyType),
@@ -4205,21 +4254,21 @@ const ConnectionModal: React.FC<{
                                 {
                                   value: "socks5",
                                   label: "SOCKS5",
-                                  description: "常见本地代理和网关代理。",
+                                  description: t("connectionModal.proxy.socks5Description"),
                                 },
                                 {
                                   value: "http",
                                   label: "HTTP CONNECT",
-                                  description: "通过 HTTP CONNECT 建立 TCP 通道。",
+                                  description: t("connectionModal.proxy.httpDescription"),
                                 },
                               ],
                             })}
                           </div>
                           <Form.Item
                             name="proxyPort"
-                            label="端口"
+                            label={t("connectionModal.network.portLabel")}
                             rules={[
-                              { required: useProxy, message: "请输入代理端口" },
+                              { required: useProxy, message: t("connectionModal.proxy.portRequired") },
                             ]}
                             style={{ marginBottom: 0 }}
                           >
@@ -4239,17 +4288,17 @@ const ConnectionModal: React.FC<{
                         >
                           <Form.Item
                             name="proxyUser"
-                            label="代理用户名（可选）"
+                            label={t("connectionModal.proxy.usernameLabel")}
                             style={{ flex: 1 }}
                           >
                             <Input
                               {...noAutoCapInputProps}
-                              placeholder="留空表示无认证"
+                              placeholder={t("connectionModal.proxy.noAuthPlaceholder")}
                             />
                           </Form.Item>
                           <Form.Item
                             name="proxyPassword"
-                            label="代理密码（可选）"
+                            label={t("connectionModal.proxy.passwordLabel")}
                             style={{ flex: 1 }}
                           >
                             <Input.Password
@@ -4257,9 +4306,9 @@ const ConnectionModal: React.FC<{
                               placeholder={getStoredSecretPlaceholder({
                                 hasStoredSecret:
                                   initialValues?.hasProxyPassword,
-                                emptyPlaceholder: "留空表示无认证",
-                                retainedLabel: "已保存代理密码",
-                              })}
+                                emptyPlaceholder: t("connectionModal.proxy.noAuthPlaceholder"),
+                                retainedLabel: t("connectionModal.proxy.retainedPasswordLabel"),
+                              }, language)}
                             />
                           </Form.Item>
                         </div>
@@ -4267,9 +4316,8 @@ const ConnectionModal: React.FC<{
                           fieldName: "proxyPassword",
                           clearKey: "proxyPassword",
                           hasStoredSecret: initialValues?.hasProxyPassword,
-                          clearLabel: "清除已保存代理密码",
-                          description:
-                            "当前已保存代理密码。留空表示继续沿用，输入新值表示替换。",
+                          clearLabel: t("connectionModal.proxy.clearSavedPassword"),
+                          description: t("connectionModal.proxy.storedPasswordDescription"),
                         })}
                       </div>
                     )}
@@ -4289,10 +4337,10 @@ const ConnectionModal: React.FC<{
                     fontWeight: 700,
                   }}
                 >
-                  网络与安全
+                  {t("connectionModal.network.title")}
                 </div>
                 <div style={{ ...modalMutedTextStyle, marginBottom: 16 }}>
-                  上方稳定列出所有连接方式，下方固定展示当前方式的配置详情，避免启用后页面重新排布，同时给详情区留出足够宽度。
+                  {t("connectionModal.network.description")}
                 </div>
                 <div
                   style={{
@@ -4421,7 +4469,7 @@ const ConnectionModal: React.FC<{
                                           : "rgba(24,144,255,0.12)",
                                       }}
                                     >
-                                      当前编辑
+                                      {t("connectionModal.network.currentEditing")}
                                     </span>
                                   )}
                                   <span
@@ -4435,7 +4483,7 @@ const ConnectionModal: React.FC<{
                                           : "rgba(16,24,40,0.36)",
                                     }}
                                   >
-                                    {item.enabled ? "已启用" : "未启用"}
+                                    {item.enabled ? t("connectionModal.network.enabled") : t("connectionModal.network.disabled")}
                                   </span>
                                 </div>
                               </div>
@@ -4469,18 +4517,18 @@ const ConnectionModal: React.FC<{
                       fontWeight: 700,
                     }}
                   >
-                    高级连接
+                    {t("connectionModal.advanced.title")}
                   </div>
                   <Form.Item
                     name="timeout"
-                    label="连接超时 (秒)"
-                    help="数据库连接超时时间，默认 30 秒"
+                    label={t("connectionModal.advanced.timeoutLabel")}
+                    help={t("connectionModal.advanced.timeoutHelp")}
                     rules={[
                       {
                         type: "number",
                         min: 1,
                         max: 300,
-                        message: "超时时间范围: 1-300 秒",
+                        message: t("connectionModal.advanced.timeoutRange"),
                       },
                     ]}
                     style={{ marginBottom: 0 }}
@@ -4626,7 +4674,7 @@ const ConnectionModal: React.FC<{
             showIcon
             type="warning"
             style={{ marginBottom: 12 }}
-            message="当前数据源驱动未启用"
+            message={t("connectionModal.error.driverUnavailable")}
             description={
               <Space size={8}>
                 <span>{currentDriverUnavailableReason}</span>
@@ -4635,7 +4683,7 @@ const ConnectionModal: React.FC<{
                   size="small"
                   onClick={() => onOpenDriverManager?.()}
                 >
-                  去驱动管理安装
+                  {t("connectionModal.driver.installAction")}
                 </Button>
               </Space>
             }
@@ -4650,24 +4698,24 @@ const ConnectionModal: React.FC<{
           }> = [
             {
               key: "basic",
-              title: "基础信息",
-              description: "名称、地址、认证、URI 与数据库范围",
+              title: t("connectionModal.baseInfo.title"),
+              description: t("connectionModal.config.basic.description"),
               icon: <DatabaseOutlined />,
             },
             ...(!isCustom && !isFileDb
               ? [
                   {
                     key: "network" as const,
-                    title: "网络与安全",
-                    description: "SSL、SSH、代理与高级连接",
+                    title: t("connectionModal.network.title"),
+                    description: t("connectionModal.config.network.description"),
                     icon: <CloudOutlined />,
                   },
                 ]
               : []),
             {
               key: "appearance",
-              title: "外观",
-              description: "自定义图标与颜色",
+              title: t("connectionModal.appearance.title"),
+              description: t("connectionModal.appearance.description"),
               icon: <BgColorsOutlined />,
             },
           ];
@@ -4692,7 +4740,7 @@ const ConnectionModal: React.FC<{
                     color: darkMode ? "#f5f7ff" : "#162033",
                   }}
                 >
-                  图标
+                  {t("connectionModal.appearance.iconLabel")}
                 </div>
                 <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   {DB_ICON_TYPES.map((iconKey) => {
@@ -4701,7 +4749,7 @@ const ConnectionModal: React.FC<{
                       <button
                         key={iconKey}
                         type="button"
-                        title={getDbIconLabel(iconKey)}
+                        title={getLocalizedDbIconLabel(iconKey)}
                         onClick={() =>
                           setCustomIconType(
                             iconKey === dbType ? undefined : iconKey,
@@ -4741,7 +4789,7 @@ const ConnectionModal: React.FC<{
                       : "rgba(0,0,0,0.35)",
                   }}
                 >
-                  当前：{getDbIconLabel(effectiveIconType)}
+                  {t("connectionModal.appearance.currentIcon", { name: getLocalizedDbIconLabel(effectiveIconType) })}
                 </div>
               </div>
               <div style={{ ...modalInnerSectionStyle, padding: 16 }}>
@@ -4753,7 +4801,7 @@ const ConnectionModal: React.FC<{
                     color: darkMode ? "#f5f7ff" : "#162033",
                   }}
                 >
-                  颜色
+                  {t("connectionModal.appearance.colorLabel")}
                 </div>
                 <div
                   style={{
@@ -4803,7 +4851,7 @@ const ConnectionModal: React.FC<{
                           : e.target.value,
                       )
                     }
-                    title="自定义颜色"
+                    title={t("connectionModal.appearance.customColorTitle")}
                     style={{
                       width: 28,
                       height: 28,
@@ -4832,7 +4880,7 @@ const ConnectionModal: React.FC<{
                     color: darkMode ? "#f5f7ff" : "#162033",
                   }}
                 >
-                  预览
+                  {t("connectionModal.appearance.preview")}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                   {getDbIcon(effectiveIconType, effectiveIconColor, 24)}
@@ -4842,7 +4890,7 @@ const ConnectionModal: React.FC<{
                       color: darkMode ? "#e0e0e0" : "#333",
                     }}
                   >
-                    {form.getFieldValue("name") || "连接名称"}
+                    {form.getFieldValue("name") || t("connectionModal.appearance.connectionNamePlaceholder")}
                   </span>
                 </div>
                 {(customIconType || customIconColor) && (
@@ -4854,7 +4902,7 @@ const ConnectionModal: React.FC<{
                       setCustomIconColor(undefined);
                     }}
                   >
-                    重置为默认
+                    {t("connectionModal.appearance.resetDefault")}
                   </Button>
                 )}
               </div>
@@ -4898,7 +4946,7 @@ const ConnectionModal: React.FC<{
                     letterSpacing: 0.2,
                   }}
                 >
-                  配置分区
+                  {t("connectionModal.configSection.title")}
                 </div>
                 <div style={{ display: "grid", gap: 10 }}>
                   {sectionItems.map((item) => {
@@ -5042,14 +5090,14 @@ const ConnectionModal: React.FC<{
     if (step === 1) {
       return [
         <Button key="cancel" onClick={onClose}>
-          取消
+          {t("common.cancel")}
         </Button>,
       ];
     }
     const isTestSuccess = testResult?.type === "success";
     const hasTestError = !!testResult && !isTestSuccess;
     const testFailureSummary = hasTestError
-      ? summarizeConnectionTestFailureMessage(testResult?.message, "连接失败")
+      ? summarizeConnectionTestFailureMessage(testResult?.message, t("connectionModal.error.connectionFailed"), language)
       : "";
     const operationBlocked =
       !!currentDriverUnavailableReason || driverStatusChecking;
@@ -5075,7 +5123,7 @@ const ConnectionModal: React.FC<{
         >
           {!initialValues && (
             <Button key="back" onClick={() => setStep(1)}>
-              上一步
+              {t("connectionModal.footer.previous")}
             </Button>
           )}
           {testResult ? (
@@ -5101,7 +5149,7 @@ const ConnectionModal: React.FC<{
               }}
             >
               {isTestSuccess ? <CheckCircleFilled /> : <CloseCircleFilled />}
-              <span>{isTestSuccess ? "连接成功" : "连接失败"}</span>
+              <span>{isTestSuccess ? t("connectionModal.footer.success") : t("connectionModal.error.connectionFailed")}</span>
             </span>
           ) : null}
           {hasTestError && (
@@ -5136,7 +5184,7 @@ const ConnectionModal: React.FC<{
               }}
               onClick={() => setTestErrorLogOpen(true)}
             >
-              查看原因
+              {t("connectionModal.footer.viewReason")}
             </Button>
           )}
         </div>
@@ -5147,10 +5195,10 @@ const ConnectionModal: React.FC<{
             disabled={operationBlocked}
             onClick={requestTest}
           >
-            测试连接
+            {t("connectionModal.footer.test")}
           </Button>
           <Button key="cancel" onClick={onClose}>
-            取消
+            {t("common.cancel")}
           </Button>
           <Button
             key="submit"
@@ -5159,7 +5207,7 @@ const ConnectionModal: React.FC<{
             disabled={operationBlocked}
             onClick={handleOk}
           >
-            保存
+            {t("common.save")}
           </Button>
         </Space>
       </div>
@@ -5170,21 +5218,21 @@ const ConnectionModal: React.FC<{
     if (step === 1) {
       return renderConnectionModalTitle(
         <AppstoreOutlined />,
-        "选择数据源类型",
-        "按数据库、中间件或文件类型快速进入对应的连接配置流程。",
+        t("connectionModal.modal.selectTypeTitle"),
+        t("connectionModal.modal.selectTypeDescription"),
       );
     }
     const typeName = dbTypes.find((t) => t.key === dbType)?.name || dbType;
     return initialValues
       ? renderConnectionModalTitle(
           <EditOutlined />,
-          "编辑连接",
-          `调整 ${typeName} 连接的参数、认证方式与网络选项。`,
+          t("connectionModal.modal.editTitle"),
+          t("connectionModal.modal.editDescription", { type: typeName }),
         )
       : renderConnectionModalTitle(
           <LinkOutlined />,
-          `新建 ${typeName} 连接`,
-          "填写连接参数、测试连通性，并保存到连接树中。",
+          t("connectionModal.modal.createTitle", { type: typeName }),
+          t("connectionModal.modal.createDescription"),
         );
   };
 
@@ -5235,8 +5283,8 @@ const ConnectionModal: React.FC<{
       <Modal
         title={renderConnectionModalTitle(
           <FileTextOutlined />,
-          "测试连接失败原因",
-          "查看本次测试连接的完整错误上下文，便于快速定位配置问题。",
+          t("connectionModal.errorLog.title"),
+          t("connectionModal.errorLog.description"),
         )}
         open={testErrorLogOpen}
         onCancel={() => setTestErrorLogOpen(false)}
@@ -5260,7 +5308,7 @@ const ConnectionModal: React.FC<{
         }}
         footer={[
           <Button key="close" onClick={() => setTestErrorLogOpen(false)}>
-            关闭
+            {t("common.close")}
           </Button>,
         ]}
       >
@@ -5280,7 +5328,7 @@ const ConnectionModal: React.FC<{
             fontSize: 13,
           }}
         >
-          {String(testResult?.message || "暂无失败日志")}
+          {String(testResult?.message || t("connectionModal.errorLog.empty"))}
         </pre>
       </Modal>
     </>

@@ -422,7 +422,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   );
 
   const handleDragEnd = (event: DragEndEvent) => {
-    // 防御性检查：若正在调整列宽，忽略拖拽排序事件
+    // Defensive check: ignore drag sorting while column resize is active
     if (isResizingRef.current) return;
     const { active, over } = event;
     if (active.id !== over?.id && over) {
@@ -460,10 +460,10 @@ const DataGrid: React.FC<DataGridProps> = ({
     }
   };
 
-  // --- 主题样式变量（仅在 darkMode / opacity / blur 变化时重算） ---
+  // --- Theme style variables (recomputed only when darkMode / opacity / blur changes) ---
   const themeStyles = useMemo(() => buildDataGridThemeStyles({ darkMode, opacity, blur: resolvedAppearance.blur }), [darkMode, opacity, resolvedAppearance.blur]);
 
-  // 解构常用变量以保持后续代码引用不变
+  // Destructure commonly used variables so later references stay unchanged
   const {
       bgContent, bgFilter, bgContextMenu,
       rowAddedBg, rowModBg, rowAddedHover, rowModHover,
@@ -480,7 +480,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       paginationActiveItemBg, paginationActiveItemBorderColor, paginationActiveItemTextColor,
   } = themeStyles;
 
-  // 布局常量（纯数字/字符串，无需 memoize）
+  // Layout constants (plain numbers/strings, no memoize needed)
   const panelRadius = 10;
   const panelOuterGap = 6;
   const panelPaddingY = 10;
@@ -551,7 +551,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const lastReportedScrollRef = useRef<{ top: number; left: number }>({ top: 0, left: 0 });
   const didRestoreScrollRef = useRef(false);
 
-  // 批量编辑模式状态
+  // Batch edit mode state
   const [cellEditMode, setCellEditMode] = useState(false);
   const [selectedCells, setSelectedCells] = useState<Set<string>>(new Set());
   const [copiedCellPatch, setCopiedCellPatch] = useState<{ sourceRowKey: string; values: DataGridRecord } | null>(null);
@@ -560,14 +560,14 @@ const DataGrid: React.FC<DataGridProps> = ({
   const [batchEditValue, setBatchEditValue] = useState('');
   const [batchEditSetNull, setBatchEditSetNull] = useState(false);
 
-  // 使用 ref 来优化拖拽性能，完全避免状态更新
+  // Use refs to optimize drag performance and avoid state updates
   const cellSelectionRafRef = useRef<number | null>(null);
   const cellSelectionScrollRafRef = useRef<number | null>(null);
   const cellSelectionAutoScrollRafRef = useRef<number | null>(null);
   const cellSelectionPointerRef = useRef<{ x: number; y: number } | null>(null);
   const isDraggingRef = useRef(false);
 
-  // 导入预览 Modal 状态
+  // Import preview modal state
   const [importPreviewVisible, setImportPreviewVisible] = useState(false);
   const [importFilePath, setImportFilePath] = useState('');
   const currentSelectionRef = useRef<Set<string>>(new Set());
@@ -780,7 +780,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           if (typeof value === 'string') {
               const raw = value.trim();
               if (raw === '') {
-                  // INSERT 空时间值直接忽略字段，让数据库默认值生效；UPDATE 空时间值转 NULL。
+                  // For INSERT, omit empty temporal fields so database defaults apply; for UPDATE, convert empty temporal fields to NULL.
                   return mode === 'insert' ? undefined : null;
               }
               return normalizeTemporalLiteralText(value, meta?.type, true);
@@ -840,13 +840,13 @@ const DataGrid: React.FC<DataGridProps> = ({
       if (!record || !dataIndex) return;
       const raw = record?.[dataIndex];
       let text = toEditableText(raw);
-      // 日期时间字段格式化（处理带时区的 ISO 格式如 2026-03-22T00:00:00+08:00）
+      // Format temporal fields (handles ISO strings with time zones, e.g. 2026-03-22T00:00:00+08:00)
       if (typeof raw === 'string') {
           text = normalizeDateTimeString(raw);
       }
       const isJson = looksLikeJsonText(text);
       setFocusedCellInfo({ record, dataIndex, title: dataIndex });
-      // 切换到新单元格时总是更新预览值并重置 dirty 标记
+      // Always update preview value and reset the dirty flag when switching to a new cell
       dataPanelOriginalRef.current = text;
       setDataPanelValue(text);
       setDataPanelIsJson(isJson);
@@ -864,7 +864,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       }
   }, [dataPanelIsJson, dataPanelValue]);
 
-  // 同步 ref 用于 onCell 闭包
+  // Sync ref for onCell closures
   useEffect(() => { dataPanelOpenRef.current = dataPanelOpen; }, [dataPanelOpen]);
 
   const openCellEditor = useCallback((record: Item, dataIndex: string, title: React.ReactNode, onApplyValue?: (val: string) => void) => {
@@ -886,7 +886,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const [tableViewportWidth, setTableViewportWidth] = useState(0);
   const [tableBodyBottomPadding, setTableBodyBottomPadding] = useState(0);
 
-  // P0 性能优化：CSS 模板字符串 memoize，仅在主题/布局变量变化时重算
+  // P0 performance: memoize the CSS template string and recompute only when theme/layout variables change
   const gridCssText = useMemo(() => buildDataGridCssText({
       gridId,
       darkMode,
@@ -924,7 +924,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       const target = targetElement || containerRef.current;
       if (!target) return;
 
-      // P5 性能优化：合并 getBoundingClientRect 调用，减少 DOM 查询次数
+      // P5 performance: combine getBoundingClientRect calls to reduce DOM queries
       const rect = target.getBoundingClientRect();
       const height = rect.height;
       const width = rect.width;
@@ -950,8 +950,8 @@ const DataGrid: React.FC<DataGridProps> = ({
       const virtualScrollbarEl = target.querySelector('.ant-table-tbody-virtual-scrollbar-horizontal') as HTMLElement | null;
       const scrollableEl = virtualBodyEl || rcVirtualHolderEl || bodyEl;
       const hasHorizontalOverflow = !!scrollableEl && (scrollableEl.scrollWidth - scrollableEl.clientWidth > 1);
-      // 普通表格可通过 body 底部内边距避开悬浮横向滚动条；
-      // 但虚拟表格的内部横向滚动轨道会直接覆盖在可视区底部，需要同时从 y 高度里扣掉安全区。
+      // Regular tables can avoid the floating horizontal scrollbar with bottom body padding;
+      // virtual tables also need the safe area deducted from y height because the internal horizontal rail overlays the viewport bottom.
       const nextBodyBottomPadding = calculateTableBodyBottomPadding({
           hasHorizontalOverflow,
           floatingScrollbarHeight,
@@ -996,7 +996,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   const [modifiedRows, setModifiedRows] = useState<DataGridRecordPatchMap>({});
   const [deletedRowKeys, setDeletedRowKeys] = useState<Set<string>>(new Set());
 
-  // P6 性能优化：使用 ref 缓存首列名，避免 displayColumnNames 变化导致级联更新
+  // P6 performance: cache the first column name in a ref to avoid cascading updates when displayColumnNames changes
   const firstColumnNameRef = useRef(displayColumnNames[0] || '');
   firstColumnNameRef.current = displayColumnNames[0] || '';
 
@@ -1065,7 +1065,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   useEffect(() => {
       if (!pendingScrollToBottomRef.current) return;
       pendingScrollToBottomRef.current = false;
-      // 等待 Table 渲染出新增行后再滚动到底部（virtual 模式也适用）
+      // Wait for the newly added row to render before scrolling to bottom (also works in virtual mode)
       requestAnimationFrame(() => {
           scrollTableBodyToBottom();
           requestAnimationFrame(() => scrollTableBodyToBottom());
@@ -1102,12 +1102,12 @@ const DataGrid: React.FC<DataGridProps> = ({
     return map;
   }, [displayColumnNames]);
 
-  // 直接操作 DOM 更新选中效果，避免 React 重渲染
+  // Update selected styling through direct DOM operations to avoid React re-renders
   const updateCellSelection = useCallback((newSelection: Set<string>) => {
     const container = containerRef.current;
     if (!container) return;
 
-    // 只同步可见单元格，严格限定 `.ant-table-cell`，避免虚拟列表中内嵌的 EditableCell 被重复获取并打上 selected 样式从而产生白边。
+    // Sync visible cells only; limit to `.ant-table-cell` so nested EditableCell nodes in virtual lists are not marked selected and do not create white borders.
     const visibleCells = container.querySelectorAll('.ant-table-cell[data-row-key][data-col-name]');
     visibleCells.forEach((cell) => {
       const el = cell as HTMLElement;
@@ -1123,7 +1123,7 @@ const DataGrid: React.FC<DataGridProps> = ({
     });
   }, []);
 
-  // 批量填充选中的单元格
+  // Batch-fill selected cells
   const handleBatchFillCells = useCallback(() => {
     const cellsToFill = currentSelectionRef.current;
     if (cellsToFill.size === 0) {
@@ -1184,7 +1184,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       return;
     }
 
-    // 仅做一次状态提交，避免大量 setState 循环
+    // Commit state once to avoid many setState loops
     setAddedRows(prev => prev.map(r => {
       const k = r?.[JAVANAVI_ROW_KEY];
       if (!isPresentReactKeyValue(k)) return r;
@@ -1211,7 +1211,7 @@ const DataGrid: React.FC<DataGridProps> = ({
     void message.success(t('dataGrid.cells.filled', { count: updatedCount }));
     setBatchEditModalOpen(false);
 
-    // 清除选中状态
+    // Clear selected state
     setSelectedCells(new Set());
     currentSelectionRef.current = new Set();
     selectionStartRef.current = null;
@@ -1224,7 +1224,7 @@ const DataGrid: React.FC<DataGridProps> = ({
     updateCellSelection(new Set());
   }, [batchEditValue, batchEditSetNull, addedRows, modifiedRows, rowKeyStr, updateCellSelection]);
 
-  // 事件委托：在容器级别处理批量编辑模式的鼠标事件
+  // Event delegation: handle mouse events for batch edit mode at the container level
   useEffect(() => {
     if (!cellEditMode) return;
 
@@ -1609,7 +1609,7 @@ const DataGrid: React.FC<DataGridProps> = ({
     setCellContextMenu(prev => ({ ...prev, visible: false }));
   }, [copiedCellPatch, addedRows, modifiedRows, rowKeyStr]);
 
-  // 批量填充到选中行
+  // Batch-fill selected rows
   const handleBatchFillToSelected = useCallback((sourceRecord: Item, dataIndex: string) => {
     const sourceValue = sourceRecord[dataIndex];
     const selKeys = selectedRowKeysRef.current;
@@ -1620,7 +1620,7 @@ const DataGrid: React.FC<DataGridProps> = ({
     }
 
     const sourceKey = sourceRecord?.[JAVANAVI_ROW_KEY];
-    // 过滤掉源行本身
+    // Filter out the source row itself
     const targetKeys = selKeys.filter(k => k !== sourceKey);
 
     if (targetKeys.length === 0) {
@@ -1628,7 +1628,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       return;
     }
 
-    // 批量更新
+    // Batch update
     const addedKeySet = new Set<string>();
     addedRows.forEach((r) => {
       const k = r?.[JAVANAVI_ROW_KEY];
@@ -1912,7 +1912,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       if (isAdded) {
           setAddedRows(prev => prev.map(r => r?.[JAVANAVI_ROW_KEY] === rowKey ? { ...r, ...row } : r));
       } else {
-          // 查找原始行数据，对比是否真正有值变更
+          // Locate original row data and check whether values actually changed
           const originalRow = data.find(r => r?.[JAVANAVI_ROW_KEY] === rowKey);
           if (originalRow) {
               const changedFields: DataGridRecord = {};
@@ -1923,7 +1923,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                   }
               }
               if (Object.keys(changedFields).length === 0) {
-                  // 没有实际变更，从 modifiedRows 中移除该行（如有）
+                  // Remove rows with no actual changes from modifiedRows when present
                   setModifiedRows(prev => {
                       const keyStr = rowKeyStr(rowKey);
                       if (!(keyStr in prev)) return prev;
@@ -1940,7 +1940,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
   const handleDataPanelSave = useCallback(() => {
       if (!focusedCellInfo) return;
-      // 与 updateFocusedCell 设置的原始值比较，避免幽灵变更
+      // Compare with the original value set by updateFocusedCell to avoid phantom changes
       if (dataPanelValue === dataPanelOriginalRef.current) {
           dataPanelDirtyRef.current = false;
           void message.info(t('dataGrid.value.noChange'));
@@ -2179,7 +2179,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           const displayVal = displayRow?.[col];
           baseRawMap[col] = baseVal;
           displayMap[col] = toFormText(displayVal);
-          // 日期时间类型: 将字符串值转为 dayjs 对象供 DatePicker 使用
+          // Temporal type: convert string values to dayjs objects for DatePicker
           const colMeta = columnMetaMap[col] || columnMetaMapByLowerName[col.toLowerCase()];
           const rowPickerType = getTemporalPickerType(colMeta?.type);
           if (rowPickerType && displayVal !== null && displayVal !== undefined) {
@@ -2392,7 +2392,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
       const isAdded = addedRows.some(r => rowKeyStringOrNull(r?.[JAVANAVI_ROW_KEY], rowKeyStr) === keyStr);
       if (isAdded) {
-          // 日期时间类型: 将 dayjs 对象转回格式化字符串
+          // Temporal type: convert dayjs objects back to formatted strings
           const convertedValues: DataGridRecord = {};
           Object.entries(values).forEach(([col, val]) => {
               if (val && dayjs.isDayjs(val)) {
@@ -2412,7 +2412,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       const patch: DataGridRecord = {};
       columnNames.forEach((col) => {
           let nextVal = values[col];
-          // 日期时间类型: 将 dayjs 对象转回格式化字符串
+          // Temporal type: convert dayjs objects back to formatted strings
           if (nextVal && dayjs.isDayjs(nextVal)) {
               const colMeta = columnMetaMap[col] || columnMetaMapByLowerName[col.toLowerCase()];
               const rowPickerType = getTemporalPickerType(colMeta?.type);
@@ -2441,7 +2441,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           title: renderColumnTitle(key),
           dataIndex: key,
           key: key,
-          // 不使用 ellipsis，避免 Ant Design 的 Tooltip 展开行为
+          // Do not use ellipsis to avoid Ant Design tooltip expansion behavior
           width: resolveDataTableColumnWidth({
               manualWidth: columnWidths[key],
               widthMode: dataTableColumnWidthMode,
@@ -2483,7 +2483,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                       );
                   });
                   if (isInArrow) return;
-                  // 仅允许点击上下箭头触发排序，点击字段名或表头其它区域不触发排序。
+                  // Allow sorting only when clicking the up/down arrows; field names and other header areas do not sort.
                   event.preventDefault();
                   event.stopPropagation();
               },
@@ -2493,7 +2493,7 @@ const DataGrid: React.FC<DataGridProps> = ({
 
   const mergedColumns = useMemo(() => columns.map((col): ColumnType<Item> => {
       const dataIndex = String(col.dataIndex);
-      // 即使不可编辑，也需要通过 onCell/render 绑定右键菜单
+      // Bind the context menu through onCell/render even when cells are read-only
       return {
           ...col,
           onCell: (record: Item) => {
@@ -2508,7 +2508,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                   cellProps.className = 'data-grid-cell-dirty';
                   cellProps['data-cell-dirty'] = 'true';
               }
-              // 数据预览面板：单击单元格时更新聚焦信息
+              // Data preview panel: update focused info when clicking a cell
               cellProps.onClick = () => {
                   if (dataPanelOpenRef.current) {
                       updateFocusedCell(record, dataIndex);
@@ -2516,7 +2516,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               };
 
               if (col.editable && enableInlineEditableCell) {
-                  // 可编辑模式（非虚拟）：传递给 EditableCell 的 props
+                  // Editable mode (non-virtual): props passed to EditableCell
                   cellProps.record = record;
                   cellProps.editable = col.editable;
                   cellProps.dataIndex = dataIndex;
@@ -2525,7 +2525,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                   cellProps.focusCell = openCellEditor;
                   cellProps.columnType = (columnMetaMap[dataIndex] || columnMetaMapByLowerName[dataIndex.toLowerCase()])?.type;
               } else if (col.editable && !enableInlineEditableCell) {
-                  // 可编辑但非 inline（虚拟模式下）：双击和右键通过 onCell 绑定
+                  // Editable but not inline (virtual mode): double-click and context menu are bound through onCell
                   cellProps.onDoubleClick = () => handleVirtualCellActivate(record, dataIndex, dataIndex);
                   cellProps.onContextMenu = (e: React.MouseEvent) => {
                       e.preventDefault();
@@ -2533,7 +2533,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                       showCellContextMenu(e, record, dataIndex, dataIndex);
                   };
               } else {
-                  // 不可编辑（只读查询结果）：只绑定右键菜单
+                  // Read-only query result: bind the context menu only
                   cellProps.onContextMenu = (e: React.MouseEvent) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -3052,14 +3052,14 @@ const DataGrid: React.FC<DataGridProps> = ({
 
   const handleCopyCsv = useCallback((record: Item) => {
       const records = getTargets(record);
-      // 使用 columnNames 保持表定义的字段顺序
+      // Preserve table-defined column order using columnNames
       const orderedCols = columnNames.filter(c => c !== JAVANAVI_ROW_KEY);
       const header = orderedCols.map(c => `"${c}"`).join(',');
       const lines = records.map((r) => {
           const values = orderedCols.map(c => {
               const v = r[c];
               if (v === null || v === undefined) return 'NULL';
-              // CSV 标准：值中的双引号转义为两个双引号
+              // CSV standard: escape double quotes inside values by doubling them
               const escaped = String(v).replace(/"/g, '""');
               return `"${escaped}"`;
           });
@@ -3147,7 +3147,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           return;
       }
 
-      // 有未提交修改时，优先按界面数据导出，避免与数据库不一致。
+      // When uncommitted changes exist, export the displayed data first to avoid database mismatch.
       if (hasChanges) {
           void message.warning(t('dataGrid.export.uncommitted'));
           await exportData(records, format);
@@ -3208,7 +3208,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           return;
       }
 
-      // 查询结果页导出统一按当前结果集（已加载数据）导出，避免再次执行原 SQL 造成大数据导出或长时间阻塞。
+      // Query result export always uses the current loaded result set to avoid rerunning the original SQL and causing large exports or long blocking.
       if (isQueryResultExport) {
           const sql = String(resultSql || '').trim();
           if (!hasChanges && supportsSqlQueryExport && sql) {
@@ -3588,8 +3588,8 @@ const DataGrid: React.FC<DataGridProps> = ({
   const totalWidth = columns.reduce((sum, col) => sum + (Number(col.width) || defaultColumnWidth), 0) + selectionColumnWidth;
   const useContextMenuRow = false;
   const tableScrollX = useMemo(() => {
-      // rc-table 在 scroll.x 小于容器宽度时会把实际列宽按视口补齐。
-      // 这里必须与其使用同一套 scroll.x 口径，否则少字段场景下 header/body 会错位。
+      // rc-table expands actual column widths to the viewport when scroll.x is smaller than the container width.
+      // This must use the same scroll.x value to keep header/body columns consistent in small-column scenarios.
       return calculateVirtualTableScrollX({
           totalWidth,
           tableViewportWidth,
@@ -3813,19 +3813,19 @@ const DataGrid: React.FC<DataGridProps> = ({
 
       horizontalSyncSourceRef.current = 'external';
       const tableContainer = tableContainerRef.current;
-      // 虚拟表格路径：通过合成 WheelEvent 驱动 rc-virtual-list 内部状态，
-      // rc-table 自动同步 header scrollLeft。
+      // Virtual table path: drive rc-virtual-list internal state with a synthetic WheelEvent,
+      // then rc-table automatically syncs header scrollLeft.
       if (enableVirtual && tableContainer instanceof HTMLElement) {
           const applied = applyVirtualHorizontalOffset(tableContainer, externalScroll.scrollLeft);
           if (applied) {
-              // WheelEvent 经 rc-virtual-list 处理后状态异步更新，延迟同步 ref
+              // WheelEvent updates rc-virtual-list state asynchronously; delay ref synchronization
               requestAnimationFrame(() => {
                   lastTableScrollLeftRef.current = readVirtualHorizontalOffset(tableContainer);
                   horizontalSyncSourceRef.current = '';
               });
               return;
           }
-          // 空数据回退：virtual-holder 不存在时，直接滚动表头
+          // Empty data fallback: when virtual-holder is missing, scroll the header directly
           const fallbackTargets = pickVirtualHorizontalFallbackTargets(tableContainer);
           if (fallbackTargets.length > 0) {
               fallbackTargets.forEach((target) => {
@@ -3838,7 +3838,7 @@ const DataGrid: React.FC<DataGridProps> = ({
           horizontalSyncSourceRef.current = '';
           return;
       }
-      // 非虚拟表格路径：依赖 liveTargets 进行 scrollLeft 同步
+      // Non-virtual table path: rely on liveTargets for scrollLeft synchronization
       const liveTargets = tableScrollTargetsRef.current;
       if (liveTargets.length === 0) {
           horizontalSyncSourceRef.current = '';
@@ -3856,13 +3856,13 @@ const DataGrid: React.FC<DataGridProps> = ({
       horizontalSyncSourceRef.current = '';
   }, [applyVirtualHorizontalOffset, enableVirtual, readVirtualHorizontalOffset]);
 
-  // 外部水平滚动条的 wheel 处理（通过原生事件绑定，确保 preventDefault 生效）
+  // Wheel handling for the external horizontal scrollbar (native listener keeps preventDefault effective)
   useEffect(() => {
       const externalScroll = externalHorizontalScrollRef.current;
       if (!externalScroll || !horizontalScrollVisible) return;
 
       const handleExternalWheel = (e: WheelEvent) => {
-          // 鼠标在水平滚动条区域时，始终阻止垂直滚动冒泡
+          // Always stop vertical scroll propagation when the pointer is over the horizontal scrollbar area
           e.preventDefault();
           e.stopPropagation();
 
@@ -3881,16 +3881,16 @@ const DataGrid: React.FC<DataGridProps> = ({
       };
   }, [horizontalScrollVisible]);
 
-  // 支持在数据区直接使用触摸板/Shift+滚轮进行横向滚动。
-  // 虚拟表格与普通表格统一走外部横向滚动条，避免内部轨道覆盖最后一行。
+  // Support horizontal scrolling directly in the data area with touchpad or Shift+wheel.
+  // Virtual and regular tables share the external horizontal scrollbar to avoid the internal rail covering the last row.
   useEffect(() => {
       if (viewMode !== 'table') return;
       const container = tableContainerRef.current;
       if (!(container instanceof HTMLElement)) return;
 
       const handleContainerHorizontalWheel = (event: WheelEvent) => {
-          // applyVirtualHorizontalOffset 分发的合成 WheelEvent（isTrusted=false）
-          // 需要传播到 rc-virtual-list 的内部 handler，此处不拦截。
+          // Synthetic WheelEvent dispatched by applyVirtualHorizontalOffset (isTrusted=false)
+          // It must reach rc-virtual-list internal handler, so do not intercept here.
           if (!event.isTrusted) return;
 
           const horizontalDelta = resolveHorizontalWheelDelta(event);
@@ -3902,7 +3902,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               event.stopPropagation();
               horizontalSyncSourceRef.current = 'table';
 
-              // 空数据回退：virtual-holder 不存在时，手动滚动表头
+              // Empty data fallback: when virtual-holder is missing, scroll the header manually
               const virtualHolder = container.querySelector('.ant-table-tbody-virtual-holder') as HTMLElement | null;
               if (!virtualHolder) {
                   const fallbackTargets = pickVirtualHorizontalFallbackTargets(container);
@@ -3922,7 +3922,7 @@ const DataGrid: React.FC<DataGridProps> = ({
                   return;
               }
 
-              // 有数据：通过 applyVirtualHorizontalOffset 合成 WheelEvent 驱动 rc-virtual-list
+              // With data: drive rc-virtual-list through a synthetic WheelEvent from applyVirtualHorizontalOffset
               const currentOffset = readVirtualHorizontalOffset(container);
               applyVirtualHorizontalOffset(container, currentOffset + horizontalDelta);
               requestAnimationFrame(() => {
@@ -3938,7 +3938,7 @@ const DataGrid: React.FC<DataGridProps> = ({
               return;
           }
 
-          // 非虚拟模式：拦截事件并手动同步
+          // Non-virtual mode: intercept the event and sync manually
           const targets = pickHorizontalScrollTargets(container);
           event.preventDefault();
           event.stopPropagation();
@@ -3982,10 +3982,10 @@ const DataGrid: React.FC<DataGridProps> = ({
       return () => cancelAnimationFrame(rafId);
   }, [viewMode, totalWidth, mergedDisplayData.length, pagination?.total, pagination?.pageSize, recalculateTableMetrics]);
 
-  // 虚拟表列对齐：antd 虚拟表 body 使用 <div>+<td>（非 <table>），
-  // 不会自动拉伸列宽到视口。而 header <table> 会被 antd 的 CSS 或 JS
-  // 设置为 width:100% 自动拉伸。强制 header table 宽度等于 scroll.x，
-  // 使 header 列宽与 body 单元格宽度精确一致。
+  // Virtual table column sizing: antd virtual table body uses <div> + <td> (not <table>),
+  // so it does not automatically stretch column widths to the viewport. Header <table> may be
+  // stretched to width:100% by antd CSS or JS. Force header table width to equal scroll.x
+  // so header columns match body cell widths exactly.
   useEffect(() => {
       if (viewMode !== 'table') return;
       const container = tableContainerRef.current;
@@ -4000,7 +4000,7 @@ const DataGrid: React.FC<DataGridProps> = ({
       };
       syncHeaderWidth();
       const rafId = requestAnimationFrame(syncHeaderWidth);
-      // 监听 antd 可能的重渲染覆盖
+      // Observe possible antd rerender overrides
       const observer = new MutationObserver(syncHeaderWidth);
       const headerEl = container.querySelector('.ant-table-header');
       if (headerEl) observer.observe(headerEl, { attributes: true, childList: true, subtree: true, attributeFilter: ['style'] });
@@ -4418,7 +4418,7 @@ const DataGrid: React.FC<DataGridProps> = ({
             )}
         </Modal>
 
-        {/* 批量编辑弹窗 */}
+        {/* Batch edit modal */}
         <Modal
             title={t('dataGrid.batchFill.title', { count: selectedCells.size })}
             open={batchEditModalOpen}
@@ -4615,7 +4615,7 @@ const DataGrid: React.FC<DataGridProps> = ({
             }}
         />
 
-        {/* Cell Context Menu - 使用 Portal 渲染到 body，避免 backdropFilter 影响 fixed 定位 */}
+        {/* Cell Context Menu - render through a Portal to body so backdropFilter does not affect fixed positioning */}
         <DataGridCellContextMenu
             viewMode={viewMode}
             menuState={cellContextMenu}
@@ -4718,7 +4718,7 @@ const DataGrid: React.FC<DataGridProps> = ({
   );
 };
 
-// 使用 ErrorBoundary 包裹 DataGrid，防止数据渲染错误导致应用崩溃
+// Wrap DataGrid with ErrorBoundary to keep data render errors from crashing the app
 const MemoizedDataGrid = React.memo(DataGrid);
 
 const DataGridWithErrorBoundary: React.FC<DataGridProps> = (props) => (

@@ -1,3 +1,11 @@
+import {
+  DEFAULT_LANGUAGE,
+  translate,
+  type AppLanguage,
+  type I18nKey,
+  type I18nParams,
+} from '../i18n';
+
 type StoredSecretPlaceholderOptions = {
   hasStoredSecret?: boolean;
   emptyPlaceholder: string;
@@ -51,6 +59,15 @@ type ConnectionConfigSectionCopy = {
   description: string;
 };
 
+type ConnectionConfigSectionCopyKeys = {
+  titleKey: I18nKey;
+  descriptionKey: I18nKey;
+};
+
+const tr = (language: AppLanguage | undefined, key: I18nKey, params?: I18nParams): string => (
+  translate(language || DEFAULT_LANGUAGE, key, params)
+);
+
 const mysqlCompatibleTypes = new Set([
   'mysql',
   'mariadb',
@@ -66,93 +83,101 @@ const postgresCompatibleTypes = new Set([
 ]);
 const fileDatabaseTypes = new Set(['sqlite', 'duckdb']);
 
-const CONNECTION_CONFIG_SECTION_COPY: Record<
+const CONNECTION_CONFIG_SECTION_COPY_KEYS: Record<
   ConnectionConfigSectionKey,
-  ConnectionConfigSectionCopy
+  ConnectionConfigSectionCopyKeys
 > = {
   identity: {
-    title: '基础身份',
-    description: '连接名称和连接树中展示的基础信息。',
+    titleKey: 'connectionModal.section.identity.title',
+    descriptionKey: 'connectionModal.section.identity.description',
   },
   uri: {
-    title: '填写方式',
-    description: '在连接 URL 与目标地址之间显式二选一，避免两个入口互相覆盖。',
+    titleKey: 'connectionModal.section.uri.title',
+    descriptionKey: 'connectionModal.section.uri.description',
   },
   driverSelection: {
-    title: 'JDBC 驱动',
-    description: '在多个可用兼容驱动之间选择，本连接会优先使用所选驱动。',
+    titleKey: 'connectionModal.section.driverSelection.title',
+    descriptionKey: 'connectionModal.section.driverSelection.description',
   },
   target: {
-    title: '目标地址',
-    description: '数据库服务的主机、端口或网关入口，是连通性测试的主目标。',
+    titleKey: 'connectionModal.section.target.title',
+    descriptionKey: 'connectionModal.section.target.description',
   },
   fileTarget: {
-    title: '数据库文件',
-    description: 'SQLite / DuckDB 使用本地数据库文件路径，不需要端口和网络隧道。',
+    titleKey: 'connectionModal.section.fileTarget.title',
+    descriptionKey: 'connectionModal.section.fileTarget.description',
   },
   connectionMode: {
-    title: '连接模式',
-    description: '选择单机、主从、副本集或集群等拓扑模式。',
+    titleKey: 'connectionModal.section.connectionMode.title',
+    descriptionKey: 'connectionModal.section.connectionMode.description',
   },
   mongoDiscovery: {
-    title: 'MongoDB 寻址',
-    description: '选择标准 host:port 或 mongodb+srv DNS 发现方式。',
+    titleKey: 'connectionModal.section.mongoDiscovery.title',
+    descriptionKey: 'connectionModal.section.mongoDiscovery.description',
   },
   replica: {
-    title: '多节点配置',
-    description: '补充从库、种子节点、副本集成员或独立认证信息。',
+    titleKey: 'connectionModal.section.replica.title',
+    descriptionKey: 'connectionModal.section.replica.description',
   },
   service: {
-    title: '数据库服务',
-    description: '默认数据库、Oracle Service Name 等服务级定位参数。',
+    titleKey: 'connectionModal.section.service.title',
+    descriptionKey: 'connectionModal.section.service.description',
   },
   mongoPolicy: {
-    title: 'MongoDB 策略',
-    description: '认证库、读偏好等 MongoDB 专属策略。',
+    titleKey: 'connectionModal.section.mongoPolicy.title',
+    descriptionKey: 'connectionModal.section.mongoPolicy.description',
   },
   credentials: {
-    title: '认证凭据',
-    description: '用户名、密码和密文保留策略；留空会按已保存密文规则处理。',
+    titleKey: 'connectionModal.section.credentials.title',
+    descriptionKey: 'connectionModal.section.credentials.description',
   },
   databaseScope: {
-    title: '数据库范围',
-    description: '连接成功后可限制连接树展示的数据库或 Redis DB。',
+    titleKey: 'connectionModal.section.databaseScope.title',
+    descriptionKey: 'connectionModal.section.databaseScope.description',
   },
   customDriver: {
-    title: '自定义数据源',
-    description: '先选择或新增自定义数据源，再填写该数据源使用的自定义驱动。',
+    titleKey: 'connectionModal.section.customDriver.title',
+    descriptionKey: 'connectionModal.section.customDriver.description',
   },
   customDsn: {
-    title: '连接字符串',
-    description: '直接填写所选自定义数据源的 DSN，适合非内置数据库或特殊参数。',
+    titleKey: 'connectionModal.section.customDsn.title',
+    descriptionKey: 'connectionModal.section.customDsn.description',
   },
 };
 
 export const getConnectionConfigSectionCopy = (
   key: ConnectionConfigSectionKey,
-): ConnectionConfigSectionCopy => CONNECTION_CONFIG_SECTION_COPY[key];
+  language: AppLanguage,
+): ConnectionConfigSectionCopy => {
+  const copy = CONNECTION_CONFIG_SECTION_COPY_KEYS[key];
+  return {
+    title: tr(language, copy.titleKey),
+    description: tr(language, copy.descriptionKey),
+  };
+};
 
 export const getConnectionConfigLayoutKindLabel = (
   kind: ConnectionConfigLayoutKind,
+  language: AppLanguage,
 ): string => {
   switch (kind) {
     case 'mysql-compatible':
-      return 'MySQL 兼容';
+      return tr(language, 'connectionModal.layout.mysqlCompatible');
     case 'mongodb':
-      return '文档数据库';
+      return tr(language, 'connectionModal.layout.mongodb');
     case 'redis':
-      return '键值数据库';
+      return tr(language, 'connectionModal.layout.redis');
     case 'postgres-compatible':
-      return 'PostgreSQL 兼容';
+      return tr(language, 'connectionModal.layout.postgresCompatible');
     case 'oracle':
-      return 'Oracle 服务';
+      return tr(language, 'connectionModal.layout.oracle');
     case 'file':
-      return '文件型数据库';
+      return tr(language, 'connectionModal.layout.file');
     case 'custom':
-      return '自定义连接';
+      return tr(language, 'connectionModal.layout.custom');
     case 'generic-sql':
     default:
-      return '标准 SQL';
+      return tr(language, 'connectionModal.layout.genericSql');
   }
 };
 
@@ -265,24 +290,25 @@ export const getStoredSecretPlaceholder = ({
   hasStoredSecret,
   emptyPlaceholder,
   retainedLabel,
-}: StoredSecretPlaceholderOptions): string => (
+}: StoredSecretPlaceholderOptions, language: AppLanguage): string => (
   hasStoredSecret
-    ? `••••••（留空表示继续沿用${retainedLabel}）`
+    ? tr(language, 'connectionModal.secret.retainedPlaceholder', { label: retainedLabel })
     : emptyPlaceholder
 );
 
 export const normalizeConnectionSecretErrorMessage = (
   value: unknown,
   fallback = '',
+  language: AppLanguage = DEFAULT_LANGUAGE,
 ): string => {
   const text = normalizeText(value, fallback);
   const lower = text.toLowerCase();
 
   if (lower.includes('saved connection not found:')) {
-    return '未找到当前连接对应的已保存密文，请重新填写密码并保存后再试';
+    return tr(language, 'connectionModal.secret.savedConnectionNotFound');
   }
   if (lower.includes('secret store unavailable')) {
-    return '系统密文存储当前不可用，请检查系统钥匙串或凭据管理器后再试';
+    return tr(language, 'connectionModal.secret.storeUnavailable');
   }
 
   return text;
@@ -291,8 +317,9 @@ export const normalizeConnectionSecretErrorMessage = (
 export const summarizeConnectionTestFailureMessage = (
   value: unknown,
   fallback = '',
+  language: AppLanguage = DEFAULT_LANGUAGE,
 ): string => {
-  const text = normalizeConnectionSecretErrorMessage(value, fallback);
+  const text = normalizeConnectionSecretErrorMessage(value, fallback, language);
   const [firstLine] = text
     .split(/\r?\n/)
     .map((item) => item.trim())
@@ -304,20 +331,24 @@ export const resolveConnectionTestFailureFeedback = ({
   kind,
   reason,
   fallback,
+  language,
 }: {
   kind: ConnectionTestFailureKind;
   reason: unknown;
   fallback: string;
+  language: AppLanguage;
 }): ConnectionTestFailureFeedback => {
   if (kind === 'validation') {
     return {
-      message: '测试失败: 请先完善必填项后再测试连接',
+      message: tr(language, 'connectionModal.test.failure.validation'),
       shouldToast: false,
     };
   }
 
   return {
-    message: `测试失败: ${normalizeConnectionSecretErrorMessage(reason, fallback)}`,
+    message: tr(language, 'connectionModal.test.failure.runtime', {
+      reason: normalizeConnectionSecretErrorMessage(reason, fallback, language),
+    }),
     shouldToast: false,
   };
 };

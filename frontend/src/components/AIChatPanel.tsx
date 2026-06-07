@@ -19,7 +19,7 @@ import { AIChatWelcome } from './ai/AIChatWelcome';
 import { AIMessageBubble } from './ai/AIMessageBubble';
 import { AIChatInput } from './ai/AIChatInput';
 import { AIHistoryDrawer } from './ai/AIHistoryDrawer';
-import type { AiMessage } from '@compat/contracts';
+import type { AiMessage, AiTool } from '@compat/contracts';
 import type { AIComposerNotice } from '../utils/aiComposerNotice';
 import { buildRpcConnectionConfig } from '../utils/connectionRpcConfig';
 import { buildAIReadonlyPreviewSQL } from '../utils/aiSqlLimit';
@@ -31,7 +31,7 @@ import {
     buildMissingProviderNotice,
     buildModelFetchFailedNotice,
 } from '../utils/aiComposerNotice';
-import { translate } from '../i18n';
+import { DEFAULT_LANGUAGE, translate, type AppLanguage, type I18nKey, type I18nParams } from '../i18n';
 
 interface AIChatPanelProps {
     width?: number;
@@ -89,7 +89,30 @@ const toRecord = (value: unknown): UnknownRecord => (
     value && typeof value === 'object' && !Array.isArray(value) ? value as UnknownRecord : {}
 );
 
-const getErrorMessage = (error: unknown, fallback = '未知错误'): string => {
+const getCurrentLanguage = (): AppLanguage => useStore.getState().language || DEFAULT_LANGUAGE;
+
+const aiTextForLanguage = (language: AppLanguage | undefined, key: I18nKey, params?: I18nParams): string => (
+    translate(language || DEFAULT_LANGUAGE, key, params)
+);
+
+const aiText = (key: I18nKey, params?: I18nParams): string => (
+    aiTextForLanguage(getCurrentLanguage(), key, params)
+);
+
+const buildNudgePattern = (language: AppLanguage): RegExp => {
+    const sources = [
+        aiTextForLanguage(language, 'ai.chat.nudgePattern'),
+        aiTextForLanguage('zh', 'ai.chat.nudgePattern'),
+        aiTextForLanguage('en', 'ai.chat.nudgePattern'),
+    ].filter((source, index, list) => source && list.indexOf(source) === index);
+    try {
+        return new RegExp(sources.join('|'));
+    } catch {
+        return /$a/;
+    }
+};
+
+const getErrorMessage = (error: unknown, fallback = aiText('ai.chat.unknownError')): string => {
     if (error instanceof Error) return error.message || fallback;
     if (typeof error === 'string') return error || fallback;
     const messageValue = toRecord(error).message;
@@ -115,25 +138,25 @@ const toChatPayload = (message: AIChatMessage): AiMessage => {
 };
 
 export const getDynamicMaxContextChars = (modelName?: string) => {
-    if (!modelName) return 258000; // 默认 258k (2026主流基线)
+    if (!modelName) return 258000; // Default 258k modern baseline.
     const lower = modelName.toLowerCase();
     
-    // 「星际杯」- 百万到千万级 Tokens (保守取 2~5M 字符)
+    // Very large context models: conservatively use 2-5M characters.
     if (lower.includes('gemini-1.5-pro') || lower.includes('gemini-2') || lower.includes('gemini-3')) {
         return 5000000;
     }
-    // 「超大杯」- 1M Tokens (针对 2026 旗舰：约 1,000,000 字符)
+    // Flagship 1M-token models: about 1,000,000 characters.
     if (lower.includes('glm-5') || lower.includes('claude-4') || lower.includes('claude-3.7') || lower.includes('gpt-5') || lower.includes('qwen3') || lower.includes('deepseek-v4')) {
         return 1000000;
     }
     if (lower.includes('claude-3-opus') || lower.includes('claude-3.5') || lower.includes('glm-4-long') || lower.includes('qwen-long')) {
         return 1000000;
     }
-    // 「大杯」- 200K ~ 258K Tokens (针对现代主流：约 258,000 字符)
+    // Modern mainstream 200K-258K token models: about 258,000 characters.
     if (lower.includes('claude') || lower.includes('deepseek') || lower.includes('gpt-4.5') || lower.includes('qwen2.5')) {
         return 258000;
     }
-    // 「中杯/小杯」- 128K Tokens (老基线：约 128,000 字符)
+    // 128K-token models: about 128,000 characters.
     if (lower.includes('gpt-4') || lower.includes('gpt-4o') || lower.includes('glm') || lower.includes('z-ai')) {
         return 128000;
     }
@@ -141,10 +164,10 @@ export const getDynamicMaxContextChars = (modelName?: string) => {
         return 128000;
     }
     // Default fallback
-    return 258000; 
+    return 258000;
 };
 
-// 当超出指定字符上限时触发上下文自建压缩
+// Compress history when the configured context character limit is exceeded.
 const compressContextIfNeeded = async (sid: string, messagesPayload: AiMessage[], maxLimit: number) => {
     try {
         const chars = messagesPayload.reduce((sum, m) => sum + (m.content?.length || 0) + JSON.stringify(m.tool_calls || []).length, 0);
@@ -155,15 +178,10 @@ const compressContextIfNeeded = async (sid: string, messagesPayload: AiMessage[]
 
         const connectingMsgId = genId();
         useStore.getState().addAIChatMessage(sid, {
-            id: connectingMsgId, role: 'assistant', phase: 'connecting', content: '⚙️ 对话已超载，正在启动记忆压缩...', timestamp: Date.now(), loading: true
+            id: connectingMsgId, role: 'assistant', phase: 'connecting', content: aiText('ai.chat.compressionConnecting'), timestamp: Date.now(), loading: true
         });
 
-        const summaryPrompt = `这是一段超长对话的历史记录。为了释放上下文空间同时保留你的记忆核心，请你仔细阅读并以“技术事实、已探索出的数据结构状态、用户的中心诉求、当前进展”为准则，进行高度浓缩的结构化总结。
-注意：
-1. 客观准确，不能遗漏关键业务逻辑或探索出的表名/字段。
-2. 剔除无效执行过程、客套话、JSON返回值本身。
-3. 请控制在 1000-2000 字左右，输出纯干货 Markdown。
-4. 开头直接输出总结，不要带寒暄。`;
+        const summaryPrompt = aiText('ai.chat.compressionPrompt');
 
         const sysMsg = { role: 'system', content: summaryPrompt };
         const result = await Service.AIChatSend([sysMsg, ...messagesPayload]);
@@ -172,7 +190,7 @@ const compressContextIfNeeded = async (sid: string, messagesPayload: AiMessage[]
             useStore.getState().deleteAIChatMessage(sid, connectingMsgId);
             return result.content;
         } else {
-            useStore.getState().updateAIChatMessage(sid, connectingMsgId, { loading: false, phase: 'idle', content: '❌ 记忆压缩失败，将尝试原样接续...' });
+            useStore.getState().updateAIChatMessage(sid, connectingMsgId, { loading: false, phase: 'idle', content: aiText('ai.chat.compressionFailed') });
         }
     } catch (e) {
         console.error("Compression exception:", e);
@@ -180,32 +198,32 @@ const compressContextIfNeeded = async (sid: string, messagesPayload: AiMessage[]
     return null;
 };
 
-// 清洗错误信息：去除 HTML 标签、提取关键错误描述、截断过长文本
+// Clean error messages by stripping HTML details and shortening oversized text.
 const sanitizeErrorMsg = (raw: string): string => {
-    if (!raw || typeof raw !== 'string') return '未知错误';
-    // 检测 HTML 内容
+    if (!raw || typeof raw !== 'string') return aiText('ai.chat.unknownError');
+    // Detect HTML content.
     if (raw.includes('<html') || raw.includes('<!DOCTYPE') || raw.includes('<head')) {
-        // 尝试提取 <title> 内容
+        // Try to extract the <title> content.
         const titleMatch = raw.match(/<title[^>]*>([^<]+)<\/title>/i);
-        // 尝试提取 HTTP 状态码
+        // Try to extract an HTTP status code.
         const codeMatch = raw.match(/\b(4\d{2}|5\d{2})\b/);
         const title = titleMatch?.[1]?.trim();
         const code = codeMatch?.[1];
         if (title) return code ? `HTTP ${code}: ${title}` : title;
-        if (code) return `HTTP ${code} 服务端错误`;
-        return '服务端返回了异常 HTML 响应（可能是网关超时或服务不可用）';
+        if (code) return aiText('ai.sanitize.serverError', { code });
+        return aiText('ai.sanitize.htmlResponse');
     }
-    // 截断过长的纯文本错误
-    if (raw.length > 300) return raw.substring(0, 280) + '...(已截断)';
+    // Shorten oversized plain-text errors.
+    if (raw.length > 300) return raw.substring(0, 280) + aiText('ai.sanitize.truncated');
     return raw;
 };
 
-const LOCAL_TOOLS = [
+const buildLocalTools = (language: AppLanguage): AiTool[] => [
     {
         type: 'function',
         function: {
             name: 'get_connections',
-            description: '当需要查询、操作数据库但用户没有选择任何连接上下文时，获取当前软件中可用的所有数据库连接信息。返回的数据包含连接ID(id)和名称(name)。',
+            description: aiTextForLanguage(language, 'ai.tool.getConnections.description'),
             parameters: { type: 'object', properties: {} }
         }
     },
@@ -213,11 +231,11 @@ const LOCAL_TOOLS = [
         type: 'function',
         function: {
             name: 'get_databases',
-            description: '获取指定连接（connectionId）下的所有数据库(Database/Schema)名。',
+            description: aiTextForLanguage(language, 'ai.tool.getDatabases.description'),
             parameters: {
                 type: 'object',
                 properties: {
-                    connectionId: { type: 'string', description: '连接ID (从 get_connections 获取)' }
+                    connectionId: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.connectionIdFromGetConnections') }
                 },
                 required: ['connectionId']
             }
@@ -227,12 +245,12 @@ const LOCAL_TOOLS = [
         type: 'function',
         function: {
             name: 'get_tables',
-            description: '当已经确定了目标连接和数据库名后，如果用户询问或隐式提到了表但你不知道确切表名，调用此工具获取该数据库下的所有表名列表（只含表名，帮助你推断目标表）。',
+            description: aiTextForLanguage(language, 'ai.tool.getTables.description'),
             parameters: {
                 type: 'object',
                 properties: {
-                    connectionId: { type: 'string', description: '连接ID' },
-                    dbName: { type: 'string', description: '数据库名' },
+                    connectionId: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.connectionId') },
+                    dbName: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.dbName') },
                 },
                 required: ['connectionId', 'dbName']
             }
@@ -242,13 +260,13 @@ const LOCAL_TOOLS = [
         type: 'function',
         function: {
             name: 'get_columns',
-            description: '获取指定表的字段列表（字段名、类型、是否可空、默认值、注释等）。在生成 SQL 之前必须先调用此工具确认真实字段名，禁止猜测字段名。',
+            description: aiTextForLanguage(language, 'ai.tool.getColumns.description'),
             parameters: {
                 type: 'object',
                 properties: {
-                    connectionId: { type: 'string', description: '连接ID' },
-                    dbName: { type: 'string', description: '数据库名' },
-                    tableName: { type: 'string', description: '表名' },
+                    connectionId: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.connectionId') },
+                    dbName: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.dbName') },
+                    tableName: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.tableName') },
                 },
                 required: ['connectionId', 'dbName', 'tableName']
             }
@@ -258,13 +276,13 @@ const LOCAL_TOOLS = [
         type: 'function',
         function: {
             name: 'get_table_ddl',
-            description: '获取指定表的完整建表语句（CREATE TABLE DDL），包含字段、索引、约束等完整结构信息。',
+            description: aiTextForLanguage(language, 'ai.tool.getTableDdl.description'),
             parameters: {
                 type: 'object',
                 properties: {
-                    connectionId: { type: 'string', description: '连接ID' },
-                    dbName: { type: 'string', description: '数据库名' },
-                    tableName: { type: 'string', description: '表名' },
+                    connectionId: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.connectionId') },
+                    dbName: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.dbName') },
+                    tableName: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.tableName') },
                 },
                 required: ['connectionId', 'dbName', 'tableName']
             }
@@ -274,13 +292,13 @@ const LOCAL_TOOLS = [
         type: 'function',
         function: {
             name: 'execute_sql',
-            description: '在指定连接和数据库上执行 SQL 查询并返回结果。受安全级别控制，只读模式下只能执行 SELECT/SHOW/DESCRIBE 等查询操作。结果最多返回 50 行。',
+            description: aiTextForLanguage(language, 'ai.tool.executeSql.description'),
             parameters: {
                 type: 'object',
                 properties: {
-                    connectionId: { type: 'string', description: '连接ID' },
-                    dbName: { type: 'string', description: '数据库名' },
-                    sql: { type: 'string', description: '要执行的 SQL 语句' },
+                    connectionId: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.connectionId') },
+                    dbName: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.dbName') },
+                    sql: { type: 'string', description: aiTextForLanguage(language, 'ai.tool.arg.sql') },
                 },
                 required: ['connectionId', 'dbName', 'sql']
             }
@@ -308,11 +326,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const textareaRef = useRef<HTMLTextAreaElement>(null);
     const resizeStartX = useRef(0);
     const resizeStartWidth = useRef(0);
-    const toolCallRoundRef = useRef(0); // 连续失败轮次计数
-    const totalToolRoundRef = useRef(0); // 全局工具调用总轮次计数（防止无限循环）
-    const nudgeCountRef = useRef(0);    // 催促模型使用 function call 的次数
-    const panelRef = useRef<HTMLDivElement>(null); // 面板 DOM ref，用于拖拽时直接操作宽度
-    const dragWidthRef = useRef(0); // 拖拽过程中的实时宽度（不触发 React 重渲染）
+    const toolCallRoundRef = useRef(0); // Consecutive failed tool-call rounds.
+    const totalToolRoundRef = useRef(0); // Global tool-call round count to avoid infinite loops.
+    const nudgeCountRef = useRef(0); // Number of nudges sent to encourage function calls.
+    const panelRef = useRef<HTMLDivElement>(null); // Panel DOM ref for direct width updates while resizing.
+    const dragWidthRef = useRef(0); // Live width during resizing without forcing React rerenders.
 
     const aiChatHistory = useStore(state => state.aiChatHistory);
     const aiActiveSessionId = useStore(state => state.aiActiveSessionId);
@@ -331,6 +349,8 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     const aiPanelVisible = useStore(state => state.aiPanelVisible);
     const aiChatSendShortcutBinding = useStore(state => state.shortcutOptions.sendAIChatMessage);
     const language = useStore(state => state.language);
+    const localTools = useMemo(() => buildLocalTools(language), [language]);
+    const nudgePattern = useMemo(() => buildNudgePattern(language), [language]);
 
     useEffect(() => {
         if (!aiPanelVisible) return;
@@ -401,7 +421,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
 
     const sid = aiActiveSessionId || 'session-fallback';
 
-    // 面板首次可见时从后端加载会话列表
+    // Load the session list from backend when the panel first becomes visible.
     const sessionsLoadedRef = useRef(false);
     useEffect(() => {
         if (!aiPanelVisible || sessionsLoadedRef.current) return;
@@ -409,7 +429,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         loadAISessionsFromBackend();
     }, [aiPanelVisible]);
 
-    // 切换会话时按需从后端加载消息
+    // Load messages from backend when switching sessions.
     useEffect(() => {
         if (sid && sid !== 'session-fallback') {
             loadAISessionFromBackend(sid);
@@ -450,11 +470,11 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 setActiveProvider(current || null);
             }
         } catch (e) { console.warn('Failed to load active provider', e); }
-    }, []);
+    }, [language]);
 
     useEffect(() => { loadActiveProvider(); }, [loadActiveProvider]);
 
-    // 监听供应商配置变更（来自设置面板的删除/新增/切换操作），重新加载 active provider 并清空已缓存的模型
+    // Reload the active provider and clear cached models when provider settings change.
     useEffect(() => {
         const handler = () => {
             setDynamicModels([]);
@@ -490,7 +510,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             setComposerNotice(null);
             activeProviderIdRef.current = activeProvider.id;
         }
-        // 供应商被删除后 activeProvider 变为 null，此时也必须清空残留模型
+        // Also clear remaining models after the active provider is deleted.
         if (!activeProvider) {
             setDynamicModels([]);
             setComposerNotice(null);
@@ -505,7 +525,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     }, [activeProvider?.model]);
 
 
-    // dynamicModels 仅在内存中使用，不再写回供应商配置，避免污染静态 models 列表
+    // Keep dynamicModels in memory only so remote discovery does not modify static provider models.
 
     const fetchDynamicModels = useCallback(async () => {
         try {
@@ -520,12 +540,12 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 setComposerNotice(null);
             } else if (result && !result.success) {
                 setDynamicModels([]);
-                setComposerNotice(buildModelFetchFailedNotice(result.error));
+                setComposerNotice(buildModelFetchFailedNotice(result.error, language));
             }
         } catch (e: unknown) {
             console.warn('Failed to fetch models', e);
             setDynamicModels([]);
-            setComposerNotice(buildModelFetchFailedNotice('获取模型列表失败：' + getErrorMessage(e)));
+            setComposerNotice(buildModelFetchFailedNotice(aiTextForLanguage(language, 'ai.chat.modelFetchFailedPrefix', { message: getErrorMessage(e) }), language));
         } finally {
             setLoadingModels(false);
         }
@@ -561,7 +581,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
         let assistantMsgId = '';
         let isFirstCompletion = false;
 
-        // 新增：利用 requestAnimationFrame 缓冲高频事件，避免 React 重绘阻塞导致感官吞吐变慢
+        // Buffer high-frequency stream events through requestAnimationFrame to avoid blocking rerenders.
         const streamBuffer: StreamBuffer = { thinking: '', content: '' };
         let flushPending = false;
 
@@ -596,7 +616,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 const lastMsg = history[history.length - 1];
                 if (lastMsg && lastMsg.role === 'assistant' && lastMsg.loading && lastMsg.phase === 'connecting') {
                     assistantMsgId = lastMsg.id;
-                    // 【关键】接管 connecting 消息时，立即清空其过渡文案，防止泄漏到 AI 回复正文
+                    // Clear transition text immediately when taking over a connecting message.
                     updateAIChatMessage(sid, assistantMsgId, { content: '' });
                 }
             }
@@ -605,13 +625,13 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 const cleanErr = sanitizeErrorMsg(data.error);
                 const rawErr = cleanErr !== data.error ? data.error : undefined;
                 if (assistantMsgId) {
-                    updateAIChatMessage(sid, assistantMsgId, { content: `❌ 错误: ${cleanErr}`, phase: 'idle', loading: false, rawError: rawErr });
+                    updateAIChatMessage(sid, assistantMsgId, { content: aiText('ai.chat.error', { message: cleanErr }), phase: 'idle', loading: false, rawError: rawErr });
                 } else {
                     addAIChatMessage(sid, {
                         id: genId(),
                         role: 'assistant',
                         phase: 'idle',
-                        content: `❌ 错误: ${cleanErr}`,
+                        content: aiText('ai.chat.error', { message: cleanErr }),
                         rawError: rawErr,
                         timestamp: Date.now(),
                     });
@@ -638,7 +658,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 }
             }
 
-            // 处理 thinking（模型思考过程）
+            // Handle model thinking output.
             if (data.thinking) {
                 if (!assistantMsgId) {
                     assistantMsgId = genId();
@@ -686,7 +706,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             }
 
             if (data.done) {
-                // 如果有残留未 flush 的 buffer，立刻推入状态树
+                // Flush any remaining stream buffer into state immediately.
                 if (streamBuffer.thinking || streamBuffer.content) {
                     flushStreamBuffer();
                 }
@@ -694,7 +714,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 const doneIsFirst = isFirstCompletion;
                 assistantMsgId = '';
                 setTimeout(() => {
-                    // 🔧 清除所有残留的 connecting 过渡气泡的 loading 状态
+                    // Clear loading state for stale connecting transition bubbles.
                     const currentMsgs = useStore.getState().aiChatHistory[sid] || [];
                     for (const msg of currentMsgs) {
                         if (msg.id !== doneAssistantId && msg.loading && msg.phase === 'connecting') {
@@ -706,29 +726,29 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                         const current = useStore.getState().aiChatHistory[sid];
                         const existing = current?.find(m => m.id === doneAssistantId);
                         if (existing && existing.tool_calls && existing.tool_calls.length > 0) {
-                            // 【关键】保持 loading:true 和 phase:'tool_calling'，让 UI 能实时展示工具执行进度
+                            // Keep loading and tool_calling so the UI can display tool progress in real time.
                             nudgeCountRef.current = 0;
                             setTimeout(() => executeLocalTools(existing.tool_calls!, doneAssistantId), 50);
                             return;
                         }
 
-                        // 自动催促：模型描述了要调用工具但没有 function call
+                        // Nudge when the model describes tool usage without emitting a function call.
                         if (existing && nudgeCountRef.current < 2 &&
-                            /(?:让我|我先|我来|现在|接下来|下面).*(?:查询|查找|获取|查看|检查|调用)|(?:获取|查询|查找|查看).*(?:信息|字段|列表|数据)[：:]?\s*$/.test(existing.content || '')) {
+                            nudgePattern.test(existing.content || '')) {
                             nudgeCountRef.current += 1;
-                            // 🔧 关闭当前消息的 loading 状态，消除闪烁光标
+                            // Stop loading on the current message to remove the blinking cursor.
                             updateAIChatMessage(sid, doneAssistantId, { loading: false, phase: 'idle' });
-                            // 注入 system 催促并重发
+                            // Add a nudge message and resend.
                             (async () => {
                                 try {
                                     const currentHistory = useStore.getState().aiChatHistory[sid] || [];
                                     const messagesPayload = currentHistory.map(toChatPayload);
                                     const sysMessages = await buildSystemContextMessages();
-                                    // 追加催促消息
-                                    messagesPayload.push({ role: 'user', content: '请直接使用 function call 调用工具执行操作，不要只用文字描述计划。' });
+                                    // Append the nudge message.
+                                    messagesPayload.push({ role: 'user', content: aiTextForLanguage(language, 'ai.chat.nudgeUseTool') });
                                     const allMsg = [...sysMessages, ...messagesPayload];
                                     const Service = AIService;
-                                    if (Service?.AIChatStream) await Service.AIChatStream(sid, allMsg, LOCAL_TOOLS);
+                                    if (Service?.AIChatStream) await Service.AIChatStream(sid, allMsg, localTools);
                                 } catch (e) {
                                     console.error('Nudge failed', e);
                                     setSending(false);
@@ -739,18 +759,18 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
 
                         if (doneIsFirst) generateTitleForSession(sid);
                         
-                        // 正常完成：关闭 loading，消除闪烁光标
+                        // Normal completion: stop loading.
                         const hasContent = !!existing?.content?.trim();
                         const hasThinking = !!existing?.thinking?.trim();
                         const hasTools = !!(existing?.tool_calls?.length);
                         
                         if (!hasContent && !hasThinking && !hasTools) {
-                            updateAIChatMessage(sid, doneAssistantId, { content: '❌ 模型未能成功响应任何内容，可能遭遇频控、上下文超载或理解拒绝。', loading: false, phase: 'idle' });
+                            updateAIChatMessage(sid, doneAssistantId, { content: aiText('ai.chat.noResponse'), loading: false, phase: 'idle' });
                         } else {
                             updateAIChatMessage(sid, doneAssistantId, { loading: false, phase: 'idle' });
                         }
                     } else {
-                        addAIChatMessage(sid, { id: genId(), role: 'assistant', content: '❌ 请求中断：未收到任何具体回复。', timestamp: Date.now(), loading: false });
+                        addAIChatMessage(sid, { id: genId(), role: 'assistant', content: aiText('ai.chat.interrupted'), timestamp: Date.now(), loading: false });
                     }
                     setSending(false);
                 }, 50);
@@ -769,7 +789,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             
             const firstUserMsg = historyLocal.find(m => m.role === 'user');
             if (firstUserMsg) {
-                // 取用前 50 个字符截断，防止太长的查询消耗过多 Token
+                // Use the first 50 characters to avoid spending too many tokens on title generation.
                 const snippet = firstUserMsg.content.slice(0, 50);
                 const titleReq = [
                     { role: 'system', content: 'You are a summarizer. Provide a short 3-6 word title for this prompt. Do not use quotes, punctuation, or explain. Just the title in the same language as the prompt.' },
@@ -820,14 +840,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             const userMsg = historyLocal[lastUserMsgIndex];
             truncateAIChatMessages(sid, userMsg.id); 
 
-            // 重置计数器（与 handleSend 保持一致）
+            // Reset counters consistently with handleSend.
             toolCallRoundRef.current = 0;
             totalToolRoundRef.current = 0;
             nudgeCountRef.current = 0;
 
             setSending(true);
 
-            // 插入 connecting 过渡消息（波纹动画），与 handleSend 保持一致
+            // Insert the same connecting transition message used by handleSend.
             const connectingMsg: AIChatMessage = {
                 id: genId(), role: 'assistant', phase: 'connecting', content: '',
                 timestamp: Date.now(), loading: true,
@@ -843,14 +863,14 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 
                 const Service = AIService;
                 if (Service?.AIChatStream) {
-                    await Service.AIChatStream(sid, allMessages, LOCAL_TOOLS);
+                    await Service.AIChatStream(sid, allMessages, localTools);
                 } else if (Service?.AIChatSend) {
-                     const result = await Service.AIChatSend(allMessages, LOCAL_TOOLS);
-                     const errRaw = result?.error || '未知错误';
+                     const result = await Service.AIChatSend(allMessages, localTools);
+                     const errRaw = result?.error || aiTextForLanguage(language, 'ai.chat.unknownError');
                      const errClean = sanitizeErrorMsg(errRaw);
                      addAIChatMessage(sid, {
                          id: genId(), role: 'assistant', 
-                         content: result?.success ? result.content : `❌ ${errClean}`,
+                         content: result?.success ? result.content : aiTextForLanguage(language, 'ai.chat.error', { message: errClean }),
                          rawError: (!result?.success && errClean !== errRaw) ? errRaw : undefined,
                          timestamp: Date.now(),
                      });
@@ -864,7 +884,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 addAIChatMessage(sid, {
                     id: genId(),
                     role: 'assistant',
-                    content: `❌ 发送失败: ${cleanE}`,
+                    content: aiTextForLanguage(language, 'ai.chat.sendFailed', { message: cleanE }),
                     rawError: cleanE !== rawE ? rawE : undefined,
                     timestamp: Date.now(),
                 });
@@ -878,7 +898,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
     ]);
 
     const buildSystemContextMessages = useCallback(async () => {
-        // 🔧 性能优化：从 store 实时读取，避免闭包捕获导致的依赖链式重建
+        // Read live state from the store to avoid stale closures and dependency churn.
         const { activeContext: ctx, aiContexts: ctxMap, connections: conns, tabs: allTabs, activeTabId: tabId } = useStore.getState();
 
         const systemMessages: { role: string; content: string; images?: string[] }[] = [];
@@ -934,7 +954,7 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
                 const dbDisplayType = dbType === 'diros' ? 'Doris' : dbType.charAt(0).toUpperCase() + dbType.slice(1);
                 systemMessages.push({
                     role: 'system',
-                    content: `你是一个专业的数据库助手。当前连接的数据库类型是 ${dbDisplayType}，当前数据库名为 ${targetDbName}。如果用户需要查询特定的表或者有关当前库的信息，你可以调用提供的 get_tables 工具来主动获取数据表信息。`
+                    content: aiTextForLanguage(language, 'ai.chat.databaseAssistantSchemaOnlyPrompt', { dbType: dbDisplayType, dbName: targetDbName })
                 });
             }
         }
@@ -942,51 +962,28 @@ export const AIChatPanel: React.FC<AIChatPanelProps> = ({
             const connList = conns.map(c => `{id: "${c.id}", name: "${c.name}", type: "${c.config?.type || 'unknown'}"}`).join(', ');
             systemMessages.push({
                 role: 'system',
-                content: `你是一个专业的数据库助手。用户目前在界面上没有选中任何具体的数据库或数据表用于充当上下文。
-
-重要规则：
-1. 如果你需要帮用户寻找目标表，千万不要凭空猜测表名！必须调用工具去获取真实数据。
-2. 完整工作流程：get_connections → get_databases → get_tables → get_columns → 生成 SQL。每一步都不可跳过。
-3. 【连接优先级 - 极重要】获取连接列表后，必须按以下优先级依次检索：
-   - 第一优先：host 为 localhost、127.0.0.1、或包含"本地"的连接
-   - 第二优先：name 或 host 包含"开发"、"dev"、"local" 的连接，或 host 为 10.x、192.168.x、172.16-31.x 等内网 IP 的连接
-   - 第三优先：其他连接（如"测试"、"生产"等）
-   如果在高优先级连接中已找到目标表，直接使用该连接，不再查找低优先级连接。
-4. 如果在当前数据库中未找到目标表，必须继续查询其他数据库，不要放弃。
-5. 只有当所有可能的数据库都已检查完毕，或者已经明确找到目标表时，才可以停止。
-6. 如果是常规问答（不涉及数据库查询）则正常作答即可。
-
-SQL 生成规则（极重要，必须严格遵守）：
-7. 【字段精确性 - 绝对红线】生成 SQL 之前，必须先调用 get_columns 获取目标表的真实字段列表。SQL 中的每一个字段名必须与 get_columns 返回的 field 字段完全一致（区分大小写）。不得自行拼凑、缩写或联想字段名（例如字段是 channel 就必须写 channel，不得写成 pay_channel）。
-8. 生成 SQL 时禁止使用 "database.table" 格式的限定前缀，只写表名本身。
-9. 报告结果时，连接名/ID 和数据库名必须严格来自同一个 get_tables 调用的实际参数。禁止将 A 连接的 connectionId 与 B 连接的 dbName 混搭。
-10. 如果有多个名称相似的数据库，请明确告诉用户目标表具体位于哪个数据库。
-11. 【关键】每个 SQL 代码块的第一行必须添加上下文声明注释，格式严格为：-- @context connectionId=<连接ID> dbName=<数据库名>。connectionId 和 dbName 必须来自同一个成功的 get_tables 调用（即你在该调用中传入的实际参数值）。示例：
-\`\`\`sql
--- @context connectionId=1770778676549 dbName=mkefu_test
-SELECT * FROM users WHERE status = 1;
-\`\`\`
-
-当前存在的连接：[${connList || '无连接'}]`
+                content: aiTextForLanguage(language, 'ai.chat.databaseAssistantNoContextPrompt', {
+                    connections: connList || aiTextForLanguage(language, 'ai.chat.noConnections'),
+                })
             });
         }
         return systemMessages;
-    }, [contextLevel]);
+    }, [contextLevel, language]);
 
-    // 记录所有成功的 get_tables 调用结果，用于表级精确匹配
+    // Record successful get_tables calls for table-level exact matching.
     const toolContextMapRef = useRef<Map<string, { connectionId: string; dbName: string; tables: string[] }>>(new Map());
 
     const executeLocalTools = useCallback(async (toolCalls: AIToolCall[], currentAsstMsgId: string) => {
         const currentAsstMsg = (useStore.getState().aiChatHistory[sid] || []).find(m => m.id === currentAsstMsgId);
 
-        // 【全局轮次熔断】防止模型（如 DeepSeek）在已生成答案后仍无限循环调用工具
+        // Global round guard to prevent endless tool-call loops after an answer is ready.
         const MAX_TOOL_CALL_ROUNDS = 15;
         totalToolRoundRef.current += 1;
         if (totalToolRoundRef.current > MAX_TOOL_CALL_ROUNDS) {
             updateAIChatMessage(sid, currentAsstMsgId, { loading: false, phase: 'idle' });
             useStore.getState().addAIChatMessage(sid, {
                 id: genId(), role: 'assistant',
-                content: `⚠️ 工具调用已达 ${MAX_TOOL_CALL_ROUNDS} 轮上限，自动终止循环。如需继续探索，请发送新的消息。`,
+                content: aiTextForLanguage(language, 'ai.chat.toolMaxRounds', { max: MAX_TOOL_CALL_ROUNDS }),
                 timestamp: Date.now(),
             });
             setSending(false);
@@ -994,7 +991,7 @@ SELECT * FROM users WHERE status = 1;
         }
 
         const results: AIChatMessage[] = [];
-        // 【串行逐条执行 + 实时写入 store】
+        // Execute tools serially and write each result to the store immediately.
         for (const tc of toolCalls) {
             let resStr = '';
             let success = false;
@@ -1018,14 +1015,14 @@ SELECT * FROM users WHERE status = 1;
                                 const dbRes = await DBGetDatabases(buildRpcConnectionConfig(conn.config));
                                 if (dbRes?.success && Array.isArray(dbRes.data)) {
                                     let dNames = queryArrayData<DatabaseRow>(dbRes).map((r) => r.Database || r.database || firstRecordValue(r));
-                                    if (dNames.length > 50) dNames = [...dNames.slice(0, 50), '...(截断)'];
+                                    if (dNames.length > 50) dNames = [...dNames.slice(0, 50), aiTextForLanguage(language, 'ai.tool.truncated')];
                                     resStr = JSON.stringify(dNames);
                                     success = true;
                                 } else {
                                     resStr = dbRes?.message || 'Failed to fetch DBs';
                                 }
                             } catch (e: unknown) {
-                                resStr = `获取数据库列表失败: ${getErrorMessage(e)}`;
+                                resStr = aiTextForLanguage(language, 'ai.tool.fetchDatabasesFailed', { message: getErrorMessage(e) });
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1039,18 +1036,18 @@ SELECT * FROM users WHERE status = 1;
                                 const tbRes = await DBGetTables(buildRpcConnectionConfig(conn.config), safeDbName);
                                 if (tbRes?.success && Array.isArray(tbRes.data)) {
                                     let tNames = queryArrayData<TableRow>(tbRes).map((r) => String(r.Table || r.table || firstRecordValue(r) || ''));
-                                    if (tNames.length > 150) tNames = [...tNames.slice(0, 150), '...(截断)'];
+                                    if (tNames.length > 150) tNames = [...tNames.slice(0, 150), aiTextForLanguage(language, 'ai.tool.truncated')];
                                     resStr = JSON.stringify(tNames);
                                     success = true;
-                                    // 🔑 记录已验证的上下文参数和表列表（用于后续表级精确匹配）
+                                    // Record verified context parameters and table list for later exact matching.
                                     toolContextMapRef.current.set(`${args.connectionId}:${safeDbName}`, {
                                         connectionId: args.connectionId,
                                         dbName: safeDbName,
-                                        tables: tNames.filter((t: string) => t !== '...(截断)')
+                                        tables: tNames.filter((t: string) => t !== aiTextForLanguage(language, 'ai.tool.truncated'))
                                     });
                                 } else { resStr = tbRes?.message || 'Failed to fetch Tables'; }
                             } catch (e: unknown) {
-                                resStr = `获取表列表失败: ${getErrorMessage(e)}`;
+                                resStr = aiTextForLanguage(language, 'ai.tool.fetchTablesFailed', { message: getErrorMessage(e) });
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1064,7 +1061,7 @@ SELECT * FROM users WHERE status = 1;
                                 const { DBGetColumns } = await import('@compat/javanaviApp');
                                 const colRes = await DBGetColumns(buildRpcConnectionConfig(conn.config), safeDbName, safeTable);
                                 if (colRes?.success && Array.isArray(colRes.data)) {
-                                    // 只保留关键字段信息，减少 token 占用
+                                    // Keep only key column details to reduce token usage.
                                     const cols = queryArrayData<ColumnRow>(colRes).map((c) => {
                                         const keys = Object.keys(c);
                                         return {
@@ -1075,13 +1072,17 @@ SELECT * FROM users WHERE status = 1;
                                             comment: c.Comment || c.comment || c.COLUMN_COMMENT || c.column_comment || c.Description || '',
                                         };
                                     });
-                                    // ⚠️ 在工具返回结果中直接注入强制警告，确保模型使用精确字段名
+                                    // Inject a strict warning directly into tool results to enforce exact column names.
                                     const fieldNames = cols.map((c) => c.field).join(', ');
-                                    resStr = `⚠️ 以下为 ${safeTable} 表的真实字段列表。生成 SQL 时只能使用这些 field 值作为列名，必须原样使用，禁止修改、缩写或自行拼凑字段名。\n可用字段：${fieldNames}\n详细信息：${JSON.stringify(cols)}`;
+                                    resStr = aiTextForLanguage(language, 'ai.tool.columnsStrictWarning', {
+                                        table: safeTable,
+                                        fields: fieldNames,
+                                        details: JSON.stringify(cols),
+                                    });
                                     success = true;
                                 } else { resStr = colRes?.message || 'Failed to fetch columns'; }
                             } catch (e: unknown) {
-                                resStr = `获取字段列表失败: ${getErrorMessage(e)}`;
+                                resStr = aiTextForLanguage(language, 'ai.tool.fetchColumnsFailed', { message: getErrorMessage(e) });
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1102,7 +1103,7 @@ SELECT * FROM users WHERE status = 1;
                                 resStr = toolResult.content;
                                 success = toolResult.success;
                             } catch (e: unknown) {
-                                resStr = `获取建表语句失败: ${getErrorMessage(e)}`;
+                                resStr = aiTextForLanguage(language, 'ai.tool.fetchDdlFailed', { message: getErrorMessage(e) });
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1113,12 +1114,12 @@ SELECT * FROM users WHERE status = 1;
                             try {
                                 const safeDbName = args.dbName ? String(args.dbName).trim() : '';
                                 const safeSql = args.sql ? String(args.sql).trim() : '';
-                                // 安全级别检查
+                                // Safety-level check.
                                 const Service = AIService;
                                 if (Service?.AICheckSQL) {
                                     const check = await Service.AICheckSQL(safeSql);
                                     if (!check.allowed) {
-                                        resStr = `安全策略拦截：当前安全级别不允许执行 ${check.operationType} 类型的 SQL。请将 SQL 展示给用户，让用户手动执行。`;
+                                        resStr = aiTextForLanguage(language, 'ai.tool.sqlBlocked', { type: check.operationType });
                                         break;
                                     }
                                 }
@@ -1130,9 +1131,9 @@ SELECT * FROM users WHERE status = 1;
                                     const limitedRows = rows.slice(0, 50);
                                     resStr = JSON.stringify({ rowCount: rows.length, data: limitedRows });
                                     success = true;
-                                } else { resStr = qRes?.message || 'SQL 执行失败'; }
+                                } else { resStr = qRes?.message || aiTextForLanguage(language, 'ai.tool.sqlFailed'); }
                             } catch (e: unknown) {
-                                resStr = `SQL 执行异常: ${getErrorMessage(e)}`;
+                                resStr = aiTextForLanguage(language, 'ai.tool.sqlError', { message: getErrorMessage(e) });
                             }
                         } else { resStr = 'Connection not found'; }
                         break;
@@ -1155,14 +1156,14 @@ SELECT * FROM users WHERE status = 1;
             };
             results.push(toolResultMsg);
 
-            // 【实时写入】每执行完一条立即写入 store，让 UI 能实时看到进度打勾
+            // Write every finished tool result to the store so progress updates immediately.
             useStore.getState().addAIChatMessage(sid, toolResultMsg);
 
-            // 延迟 150ms，给 UI 渲染时间，创造“逐个完成”的视觉节奏
+            // Delay briefly so the UI can render per-tool progress.
             await new Promise(resolve => setTimeout(resolve, 150));
         }
 
-        // 智能熔断：只计连续失败轮次，成功则重置
+        // Count only consecutive failed rounds and reset after any success.
         const anySuccess = results.some(r => r.success === true);
         if (anySuccess) {
             toolCallRoundRef.current = 0;
@@ -1171,7 +1172,7 @@ SELECT * FROM users WHERE status = 1;
             if (toolCallRoundRef.current >= 3) {
                 useStore.getState().addAIChatMessage(sid, {
                     id: genId(), role: 'assistant',
-                    content: '⚠️ 探针连续 3 轮执行失败，自动终止。请检查连接状态后重试。',
+                    content: aiTextForLanguage(language, 'ai.chat.toolConsecutiveFail'),
                     timestamp: Date.now(),
                 });
                 setSending(false);
@@ -1179,47 +1180,47 @@ SELECT * FROM users WHERE status = 1;
             }
         }
         try {
-            // 【过渡状态】工具执行完毕，将上一条消息的 loading 关闭（消除闪烁光标）
+            // Transition after tool execution: stop loading on the previous message.
             updateAIChatMessage(sid, currentAsstMsgId, { loading: false, phase: 'idle' });
 
-            // 插入过渡气泡
+            // Insert a transition bubble.
             const chainConnectingMsg: AIChatMessage = {
                 id: genId(), role: 'assistant', phase: 'connecting', 
-                content: '汇总探针执行结果中',
+                content: aiTextForLanguage(language, 'ai.chat.summarizingProbes'),
                 timestamp: Date.now(), loading: true,
             };
             useStore.getState().addAIChatMessage(sid, chainConnectingMsg);
             
-            // 模拟人类视角的平滑多段过渡
+            // Simulate a smooth multi-stage transition.
             const safeUpdateTransition = (text: string) => {
                 const currentMsg = useStore.getState().aiChatHistory[sid]?.find(m => m.id === chainConnectingMsg.id);
-                // 只有当消息仍然处于连接过渡态时才允许修改文本；如果模型已经开始吐出思考、正文、工具或结束，直接退出
+                // Only update text while the message is still in connecting transition state.
                 if (currentMsg && currentMsg.phase === 'connecting' && currentMsg.loading) {
                     updateAIChatMessage(sid, chainConnectingMsg.id, { content: text });
                 }
             };
 
-            setTimeout(() => safeUpdateTransition('向模型回传运行时数据'), 200);
-            setTimeout(() => safeUpdateTransition('模型大脑深度推理中'), 500);
-            setTimeout(() => safeUpdateTransition('等待下发操作指令'), 1200);
-            setTimeout(() => safeUpdateTransition('正在深度思考链路与逻辑'), 3000);
+            setTimeout(() => safeUpdateTransition(aiTextForLanguage(language, 'ai.chat.returningRuntimeData')), 200);
+            setTimeout(() => safeUpdateTransition(aiTextForLanguage(language, 'ai.chat.deepReasoning')), 500);
+            setTimeout(() => safeUpdateTransition(aiTextForLanguage(language, 'ai.chat.awaitingInstructions')), 1200);
+            setTimeout(() => safeUpdateTransition(aiTextForLanguage(language, 'ai.chat.deepThinking')), 3000);
 
             setSending(true);
             const currentHistory = useStore.getState().aiChatHistory[sid] || [];
-            // 过滤掉 connecting 占位消息，不发给模型
+            // Do not send connecting placeholder messages to the model.
             const messagesPayload = currentHistory.filter(m => m.phase !== 'connecting').map(toChatPayload);
             const sysMessages = await buildSystemContextMessages();
 
             let finalMessagesPayload = messagesPayload;
-            // 在这里加入长度检查和自动摘要（带上动态限额）
+            // Apply length checks and automatic summary with the dynamic limit.
             const dynamicMaxLimit = getDynamicMaxContextChars(activeProvider?.model);
             const summary = await compressContextIfNeeded(sid, messagesPayload, dynamicMaxLimit);
             if (summary) {
                  const compressedMsg: AIChatMessage = {
-                     id: genId(), role: 'assistant', content: `【自动记忆重塑】已将超长历史探针数据和对话压缩为摘要：\n\n${summary}`, timestamp: Date.now() - 1000
+                     id: genId(), role: 'assistant', content: aiTextForLanguage(language, 'ai.chat.autoMemoryReshape', { summary }), timestamp: Date.now() - 1000
                  };
                  const continueMsg: AIChatMessage = {
-                     id: genId(), role: 'user', content: '请根据上述最新状态与探索结果，继续完成你先前未竟的分析或执行下一步。', timestamp: Date.now() - 500
+                     id: genId(), role: 'user', content: aiTextForLanguage(language, 'ai.chat.continueFromState'), timestamp: Date.now() - 500
                  };
                  useStore.getState().replaceAIChatHistory(sid, [compressedMsg, continueMsg, chainConnectingMsg]);
                  finalMessagesPayload = [
@@ -1230,20 +1231,20 @@ SELECT * FROM users WHERE status = 1;
 
             const allMessages = [...sysMessages, ...finalMessagesPayload];
 
-            // 【软收敛】超过 10 轮工具调用后，不再传递 tools 参数，从物理层面强制模型只能用文本回答
+            // Soft limit: after 10 tool rounds, stop passing tools so the model can only answer in text.
             const SOFT_LIMIT_ROUNDS = 10;
-            const chainTools = totalToolRoundRef.current >= SOFT_LIMIT_ROUNDS ? [] : LOCAL_TOOLS;
+            const chainTools = totalToolRoundRef.current >= SOFT_LIMIT_ROUNDS ? [] : localTools;
 
             const Service = AIService;
             if (Service?.AIChatStream) {
                 await Service.AIChatStream(sid, allMessages, chainTools);
             } else if (Service?.AIChatSend) {
                 const result = await Service.AIChatSend(allMessages, chainTools);
-                const errR = result?.error || '未知错误';
+                const errR = result?.error || aiTextForLanguage(language, 'ai.chat.unknownError');
                 const errC = sanitizeErrorMsg(errR);
                 useStore.getState().addAIChatMessage(sid, {
                     id: genId(), role: 'assistant',
-                    content: result?.success ? result.content : `❌ ${errC}`,
+                    content: result?.success ? result.content : aiTextForLanguage(language, 'ai.chat.error', { message: errC }),
                     rawError: (!result?.success && errC !== errR) ? errR : undefined,
                     timestamp: Date.now(),
                 });
@@ -1253,26 +1254,26 @@ SELECT * FROM users WHERE status = 1;
             console.error('Failed to chain tool call', e);
             setSending(false);
         }
-    }, [sid, buildSystemContextMessages]);
+    }, [sid, buildSystemContextMessages, language, localTools, activeProvider?.model, updateAIChatMessage]);
 
     const handleSend = useCallback(async () => {
         const text = input.trim();
         if ((!text && draftImages.length === 0) || sending) return;
 
-        // 前置校验：必须配置供应商且选择模型后才能发送
+        // Validate that a provider and model are configured before sending.
         if (!activeProvider) {
-            setComposerNotice(buildMissingProviderNotice());
+            setComposerNotice(buildMissingProviderNotice(language));
             return;
         }
         if (!activeProvider.model || !activeProvider.model.trim()) {
-            setComposerNotice(buildMissingModelNotice());
+            setComposerNotice(buildMissingModelNotice(language));
             return;
         }
         setComposerNotice(null);
 
-        toolCallRoundRef.current = 0; // 重置工具调用轮次计数
-        totalToolRoundRef.current = 0; // 重置总轮次计数
-        nudgeCountRef.current = 0;     // 重置催促计数
+        toolCallRoundRef.current = 0; // Reset tool-call round counter.
+        totalToolRoundRef.current = 0; // Reset total round counter.
+        nudgeCountRef.current = 0; // Reset nudge counter.
 
         const currentImages = [...draftImages];
         setInput('');
@@ -1297,8 +1298,8 @@ SELECT * FROM users WHERE status = 1;
 
         const systemMessages = await buildSystemContextMessages();
 
-        // 【过渡状态 2】上下文已组装完成，即将接入模型
-        updateAIChatMessage(sid, connectingMsg.id, { content: '模型接入中' });
+        // Transition 2: context is ready, now connect the model.
+        updateAIChatMessage(sid, connectingMsg.id, { content: aiTextForLanguage(language, 'ai.chat.connectingModel') });
 
         const chatMessages = [...messages, userMsg].map(toChatPayload);
 
@@ -1306,9 +1307,9 @@ SELECT * FROM users WHERE status = 1;
         const dynamicMaxLimit = getDynamicMaxContextChars(activeProvider?.model);
         const summary = await compressContextIfNeeded(sid, chatMessages, dynamicMaxLimit);
         if (summary) {
-            // 清理原有历史，保留系统生成的总结记录和当前的 userMsg 以及 connectingMsg
+            // Replace the previous history with the generated summary, current user message, and connecting message.
             const compressedMsg: AIChatMessage = {
-                id: genId(), role: 'assistant', content: `【自动记忆重塑】已将超长历史压缩为摘要：\n\n${summary}`, timestamp: Date.now() - 1000
+                id: genId(), role: 'assistant', content: aiTextForLanguage(language, 'ai.chat.autoMemoryReshape', { summary }), timestamp: Date.now() - 1000
             };
             useStore.getState().replaceAIChatHistory(sid, [compressedMsg, userMsg, connectingMsg]);
             finalMessagesPayload = [
@@ -1319,23 +1320,23 @@ SELECT * FROM users WHERE status = 1;
 
         const allMessages = [...systemMessages, ...finalMessagesPayload];
 
-        // 【过渡状态 3】大脑唤醒
-        updateAIChatMessage(sid, connectingMsg.id, { content: '唤醒推理引擎中' });
+        // Transition 3: wake the reasoning engine.
+        updateAIChatMessage(sid, connectingMsg.id, { content: aiTextForLanguage(language, 'ai.chat.wakingEngine') });
 
-        // 【过渡状态 4】最后一步，等待第一字节返回
-        updateAIChatMessage(sid, connectingMsg.id, { content: '等待模型响应' });
+        // Transition 4: wait for the first response token.
+        updateAIChatMessage(sid, connectingMsg.id, { content: aiTextForLanguage(language, 'ai.chat.awaitingResponse') });
 
         try {
             const Service = AIService;
             if (Service?.AIChatStream) {
-                await Service.AIChatStream(sid, allMessages, LOCAL_TOOLS);
+                await Service.AIChatStream(sid, allMessages, localTools);
             } else if (Service?.AIChatSend) {
-                const result = await Service.AIChatSend(allMessages, LOCAL_TOOLS);
-                const errR2 = result?.error || '未知错误';
+                const result = await Service.AIChatSend(allMessages, localTools);
+                const errR2 = result?.error || aiTextForLanguage(language, 'ai.chat.unknownError');
                 const errC2 = sanitizeErrorMsg(errR2);
                 const assistantMsg: AIChatMessage = {
                     id: genId(), role: 'assistant',
-                    content: result?.success ? result.content : `❌ ${errC2}`,
+                    content: result?.success ? result.content : aiTextForLanguage(language, 'ai.chat.error', { message: errC2 }),
                     rawError: (!result?.success && errC2 !== errR2) ? errR2 : undefined,
                     timestamp: Date.now(),
                 };
@@ -1350,7 +1351,7 @@ SELECT * FROM users WHERE status = 1;
                 addAIChatMessage(sid, {
                     id: genId(),
                     role: 'assistant',
-                    content: '❌ AI Service 未就绪',
+                    content: aiTextForLanguage(language, 'ai.chat.modelNotReady'),
                     timestamp: Date.now(),
                 });
                 setSending(false);
@@ -1361,7 +1362,7 @@ SELECT * FROM users WHERE status = 1;
             addAIChatMessage(sid, {
                 id: genId(),
                 role: 'assistant',
-                content: `❌ 发送失败: ${cleanE2}`,
+                content: aiTextForLanguage(language, 'ai.chat.sendFailed', { message: cleanE2 }),
                 rawError: cleanE2 !== rawE2 ? rawE2 : undefined,
                 timestamp: Date.now(),
             });
@@ -1376,6 +1377,8 @@ SELECT * FROM users WHERE status = 1;
         sid,
         activeProvider,
         buildSystemContextMessages,
+        language,
+        localTools,
     ]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
@@ -1425,7 +1428,7 @@ SELECT * FROM users WHERE status = 1;
                 const newWidth = Math.min(Math.max(resizeStartWidth.current + delta, 280), 700);
                 dragWidthRef.current = newWidth;
                 
-                // 仅更新 ghost 虚线位置，通过绝对定位规避重排
+                // Update only the ghost guide position and avoid layout reflow with fixed positioning.
                 if (ghostRef.current && panelRect.current) {
                     const actualDelta = newWidth - resizeStartWidth.current;
                     ghostRef.current.style.left = `${panelRect.current.left - actualDelta}px`;
@@ -1437,7 +1440,7 @@ SELECT * FROM users WHERE status = 1;
                 cancelAnimationFrame(animationFrameId);
             }
             setIsResizing(false);
-            // 拖拽结束时才提交最终宽度到 React state 和外层回调
+            // Commit final width to React state and parent callback only when resizing ends.
             setPanelWidth(dragWidthRef.current);
             onWidthChange?.(dragWidthRef.current);
         };
@@ -1445,10 +1448,10 @@ SELECT * FROM users WHERE status = 1;
         document.addEventListener('mousemove', handleMouseMove);
         document.addEventListener('mouseup', handleMouseUp);
         
-        // 拖拽期间关闭指针事件以避免下方 Monaco Editor 捕获 hover 或重绘，极大提升性能
+        // Disable pointer events during resize to prevent the Monaco editor underneath from handling hover or rerendering.
         document.body.style.cursor = 'col-resize';
         document.body.style.userSelect = 'none';
-        document.body.style.pointerEvents = 'none'; // 关键性能优化
+        document.body.style.pointerEvents = 'none'; // Performance optimization.
         
         return () => {
             if (animationFrameId) cancelAnimationFrame(animationFrameId);
@@ -1460,7 +1463,7 @@ SELECT * FROM users WHERE status = 1;
         };
     }, [isResizing, onWidthChange]);
 
-    // 回推幽灵上下文：基于 get_tables 记录进行表级精确匹配（useMemo 缓存，避免每帧重算）
+    // Infer context from get_tables records with memoized table-level exact matching.
     const { inferredConnectionId, inferredDbName } = useMemo(() => {
         let connId = activeContext?.connectionId;
         let dbName = activeContext?.dbName;
@@ -1487,7 +1490,7 @@ SELECT * FROM users WHERE status = 1;
         return { inferredConnectionId: connId, inferredDbName: dbName };
     }, [activeContext?.connectionId, activeContext?.dbName, messages.length]);
 
-    // useMemo 缓存：避免内联闭包击穿子组件 memo
+    // Memoized callback to avoid breaking child memoization with inline closures.
     const handleDeleteMessage = useCallback((id: string) => deleteAIChatMessage(sid, id), [sid, deleteAIChatMessage]);
     const activeConnectionConfig = useMemo(() => {
         if (!inferredConnectionId) return undefined;

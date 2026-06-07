@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
 import ts from 'typescript';
@@ -29,9 +29,15 @@ async function transpileToModule(sourcePath, outputName, options = {}) {
 
 await rm(tempDir, { recursive: true, force: true });
 await mkdir(tempDir, { recursive: true });
+await mkdir(path.join(tempDir, 'locales'), { recursive: true });
+await copyFile(path.join(projectRoot, 'src/i18n/locales/en-US.json'), path.join(tempDir, 'locales/en-US.json'));
+await copyFile(path.join(projectRoot, 'src/i18n/locales/zh-CN.json'), path.join(tempDir, 'locales/zh-CN.json'));
 try {
+  await transpileToModule('src/i18n/index.ts', 'i18n.mjs');
   const customDataSources = await transpileToModule('src/utils/customDataSources.ts', 'customDataSources.mjs');
-  const presentation = await transpileToModule('src/utils/connectionModalPresentation.ts', 'connectionModalPresentation.mjs');
+  const presentation = await transpileToModule('src/utils/connectionModalPresentation.ts', 'connectionModalPresentation.mjs', {
+    transformOutput: (output) => output.replace("from '../i18n';", "from './i18n.mjs';"),
+  });
   const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs');
   const dataGridValue = await transpileToModule('src/components/dataGrid/dataGridValue.ts', 'dataGridValue.mjs');
   const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
@@ -42,7 +48,6 @@ try {
   const shortcuts = await transpileToModule('src/utils/shortcuts.ts', 'shortcuts.mjs');
   const aiProviderPresets = await transpileToModule('src/utils/aiProviderPresets.ts', 'aiProviderPresets.mjs');
   const providerSecretDraft = await transpileToModule('src/utils/providerSecretDraft.ts', 'providerSecretDraft.mjs');
-  await transpileToModule('src/i18n/index.ts', 'i18n.mjs');
   await writeFile(path.join(tempDir, 'dataGridCellsStub.mjs'), "export const JAVANAVI_ROW_KEY = '__javanavi_row_key__';\n", 'utf8');
   await writeFile(path.join(tempDir, 'dataGridCopyInsertStub.mjs'), "export const resolveUniqueKeyGroupsFromIndexes = () => [];\n", 'utf8');
   await transpileToModule('src/utils/rowLocator.ts', 'rowLocator.mjs', {
@@ -535,8 +540,20 @@ try {
     'custom layout metadata should include the rendered credentials section',
   );
   assert.equal(
-    presentation.getConnectionConfigSectionCopy('credentials').title,
-    '认证凭据',
+    presentation.getConnectionConfigSectionCopy('credentials', 'zh').title,
+    '\u8ba4\u8bc1\u51ed\u636e',
+  );
+  assert.equal(
+    presentation.getConnectionConfigSectionCopy('credentials', 'en').title,
+    'Credentials',
+  );
+  assert.equal(
+    presentation.getConnectionConfigLayoutKindLabel('custom', 'zh'),
+    '\u81ea\u5b9a\u4e49\u8fde\u63a5',
+  );
+  assert.equal(
+    presentation.getConnectionConfigLayoutKindLabel('custom', 'en'),
+    'Custom connection',
   );
 
   console.log('custom datasource utility regression checks passed');

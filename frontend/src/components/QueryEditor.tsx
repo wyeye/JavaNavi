@@ -31,11 +31,11 @@ const SQL_KEYWORDS = [
     'COMMENT', 'SHOW', 'DESCRIBE', 'EXPLAIN',
 ];
 
-// 模块级标志：确保 SQL completion provider 全局只注册一次
+// Module-level flag: register the SQL completion provider only once globally
 let sqlCompletionRegistered = false;
 
-// 模块级共享变量：completion provider 从这些变量读取当前活跃 Tab 的状态。
-// 每个 QueryEditor 实例在成为活跃 Tab 时更新这些变量，确保 provider 始终使用正确的上下文。
+// Module-level shared variables: the completion provider reads the active tab state from them.
+// Each QueryEditor updates these variables when its tab becomes active so the provider uses the correct context.
 type QueryRow = Record<string, unknown> & Partial<Record<typeof JAVANAVI_ROW_KEY, string | number>>;
 type TableMeta = { dbName: string; tableName: string };
 type ColumnMeta = { dbName: string; tableName: string; name: string; type: string };
@@ -199,6 +199,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
   const savedQueries = useStore(state => state.savedQueries);
   const language = useStore(state => state.language);
   const t = useMemo(() => (key: I18nKey, params?: Record<string, string | number | boolean | null | undefined>) => translate(language, key, params), [language]);
+  const cancelledErrorTokens = useMemo(() => t('queryEditor.error.cancelledTokens')
+      .split('|')
+      .map((token) => token.trim().toLowerCase())
+      .filter(Boolean), [t]);
+  const timeoutErrorTokens = useMemo(() => t('queryEditor.error.timeoutTokens')
+      .split('|')
+      .map((token) => token.trim().toLowerCase())
+      .filter(Boolean), [t]);
   const buildAiContextText = useMemo(() => (conn: SavedConnection | undefined | null, dbName: string): string => {
       if (!conn) return '';
       return t('queryEditor.ai.context', {
@@ -253,8 +261,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       currentDbRef.current = currentDb;
   }, [currentDb]);
 
-  // 当此 Tab 成为活跃 Tab 时，将本实例的状态同步到模块级共享变量
-  // 确保 completion provider 始终使用当前活跃 Tab 的上下文
+  // When this tab becomes active, sync this instance state to module-level shared variables
+  // Keep the completion provider using the current active tab context
   useEffect(() => {
       if (activeTabId !== tab.id) return;
       sharedCurrentDb = currentDb;
@@ -320,13 +328,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   .map((row) => String(row.Database || row.database || ''))
                   .filter(Boolean);
 
-              // 过滤只显示 includeDatabases 中配置的数据库
+              // Filter to databases configured in includeDatabases only
               const includeDbs = conn.includeDatabases;
               if (includeDbs && includeDbs.length > 0) {
                   dbs = dbs.filter((db: string) => includeDbs.includes(db));
               }
 
-              // 存储可见数据库列表用于跨库智能提示
+              // Store visible databases for cross-database suggestions
               visibleDbsRef.current = dbs;
               if (activeTabId === tab.id) {
                   sharedVisibleDbs = dbs;
@@ -370,12 +378,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             ssh: conn.config.ssh || { host: "", port: 22, user: "", password: "", keyPath: "" }
           };
 
-          // 加载所有可见数据库的表
+          // Load tables for all visible databases
           const allTables: {dbName: string, tableName: string}[] = [];
           const allColumns: {dbName: string, tableName: string, name: string, type: string}[] = [];
 
           for (const dbName of visibleDbs) {
-              // 获取表
+              // Fetch tables
               const resTables = await DBGetTables(buildRpcConnectionConfig(config), dbName);
               if (resTables.success && Array.isArray(resTables.data)) {
                   const tableNames = queryArrayData<Record<string, unknown>>(resTables)
@@ -386,7 +394,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   });
               }
 
-              // 获取列 (所有数据库类型都支持 DBGetAllColumns)
+              // Fetch columns (DBGetAllColumns supports every database type)
               const resCols = await DBGetAllColumns(buildRpcConnectionConfig(config), dbName);
               if (resCols.success && Array.isArray(resCols.data)) {
                   queryArrayData<ColumnMeta>(resCols).forEach((col) => {
@@ -402,14 +410,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
           tablesRef.current = allTables;
           allColumnsRef.current = allColumns;
-          // 如果当前 Tab 是活跃 Tab，同步更新共享变量
+          // If the current tab is active, update shared variables too
           if (activeTabId === tab.id) {
               sharedTablesData = allTables;
               sharedAllColumnsData = allColumns;
           }
       };
       void fetchMetadata();
-  }, [autoFetchVisible, currentConnectionId, connections, dbList]); // dbList 变化时触发重新加载
+  }, [autoFetchVisible, currentConnectionId, connections, dbList]); // Reload when dbList changes
 
   // Query ID management helpers
   const setQueryId = (id: string) => {
@@ -448,10 +456,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       editorRef.current = editor;
       monacoRef.current = monaco;
 
-      // 应用透明主题（主题已在 main.tsx 全局注册）
+      // Apply transparent theme (registered globally in main.tsx)
       monaco.editor.setTheme(darkMode ? 'transparent-dark' : 'transparent-light');
 
-      // 注册 AI 右键菜单操作
+      // Register AI context-menu actions
       const aiActions = [
           { id: 'ai.generateSQL', label: t('queryEditor.ai.generateSQL.label'), prompt: t('queryEditor.ai.generateSQL.prompt') },
           { id: 'ai.explainSQL', label: t('queryEditor.ai.explainSQL.label'), useSelection: true, prompt: t('queryEditor.ai.explainSQL.prompt') },
@@ -473,18 +481,18 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   if (action.useSelection && selection) {
                       prompt = prompt.replace('{SQL}', selection);
                   }
-                  // 打开 AI 面板并填入 prompt
+                  // Open AI panel and fill the prompt
                   const store = useStore.getState();
                   if (!store.aiPanelVisible) {
                       store.setAIPanelVisible(true);
                   }
-                  // 通过自定义事件将 prompt 发送到 AI 面板
+                  // Send the prompt to the AI panel through a custom event
                   window.dispatchEvent(new CustomEvent('javanavi:ai:inject-prompt', { detail: { prompt } }));
               },
           });
       });
 
-      // 全局只注册一次 SQL completion provider，避免多 tab 重复注册导致补全项重复
+      // Register the SQL completion provider only once globally to avoid duplicate suggestions across tabs
       if (!sqlCompletionRegistered) {
       sqlCompletionRegistered = true;
       monaco.languages.registerCompletionItemProvider('sql', {
@@ -582,17 +590,17 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
               const fullText = model.getValue();
 
-              // 获取当前行光标前的内容
+              // Get the current line content before the cursor
               const linePrefix = model.getLineContent(position.lineNumber).slice(0, position.column - 1);
 
-              // 0) 三段式 db.table.column 格式：当输入 db.table. 时提示列
+              // 0) Three-part db.table.column format: suggest columns after typing db.table.
               const threePartMatch = linePrefix.match(/([`"]?\w+[`"]?)\.([`"]?\w+[`"]?)\.(\w*)$/);
               if (threePartMatch) {
                   const dbPart = stripQuotes(threePartMatch[1]);
                   const tablePart = stripQuotes(threePartMatch[2]);
                   const colPrefix = (threePartMatch[3] || '').toLowerCase();
 
-                  // 在 allColumnsRef 中查找匹配的列
+                  // Find matching columns in allColumnsRef
                   const cols = sharedAllColumnsData.filter(c =>
                       (c.dbName || '').toLowerCase() === dbPart.toLowerCase() &&
                       (c.tableName || '').toLowerCase() === tablePart.toLowerCase()
@@ -613,17 +621,17 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   return { suggestions };
               }
 
-              // 1) 两段式 qualifier.xxx 格式
+              // 1) Two-part qualifier.xxx format
               const qualifierMatch = linePrefix.match(/([`"]?[A-Za-z_]\w*[`"]?)\.(\w*)$/);
               if (qualifierMatch) {
                   const qualifier = stripQuotes(qualifierMatch[1]);
                   const prefix = (qualifierMatch[2] || '').toLowerCase();
                   const qualifierLower = qualifier.toLowerCase();
 
-                  // 首先检查 qualifier 是否是数据库名（跨库表提示）
+                  // First check whether qualifier is a database name (cross-database table suggestions)
                   const visibleDbs = sharedVisibleDbs;
                   if (visibleDbs.some(db => db.toLowerCase() === qualifierLower)) {
-                      // qualifier 是数据库名，提示该库的表
+                      // When qualifier is a database name, suggest tables in that database
                       const tables = sharedTablesData.filter(t =>
                           (t.dbName || '').toLowerCase() === qualifierLower
                       );
@@ -642,7 +650,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       return { suggestions };
                   }
 
-                  // qualifier 是 schema（如 dbo/public）时，仅补全表名，避免输入 dbo. 后再补成 dbo.dbo.table
+                  // When qualifier is a schema (for example dbo/public), complete table names only to avoid dbo.dbo.table.
                   const schemaTables = sharedTablesData
                       .map(t => {
                           const parsed = splitSchemaAndTable(t.tableName || '');
@@ -670,7 +678,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       return { suggestions };
                   }
 
-                  // 否则检查是否是表别名或表名，提示列
+                  // Otherwise check whether it is a table alias or table name, then suggest columns
                   const reserved = new Set([
                       'where', 'on', 'group', 'order', 'limit', 'having',
                       'left', 'right', 'inner', 'outer', 'full', 'cross', 'join',
@@ -685,7 +693,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       const tableIdent = normalizeQualifiedName(m[1] || '');
                       if (!tableIdent) continue;
 
-                      // 解析 db.table 或 table 格式
+                      // Parse db.table or table format
                       const parts = tableIdent.split('.');
                       let dbName = sharedCurrentDb || '';
                       let tableName = tableIdent;
@@ -695,7 +703,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       }
 
                       const shortTable = getLastPart(tableIdent);
-                      // 用表名作为 qualifier
+                      // Use the table name as qualifier
                       if (shortTable) aliasMap[shortTable.toLowerCase()] = { dbName, tableName };
 
                       const a = stripQuotes(m[2] || '').trim();
@@ -716,7 +724,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                                   if ((c.dbName || '').toLowerCase() !== (tableInfo.dbName || '').toLowerCase()) return false;
                                   const cTableLower = (c.tableName || '').toLowerCase();
                                   if (cTableLower === tiTableLower) return true;
-                                  // schema.table 格式匹配纯表名
+                                  // Match schema.table format by the plain table name
                                   const parsed = splitSchemaAndTable(c.tableName || '');
                                   return (parsed.table || '').toLowerCase() === tiTableLower;
                               })
@@ -749,7 +757,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               while ((match = tableRegex.exec(fullText)) !== null) {
                   const t = normalizeQualifiedName(match[1] || '');
                   if (!t) continue;
-                  // 存储完整标识 db.table 或 table
+                  // Store the full identifier, db.table or table
                   foundTables.add(t.toLowerCase());
               }
 
@@ -766,19 +774,19 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       ? { keyword: '20', func: '25', columnCurrent: '10', columnOther: '11', tableCurrent: '00', tableOther: '01', db: '30' }
                       : { keyword: '30', func: '25', columnCurrent: '00', columnOther: '01', tableCurrent: '10', tableOther: '11', db: '20' };
 
-              // 相关列提示：匹配 SQL 中引用的表（FROM/JOIN 等）
-              // 权重最高，输入 WHERE 条件时优先显示
+              // Relevant column suggestions: match tables referenced in SQL (FROM/JOIN, etc.)
+              // Highest priority, shown first when entering WHERE conditions
               const relevantColumns = sharedAllColumnsData
                   .filter(c => {
                       const fullIdent = `${c.dbName}.${c.tableName}`.toLowerCase();
                       const shortIdent = (c.tableName || '').toLowerCase();
-                      // 对 schema.table 格式，也用纯表名部分匹配（如 public.users → users）
+                      // For schema.table format, also match by the plain table part (for example public.users -> users)
                       const parsed = splitSchemaAndTable(c.tableName || '');
                       const pureIdent = (parsed.table || '').toLowerCase();
                       return (foundTables.has(fullIdent) || foundTables.has(shortIdent) || (pureIdent && foundTables.has(pureIdent))) && startsWithPrefix(c.name || '');
                   })
                   .map(c => {
-                      // 当前库的表字段优先级更高
+                      // Columns from the current database get higher priority
                       const isCurrentDb = (c.dbName || '').toLowerCase() === currentDatabase.toLowerCase();
                       return {
                           label: c.name,
@@ -790,8 +798,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       };
                   });
 
-              // 表提示：当前库智能处理 schema.table 格式
-              // 1. 构建纯表名到 schema 列表的映射，检测同名表
+              // Table suggestions: handle schema.table format for the current database
+              // 1. Build a map from plain table names to schemas and detect duplicate table names
               const currentDbTables = sharedTablesData.filter(t =>
                   (t.dbName || '').toLowerCase() === currentDatabase.toLowerCase()
               );
@@ -808,10 +816,10 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 .filter(t => {
                     const isCurrentDb = (t.dbName || '').toLowerCase() === currentDatabase.toLowerCase();
                     if (!isCurrentDb) {
-                        // 跨库：用 db.table 格式匹配
+                        // Cross-database: match using db.table format
                         return startsWithPrefix(`${t.dbName}.${t.tableName}`);
                     }
-                    // 当前库：同时用完整名和纯表名匹配
+                    // Current database: match both full name and plain table name
                     const parsed = splitSchemaAndTable(t.tableName || '');
                     const pureTable = parsed.table || t.tableName || '';
                     return startsWithPrefix(t.tableName || '') || startsWithPrefix(pureTable);
@@ -829,12 +837,12 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                           sortText: sortGroups.tableOther + t.tableName,
                       };
                   }
-                  // 当前库：检查是否有跨 schema 同名表
+                  // Current database: check duplicate table names across schemas
                   const parsed = splitSchemaAndTable(t.tableName || '');
                   const pureTable = parsed.table || t.tableName || '';
                   const schemas = tableNameToSchemas.get(pureTable.toLowerCase()) || [];
                   const hasDuplicate = schemas.length > 1;
-                  // 同名表存在于多个 schema → 显示 schema.table；否则只显示纯表名
+                  // Duplicate table name in multiple schemas -> show schema.table; otherwise show the plain table name
                   const label = hasDuplicate ? t.tableName : pureTable;
                   const insertText = hasDuplicate ? t.tableName : pureTable;
                   const schemaInfo = parsed.schema ? ` (${parsed.schema})` : '';
@@ -848,7 +856,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   };
               });
 
-              // 数据库提示
+              // Database suggestions
               const dbSuggestions = sharedVisibleDbs
                   .filter((db) => startsWithPrefix(db))
                   .map(db => ({
@@ -860,7 +868,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       sortText: sortGroups.db + db,
                   }));
 
-              // 关键字提示
+              // Keyword suggestions
               const keywordSuggestions = dialectKeywords
                   .filter((k) => startsWithPrefix(k))
                   .map(k => ({
@@ -871,7 +879,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   sortText: sortGroups.keyword + k,
               }));
 
-              // 内置函数提示
+              // Built-in function suggestions
               const funcSuggestions = dialectFunctions
                   .filter((f) => startsWithPrefix(f.name))
                   .map(f => ({
@@ -885,16 +893,16 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   }));
 
               const suggestions = [
-                  ...relevantColumns,   // FROM 表的列最优先
-                  ...tableSuggestions,  // 表次之
-                  ...dbSuggestions,     // 数据库
-                  ...funcSuggestions,   // 内置函数
-                  ...keywordSuggestions // 关键字最后
+                  ...relevantColumns,   // Columns from FROM tables first
+                  ...tableSuggestions,  // Tables next
+                  ...dbSuggestions,     // Databases
+                  ...funcSuggestions,   // Built-in functions
+                  ...keywordSuggestions // Keywords last
               ];
               return { suggestions };
           }
       });
-      // 注册 / 斜杠命令 AI 快捷补全
+      // Register slash-command AI quick completion
       const slashCmdDefs = [
           { cmd: '/query',    label: t('queryEditor.ai.slash.query.label'),    desc: t('queryEditor.ai.slash.query.desc'),    prompt: t('queryEditor.ai.slash.query.prompt') },
           { cmd: '/sql',      label: t('queryEditor.ai.slash.sql.label'),      desc: t('queryEditor.ai.slash.sql.desc'),      prompt: t('queryEditor.ai.slash.sql.prompt') },
@@ -905,7 +913,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           { cmd: '/diff',     label: t('queryEditor.ai.slash.diff.label'),     desc: t('queryEditor.ai.slash.diff.desc'),     prompt: t('queryEditor.ai.slash.diff.prompt') },
           { cmd: '/mock',     label: t('queryEditor.ai.slash.mock.label'),     desc: t('queryEditor.ai.slash.mock.desc'),     prompt: t('queryEditor.ai.slash.mock.prompt') },
       ];
-      // 全局变量存储命令定义，供 onDidChangeModelContent 使用
+      // Store command definitions globally for onDidChangeModelContent
       window.__javanaviSlashCmdDefs = slashCmdDefs;
 
       monaco.languages.registerCompletionItemProvider('sql', {
@@ -939,7 +947,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
       } // end sqlCompletionRegistered guard
 
-      // 每个编辑器实例都注册内容变化监听（检测斜杠命令标记）
+      // Each editor instance registers a content-change listener to detect slash-command markers
       let _handlingSlash = false;
       editor.onDidChangeModelContent(() => {
           if (_handlingSlash) return;
@@ -954,14 +962,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           const cmdDef = defs.find((c) => c.cmd === `/${cmdKey}`);
           if (!cmdDef) return;
 
-          // 清除标记文本（带递归保护）
+          // Clear marker text with recursion protection
           _handlingSlash = true;
           const fullText = model.getValue();
           const newText = fullText.replace(markerMatch[0], '').replace(/^\s*\n/, '');
           model.setValue(newText);
           _handlingSlash = false;
 
-          // 组装 prompt
+          // Build prompt
           const conn = connectionsRef.current.find(c => c.id === currentConnectionIdRef.current);
           const ctxText = buildAiContextText(conn, currentDbRef.current);
           let finalPrompt = ctxText + cmdDef.prompt;
@@ -971,7 +979,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               finalPrompt = finalPrompt.replace('{SQL}', selText || getCurrentQuery());
           }
 
-          // 打开 AI 面板并注入 prompt
+          // Open AI panel and inject prompt
           const store = useStore.getState();
           if (!store.aiPanelVisible) {
               store.setAIPanelVisible(true);
@@ -1256,7 +1264,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       return { sql: `EXPLAIN ${statement}` };
   };
 
-  // 精准重查询单个结果集（提交事务 / 刷新按钮使用），不会重跑整个编辑器 SQL
+  // Reload one result set precisely (used by transaction commit / refresh) without rerunning the whole editor SQL
   const handleReloadResult = async (resultKey: string, sql: string) => {
       if (!sql?.trim() || !currentDb) return;
       const conn = connections.find(c => c.id === currentConnectionId);
@@ -1273,7 +1281,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
       try {
           setLoading(true);
-          // 使用 DBQueryMulti 保持和首次查询一致的后端路径
+          // Use DBQueryMulti to keep the same backend path as the initial query
           let queryId: string;
           try {
               queryId = await GenerateQueryID();
@@ -1286,7 +1294,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               return;
           }
 
-          // 取第一个结果集（单条 SQL 只有一个结果集）
+          // Take the first result set (one SQL statement has only one result set)
           const resultSetDataArray = queryResultSetDataArray(res);
           if (resultSetDataArray.length === 0) return;
           const rsData = resultSetDataArray[0];
@@ -1298,7 +1306,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
           const isAffectedResult = Array.isArray(rsData.rows) && rsData.rows.length === 1
               && rsData.columns && rsData.columns.length === 1
               && rsData.columns[0] === 'affectedRows';
-          if (isAffectedResult) return; // 不应该出现，但保险起见
+          if (isAffectedResult) return; // Should not happen, but keep the guard
 
           let rows = Array.isArray(rsData.rows) ? rsData.rows : [];
           const maxRows = Number(queryOptions?.maxRows) || 0;
@@ -1314,7 +1322,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               row[JAVANAVI_ROW_KEY] = i;
           });
 
-          // 只更新匹配的结果集；若列集合变化，则重新收紧为只读，避免沿用旧定位列误提交。
+          // Update only the matching result set. If columns changed, force read-only to avoid using stale locator columns for commits.
           setResultSets(prev => prev.map(rs => {
               if (rs.key !== resultKey) return rs;
               const previousColumnKey = rs.columns.join('\u0001');
@@ -1342,14 +1350,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         message.error(t('queryEditor.selectDatabaseFirst'));
         return;
     }
-    // 如果已有查询在运行，先取消它
+    // Cancel the existing running query first
     if (currentQueryIdRef.current) {
         try {
             await CancelQuery(currentQueryIdRef.current);
         } catch (error) {
-            // 忽略取消错误，可能查询已完成
+            // Ignore cancel errors; the query may already be complete
         }
-        // 清除旧查询ID
+        // Clear old query ID
         clearQueryId();
     }
       const runSeq = ++runSeqRef.current;
@@ -1385,11 +1393,11 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
         const normalizedDbType = dbType.trim().toLowerCase();
         const normalizedRawSQL = String(rawSQL || '').replace(/；/g, ';');
 
-        // MongoDB 仍走逐条执行的旧路径
+        // MongoDB still uses the legacy one-by-one execution path
         const isMongoDB = normalizedDbType === 'mongodb';
 
         if (isMongoDB) {
-            // MongoDB: 保持逐条执行
+            // MongoDB: keep one-by-one execution
             const splitInput = normalizedRawSQL
                 .replace(/^\s*\/\/.*$/gm, '')
                 .replace(/^\s*#.*$/gm, '');
@@ -1504,7 +1512,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
             }
 
         } else {
-            // 非 MongoDB：一次提交 SQL，后端逐条流式返回结果集
+            // Non-MongoDB: submit SQL once and stream statement result sets from the backend
             let fullSQL = normalizedRawSQL;
             if (!fullSQL.trim()) {
                 message.info(t('queryEditor.noExecutableSql'));
@@ -1513,7 +1521,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 return;
             }
 
-            // 自动给 SELECT 语句注入行数限制（防止大结果集卡死）
+            // Automatically inject row limits into SELECT statements to avoid very large result sets blocking the UI
             const maxRowsForLimit = Number(queryOptions?.maxRows) || 0;
             let anyLimitApplied = false;
             if (Number.isFinite(maxRowsForLimit) && maxRowsForLimit > 0) {
@@ -1538,13 +1546,13 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
             const maxRows = Number(queryOptions?.maxRows) || 0;
             const forceReadOnlyResult = connCaps.forceReadOnlyQueryResult;
-            // 前端也拆分语句用于匹配原始 SQL（展示和表名检测）
+            // Split statements on the frontend too for original SQL matching, display, and table-name detection
             const statements = splitSQLStatements(fullSQL);
 
             const resolveSimpleResultTableName = (rawStatement: string): string | undefined => {
                 if (!rawStatement) return undefined;
-                // 支持多行 SQL：SELECT [cols] FROM [schema.]table [WHERE...] [ORDER BY...] [LIMIT...] 等
-                // JOIN 查询表名歧义，不提取。Oracle 无主键结果需要 ROWID 时，只在用户已显式选出 ROWID 时启用编辑。
+                // Support multiline SQL: SELECT [cols] FROM [schema.]table [WHERE...] [ORDER BY...] [LIMIT...], etc.
+                // JOIN queries have ambiguous table names, so do not extract them. Oracle ROWID editing is enabled only when the user explicitly selected ROWID.
                 const hasJoin = /\bJOIN\b/i.test(rawStatement);
                 const tableMatch = !hasJoin
                     ? rawStatement.match(/^\s*SELECT\s+.+?\s+FROM\s+(?:[\w`"\[\].]+\.)?[`"\[]?(\w+)[`"\]]?\s*(?:$|[\s;])/im)
@@ -1624,17 +1632,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                     dbName: currentDb
                 });
                 const errorMsg = res.message.toLowerCase();
-                const isCancelledError = errorMsg.includes('context canceled') ||
-                                         errorMsg.includes('查询已取消') ||
-                                         errorMsg.includes(t('queryEditor.cancel.success').toLowerCase()) ||
-                                         errorMsg.includes('canceled') ||
-                                         errorMsg.includes('cancelled') ||
-                                         errorMsg.includes('statement canceled') ||
-                                         errorMsg.includes('sql: statement canceled');
-                const isTimeoutError = errorMsg.includes('context deadline exceeded') ||
-                                       errorMsg.includes('timeout') ||
-                                       errorMsg.includes('超时') ||
-                                       errorMsg.includes('deadline exceeded');
+                const isCancelledError = cancelledErrorTokens.some((token) => errorMsg.includes(token));
+                const isTimeoutError = timeoutErrorTokens.some((token) => errorMsg.includes(token));
 
                 if (isCancelledError && !isTimeoutError) {
                     setResultSets([]);
@@ -1725,7 +1724,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                 message.warning(t('queryEditor.result.truncated', { maxRows }));
             }
             const failedStatement = nextResultSets.find(rs => rs.status === 'error');
-            // 后端附带的提示信息（如数据源不支持原生多语句执行的回退提示）
+            // Backend-provided notices, such as fallback notices when a data source does not support native multi-statement execution
             if (res.message && !failedStatement) {
                 message.info(res.message);
             }
@@ -1895,14 +1894,14 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
       };
   }, [activeTabId, tab.id, handleRun]);
 
-  // 监听由 TabManager 分发的专用注入事件
+  // Listen for the dedicated injection event dispatched by TabManager
   useEffect(() => {
       const handleInsertSql = (e: Event) => {
           const detail = (e as InsertSqlEvent).detail || {};
           if (detail.tabId !== tab.id || !detail.sql) return;
           const { sql: sqlText, connectionId, dbName } = detail;
 
-          // 同步更新 ref，防止异步 fetchDbs 竞态覆盖正确的 dbName
+          // Update refs too to prevent async fetchDbs races from overwriting the correct dbName
           if (connectionId && connectionId !== currentConnectionId) {
               if (dbName) {
                   currentDbRef.current = dbName;
@@ -1921,8 +1920,8 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
               const model = editor.getModel();
               const existingContent = editor.getValue?.() || '';
 
-              // runImmediately 模式下，如果编辑器内容已是待注入的 SQL（TabManager 创建时已传入），
-              // 跳过追加，直接选中全部内容并执行
+              // In runImmediately mode, if editor content is already the SQL to inject (passed when TabManager created the tab),
+              // skip appending, select all content directly, and run it
               if (detail.runImmediately && existingContent.trim() === sqlText.trim()) {
                   if (model) {
                       const lineCount = model.getLineCount();
@@ -1949,7 +1948,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       forceMoveMarkers: true
                   }]);
 
-                  // 定位并滚动到可见区域
+                  // Reveal and scroll into the visible area
                   const targetLine = position.lineNumber + (position.column > 1 ? 1 : 0);
                   editor.revealLineInCenterIfOutsideViewport(targetLine);
                   editor.setPosition({ lineNumber: targetLine + mText.split('\n').length - 1, column: 1 });
@@ -1966,7 +1965,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                           targetLine, 1,
                           endPosition.lineNumber, endPosition.column
                       ));
-                      // 🔧 延迟 500ms 等待连接/数据库切换的 setState 生效后再执行
+                      // Delay 500ms so connection/database switch state updates take effect before execution
                       setTimeout(() => handleRun('all'), 500);
                   }
               }
@@ -1982,7 +1981,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
 
   const resolveDefaultQueryName = () => {
       const rawTitle = String(tab.title || '').trim();
-      if (!rawTitle || rawTitle.startsWith(t('generic.fallback.newQuery')) || rawTitle.startsWith('新建查询')) {
+      if (!rawTitle || rawTitle.startsWith(t('generic.fallback.newQuery')) || rawTitle.startsWith(translate('zh', 'generic.fallback.newQuery'))) {
           return t('queryEditor.untitledQuery');
       }
       return rawTitle;
@@ -2403,7 +2402,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                       if (rs.kind === 'executionSummary') {
                           return renderExecutionSummaryTable(rs);
                       }
-                      // affectedRows 类型结果集（UPDATE/INSERT/DELETE）：简洁提示
+                      // affectedRows result set (UPDATE/INSERT/DELETE): compact message
                       const isAffectedResult = rs.columns.length === 1 && rs.columns[0] === 'affectedRows';
                       const isStatementSummaryResult = rs.statementSummary === true;
                       if (isAffectedResult) {
