@@ -1,6 +1,6 @@
 [package]
 name = "javanavi-desktop"
-version = "0.2.7"
+version = "0.2.8"
 description = "JavaNavi Tauri desktop shell for the Spring Boot web package"
 authors = ["wyeye"]
 homepage = "https://github.com/wyeye/JavaNavi"
