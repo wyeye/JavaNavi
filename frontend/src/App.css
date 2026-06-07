@@ -336,6 +336,12 @@ body[data-theme='light'] .redis-viewer-workbench .ant-radio-button-wrapper-check
     color: #1677ff;
 }
 
+
+/* 全局提示需要高于连接配置弹窗，避免 SSH 测试结果被遮挡 */
+.ant-message {
+    z-index: 12050 !important;
+}
+
 /* 连接配置弹窗：滚动仅在弹窗 body 内部，不使用外层 wrap 滚动条 */
 .connection-modal-wrap {
     overflow: hidden !important;

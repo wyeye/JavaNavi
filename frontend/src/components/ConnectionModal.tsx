@@ -1171,11 +1171,13 @@ const ConnectionModal: React.FC<{
     try {
       const values = form.getFieldsValue(true) as ConnectionFormValues;
       const sshConfig = {
+        id: initialValues?.id,
+        name: initialValues?.name || String(values.name || ""),
         type: String(values.type || dbType || "mysql"),
         host: String(values.host || "localhost"),
         port: Number(values.port || getDefaultPortByType(String(values.type || dbType || "mysql"))),
         user: String(values.user || ""),
-        password: String(values.password || ""),
+        password: String(values.password ?? ""),
         database: String(values.database || ""),
         timeout: Number(values.timeout || 30),
         useSSH: true,
@@ -1183,7 +1185,7 @@ const ConnectionModal: React.FC<{
           host: String(values.sshHost || ""),
           port: Number(values.sshPort || 22),
           user: String(values.sshUser || ""),
-          password: String(values.sshPassword || ""),
+          password: String(values.sshPassword ?? ""),
           keyPath: String(values.sshKeyPath || ""),
         },
       } as ConnectionConfig;
