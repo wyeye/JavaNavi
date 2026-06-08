@@ -27,6 +27,7 @@ import java.util.Map;
 @Service
 public class RedisCompatibilityService {
     private static final String KEY_GONE_MESSAGE = "redis.keyGone";
+    private static final int REDIS_CLUSTER_REDIRECT_LIMIT = 5;
     private static final NetworkSocketConnector NETWORK_CONNECTOR = new NetworkSocketConnector();
 
     private final I18nMessages messages;
@@ -1064,14 +1065,33 @@ public class RedisCompatibilityService {
         }
 
         private Object execute(List<String> args) {
+            return execute(args, 0);
+        }
+
+        private Object execute(List<String> args, int redirects) {
             if (args == null || args.isEmpty()) {
                 throw new RedisOperationException(messages.message("redis.commandRequired"));
             }
             try {
                 writeCommand(args);
                 return readResponse();
+            } catch (RedisOperationException error) {
+                RedisClusterRedirect redirect = RedisClusterRedirect.parse(error.getMessage(), config.host());
+                if (redirect == null || redirects >= REDIS_CLUSTER_REDIRECT_LIMIT) {
+                    throw error;
+                }
+                return executeRedirect(args, redirect, redirects + 1);
             } catch (IOException error) {
                 throw new RedisOperationException(messages.message("redis.commandFailed", "message", error.getMessage()), error);
+            }
+        }
+
+        private Object executeRedirect(List<String> args, RedisClusterRedirect redirect, int redirects) {
+            try (RedisConnection connection = new RedisConnection(config.withEndpoint(redirect.host(), redirect.port()), messages)) {
+                if (redirect.ask()) {
+                    connection.execute(List.of("ASKING"), redirects);
+                }
+                return connection.execute(args, redirects);
             }
         }
 
@@ -1178,6 +1198,20 @@ public class RedisCompatibilityService {
             return host + ":" + port;
         }
 
+        private RedisConfig withEndpoint(String host, int port) {
+            return new RedisConfig(
+                    host,
+                    port,
+                    username,
+                    password,
+                    database,
+                    useSsl,
+                    timeoutSeconds,
+                    explicitUriUsername,
+                    networkConfig == null ? null : networkConfig.withEndpoint(host, port)
+            );
+        }
+
         private String mode(boolean cluster) {
             String suffix = cluster ? "-cluster" : "";
             if (networkConfig != null && networkConfig.sshEnabled()) {
@@ -1190,6 +1224,68 @@ public class RedisCompatibilityService {
                 return type + "-proxy" + suffix;
             }
             return "direct-tcp" + suffix;
+        }
+    }
+
+    private record RedisClusterRedirect(boolean ask, int slot, String host, int port) {
+        private static RedisClusterRedirect parse(String message, String fallbackHost) {
+            String text = message == null ? "" : message.trim();
+            String[] parts = text.split("\\s+");
+            if (parts.length < 3) {
+                return null;
+            }
+            boolean ask = "ASK".equalsIgnoreCase(parts[0]);
+            if (!ask && !"MOVED".equalsIgnoreCase(parts[0])) {
+                return null;
+            }
+            int slot;
+            try {
+                slot = Integer.parseInt(parts[1]);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
+            RedisEndpoint endpoint = parseRedirectEndpoint(parts[2], fallbackHost);
+            if (endpoint == null) {
+                return null;
+            }
+            return new RedisClusterRedirect(ask, slot, endpoint.host(), endpoint.port());
+        }
+
+        private static RedisEndpoint parseRedirectEndpoint(String raw, String fallbackHost) {
+            String endpoint = raw == null ? "" : raw.trim();
+            if (endpoint.isBlank()) {
+                return null;
+            }
+            String host;
+            String portText;
+            if (endpoint.startsWith("[")) {
+                int close = endpoint.indexOf(']');
+                if (close < 0 || close + 2 > endpoint.length() || endpoint.charAt(close + 1) != ':') {
+                    return null;
+                }
+                host = endpoint.substring(1, close);
+                portText = endpoint.substring(close + 2);
+            } else {
+                int colon = endpoint.lastIndexOf(':');
+                if (colon < 0 || colon + 1 >= endpoint.length()) {
+                    return null;
+                }
+                host = endpoint.substring(0, colon);
+                portText = endpoint.substring(colon + 1);
+            }
+            host = firstText(host, fallbackHost);
+            if (host.isBlank()) {
+                return null;
+            }
+            try {
+                int port = Integer.parseInt(portText);
+                if (port < 1 || port > 65535) {
+                    return null;
+                }
+                return new RedisEndpoint(host, port);
+            } catch (NumberFormatException ignored) {
+                return null;
+            }
         }
     }
 
