@@ -64,26 +64,31 @@ public class RedisCompatibilityService {
         String pattern = firstText(text(input, "pattern"), "*");
         String cursor = parseCursor(value(input, "cursor"));
         int count = positiveInt(value(input, "count"), 2000);
+        List<RedisConfig> configs = resolveConfigs(input, null);
+        int scanCount = scanCountPerNode(count, configs.size());
         Map<String, Map<String, Object>> merged = new LinkedHashMap<>();
         String nextCursor = "0";
-        for (RedisConfig config : resolveConfigs(input, null)) {
+        for (RedisConfig config : configs) {
             try (RedisConnection connection = new RedisConnection(config, messages)) {
-                Object raw = connection.execute("SCAN", cursor, "MATCH", pattern, "COUNT", String.valueOf(count));
+                Object raw = connection.execute("SCAN", cursor, "MATCH", pattern, "COUNT", String.valueOf(scanCount));
                 List<Object> parts = list(raw);
                 if (!parts.isEmpty() && !"0".equals(string(parts.get(0)))) {
                     nextCursor = string(parts.get(0));
                 }
                 List<Object> keys = parts.size() > 1 ? list(parts.get(1)) : List.of();
+                List<String> keysToInspect = new ArrayList<>();
                 for (Object keyObject : keys) {
+                    if (merged.size() + keysToInspect.size() >= count) {
+                        break;
+                    }
                     String key = string(keyObject);
-                    if (key.isBlank() || merged.containsKey(key)) {
+                    if (key.isBlank() || merged.containsKey(key) || keysToInspect.contains(key)) {
                         continue;
                     }
-                    String type = string(connection.execute("TYPE", key));
-                    long ttl = longValue(connection.execute("TTL", key));
-                    if (!isGone(type, ttl)) {
-                        merged.put(key, orderedMap("key", key, "type", type, "ttl", ttl, "node", config.address()));
-                    }
+                    keysToInspect.add(key);
+                }
+                for (Map<String, Object> keyInfo : redisKeyInfos(connection, keysToInspect, config)) {
+                    merged.put(string(keyInfo.get("key")), keyInfo);
                 }
             }
         }
@@ -423,6 +428,37 @@ public class RedisCompatibilityService {
             entries.add(orderedMap("id", string(entry.get(0)), "fields", fields));
         }
         return entries;
+    }
+
+    private List<Map<String, Object>> redisKeyInfos(RedisConnection connection, List<String> keys, RedisConfig config) {
+        if (keys.isEmpty()) {
+            return List.of();
+        }
+        List<List<String>> commands = new ArrayList<>(keys.size() * 2);
+        for (String key : keys) {
+            commands.add(List.of("TYPE", key));
+            commands.add(List.of("TTL", key));
+        }
+        List<Object> metadata = connection.executePipeline(commands);
+        List<Map<String, Object>> result = new ArrayList<>();
+        for (int index = 0; index < keys.size(); index++) {
+            String key = keys.get(index);
+            RedisKeyMetadata keyMetadata = keyMetadata(connection, key, metadata.get(index * 2), metadata.get(index * 2 + 1));
+            if (!isGone(keyMetadata.type(), keyMetadata.ttl())) {
+                result.add(orderedMap("key", key, "type", keyMetadata.type(), "ttl", keyMetadata.ttl(), "node", config.address()));
+            }
+        }
+        return result;
+    }
+
+    private RedisKeyMetadata keyMetadata(RedisConnection connection, String key, Object typeRaw, Object ttlRaw) {
+        if (typeRaw instanceof RedisResponseError || ttlRaw instanceof RedisResponseError) {
+            return new RedisKeyMetadata(
+                    string(connection.execute("TYPE", key)),
+                    longValue(connection.execute("TTL", key))
+            );
+        }
+        return new RedisKeyMetadata(string(typeRaw), longValue(ttlRaw));
     }
 
     private RedisConnection open(Map<String, Object> input) {
@@ -843,6 +879,11 @@ public class RedisCompatibilityService {
         return parsed > 0 ? parsed : fallback;
     }
 
+    private static int scanCountPerNode(int requestedCount, int nodeCount) {
+        int nodes = Math.max(1, nodeCount);
+        return Math.max(1, (requestedCount + nodes - 1) / nodes);
+    }
+
     private static int intValue(Object value, int fallback) {
         if (value instanceof Number number) {
             return number.intValue();
@@ -1069,9 +1110,7 @@ public class RedisCompatibilityService {
         }
 
         private Object execute(List<String> args, int redirects) {
-            if (args == null || args.isEmpty()) {
-                throw new RedisOperationException(messages.message("redis.commandRequired"));
-            }
+            validateCommand(args);
             try {
                 writeCommand(args);
                 return readResponse();
@@ -1086,6 +1125,32 @@ public class RedisCompatibilityService {
             }
         }
 
+        private List<Object> executePipeline(List<List<String>> commands) {
+            if (commands == null || commands.isEmpty()) {
+                return List.of();
+            }
+            try {
+                for (List<String> command : commands) {
+                    validateCommand(command);
+                    writeCommand(command, false);
+                }
+                output.flush();
+                List<Object> result = new ArrayList<>(commands.size());
+                for (int index = 0; index < commands.size(); index++) {
+                    result.add(readResponse(true));
+                }
+                return result;
+            } catch (IOException error) {
+                throw new RedisOperationException(messages.message("redis.commandFailed", "message", error.getMessage()), error);
+            }
+        }
+
+        private void validateCommand(List<String> args) {
+            if (args == null || args.isEmpty()) {
+                throw new RedisOperationException(messages.message("redis.commandRequired"));
+            }
+        }
+
         private Object executeRedirect(List<String> args, RedisClusterRedirect redirect, int redirects) {
             try (RedisConnection connection = new RedisConnection(config.withEndpoint(redirect.host(), redirect.port()), messages)) {
                 if (redirect.ask()) {
@@ -1096,6 +1161,10 @@ public class RedisCompatibilityService {
         }
 
         private void writeCommand(List<String> args) throws IOException {
+            writeCommand(args, true);
+        }
+
+        private void writeCommand(List<String> args, boolean flush) throws IOException {
             output.write(('*' + String.valueOf(args.size()) + "\r\n").getBytes(StandardCharsets.UTF_8));
             for (String arg : args) {
                 byte[] bytes = (arg == null ? "" : arg).getBytes(StandardCharsets.UTF_8);
@@ -1103,20 +1172,32 @@ public class RedisCompatibilityService {
                 output.write(bytes);
                 output.write("\r\n".getBytes(StandardCharsets.UTF_8));
             }
-            output.flush();
+            if (flush) {
+                output.flush();
+            }
         }
 
         private Object readResponse() throws IOException {
+            return readResponse(false);
+        }
+
+        private Object readResponse(boolean captureErrors) throws IOException {
             int prefix = input.read();
             if (prefix == -1) {
                 throw new EOFException("Redis closed the connection");
             }
             return switch (prefix) {
                 case '+' -> readLine();
-                case '-' -> throw new RedisOperationException(readLine());
+                case '-' -> {
+                    String message = readLine();
+                    if (captureErrors) {
+                        yield new RedisResponseError(message);
+                    }
+                    throw new RedisOperationException(message);
+                }
                 case ':' -> Long.parseLong(readLine());
                 case '$' -> readBulkString();
-                case '*' -> readArray();
+                case '*' -> readArray(captureErrors);
                 default -> throw new RedisOperationException("Unsupported RESP prefix: " + (char) prefix);
             };
         }
@@ -1134,14 +1215,14 @@ public class RedisCompatibilityService {
             return new String(bytes, StandardCharsets.UTF_8);
         }
 
-        private List<Object> readArray() throws IOException {
+        private List<Object> readArray(boolean captureErrors) throws IOException {
             int length = Integer.parseInt(readLine());
             if (length < 0) {
                 return List.of();
             }
             List<Object> values = new ArrayList<>(length);
             for (int index = 0; index < length; index++) {
-                values.add(readResponse());
+                values.add(readResponse(captureErrors));
             }
             return values;
         }
@@ -1187,6 +1268,12 @@ public class RedisCompatibilityService {
     }
 
     private record RedisEndpoint(String host, int port) {
+    }
+
+    private record RedisKeyMetadata(String type, long ttl) {
+    }
+
+    private record RedisResponseError(String message) {
     }
 
     private record RedisConfig(String host, int port, String username, String password, int database, boolean useSsl, int timeoutSeconds, boolean explicitUriUsername, ConnectionConfigDto networkConfig) {
