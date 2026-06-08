@@ -16,6 +16,7 @@ import { shouldHandleMacNativeFullscreenShortcut, shouldSuppressMacNativeEscapeE
 import { shouldEnableMacWindowDiagnostics } from './utils/macWindowDiagnostics';
 import { resolveAboutDisplayVersion } from './utils/appVersionDisplay';
 import { buildOverlayWorkbenchTheme } from './utils/overlayWorkbenchTheme';
+import type { ToolsCenterItem } from './components/ToolsCenterModal';
 import { getConnectionWorkbenchState } from './utils/startupReadiness';
 import {
   detectConnectionImportKind,
@@ -61,6 +62,7 @@ const AISettingsModal = lazy(() => import('./components/AISettingsModal'));
 const Sidebar = lazy(() => import('./components/Sidebar'));
 const TabManager = lazy(() => import('./components/TabManager'));
 const TaskCenterModal = lazy(() => import('./components/TaskCenterModal'));
+const ToolsCenterModal = lazy(() => import('./components/ToolsCenterModal'));
 
 const { Sider, Content } = Layout;
 const MIN_UI_SCALE = 0.8;
@@ -927,12 +929,6 @@ function App() {
       fontSize: 15,
       fontWeight: 600,
   }), [overlayTheme]);
-  const utilityActionHintStyle = useMemo(() => ({
-      fontSize: 12,
-      color: overlayTheme.mutedText,
-      fontWeight: 400,
-      marginTop: 2,
-  }), [overlayTheme]);
 
   const sidebarHorizontalPadding = isSidebarCompact ? 8 : 10;
 
@@ -1280,7 +1276,7 @@ function App() {
       }
   }, [handleConnectionImportRaw, t]);
 
-  const handleExportConnections = async () => {
+  const handleExportConnections = useCallback(async () => {
       if (connections.length === 0) {
           void message.warning(t('connection.package.noConnections'));
           return;
@@ -1295,7 +1291,7 @@ function App() {
           error: '',
           confirmLoading: false,
       });
-  };
+  }, [connections.length, t]);
 
   const handleConfirmConnectionPackageDialog = async () => {
       const password = normalizeConnectionPackagePassword(connectionPackageDialog.password);
@@ -1423,6 +1419,80 @@ function App() {
 
       return SIDEBAR_UTILITY_ITEM_KEYS.map((key) => itemMap[key]);
   }, [runningJobCount, t]);
+  const toolsCenterItems = useMemo<ToolsCenterItem[]>(() => [
+      {
+          key: 'import',
+          icon: <UploadOutlined />,
+          title: t('tools.import.title'),
+          description: t('tools.import.description'),
+          onClick: () => {
+              setIsToolsModalOpen(false);
+              void handleImportConnections();
+          },
+      },
+      {
+          key: 'export',
+          icon: <DownloadOutlined />,
+          title: t('tools.export.title'),
+          description: t('tools.export.description'),
+          onClick: () => {
+              setIsToolsModalOpen(false);
+              void handleExportConnections();
+          },
+      },
+      {
+          key: 'sync',
+          icon: <UploadOutlined rotate={90} />,
+          title: t('tools.sync.title'),
+          description: t('tools.sync.description'),
+          onClick: () => {
+              setSyncModalDomain('data');
+              setIsToolsModalOpen(false);
+              setIsSyncModalOpen(true);
+          },
+      },
+      {
+          key: 'schema-sync',
+          icon: <TableOutlined />,
+          title: t('tools.schemaSync.title'),
+          description: t('tools.schemaSync.description'),
+          onClick: () => {
+              setSyncModalDomain('schema');
+              setIsToolsModalOpen(false);
+              setIsSyncModalOpen(true);
+          },
+      },
+      {
+          key: 'drivers',
+          icon: <SettingOutlined />,
+          title: t('tools.drivers.title'),
+          description: t('tools.drivers.description'),
+          onClick: () => {
+              setIsToolsModalOpen(false);
+              setIsDriverModalOpen(true);
+          },
+      },
+      {
+          key: 'data-root',
+          icon: <HddOutlined />,
+          title: t('tools.dataRoot.title'),
+          description: t('tools.dataRoot.description'),
+          onClick: () => {
+              setIsToolsModalOpen(false);
+              setIsDataRootModalOpen(true);
+          },
+      },
+      {
+          key: 'shortcut-settings',
+          icon: <LinkOutlined />,
+          title: t('tools.shortcuts.title'),
+          description: t('tools.shortcuts.description'),
+          onClick: () => {
+              setIsToolsModalOpen(false);
+              setIsShortcutModalOpen(true);
+          },
+      },
+  ], [handleExportConnections, handleImportConnections, t]);
   const renderAIEdgeHandle = () => (
       <Tooltip title={t('ai.assistant')}>
           <Button
@@ -2256,101 +2326,19 @@ function App() {
               />
             </Suspense>
           )}
-          <Modal
-            title={renderUtilityModalTitle(<ToolOutlined />, t('tools.center.title'), t('tools.center.description'))}
-            open={isToolsModalOpen}
-            onCancel={() => setIsToolsModalOpen(false)}
-            footer={null}
-            width={560}
-            styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10 } }}
-          >
-            <div style={{ display: 'grid', gap: 12, padding: '12px 0' }}>
-              {[
-                {
-                  key: 'import',
-                  icon: <UploadOutlined />,
-                  title: t('tools.import.title'),
-                  description: t('tools.import.description'),
-                  onClick: () => {
-                    setIsToolsModalOpen(false);
-                    void handleImportConnections();
-                  },
-                },
-                {
-                  key: 'export',
-                  icon: <DownloadOutlined />,
-                  title: t('tools.export.title'),
-                  description: t('tools.export.description'),
-                  onClick: () => {
-                    setIsToolsModalOpen(false);
-                    void handleExportConnections();
-                  },
-                },
-                {
-                  key: 'sync',
-                  icon: <UploadOutlined rotate={90} />,
-                  title: t('tools.sync.title'),
-                  description: t('tools.sync.description'),
-                  onClick: () => {
-                    setSyncModalDomain('data');
-                    setIsToolsModalOpen(false);
-                    setIsSyncModalOpen(true);
-                  },
-                },
-                {
-                  key: 'schema-sync',
-                  icon: <TableOutlined />,
-                  title: t('tools.schemaSync.title'),
-                  description: t('tools.schemaSync.description'),
-                  onClick: () => {
-                    setSyncModalDomain('schema');
-                    setIsToolsModalOpen(false);
-                    setIsSyncModalOpen(true);
-                  },
-                },
-                {
-                  key: 'drivers',
-                  icon: <SettingOutlined />,
-                  title: t('tools.drivers.title'),
-                  description: t('tools.drivers.description'),
-                  onClick: () => {
-                    setIsToolsModalOpen(false);
-                    setIsDriverModalOpen(true);
-                  },
-                },
-                {
-                  key: 'data-root',
-                  icon: <HddOutlined />,
-                  title: t('tools.dataRoot.title'),
-                  description: t('tools.dataRoot.description'),
-                  onClick: () => {
-                    setIsToolsModalOpen(false);
-                    setIsDataRootModalOpen(true);
-                  },
-                },
-                {
-                  key: 'shortcut-settings',
-                  icon: <LinkOutlined />,
-                  title: t('tools.shortcuts.title'),
-                  description: t('tools.shortcuts.description'),
-                  onClick: () => {
-                    setIsToolsModalOpen(false);
-                    setIsShortcutModalOpen(true);
-                  },
-                },
-              ].map((item) => (
-                <Button key={item.key} type="text" style={utilityActionCardStyle} onClick={item.onClick}>
-                  <span style={{ width: 36, height: 36, borderRadius: 12, display: 'grid', placeItems: 'center', background: overlayTheme.iconBg, color: overlayTheme.iconColor, flexShrink: 0 }}>
-                    {item.icon}
-                  </span>
-                  <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', minWidth: 0 }}>
-                    <span>{item.title}</span>
-                    <span style={utilityActionHintStyle}>{item.description}</span>
-                  </span>
-                </Button>
-              ))}
-            </div>
-          </Modal>
+          {isToolsModalOpen && (
+            <Suspense fallback={null}>
+              <ToolsCenterModal
+                open={isToolsModalOpen}
+                onClose={() => setIsToolsModalOpen(false)}
+                icon={<ToolOutlined />}
+                title={t('tools.center.title')}
+                description={t('tools.center.description')}
+                overlayTheme={overlayTheme}
+                tools={toolsCenterItems}
+              />
+            </Suspense>
+          )}
           <Modal
             title={renderUtilityModalTitle(<SettingOutlined />, t('settings.center.title'), t('settings.center.description'))}
             open={isSettingsModalOpen}
