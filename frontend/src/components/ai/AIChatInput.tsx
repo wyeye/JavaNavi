@@ -405,7 +405,7 @@ export const AIChatInput: React.FC<AIChatInputProps> = ({
                             }
                         }}
                         onKeyDown={handleKeyDown}
-                        placeholder={t('ai.input.placeholder', { shortcut: getAIChatSendShortcutLabel(sendShortcutBinding) })}
+                        placeholder={t('ai.input.placeholder', { shortcut: getAIChatSendShortcutLabel(sendShortcutBinding, language) })}
                         variant="borderless"
                         autoSize={{ minRows: 1, maxRows: 8 }}
                         style={{ color: textColor, width: '100%', padding: 0, resize: 'none' }}

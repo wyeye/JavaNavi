@@ -12,13 +12,13 @@ class MojibakeTextNormalizerTest {
         String mojibake = new String("上传-1.0".getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1);
 
         assertThat(MojibakeTextNormalizer.normalize(mojibake))
-                .isEqualTo("上传-1.0");
+                .isEqualTo("upload-1.0");
     }
 
     @Test
     void repairsKnownLossyDefaultUploadVersionMojibake() {
         assertThat(MojibakeTextNormalizer.normalize("ä¸�ä¼ -1.0"))
-                .isEqualTo("上传-1.0");
+                .isEqualTo("upload-1.0");
     }
 
     @Test

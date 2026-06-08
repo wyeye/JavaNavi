@@ -326,9 +326,7 @@ export const translateCompatibilityFallback = (
   if (normalized.includes('Maven 源')) return normalized.replace(/Maven 源/g, 'Maven repository');
   if (normalized.includes('JDBC Jar')) return normalized.replace(/JDBC Jar/g, 'JDBC Jar');
   if (normalized.includes('Jar')) return normalized.replace(/Jar/g, 'Jar');
-  if (kind === 'jsx') return MESSAGE_FALLBACKS.jsx;
-  if (kind === 'message') return MESSAGE_FALLBACKS.message;
-  return MESSAGE_FALLBACKS.text;
+  return translate('en', MESSAGE_FALLBACK_KEYS[kind]);
 };
 
 export const containsCjk = (value: unknown): boolean => /[\u4e00-\u9fff]/.test(String(value ?? ''));
@@ -388,11 +386,11 @@ export const getRuntimeLanguage = (): AppLanguage => {
   return DEFAULT_LANGUAGE;
 };
 
-const MESSAGE_FALLBACKS = {
-  text: 'This text is available in Chinese only in the current compatibility slice.',
-  jsx: '[Chinese-only UI text]',
-  message: 'This message is available in Chinese only.',
-} as const;
+const MESSAGE_FALLBACK_KEYS: Record<'text' | 'jsx' | 'message', I18nKey> = {
+  text: 'generic.frontend.defaultChineseNotice',
+  jsx: 'generic.frontend.chineseOnlyJsx',
+  message: 'generic.frontend.chineseOnlyMessage',
+};
 
 export const installCompatibilityI18nFallback = (): void => {
   if (typeof window === 'undefined') return;

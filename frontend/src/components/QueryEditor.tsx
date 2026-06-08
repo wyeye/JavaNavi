@@ -511,7 +511,7 @@ const QueryEditor: React.FC<{ tab: TabData; isActive?: boolean }> = ({ tab, isAc
                   String(activeConnection?.config?.driver || ''),
               );
               const dialectKeywords = resolveSqlKeywords(activeDialect);
-              const dialectFunctions = resolveSqlFunctions(activeDialect);
+              const dialectFunctions = resolveSqlFunctions(activeDialect, useStore.getState().language);
 
               const stripQuotes = (ident: string) => {
                   let raw = (ident || '').trim();

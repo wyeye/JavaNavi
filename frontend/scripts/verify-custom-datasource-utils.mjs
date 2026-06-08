@@ -34,11 +34,15 @@ await copyFile(path.join(projectRoot, 'src/i18n/locales/en-US.json'), path.join(
 await copyFile(path.join(projectRoot, 'src/i18n/locales/zh-CN.json'), path.join(tempDir, 'locales/zh-CN.json'));
 try {
   await transpileToModule('src/i18n/index.ts', 'i18n.mjs');
-  const customDataSources = await transpileToModule('src/utils/customDataSources.ts', 'customDataSources.mjs');
+  const customDataSources = await transpileToModule('src/utils/customDataSources.ts', 'customDataSources.mjs', {
+    transformOutput: (output) => output.replace("from '../i18n';", "from './i18n.mjs';"),
+  });
   const presentation = await transpileToModule('src/utils/connectionModalPresentation.ts', 'connectionModalPresentation.mjs', {
     transformOutput: (output) => output.replace("from '../i18n';", "from './i18n.mjs';"),
   });
-  const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs');
+  const sslMode = await transpileToModule('src/utils/sslMode.ts', 'sslMode.mjs', {
+    transformOutput: (output) => output.replace("from '../i18n';", "from './i18n.mjs';"),
+  });
   const dataGridValue = await transpileToModule('src/components/dataGrid/dataGridValue.ts', 'dataGridValue.mjs');
   const dataSyncRequest = await transpileToModule('src/components/dataSyncRequest.ts', 'dataSyncRequest.mjs');
   const schemaSyncRequest = await transpileToModule('src/components/schemaSyncRequest.ts', 'schemaSyncRequest.mjs');
@@ -103,13 +107,13 @@ try {
   const latin1DecodedUploadVersion = Buffer.from('上传-1.0', 'utf8').toString('latin1');
   assert.equal(
     customDataSources.normalizePossiblyMojibakeText(latin1DecodedUploadVersion),
-    '上传-1.0',
-    'UTF-8 bytes decoded as Latin-1 should be repaired',
+    'upload-1.0',
+    'UTF-8 bytes decoded as Latin-1 should be mapped to the stable upload fallback',
   );
   assert.equal(
     customDataSources.normalizePossiblyMojibakeText('ä¸�ä¼ -1.0'),
-    '上传-1.0',
-    'known lossy default upload version should be mapped to the intended label',
+    'upload-1.0',
+    'known lossy default upload version should be mapped to the stable upload fallback',
   );
   assert.equal(
     customDataSources.normalizePossiblyMojibakeText('1.2.3'),
@@ -127,8 +131,8 @@ try {
     driverType: 'example-driver',
     version: latin1DecodedUploadVersion,
   });
-  assert.equal(source.version, '上传-1.0');
-  assert.equal(source.driverVersion, '上传-1.0');
+  assert.equal(source.version, 'upload-1.0');
+  assert.equal(source.driverVersion, 'upload-1.0');
 
   assert.equal(sslMode.normalizeSSLMode(undefined), 'required');
   assert.equal(sslMode.normalizeSSLMode('preferred'), 'preferred');
@@ -528,7 +532,7 @@ try {
   );
   assert.equal(mergedAuthoritative.length, 1);
   assert.equal(mergedAuthoritative[0].name, '本地缓存源');
-  assert.equal(mergedAuthoritative[0].version, '上传-1.0');
+  assert.equal(mergedAuthoritative[0].version, 'upload-1.0');
   assert.equal(mergedAuthoritative[0].driverClassName, 'com.example.Driver');
   assert.equal(mergedAuthoritative[0].runtimeStatus.connectionTested, true);
   assert.equal(mergedAuthoritative[0].runtimeStatus.definitionUsable, true);

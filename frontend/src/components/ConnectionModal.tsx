@@ -1108,6 +1108,7 @@ const ConnectionModal: React.FC<{
         dsnInput: value,
         hasStoredSecret: initialValues?.hasOpaqueDSN,
         clearStoredSecret: clearSecrets.opaqueDSN,
+        language,
       });
       return validationMessage
         ? Promise.reject(new Error(validationMessage))
@@ -4001,17 +4002,17 @@ const ConnectionModal: React.FC<{
                               {
                                 value: "preferred",
                                 label: t("connectionModal.ssl.mode.preferred"),
-                                description: sslModeRiskDescription(LEGACY_COMPAT_SSL_MODE),
+                                description: sslModeRiskDescription(LEGACY_COMPAT_SSL_MODE, language),
                               },
                               {
                                 value: "required",
                                 label: t("connectionModal.ssl.mode.required"),
-                                description: sslModeRiskDescription("required"),
+                                description: sslModeRiskDescription("required", language),
                               },
                               {
                                 value: "skip-verify",
                                 label: t("connectionModal.ssl.mode.skipVerify"),
-                                description: sslModeRiskDescription("skip-verify"),
+                                description: sslModeRiskDescription("skip-verify", language),
                               },
                             ],
                           })}

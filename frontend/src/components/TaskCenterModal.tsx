@@ -58,67 +58,69 @@ const taskJobTypeKeys: Record<string, I18nKey> = {
   'copy-tables': 'taskCenter.jobType.copyTables',
 };
 
-const exactStageKeys: Record<string, I18nKey> = {
-  Preparing: 'taskCenter.stage.preparing',
-  '准备中': 'taskCenter.stage.preparing',
-  'Executing SQL file': 'taskCenter.stage.executingSqlFile',
-  '正在执行 SQL 文件': 'taskCenter.stage.executingSqlFile',
-  'Preparing SQL file execution': 'taskCenter.stage.preparingSqlFileExecution',
-  '正在准备 SQL 文件执行': 'taskCenter.stage.preparingSqlFileExecution',
-  'SQL file executed': 'taskCenter.stage.sqlFileExecuted',
-  'SQL 文件执行完成': 'taskCenter.stage.sqlFileExecuted',
-  'SQL file execution failed': 'taskCenter.stage.sqlFileExecutionFailed',
-  'SQL 文件执行失败': 'taskCenter.stage.sqlFileExecutionFailed',
-  'Task failed.': 'taskCenter.stage.taskFailed',
-  '任务失败。': 'taskCenter.stage.taskFailed',
-  'Cancel requested': 'taskCenter.stage.cancelRequested',
-  '已请求取消': 'taskCenter.stage.cancelRequested',
-  'Task cancelled.': 'taskCenter.stage.taskCancelled',
-  '任务已取消。': 'taskCenter.stage.taskCancelled',
-  'Export completed': 'taskCenter.stage.exportCompleted',
-  '导出完成': 'taskCenter.stage.exportCompleted',
-  'Preparing query export': 'taskCenter.stage.preparingQueryExport',
-  '正在准备查询导出': 'taskCenter.stage.preparingQueryExport',
-  'Running query': 'taskCenter.stage.runningQuery',
-  '正在执行查询': 'taskCenter.stage.runningQuery',
-  'Writing file': 'taskCenter.stage.writingFile',
-  '正在写入文件': 'taskCenter.stage.writingFile',
-  'Preparing table export': 'taskCenter.stage.preparingTableExport',
-  '正在准备表导出': 'taskCenter.stage.preparingTableExport',
-  'Preparing data export': 'taskCenter.stage.preparingDataExport',
-  '正在准备数据导出': 'taskCenter.stage.preparingDataExport',
-  'Preparing SQL export': 'taskCenter.stage.preparingSqlExport',
-  '正在准备 SQL 导出': 'taskCenter.stage.preparingSqlExport',
-  'Preparing table backup': 'taskCenter.stage.preparingTableBackup',
-  '正在准备表备份': 'taskCenter.stage.preparingTableBackup',
-  'Preparing table structure copy': 'taskCenter.stage.preparingTableStructureCopy',
-  '正在准备复制表结构': 'taskCenter.stage.preparingTableStructureCopy',
-  'Exporting table schema and data': 'taskCenter.stage.exportingTableSchemaAndData',
-  '正在导出表结构和数据': 'taskCenter.stage.exportingTableSchemaAndData',
-  'Exporting table schema': 'taskCenter.stage.exportingTableSchema',
-  '正在导出表结构': 'taskCenter.stage.exportingTableSchema',
-  'Table exported': 'taskCenter.stage.tableExported',
-  '表已导出': 'taskCenter.stage.tableExported',
-  'Table copied': 'taskCenter.stage.tableCopied',
-  '表已复制': 'taskCenter.stage.tableCopied',
+const exactStageAliasKeys: I18nKey[] = [
+  'taskCenter.stage.preparing',
+  'taskCenter.stage.executingSqlFile',
+  'taskCenter.stage.preparingSqlFileExecution',
+  'taskCenter.stage.sqlFileExecuted',
+  'taskCenter.stage.sqlFileExecutionFailed',
+  'taskCenter.stage.taskFailed',
+  'taskCenter.stage.cancelRequested',
+  'taskCenter.stage.taskCancelled',
+  'taskCenter.stage.exportCompleted',
+  'taskCenter.stage.preparingQueryExport',
+  'taskCenter.stage.runningQuery',
+  'taskCenter.stage.writingFile',
+  'taskCenter.stage.preparingTableExport',
+  'taskCenter.stage.preparingDataExport',
+  'taskCenter.stage.preparingSqlExport',
+  'taskCenter.stage.preparingTableBackup',
+  'taskCenter.stage.preparingTableStructureCopy',
+  'taskCenter.stage.exportingTableSchemaAndData',
+  'taskCenter.stage.exportingTableSchema',
+  'taskCenter.stage.tableExported',
+  'taskCenter.stage.tableCopied',
+];
+
+const exactErrorAliasKeys: I18nKey[] = [
+  'taskCenter.error.appInterrupted',
+  'taskCenter.error.sqlPathOrContentRequired',
+  'taskCenter.error.sqlFileMissing',
+  'taskCenter.error.sqlFileOnly',
+  'taskCenter.error.sqlFileReadFailed',
+  'taskCenter.error.sqlFileExecutionFailed',
+  'taskCenter.error.taskCancelled',
+];
+
+const localizedAliasMap = (keys: I18nKey[]): Record<string, I18nKey> => {
+  const aliases: Record<string, I18nKey> = {};
+  keys.forEach((key) => {
+    aliases[translate('en', key)] = key;
+    aliases[translate('zh', key)] = key;
+  });
+  return aliases;
 };
 
-const exactErrorKeys: Record<string, I18nKey> = {
-  'Application exited before the task finished.': 'taskCenter.error.appInterrupted',
-  '应用退出，任务未完成。': 'taskCenter.error.appInterrupted',
-  'SQL file path or SQL content is required.': 'taskCenter.error.sqlPathOrContentRequired',
-  'SQL 文件路径或 SQL 内容不能为空。': 'taskCenter.error.sqlPathOrContentRequired',
-  'Selected SQL file does not exist.': 'taskCenter.error.sqlFileMissing',
-  '所选 SQL 文件不存在。': 'taskCenter.error.sqlFileMissing',
-  'Only SQL files can be executed through this action.': 'taskCenter.error.sqlFileOnly',
-  '此操作仅支持执行 SQL 文件。': 'taskCenter.error.sqlFileOnly',
-  'Unable to read selected SQL file.': 'taskCenter.error.sqlFileReadFailed',
-  '无法读取所选 SQL 文件。': 'taskCenter.error.sqlFileReadFailed',
-  'SQL file execution failed.': 'taskCenter.error.sqlFileExecutionFailed',
-  'SQL 文件执行失败。': 'taskCenter.error.sqlFileExecutionFailed',
-  'Task cancelled.': 'taskCenter.error.taskCancelled',
-  '任务已取消。': 'taskCenter.error.taskCancelled',
+const exactStageKeys: Record<string, I18nKey> = localizedAliasMap(exactStageAliasKeys);
+const exactErrorKeys: Record<string, I18nKey> = localizedAliasMap(exactErrorAliasKeys);
+
+const escapeRegExp = (value: string): string => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+const localizedProgressMatch = (value: string, key: I18nKey): RegExpMatchArray | null => {
+  for (const language of ['en', 'zh'] as const) {
+    const template = translate(language, key);
+    const pattern = escapeRegExp(template)
+      .replace('\\{current\\}', String.raw`(\d+)`)
+      .replace('\\{total\\}', String.raw`(\d+)`);
+    const match = value.match(new RegExp(`^${pattern}$`, language === 'en' ? 'i' : undefined));
+    if (match) return match;
+  }
+  return null;
 };
+
+const matchesLocalizedAlias = (value: string, key: I18nKey): boolean => (
+  value === translate('en', key) || value === translate('zh', key)
+);
 
 const afterPrefix = (value: string, prefix: RegExp): string => value.replace(prefix, '').trim();
 
@@ -176,14 +178,12 @@ const resolveTaskStage = (stage: string, t: TaskTranslator): string => {
   const normalized = String(stage || '').trim();
   if (!normalized) return '-';
 
-  const executing = normalized.match(/^Executing SQL statement\s+(\d+)\s*\/\s*(\d+)$/i)
-    || normalized.match(/^正在执行 SQL 语句\s+(\d+)\s*\/\s*(\d+)$/);
+  const executing = localizedProgressMatch(normalized, 'taskCenter.stage.executingSqlStatement');
   if (executing) {
     return t('taskCenter.stage.executingSqlStatement', { current: executing[1], total: executing[2] });
   }
 
-  const executed = normalized.match(/^Executed SQL statement\s+(\d+)\s*\/\s*(\d+)$/i)
-    || normalized.match(/^已执行 SQL 语句\s+(\d+)\s*\/\s*(\d+)$/);
+  const executed = localizedProgressMatch(normalized, 'taskCenter.stage.executedSqlStatement');
   if (executed) {
     return t('taskCenter.stage.executedSqlStatement', { current: executed[1], total: executed[2] });
   }
@@ -194,7 +194,7 @@ const resolveTaskStage = (stage: string, t: TaskTranslator): string => {
 
 const resolveJobStage = (job: AppJob, t: TaskTranslator): string => {
   const normalized = String(job.stage || '').trim();
-  if (job.status === 'failed' && (normalized === 'SQL file executed' || normalized === 'SQL 文件执行完成')) {
+  if (job.status === 'failed' && matchesLocalizedAlias(normalized, 'taskCenter.stage.sqlFileExecuted')) {
     return t('taskCenter.stage.sqlFileExecutionFailed');
   }
   if (job.status === 'failed' && !normalized) {

@@ -212,7 +212,7 @@ export const buildDataGridCssText = ({
                 .${gridId} .ant-table-thead > tr > th:last-child {
                     border-inline-end-color: transparent !important;
                 }
-                /* 选择列对齐：header TH 无 class（Ant Design 虚拟模式），需用 :first-child 匹配 */
+                /* Selection-column alignment: header TH has no class in Ant Design virtual mode, so match :first-child. */
                 .${gridId} .ant-table-header th:first-child,
                 .${gridId} .ant-table-thead > tr > th:first-child {
                     text-align: center !important;
@@ -226,8 +226,8 @@ export const buildDataGridCssText = ({
                     padding-inline-start: 0 !important;
                     padding-inline-end: 0 !important;
                 }
-                /* 窄表场景下 rc-table 会按视口等比放大选择列宽度，不能再额外锁死 header 宽度；
-                   这里只统一 header/body 的内边距与对齐方式，避免第一列把后续数据列整体顶偏。 */
+                /* In narrow-table layouts, rc-table scales the selection column by viewport width; do not lock header width again.
+                   Keep header/body padding and alignment consistent so the first column does not push data columns aside. */
                 .${gridId} .ant-table-tbody > tr > td.ant-table-selection-column,
                 .${gridId} .ant-table-tbody .ant-table-row > .ant-table-cell.ant-table-selection-column,
                 .${gridId} .ant-table-tbody-virtual-holder .ant-table-row > .ant-table-cell.ant-table-selection-column {
@@ -359,8 +359,8 @@ export const buildDataGridCssText = ({
                     background: ${darkMode ? 'rgba(246, 196, 83, 0.42)' : 'rgba(255, 193, 7, 0.42)'};
                     color: inherit;
                 }
-                /* 虚拟表列对齐：阻止 header <table> 通过 min-width:100% 拉伸到视口，
-                   使 header 列宽与虚拟 body 单元格宽度精确一致 */
+                /* Virtual table column alignment: prevent header <table> from stretching to viewport via min-width:100%.
+                   This keeps header column widths aligned with virtual body cell widths. */
                 .${gridId} .ant-table-header > table {
                     min-width: 0 !important;
                 }

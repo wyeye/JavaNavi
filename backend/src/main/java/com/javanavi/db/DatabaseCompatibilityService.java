@@ -504,7 +504,7 @@ public class DatabaseCompatibilityService {
 
     public Map<String, Object> createTableLike(ConnectionConfigDto sourceConfig, String sourceDatabase, ConnectionConfigDto targetConfig, String targetDatabase, String tableName) {
         if (isMongo(sourceConfig) || isMongo(targetConfig)) {
-            throw new IllegalArgumentException("Data sync table creation only supports relational JDBC databases.");
+            throw new LocalizedException("database.syncCreateRelationalOnly");
         }
         return withRedactedSqlErrors(() -> withDatabaseConnection(targetConfig, targetDatabase, connection ->
                 createTableLikeOnConnection(connection, sourceConfig, sourceDatabase, targetConfig, targetDatabase, tableName)));
@@ -512,7 +512,7 @@ public class DatabaseCompatibilityService {
 
     public Map<String, Object> addMissingColumns(ConnectionConfigDto sourceConfig, String sourceDatabase, ConnectionConfigDto targetConfig, String targetDatabase, String tableName) {
         if (isMongo(sourceConfig) || isMongo(targetConfig)) {
-            throw new IllegalArgumentException("Data sync column migration only supports relational JDBC databases.");
+            throw new LocalizedException("database.syncColumnRelationalOnly");
         }
         return withRedactedSqlErrors(() -> withDatabaseConnection(targetConfig, targetDatabase, connection ->
                 addMissingColumnsOnConnection(connection, sourceConfig, sourceDatabase, targetConfig, targetDatabase, tableName)));
@@ -520,7 +520,7 @@ public class DatabaseCompatibilityService {
 
     public Map<String, Object> createCompatibleIndexes(ConnectionConfigDto sourceConfig, String sourceDatabase, ConnectionConfigDto targetConfig, String targetDatabase, String tableName) {
         if (isMongo(sourceConfig) || isMongo(targetConfig)) {
-            throw new IllegalArgumentException("Data sync index migration only supports relational JDBC databases.");
+            throw new LocalizedException("database.syncIndexRelationalOnly");
         }
         return withRedactedSqlErrors(() -> withDatabaseConnection(targetConfig, targetDatabase, connection ->
                 createCompatibleIndexesOnConnection(connection, sourceConfig, sourceDatabase, targetConfig, targetDatabase, tableName)));
@@ -528,7 +528,7 @@ public class DatabaseCompatibilityService {
 
     public ApplyChangesResultDto replaceTableData(ConnectionConfigDto config, String requestedDatabase, String tableName, List<Map<String, Object>> rows) {
         if (isMongo(config)) {
-            throw new IllegalArgumentException("Full overwrite data sync only supports relational JDBC databases.");
+            throw new LocalizedException("database.fullOverwriteRelationalOnly");
         }
         return withRedactedSqlErrors(() -> withDatabaseConnection(config, requestedDatabase, connection ->
                 replaceTableDataOnConnection(connection, config, requestedDatabase, tableName, rows)));
@@ -550,7 +550,7 @@ public class DatabaseCompatibilityService {
         }
         List<ColumnDefinitionDto> sourceColumns = listColumns(sourceConfig, sourceDatabase, tableName);
         if (sourceColumns.isEmpty()) {
-            throw new IllegalArgumentException("Source table has no readable columns: " + tableName);
+            throw new LocalizedException("database.sourceReadableColumnsMissing", "table", tableName);
         }
         String sql = createTableSql(targetDriver, targetRef, sourceColumns);
         try (Statement statement = targetConnection.createStatement()) {
@@ -1131,7 +1131,7 @@ public class DatabaseCompatibilityService {
                     continue;
                 }
                 if (keys.isEmpty()) {
-                    throw new SQLException("Update operation requires key columns.");
+                    throw new SQLException(messages.message("database.updateKeyColumnsRequired"));
                 }
                 String set = assignmentClause(driver, values, ", ");
                 String where = whereClause(driver, keys, " AND ");
@@ -1173,7 +1173,7 @@ public class DatabaseCompatibilityService {
         return changes != null && "all-columns".equalsIgnoreCase(nullToEmpty(changes.locatorStrategy()).trim());
     }
 
-    private static void ensureSingleRowAllColumnsMatch(
+    private void ensureSingleRowAllColumnsMatch(
             Connection connection,
             String tableSql,
             String driver,
@@ -1185,7 +1185,7 @@ public class DatabaseCompatibilityService {
             try (ResultSet rs = statement.executeQuery()) {
                 int matched = rs.next() ? rs.getInt(1) : 0;
                 if (matched != 1) {
-                    throw new SQLException("All-columns row locator matched " + matched + " rows; edit is unsafe.");
+                    throw new SQLException(messages.message("database.allColumnsLocatorUnsafe", "count", matched));
                 }
             }
         }
@@ -1273,7 +1273,7 @@ public class DatabaseCompatibilityService {
                 .distinct()
                 .toList();
         if (names.isEmpty()) {
-            throw new IllegalArgumentException("At least one table is required.");
+            throw new LocalizedException("database.tableRequired");
         }
         String driver = jdbcConnectionFactory.normalizeDriver(config);
         List<String> executed = new ArrayList<>();
@@ -1455,7 +1455,7 @@ public class DatabaseCompatibilityService {
             case "drop-function" -> dropFunctionSql(driver, config, requestedDatabase, objectName);
             case "rename-table" -> renameSql(driver, config, requestedDatabase, objectName, requireText(newName, "newName"), "TABLE");
             case "rename-view" -> renameSql(driver, config, requestedDatabase, objectName, requireText(newName, "newName"), "VIEW");
-            default -> throw new IllegalArgumentException("Unsupported DDL operation: " + operation);
+            default -> throw new LocalizedException("ddl.unsupportedOperationWithOperation", "operation", operation);
         };
     }
 
@@ -1463,16 +1463,16 @@ public class DatabaseCompatibilityService {
         String driver = jdbcConnectionFactory.normalizeDriver(config);
         String target = requireText(targetDatabase, "database");
         if ("sqlite".equals(driver) || "duckdb".equals(driver)) {
-            throw new IllegalArgumentException("File databases do not support create/drop/rename database through the JavaNavi SQL DDL endpoint: " + driver);
+            throw new LocalizedException("database.fileDatabaseDdlUnsupported", "driver", driver);
         }
         if ("rename-database".equals(operation) && "mysql".equals(driver)) {
-            throw new IllegalArgumentException("MySQL/MariaDB-compatible JDBC does not support direct database rename; create a new database and migrate data.");
+            throw new LocalizedException("database.renameUnsupportedMysql");
         }
         if (("drop-database".equals(operation) || "rename-database".equals(operation))
                 && "postgresql".equals(driver)
                 && config != null
                 && target.equalsIgnoreCase(textOrNull(config.database()))) {
-            throw new IllegalArgumentException("Current PostgreSQL connection is using the target database; connect to a different database before this operation.");
+            throw new LocalizedException("database.postgresTargetInUse");
         }
         if ("mysql".equals(driver) && ("create-database".equals(operation) || "drop-database".equals(operation))) {
             return withDatabase(config, null);
@@ -1482,21 +1482,21 @@ public class DatabaseCompatibilityService {
 
     private String renameDatabaseSql(String driver, ConnectionConfigDto config, String oldName, String newName) {
         if (oldName.equalsIgnoreCase(newName)) {
-            throw new IllegalArgumentException("New database name must differ from the old database name.");
+            throw new LocalizedException("database.nameMustDiffer");
         }
         if ("mysql".equals(driver)) {
-            throw new IllegalArgumentException("MySQL/MariaDB-compatible JDBC does not support direct database rename; create a new database and migrate data.");
+            throw new LocalizedException("database.renameUnsupportedMysql");
         }
         if ("postgresql".equals(driver)) {
             if (config != null && oldName.equalsIgnoreCase(textOrNull(config.database()))) {
-                throw new IllegalArgumentException("Current PostgreSQL connection is using the target database; connect to a different database before renaming it.");
+                throw new LocalizedException("database.postgresRenameTargetInUse");
             }
             return "ALTER DATABASE " + quoteIdentifier(driver, oldName) + " RENAME TO " + quoteIdentifier(driver, newName);
         }
         if ("h2".equals(driver) || "demo".equals(driver)) {
             return "ALTER SCHEMA " + quoteIdentifier(driver, oldName) + " RENAME TO " + quoteIdentifier(driver, newName);
         }
-        throw new IllegalArgumentException("Current driver does not support database rename through the JavaNavi compatibility endpoint: " + driver);
+        throw new LocalizedException("database.driverRenameUnsupported", "driver", driver);
     }
 
     private String dropFunctionSql(String driver, ConnectionConfigDto config, String requestedDatabase, String rawFunctionName) {
@@ -1525,12 +1525,12 @@ public class DatabaseCompatibilityService {
             return new FunctionRef(tableRef(config, requestedDatabase, value), "");
         }
         if (!value.endsWith(")")) {
-            throw new IllegalArgumentException("Function signature must end with ')'.");
+            throw new LocalizedException("database.functionSignatureMustEnd");
         }
         String name = requireText(value.substring(0, openParen), "name");
         String arguments = value.substring(openParen + 1, value.length() - 1).trim();
         if (arguments.contains(";") || arguments.contains("--") || arguments.contains("/*") || arguments.contains("*/")) {
-            throw new IllegalArgumentException("Function signature contains unsupported SQL control characters.");
+            throw new LocalizedException("database.functionSignatureControlChars");
         }
         return new FunctionRef(tableRef(config, requestedDatabase, name), arguments);
     }
@@ -2136,7 +2136,7 @@ public class DatabaseCompatibilityService {
     private String postgresCreateTable(Connection connection, TableRef ref) throws SQLException {
         List<PostgresColumn> columns = postgresColumns(connection, ref);
         if (columns.isEmpty()) {
-            throw new IllegalArgumentException("No PostgreSQL metadata columns found for table: " + ref.table());
+            throw new LocalizedException("database.metadataColumnsMissing", "table", ref.table());
         }
 
         List<String> lines = new ArrayList<>();
@@ -2296,7 +2296,7 @@ public class DatabaseCompatibilityService {
         String driver = jdbcConnectionFactory.normalizeDriver(config);
         List<ColumnDefinitionDto> tableColumns = listColumnsOnConnection(connection, config, requestedDatabase, tableName);
         if (tableColumns.isEmpty()) {
-            throw new IllegalArgumentException("No metadata columns found for table: " + tableName);
+            throw new LocalizedException("database.metadataColumnsMissing", "table", tableName);
         }
         List<String> lines = new ArrayList<>();
         List<String> primaryKeys = new ArrayList<>();
@@ -2498,7 +2498,7 @@ public class DatabaseCompatibilityService {
 
     private MongoCompatibilityService requireMongoCompatibilityService() {
         if (mongoCompatibilityService == null) {
-            throw new IllegalArgumentException("MongoDB compatibility service is not available.");
+            throw new LocalizedException("database.mongodbServiceUnavailable");
         }
         return mongoCompatibilityService;
     }
@@ -2523,7 +2523,7 @@ public class DatabaseCompatibilityService {
 
     private DemoDatabaseService requireDemoDatabaseService() {
         if (demoDatabaseService == null) {
-            throw new IllegalArgumentException("Demo/H2 connection is not available in this service context.");
+            throw new LocalizedException("database.demoServiceUnavailable");
         }
         return demoDatabaseService;
     }
@@ -2699,7 +2699,7 @@ public class DatabaseCompatibilityService {
 
     private static String requireText(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException("Schema metadata " + field + " is required.");
+            throw new LocalizedException("database.schemaMetadataFieldRequired", "field", field);
         }
         return value.trim();
     }
@@ -2807,14 +2807,14 @@ public class DatabaseCompatibilityService {
                 .distinct()
                 .toList();
         if (names.isEmpty()) {
-            throw new IllegalArgumentException("At least one table is required.");
+            throw new LocalizedException("database.tableRequired");
         }
         return names;
     }
 
     private static List<TableRenameDto> normalizedTableRenames(List<TableRenameDto> renames) {
         if (renames == null || renames.isEmpty()) {
-            throw new IllegalArgumentException("At least one table rename is required.");
+            throw new LocalizedException("database.tableRenameRequired");
         }
         List<TableRenameDto> pairs = new ArrayList<>();
         Set<String> oldNames = new LinkedHashSet<>();
@@ -2826,12 +2826,12 @@ public class DatabaseCompatibilityService {
             }
             String key = oldName.toLowerCase(Locale.ROOT);
             if (!oldNames.add(key)) {
-                throw new IllegalArgumentException("Duplicate source table in rename request: " + oldName);
+                throw new LocalizedException("database.duplicateSourceTable", "table", oldName);
             }
             pairs.add(new TableRenameDto(oldName, newName));
         }
         if (pairs.isEmpty()) {
-            throw new IllegalArgumentException("At least one changed table rename is required.");
+            throw new LocalizedException("database.changedTableRenameRequired");
         }
         return pairs;
     }
@@ -3224,7 +3224,7 @@ public class DatabaseCompatibilityService {
     private record PostgresConstraint(String name, String definition) {
     }
 
-    private static final class RunningQuery {
+    private final class RunningQuery {
         private final String queryId;
         private final Instant started = Instant.now();
         private final AtomicReference<Statement> statement = new AtomicReference<>();
@@ -3238,7 +3238,7 @@ public class DatabaseCompatibilityService {
             statement.set(nextStatement);
             if (cancelled.get()) {
                 nextStatement.cancel();
-                throw new SQLException("Query cancelled: " + queryId);
+                throw new SQLException(messages.message("query.cancelledWithId", "queryId", queryId));
             }
         }
 
@@ -3257,7 +3257,7 @@ public class DatabaseCompatibilityService {
 
         private void throwIfCancelled() throws SQLException {
             if (cancelled.get()) {
-                throw new SQLException("Query cancelled: " + queryId + " started at " + started);
+                throw new SQLException(messages.message("query.cancelledStarted", "queryId", queryId, "started", started));
             }
         }
     }

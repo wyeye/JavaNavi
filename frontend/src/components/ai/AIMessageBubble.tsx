@@ -722,7 +722,7 @@ export const AIMessageBubble: React.FC<AIMessageBubbleProps> = React.memo(({ msg
                 }}>
                     <div>
                     {isUser 
-                        ? <><UserOutlined /> <span>You</span></>
+                        ? <><UserOutlined /> <span>{t('ai.message.you')}</span></>
                         : <><RobotOutlined style={{ color: overlayTheme.iconColor }} /> <span>JavaNavi AI</span></>}
                     </div>
                     {/* 气泡操作栏 */}

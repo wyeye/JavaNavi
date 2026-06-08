@@ -201,9 +201,6 @@ const SEARCH_SCOPE_OPTIONS: Array<{ value: SearchScope; labelKey: I18nKey }> = [
   { value: 'tag', labelKey: 'sidebar.searchScope.tag' },
 ];
 
-const CANCELLED_MESSAGE = '\u5df2\u53d6\u6d88';
-
-
 const SEARCH_SCOPE_ICON_MAP: Record<SearchScope, React.ReactNode> = {
   smart: <ThunderboltOutlined />,
   object: <TableOutlined />,
@@ -241,7 +238,7 @@ const Sidebar: React.FC<{ onEditConnection?: (conn: SavedConnection) => void }> 
   const t = useMemo(() => (key: I18nKey, params?: I18nParams) => translate(language, key, params), [language]);
   const isCancelledMessage = (value: unknown) => {
       const normalized = String(value ?? '').trim().toLowerCase();
-      return normalized.includes(CANCELLED_MESSAGE) || normalized.includes('cancelled') || normalized.includes('query cancelled');
+      return normalized.includes(translate('zh', 'export.cancelled')) || normalized.includes('cancelled') || normalized.includes('query cancelled');
   };
   const getTableDangerActionText = (action: TableDataDangerActionKind) => (
       action === 'truncate'

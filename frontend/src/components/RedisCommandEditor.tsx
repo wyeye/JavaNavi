@@ -421,7 +421,7 @@ const RedisCommandEditor: React.FC<RedisCommandEditorProps> = ({ connectionId, r
                         <div style={{ color: '#666', textAlign: 'center', marginTop: 40 }}>
                             <div>{t('redisCommand.emptyHint')}</div>
                             <div style={{ fontSize: 12, marginTop: 12 }}>
-                                Tips: <code>{t('redisCommand.tipSelectAnyLine')}</code> {t('redisCommand.tipPress')} <code style={{ color: '#999' }}>Ctrl + Enter</code> {t('redisCommand.tipExecuteSelected')}
+                                {t('redisCommand.tips')} <code>{t('redisCommand.tipSelectAnyLine')}</code> {t('redisCommand.tipPress')} <code style={{ color: '#999' }}>Ctrl + Enter</code> {t('redisCommand.tipExecuteSelected')}
                             </div>
                         </div>
                     ) : (

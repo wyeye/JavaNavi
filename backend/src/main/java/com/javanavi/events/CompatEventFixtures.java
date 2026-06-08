@@ -36,7 +36,7 @@ public class CompatEventFixtures {
     public List<CompatEventDto> fixturesFor(CompatEventReplayRequestDto request) {
         String family = normalizeFamily(request == null ? null : request.family());
         if (!SUPPORTED_FAMILIES.contains(family)) {
-            throw new IllegalArgumentException("Unsupported compatibility event fixture family: " + family);
+            throw new IllegalArgumentException(messages.message("events.invalidFixtureFamily", "family", family));
         }
         String correlationId = textOrDefault(request == null ? null : request.correlationId(), family + "-" + Instant.now().toEpochMilli());
         Map<String, Object> overrides = request == null || request.payload() == null ? Map.of() : request.payload();
@@ -53,13 +53,13 @@ public class CompatEventFixtures {
     private List<CompatEventDto> syncFixtures(String jobId, Map<String, Object> overrides) {
         String table = stringValue(overrides, "table", "demo_connections");
         return List.of(
-                event("sync:log", "sync", jobId, "started", "JavaNavi sync fixture started", map(
+                event("sync:log", "sync", jobId, "started", messages.message("events.fixture.syncStarted"), map(
                         "jobId", jobId,
                         "level", "info",
-                        "message", "JavaNavi sync fixture started",
+                        "message", messages.message("events.fixture.syncStarted"),
                         "ts", Instant.now().toEpochMilli()
                 )),
-                event("sync:progress", "sync", jobId, "running", "Sync fixture progress", map(
+                event("sync:progress", "sync", jobId, "running", messages.message("events.fixture.syncProgress"), map(
                         "jobId", jobId,
                         "percent", 25,
                         "current", 1,
@@ -67,7 +67,7 @@ public class CompatEventFixtures {
                         "table", table,
                         "stage", messages.message("events.readSource")
                 )),
-                event("sync:progress", "sync", jobId, "running", "Sync fixture progress", map(
+                event("sync:progress", "sync", jobId, "running", messages.message("events.fixture.syncProgress"), map(
                         "jobId", jobId,
                         "percent", 75,
                         "current", 3,
@@ -75,7 +75,7 @@ public class CompatEventFixtures {
                         "table", table,
                         "stage", messages.message("events.writeTarget")
                 )),
-                event("sync:progress", "sync", jobId, "completed", "Sync fixture completed", map(
+                event("sync:progress", "sync", jobId, "completed", messages.message("events.fixture.syncCompleted"), map(
                         "jobId", jobId,
                         "percent", 100,
                         "current", 4,
@@ -83,10 +83,10 @@ public class CompatEventFixtures {
                         "table", table,
                         "stage", messages.message("events.complete")
                 )),
-                event("sync:log", "sync", jobId, "completed", "JavaNavi sync fixture completed", map(
+                event("sync:log", "sync", jobId, "completed", messages.message("events.fixture.syncCompleted"), map(
                         "jobId", jobId,
                         "level", "info",
-                        "message", "JavaNavi sync fixture completed",
+                        "message", messages.message("events.fixture.syncCompleted"),
                         "ts", Instant.now().toEpochMilli()
                 ))
         );
@@ -95,7 +95,7 @@ public class CompatEventFixtures {
     private List<CompatEventDto> sqlFileFixtures(String jobId, Map<String, Object> overrides) {
         String currentSql = stringValue(overrides, "currentSQL", "select * from demo_connections;");
         return List.of(
-                event("sqlfile:progress", "sqlfile", jobId, "running", "SQL file fixture started", map(
+                event("sqlfile:progress", "sqlfile", jobId, "running", messages.message("events.fixture.sqlFileStarted"), map(
                         "jobId", jobId,
                         "status", "running",
                         "executed", 0,
@@ -104,7 +104,7 @@ public class CompatEventFixtures {
                         "percent", 0,
                         "currentSQL", currentSql
                 )),
-                event("sqlfile:progress", "sqlfile", jobId, "running", "SQL file fixture progress", map(
+                event("sqlfile:progress", "sqlfile", jobId, "running", messages.message("events.fixture.sqlFileProgress"), map(
                         "jobId", jobId,
                         "status", "running",
                         "executed", 1,
@@ -113,7 +113,7 @@ public class CompatEventFixtures {
                         "percent", 50,
                         "currentSQL", currentSql
                 )),
-                event("sqlfile:progress", "sqlfile", jobId, "completed", "SQL file fixture completed", map(
+                event("sqlfile:progress", "sqlfile", jobId, "completed", messages.message("events.fixture.sqlFileCompleted"), map(
                         "jobId", jobId,
                         "status", "done",
                         "executed", 2,
@@ -128,13 +128,13 @@ public class CompatEventFixtures {
     private List<CompatEventDto> importFixtures(String jobId, Map<String, Object> overrides) {
         int total = intValue(overrides, "total", 3);
         return List.of(
-                event("import:progress", "import", jobId, "running", "Import fixture progress", map(
+                event("import:progress", "import", jobId, "running", messages.message("events.fixture.importProgress"), map(
                         "current", 1,
                         "total", total,
                         "success", 1,
                         "errors", 0
                 )),
-                event("import:progress", "import", jobId, "completed", "Import fixture completed", map(
+                event("import:progress", "import", jobId, "completed", messages.message("events.fixture.importCompleted"), map(
                         "current", total,
                         "total", total,
                         "success", total,
@@ -146,22 +146,22 @@ public class CompatEventFixtures {
     private List<CompatEventDto> driverFixtures(String driverType, Map<String, Object> overrides) {
         String normalizedDriver = stringValue(overrides, "driverType", textOrDefault(driverType, "mysql")).toLowerCase(Locale.ROOT);
         return List.of(
-                event("driver:download-progress", "driver", normalizedDriver, "started", "Driver fixture started", map(
+                event("driver:download-progress", "driver", normalizedDriver, "started", messages.message("events.fixture.driverStarted"), map(
                         "driverType", normalizedDriver,
                         "status", "start",
-                        "message", "Preparing JavaNavi driver fixture download",
+                        "message", messages.message("events.fixture.driverPreparingDownload"),
                         "percent", 0
                 )),
-                event("driver:download-progress", "driver", normalizedDriver, "running", "Driver fixture progress", map(
+                event("driver:download-progress", "driver", normalizedDriver, "running", messages.message("events.fixture.driverProgress"), map(
                         "driverType", normalizedDriver,
                         "status", "downloading",
-                        "message", "Downloading JavaNavi driver fixture",
+                        "message", messages.message("events.fixture.driverDownloading"),
                         "percent", 64
                 )),
-                event("driver:download-progress", "driver", normalizedDriver, "completed", "Driver fixture completed", map(
+                event("driver:download-progress", "driver", normalizedDriver, "completed", messages.message("events.fixture.driverCompleted"), map(
                         "driverType", normalizedDriver,
                         "status", "done",
-                        "message", "JavaNavi driver fixture completed",
+                        "message", messages.message("events.fixture.driverCompleted"),
                         "percent", 100
                 ))
         );
@@ -169,12 +169,12 @@ public class CompatEventFixtures {
 
     private List<CompatEventDto> aiFixtures(String sessionId, String eventName, Map<String, Object> overrides) {
         String resolvedEventName = textOrDefault(eventName, "ai:stream:" + sessionId);
-        String content = stringValue(overrides, "content", "JavaNavi AI streaming fixture: backend event bridge is connected.");
+        String content = stringValue(overrides, "content", messages.message("events.fixture.aiStreamDefaultContent"));
         return List.of(
-                event(resolvedEventName, "ai", sessionId, "generating", "AI stream fixture content", map(
+                event(resolvedEventName, "ai", sessionId, "generating", messages.message("events.fixture.aiStreamContent"), map(
                         "content", content
                 )),
-                event(resolvedEventName, "ai", sessionId, "completed", "AI stream fixture completed", map(
+                event(resolvedEventName, "ai", sessionId, "completed", messages.message("events.fixture.aiStreamCompleted"), map(
                         "done", true
                 ))
         );

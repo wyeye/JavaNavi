@@ -329,7 +329,7 @@ const DRIVER_STATUS_CACHE_TTL_MS = 60 * 1000;
 const DRIVER_NETWORK_CACHE_TTL_MS = 5 * 60 * 1000;
 const DRIVER_STATUS_INITIAL_RETRY_COUNT = 3;
 const DRIVER_STATUS_RETRY_DELAY_MS = 500;
-const DEFAULT_UPLOAD_DRIVER_VERSION = '上传-1.0';
+const DEFAULT_UPLOAD_DRIVER_VERSION = 'upload-1.0';
 const CUSTOM_DRIVER_TYPE_PREFIX = 'custom-';
 const normalizeDriverSearchText = (value: string) => String(value || '').trim().toLowerCase();
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));

@@ -8,7 +8,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 
 final class MojibakeTextNormalizer {
-    private static final String DEFAULT_UPLOAD_VERSION = "上传-1.0";
+    private static final String DEFAULT_UPLOAD_VERSION = "upload-1.0";
 
     private MojibakeTextNormalizer() {
     }

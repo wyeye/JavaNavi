@@ -108,7 +108,7 @@ public class JdbcDriverRuntimeService {
             driver = loadDriver(definition.get(), defaultDriverDirectory, true);
         } else {
             driver = loadInstalledCustomDriver(normalizedDriverType, defaultDriverDirectory, true)
-                    .orElseThrow(() -> new SQLException("No uploaded custom JDBC driver is available for driver type: " + normalizedDriverType));
+                    .orElseThrow(() -> new SQLException(messages.message("drivers.customJdbcDriverMissingForType", "type", normalizedDriverType)));
         }
         Properties copy = new Properties();
         if (properties != null) {
@@ -116,7 +116,7 @@ public class JdbcDriverRuntimeService {
         }
         Connection connection = driver.connect(jdbcUrl, copy);
         if (connection == null) {
-            throw new SQLException("JDBC driver " + driver.getClass().getName() + " did not accept URL: " + jdbcUrl);
+            throw new SQLException(messages.message("drivers.driverRejectedUrl", "driver", driver.getClass().getName(), "url", jdbcUrl));
         }
         return connection;
     }
@@ -129,7 +129,7 @@ public class JdbcDriverRuntimeService {
             return;
         }
         loadInstalledCustomDriver(normalizedDriverType, defaultDriverDirectory, true)
-                .orElseThrow(() -> new SQLException("No uploaded custom JDBC driver is available for driver type: " + normalizedDriverType));
+                .orElseThrow(() -> new SQLException(messages.message("drivers.customJdbcDriverMissingForType", "type", normalizedDriverType)));
     }
 
     public Map<String, Object> versionList(String driverType, String repositoryURL) {
@@ -640,13 +640,12 @@ public class JdbcDriverRuntimeService {
             try {
                 downloadPackage(definition.type(), definition.version(), effectiveRepositoryURL(), root);
                 return loadInstalledDriver(definition, root, false)
-                        .orElseThrow(() -> new SQLException("JDBC driver downloaded but could not be loaded: " + definition.type()));
+                        .orElseThrow(() -> new SQLException(messages.message("drivers.downloadedDriverLoadFailed", "type", definition.type())));
             } catch (RuntimeException error) {
-                throw new SQLException("JDBC driver is not bundled and automatic download failed for " + definition.name()
-                        + ". Open Driver Manager to download/import it manually. Cause: " + error.getMessage(), error);
+                throw new SQLException(messages.message("drivers.notBundledDownloadFailed", "driver", definition.name(), "message", error.getMessage()), error);
             }
         }
-        throw new SQLException("JDBC driver is not bundled or installed: " + definition.name());
+        throw new SQLException(messages.message("drivers.notBundledOrInstalled", "driver", definition.name()));
     }
 
     private Optional<Driver> classpathDriver(DriverPackageDefinition definition) {

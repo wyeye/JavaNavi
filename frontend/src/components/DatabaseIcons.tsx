@@ -203,7 +203,7 @@ export const getDbIcon = (type: string, color?: string, size?: number): React.Re
     return <Component size={size} color={color} />;
 };
 
-/** 获取数据库图标显示名称（中文） */
+/** Get database icon display name. */
 export const getDbIconLabel = (type: string): string => {
     const labels: Record<string, string> = {
         mysql: 'MySQL', mariadb: 'MariaDB', postgres: 'PostgreSQL',
@@ -211,9 +211,9 @@ export const getDbIconLabel = (type: string): string => {
         oracle: 'Oracle',
         sqlserver: 'SQL Server', clickhouse: 'ClickHouse', sqlite: 'SQLite',
         duckdb: 'DuckDB', diros: 'Doris', doris: 'Doris', sphinx: 'Sphinx',
-        kingbase: '金仓', dameng: '达梦', vastbase: 'VastBase',
-        highgo: '瀚高', tdengine: 'TDengine',
-        custom: '自定义',
+        kingbase: 'Kingbase', dameng: 'Dameng', vastbase: 'VastBase',
+        highgo: 'HighGo', tdengine: 'TDengine',
+        custom: 'Custom',
     };
     return labels[String(type || '').trim().toLowerCase()] || type;
 };

@@ -1,3 +1,4 @@
+import { getRuntimeLanguage, translate } from '../i18n';
 export type CustomDataSourceArtifact = {
   fileName?: string;
   sha256?: string;
@@ -93,7 +94,7 @@ const isBrowserStorageAvailable = (): boolean => {
 };
 
 const normalizeText = (value: unknown): string => String(value ?? '').trim();
-const DEFAULT_UPLOAD_DRIVER_VERSION = '上传-1.0';
+const DEFAULT_UPLOAD_DRIVER_VERSION = 'upload-1.0';
 
 const isKnownDefaultUploadVersionMojibake = (value: string): boolean => (
   value === 'ä¸ä¼ -1.0'
@@ -376,7 +377,7 @@ export const createCustomDataSource = (draft: CustomDataSourceDraft): CustomData
   const now = Date.now();
   const name = normalizeText(draft.name);
   if (!name) {
-    throw new Error('Custom data source name cannot be empty');
+    throw new Error(translate(getRuntimeLanguage(), 'customDataSources.error.nameRequired'));
   }
   const driverType = normalizeText(draft.driverType || draft.driver).toLowerCase();
   const version = normalizeOptionalText(draft.version || draft.driverVersion);

@@ -1,13 +1,17 @@
+import { translate, type AppLanguage } from '../i18n';
+
 export interface CustomConnectionDsnState {
   dsnInput: unknown;
   hasStoredSecret?: boolean;
   clearStoredSecret?: boolean;
+  language?: AppLanguage;
 }
 
 export const getCustomConnectionDsnValidationMessage = ({
   dsnInput,
   hasStoredSecret,
   clearStoredSecret,
+  language = 'en',
 }: CustomConnectionDsnState): string | null => {
   const dsnText = String(dsnInput ?? '').trim();
   if (dsnText !== '') {
@@ -17,9 +21,9 @@ export const getCustomConnectionDsnValidationMessage = ({
     return null;
   }
   if (hasStoredSecret && clearStoredSecret) {
-    return '请输入新的连接字符串，或取消清除已保存 DSN';
+    return translate(language, 'connectionModal.custom.dsnRequiredAfterClear');
   }
-  return '请输入连接字符串';
+  return translate(language, 'connectionModal.custom.dsnRequired');
 };
 
 export const shouldAllowBlankCustomDsn = (state: CustomConnectionDsnState): boolean => (

@@ -1,4 +1,5 @@
 import type { ConnectionConfig } from '../types';
+import { translate, type AppLanguage } from '../i18n';
 
 export type SSLMode = NonNullable<ConnectionConfig['sslMode']>;
 
@@ -35,16 +36,16 @@ export function isInsecureSSLMode(mode: unknown): boolean {
   return normalized === 'preferred' || normalized === 'skip-verify';
 }
 
-export function sslModeRiskDescription(mode: unknown): string {
+export function sslModeRiskDescription(mode: unknown, language: AppLanguage = 'en'): string {
   const normalized = normalizeSSLMode(mode);
   if (normalized === 'preferred') {
-    return '兼容模式：优先 TLS，但允许跳过证书校验，部分驱动可能回退明文。';
+    return translate(language, 'connectionModal.ssl.mode.preferred.description');
   }
   if (normalized === 'skip-verify') {
-    return '跳过校验：使用 TLS 但不校验证书，仅适合本地自签或临时排障。';
+    return translate(language, 'connectionModal.ssl.mode.skipVerify.description');
   }
   if (normalized === 'required') {
-    return '严格模式：必须使用 TLS，并进行证书校验。';
+    return translate(language, 'connectionModal.ssl.mode.required.description');
   }
-  return '禁用 TLS：连接将不使用加密传输。';
+  return translate(language, 'connectionModal.ssl.mode.disable.description');
 }

@@ -58,7 +58,7 @@ public class I18nMessages {
             return message("request.invalid", "message", message("backend.untranslatedError"));
         }
         if (normalized.contains("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.")) {
-            return message("request.invalid", "message", "SQL 工作区路径必须位于 JavaNavi 管理的 SQL 工作区内。");
+            return message("request.invalid", "message", message("app.sqlWorkspacePathManaged"));
         }
         if (normalized.startsWith("Executing SQL statement ")) {
             String progress = normalized.substring("Executing SQL statement ".length()).trim();
@@ -81,38 +81,38 @@ public class I18nMessages {
             return message("job.error.cancelled", "jobId", normalized.substring("Job cancelled:".length()).trim());
         }
         if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi app state")) {
-            return message("app.state", "message", "无法读写 JavaNavi 应用状态。");
+            return message("app.state", "message", message("app.stateReadWriteFailed"));
         }
         if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi SQL workspace")) {
-            return message("app.state", "message", "无法访问 JavaNavi SQL 工作区。");
+            return message("app.state", "message", message("app.sqlWorkspaceAccessFailed"));
         }
         if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi import")) {
-            return message("files.state", "message", "无法处理 JavaNavi 导入文件。");
+            return message("files.state", "message", message("files.importProcessingFailed"));
         }
         if (normalized.startsWith("Unable to ") && normalized.contains("JavaNavi export")) {
-            return message("files.state", "message", "无法处理 JavaNavi 导出文件。");
+            return message("files.state", "message", message("files.exportProcessingFailed"));
         }
         if (normalized.startsWith("Data sync ") || normalized.startsWith("Full overwrite data sync") || normalized.startsWith("Source table has no readable columns:")) {
-            return message("request.invalid", "message", "数据同步请求无效。");
+            return message("request.invalid", "message", message("sync.requestInvalid"));
         }
         if (normalized.startsWith("Unsupported DDL operation:")) {
-            return message("request.invalid", "message", "不支持的 DDL 操作。");
+            return message("request.invalid", "message", message("ddl.unsupportedOperation"));
         }
         if (normalized.startsWith("File databases do not support") || normalized.startsWith("MySQL/MariaDB-compatible JDBC does not support") || normalized.startsWith("Current PostgreSQL connection") || normalized.startsWith("Current driver does not support")) {
-            return message("request.invalid", "message", "当前数据源不支持该数据库操作。");
+            return message("request.invalid", "message", message("database.operationUnsupported"));
         }
         if (normalized.startsWith("No PostgreSQL metadata columns found for table:") || normalized.startsWith("No metadata columns found for table:")) {
             String table = normalized.substring(normalized.lastIndexOf(':') + 1).trim();
-            return message("request.invalid", "message", "未读取到表字段元数据：" + table);
+            return message("request.invalid", "message", message("database.metadataColumnsMissing", "table", table));
         }
         if (normalized.startsWith("Schema metadata") && normalized.endsWith("is required.")) {
-            return message("request.invalid", "message", "结构元数据不能为空。");
+            return message("request.invalid", "message", message("database.schemaMetadataRequired"));
         }
         if (normalized.startsWith("Local JDBC driver package path does not exist:")) {
-            return message("drivers.invalidRequest", "message", "本地 JDBC 驱动包路径不存在。");
+            return message("drivers.invalidRequest", "message", message("drivers.localPackageMissing"));
         }
         if (normalized.startsWith("No JDBC jar files found")) {
-            return message("drivers.invalidRequest", "message", "未找到 JDBC Jar 文件。");
+            return message("drivers.invalidRequest", "message", message("drivers.noJdbcJarFound"));
         }
         if (normalized.startsWith("Unable to copy") || normalized.startsWith("Unable to load JDBC driver") || normalized.startsWith("Unable to download JDBC driver") || normalized.startsWith("Interrupted while downloading JDBC driver") || normalized.startsWith("HTTP ")) {
             return message("drivers.state", "message", normalized);
@@ -121,13 +121,13 @@ public class I18nMessages {
             return message("drivers.invalidRequest", "message", normalized);
         }
         if (normalized.startsWith("MongoDB command returned") || normalized.startsWith("MongoDB command failed:")) {
-            return message("request.invalid", "message", "MongoDB 命令执行失败。");
+            return message("request.invalid", "message", message("mongodb.commandFailed"));
         }
         if (normalized.startsWith("Invalid BSON") || normalized.startsWith("Unsupported BSON") || normalized.startsWith("MongoDB response") || normalized.startsWith("Unsupported MongoDB wire opcode:")) {
-            return message("request.invalid", "message", "MongoDB 响应格式无效。");
+            return message("request.invalid", "message", message("mongodb.responseInvalid"));
         }
         if (normalized.startsWith("MongoDB ") && normalized.endsWith(" is required.")) {
-            return message("request.invalid", "message", "MongoDB 必填字段不能为空。");
+            return message("request.invalid", "message", message("mongodb.requiredFieldMissing"));
         }
         if (normalized.startsWith("不支持的 Redis 数据类型:")) {
             return message("redis.unsupportedType", "type", normalized.substring("不支持的 Redis 数据类型:".length()).trim());

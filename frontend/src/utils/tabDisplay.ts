@@ -82,7 +82,7 @@ const buildRedisBaseTitle = (tab: TabData, language: AppLanguage): string => {
 
 const localizeTabTitle = (title: string, language: AppLanguage): string => {
   const text = String(title || '').trim();
-  if (text === '新建查询') return translate(language, 'generic.fallback.newQuery');
+  if (text === translate('zh', 'generic.fallback.newQuery')) return translate(language, 'generic.fallback.newQuery');
   return text || translate(language, 'generic.fallback.newQuery');
 };
 

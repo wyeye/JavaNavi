@@ -1,3 +1,5 @@
+import { translate, type AppLanguage } from '../i18n';
+
 export const cloneBrowserMockValue = <T,>(value: T): T => {
   try {
     return JSON.parse(JSON.stringify(value));
@@ -21,9 +23,9 @@ type BrowserMockConnectionLike = {
   [key: string]: unknown;
 };
 
-export const buildBrowserMockDuplicateName = (rawName: string, items: BrowserMockConnectionLike[]): string => {
-  const baseName = String(rawName || '').trim() || '连接';
-  const suffix = ' - 副本';
+export const buildBrowserMockDuplicateName = (rawName: string, items: BrowserMockConnectionLike[], language: AppLanguage = 'en'): string => {
+  const baseName = String(rawName || '').trim() || translate(language, 'connection.defaultName');
+  const suffix = translate(language, 'connection.copySuffix');
   const usedNames = new Set(items.map((item) => String(item?.name || '').trim()));
   let candidate = `${baseName}${suffix}`;
   let counter = 2;
@@ -38,13 +40,14 @@ interface DuplicateBrowserMockConnectionInput {
   existing: BrowserMockConnectionLike;
   items: BrowserMockConnectionLike[];
   nextId: string;
+  language?: AppLanguage;
 }
 
-export const duplicateBrowserMockConnection = ({ existing, items, nextId }: DuplicateBrowserMockConnectionInput) => {
+export const duplicateBrowserMockConnection = ({ existing, items, nextId, language }: DuplicateBrowserMockConnectionInput) => {
   const duplicated = cloneBrowserMockValue({
     ...existing,
     id: nextId,
-    name: buildBrowserMockDuplicateName(existing.name || '', items),
+    name: buildBrowserMockDuplicateName(existing.name || '', items, language),
     config: {
       ...cloneBrowserMockValue(existing?.config),
       id: nextId,

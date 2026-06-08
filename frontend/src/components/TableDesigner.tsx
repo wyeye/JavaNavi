@@ -688,7 +688,7 @@ const TableDesigner: React.FC<{ tab: TabData }> = ({ tab }) => {
         setOriginalColumns(JSON.parse(JSON.stringify(colsWithKey)));
         setSelectedColumnRowKeys([]);
     } else {
-        message.error("Failed to load columns: " + colsRes.message);
+        message.error(t('designer.loadColumnsFailed', { message: colsRes.message }));
     }
 
     if (idxRes.success) {

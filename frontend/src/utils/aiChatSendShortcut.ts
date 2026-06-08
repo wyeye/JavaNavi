@@ -1,4 +1,5 @@
 import { DEFAULT_SHORTCUT_OPTIONS, getShortcutDisplay, isShortcutMatch, type ShortcutBinding } from './shortcuts';
+import { translate, type AppLanguage } from '../i18n';
 
 export interface AIChatSendShortcutKeyEventLike {
   key?: string;
@@ -14,12 +15,12 @@ export interface AIChatSendShortcutKeyEventLike {
   stopPropagation?: () => void;
 }
 
-export const getAIChatSendShortcutLabel = (binding: ShortcutBinding | undefined): string => {
+export const getAIChatSendShortcutLabel = (binding: ShortcutBinding | undefined, language: AppLanguage = 'en'): string => {
   if (binding?.enabled === false) {
-    return '快捷键发送已关闭';
+    return translate(language, 'ai.input.shortcut.disabled');
   }
   const combo = binding?.combo || DEFAULT_SHORTCUT_OPTIONS.sendAIChatMessage.combo;
-  return `${getShortcutDisplay(combo)} 发送`;
+  return translate(language, 'ai.input.shortcut.send', { shortcut: getShortcutDisplay(combo) });
 };
 
 export const shouldSendAIChatOnKeyDown = (

@@ -6,9 +6,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.javanavi.app.AppPersistenceService;
 import com.javanavi.config.SecurityProperties;
 import com.javanavi.events.CompatEventPublisher;
-import com.javanavi.i18n.AppLanguage;
-import com.javanavi.i18n.I18nContext;
 import com.javanavi.i18n.I18nMessages;
+import com.javanavi.i18n.LocalizedException;
 import com.javanavi.model.CompatEventDto;
 import com.javanavi.security.SecretRedactor;
 import com.javanavi.security.SecretStore;
@@ -78,7 +77,7 @@ public class AiCompatibilityService {
 
     public synchronized Map<String, Object> saveProvider(Map<String, Object> input) {
         if (input == null) {
-            throw new IllegalArgumentException("AI provider payload is required.");
+            throw new IllegalArgumentException(messages.message("ai.provider.payloadRequired"));
         }
         Map<String, Object> state = readState();
         List<Map<String, Object>> providers = new ArrayList<>(providers(state));
@@ -157,187 +156,14 @@ public class AiCompatibilityService {
     }
 
     public Map<String, String> builtinPrompts() {
-        AppLanguage language = I18nContext.language();
         return orderedStringMap(
-                promptTitle(language, "General Chat Assistant", "通用聊天助手"), buildGeneralChatPrompt(language),
-                promptTitle(language, "SQL Generator", "SQL 生成器"), buildSqlGeneratePrompt(language),
-                promptTitle(language, "SQL Explainer", "SQL 解析器"), buildSqlExplainPrompt(language),
-                promptTitle(language, "SQL Optimizer", "SQL 优化器"), buildSqlOptimizePrompt(language),
-                promptTitle(language, "Data Insight Analysis", "数据洞察分析"), buildDataAnalyzePrompt(language),
-                promptTitle(language, "Schema Review", "表结构审查"), buildSchemaInsightPrompt(language)
+                messages.message("ai.builtinPrompt.generalChat.title"), messages.message("ai.builtinPrompt.generalChat.prompt"),
+                messages.message("ai.builtinPrompt.sqlGenerator.title"), messages.message("ai.builtinPrompt.sqlGenerator.prompt"),
+                messages.message("ai.builtinPrompt.sqlExplainer.title"), messages.message("ai.builtinPrompt.sqlExplainer.prompt"),
+                messages.message("ai.builtinPrompt.sqlOptimizer.title"), messages.message("ai.builtinPrompt.sqlOptimizer.prompt"),
+                messages.message("ai.builtinPrompt.dataInsight.title"), messages.message("ai.builtinPrompt.dataInsight.prompt"),
+                messages.message("ai.builtinPrompt.schemaReview.title"), messages.message("ai.builtinPrompt.schemaReview.prompt")
         );
-    }
-
-    private static String promptTitle(AppLanguage language, String english, String chinese) {
-        return language == AppLanguage.ZH ? chinese : english;
-    }
-
-    private static String buildSqlGeneratePrompt(AppLanguage language) {
-        if (language != AppLanguage.ZH) {
-            return """
-                    You are the JavaNavi AI assistant, a senior database development expert and SQL query architect. Convert the user's natural-language request into precise, clean, high-performance SQL queries or Redis commands.
-
-                    Strict output rules:
-                    1. Output runnable code first: always place code in a markdown code block with the correct language tag, such as sql or bash.
-                    2. Keep it concise: skip long prefaces and go straight to the answer.
-                    3. Protect production data: prefer parameterized queries or safe patterns that reduce SQL injection risk. For DELETE or UPDATE statements without a WHERE clause, issue a strong production red-line warning.
-                    4. Prioritize performance: add a reasonable LIMIT for large result sets by default, such as LIMIT 100, and choose efficient patterns for JOIN and aggregation work.
-                    5. Add short comments only when the query contains complex nested logic.
-                    """.strip();
-        }
-        return """
-                你是 JavaNavi AI 助手，一位顶级的数据库开发专家和 SQL 查询构建师。根据用户的自然语言需求，生成精准、优雅、高性能的 SQL 查询或 Redis 命令。
-
-                严苛输出规则：
-                1. 首要目标是输出纯粹的代码：始终将代码放在正确语言标识（如 sql 或 bash）的 markdown 代码块中。
-                2. 保持精简：不要添加过多的前置闲聊，直奔主题。
-                3. 保护生产安全：优先使用参数化查询或安全防范写法避免 SQL 注入。对于未指定条件的 DELETE/UPDATE 语句，必须提出强烈的红线警告！！
-                4. 性能至上：对大型查询默认添加合理的 LIMIT 限制（如 LIMIT 100），在 JOIN 和聚合时优先选择最高效的范式写法。
-                5. 适度注释：对于存在复杂逻辑嵌套的代码，请在代码块内使用单行注释简要说明思路。
-                """.strip();
-    }
-
-    private static String buildSqlExplainPrompt(AppLanguage language) {
-        if (language != AppLanguage.ZH) {
-            return """
-                    You are the JavaNavi AI assistant, a senior database engineer. Explain SQL statements with professional, structured developer language that is clear without being shallow.
-
-                    Explanation rules:
-                    1. Business intent: summarize in one sentence what the SQL is trying to solve.
-                    2. Step-by-step logic: explain key clauses in realistic execution order: FROM -> JOIN -> WHERE -> GROUP BY -> SELECT -> ORDER BY.
-                    3. Performance risks: point out likely issues such as implicit type conversion, functions that block index usage, Cartesian products, or full table scans.
-                    4. Formatting: use lists, bold key terms, and compact sections so the answer stays readable.
-                    """.strip();
-        }
-        return """
-                你是 JavaNavi AI 助手，一位深耕数据库领域多年的资深开发工程师。请用专业、条理分明且深入浅出的开发者语言向用户全盘解析 SQL 语句的底层意图与执行逻辑。
-
-                解析规范：
-                1. 宏观逻辑解构：用简短的一句话概括这条 SQL 在业务上想要解决什么问题。
-                2. 步进逻辑拆解：按执行器真实的执行顺序（FROM -> JOIN -> WHERE -> GROUP BY -> SELECT -> ORDER BY）拆解每个关键子句的作用。
-                3. 性能排雷点：敏锐指出可能存在的性能陷阱（如隐式类型转换、没有走索引的函数调用、潜在的笛卡尔积/全表扫描等）。
-                4. 严谨的排版：使用列表呈现关键点，重点词汇加粗，确保长文不累赘。
-                """.strip();
-    }
-
-    private static String buildSqlOptimizePrompt(AppLanguage language) {
-        if (language != AppLanguage.ZH) {
-            return """
-                    You are the JavaNavi AI assistant, a full-stack performance engineer and senior DBA experienced with high-concurrency systems. Diagnose the user's SQL precisely and provide a practical performance rewrite plan.
-
-                    Diagnosis and rewrite rules:
-                    1. Identify bottlenecks: call out weak points such as poor driving-table choice, missing covering indexes, redundant subqueries, or sort/aggregation pressure.
-                    2. Optimized SQL: when an improvement is possible, show an optimized SQL version that preserves the original logic.
-                    3. Explain why: describe why the rewritten version should be faster from the optimizer and execution-plan perspective.
-                    4. Index guidance: when schema support is missing, provide concrete DDL-level CREATE INDEX statements and explain the index-order rationale.
-                    5. Priority: end with urgency as High, Medium, or Low based on lock risk, throughput impact, or long-term tuning value.
-                    """.strip();
-        }
-        return """
-                你是 JavaNavi AI 助手，一名曾主导过千万级高并发系统的全栈性能工程专家与高级 DBA。请对用户提供的原始 SQL 进行冷酷、精确的诊断并开出性能重构处方。
-
-                诊断与处方要求：
-                1. 性能瓶颈透视：精准点出当前语句死穴（不合理的驱动表、无法利用覆盖索引、多此一举的子查询等）。
-                2. 重构版本的 SQL：如果存在性能提升空间，直接向用户展示彻底优化过的高性能写法，并确保逻辑等价性。
-                3. 剖析原因：不仅要告诉用户“怎么改”，更要说清楚执行器“为什么这样会更快”。
-                4. 索引构建建议：若现有结构无法支撑需求，提出明确的 DDL 级别的 CREATE INDEX 语句建议，并强调其依据（如满足最左前缀匹配）。
-                5. 优先级评估：在回答的最后标注本次优化建议的紧迫性（高：阻断级/锁表风险；中：吞吐量瓶颈；低：长效微调）。
-                """.strip();
-    }
-
-    private static String buildDataAnalyzePrompt(AppLanguage language) {
-        if (language != AppLanguage.ZH) {
-            return """
-                    You are the JavaNavi AI assistant, a senior data analysis expert. Review the user's query sample and extract practical information from the result set.
-
-                    Insight goals:
-                    1. Core statistics: summarize row counts and key numeric indicators such as minimum, maximum, average, and median when available.
-                    2. Trends and anomalies: identify upward or downward movement when timestamps exist, and highlight outliers when values differ sharply.
-                    3. Business value: do more than restate the data; provide one actionable suggestion for developers or business decision makers.
-                    4. Format: use a compact report style with a title and concise bullet points.
-                    """.strip();
-        }
-        return """
-                你是 JavaNavi AI 助手，一位具备极致敏锐商业嗅觉的高级数据分析专家。你将审视用户通过查询得到的数据样本，从中提炼出蕴含的真金白银般的信息。
-
-                洞察目标：
-                1. 硬统计：总观数据行数、核心数值指标（极值、平均值、聚合中位数等）的冰冷现实。
-                2. 趋势与异动：如果数据带有时间戳，敏锐捕捉其上升或下降趋势；如果有异类离群值，将其高亮标注。
-                3. 商业价值挖掘：不能只翻译数据，要在数据的表象上结合你的 AI 见识，给出一条有建设性的、能帮助业务决策层或开发者的业务层行动建议。
-                4. 展现格式：你的分析应该是“标题 + 浓缩要点”的极简研报形式，杜绝毫无波澜的流水账。
-                """.strip();
-    }
-
-    private static String buildSchemaInsightPrompt(AppLanguage language) {
-        if (language != AppLanguage.ZH) {
-            return """
-                    You are the JavaNavi AI assistant, a chief database architect responsible for the full database lifecycle. Review the supplied table schemas with strict normalization and future-growth criteria.
-
-                    Review scope:
-                    1. Normalization trade-offs: identify obvious anti-third-normal-form choices and decide whether redundancy is justified by performance or is a design error.
-                    2. Index robustness: evaluate primary-key choices such as auto-increment IDs or UUIDs, redundant indexes that slow writes, and missing composite indexes for frequent access paths.
-                    3. Physical capacity: review data types such as oversized VARCHAR fields or unnecessary BIGINT columns that waste storage.
-                    4. Code-level guidance: when structural issues exist, provide specific ALTER TABLE scripts with concrete improvements.
-                    """.strip();
-        }
-        return """
-                你是 JavaNavi AI 助手，一位统筹数据库宏观生命周期的首席数据库架构师。在这个环节里，你需要对用户提供的数据库表结构执行最严厉的范式与前瞻性审查。
-
-                审查视界：
-                1. 规范化博弈：是否存在明显的反三范式设计？这种冗余是否有助于性能（适当的反范式），还是纯粹的设计失误？
-                2. 索引健壮性审查：评估主键选择（如自增、UUID 的利弊），是否存在冗余索引阻碍写入？以及是否遗漏了高频的联合索引。
-                3. 物理容量前瞻：审视数据类型分配（如使用过大的 VARCHAR、没必要的 BIGINT 等可能带来的空间挥霍）。
-                4. 代码级指引：如果存在结构性缺陷，不要只发牢骚，直接给出包含具体优化的 ALTER TABLE 结构修改建议脚本。
-                """.strip();
-    }
-
-    private static String buildGeneralChatPrompt(AppLanguage language) {
-        if (language != AppLanguage.ZH) {
-            return """
-                    You are the JavaNavi AI assistant, a dedicated intelligent expert system deeply integrated into the database/cache client (JavaNavi).
-                    Your goal is to provide developers, DBAs, and data scientists with professional, precise, forward-looking data-side solutions.
-
-                    Core persona and interaction style:
-                    - Absolute professionalism: provide reliable judgment on database products such as MySQL, PostgreSQL, DuckDB, and Redis, including internals, execution plans, and index principles.
-                    - Direct answers: avoid empty pleasantries. When the user's intent is clear, put runnable, paste-ready code near the top.
-                    - Structure and readability: use Markdown headings, bold text, and correctly tagged code blocks such as sql, json, or bash.
-                    - Zero tolerance for production red lines: when SQL may create severe production risk, such as bulk UPDATE or DELETE without a WHERE clause or a query likely to lock a production table, warn immediately.
-
-                    Capability map:
-                    1. Natural-language query generation: translate user intent into accurate queries.
-                    2. Execution-logic explanation: analyze query behavior and performance risks.
-                    3. Expert tuning: identify bottlenecks and provide indexing and rewrite strategies.
-                    4. Data insight: go beyond aggregation and extract business-relevant patterns from result sets.
-                    5. Schema review: assess table design limits and propose architecture evolution for data growth.
-
-                    Interaction rules:
-                    - Always discuss issues with the user in professional, confident English.
-                    - When providing database code, apply the relevant engine's best practices. When the exact dialect version is unknown, prefer standard SQL and mention version differences when they matter, such as MySQL 8 window functions.
-                    - Do not refuse too early: when the user asks for SQL but no detailed DDL is attached, infer the likely target table from the plain table-name list in the conversation. When the table still cannot be inferred, clearly list the known tables and ask which one should be queried.
-                    """.strip();
-        }
-        return """
-                你是 JavaNavi AI 助手，一款深度集成在数据库/缓存客户端（JavaNavi）内部的专属智能专家系统。
-                你的目标是成为开发者、DBA 和数据科学家最得力的超级外脑，提供专业、精准、具有前瞻性的数据端解决方案。
-
-                核心人设与交互基调：
-                - 绝对专业：对各流派数据库产品（MySQL、PostgreSQL、DuckDB、Redis）底层机制、执行计划和索引原理有不可动摇的专业判断力。
-                - 直击痛点：谢绝套话与无效寒暄，若用户的意图明确，首屏直接给出可以直接粘贴运行的优雅代码。
-                - 结构化与可读性：恰到好处地使用 Markdown 标题、加粗和代码块（必须带正确的语言标识 如 sql/json/bash），以工匠精神打磨每一次排版。
-                - 零容忍的生产红线：当你察觉用户的 SQL 有潜在灾难风险（比如没有 WHERE 条件的批量更新/删除、可能锁爆生产表的严重慢查询），必须立即触发红色预警提示阻止用户。
-
-                你的综合能力版图：
-                1. 📝 自然语言驱动：翻译人类意图为精准的查询语句。
-                2. 🔍 底层原理解析：剥丝抽茧分析查询背后的执行逻辑与性能隐患。
-                3. ⚡ 专家级调优：指出并化解性能瓶颈，给出覆盖全维度的索引调优思路。
-                4. 📊 数据洞察炼金：不仅聚合数据，更能从结果集中挖掘商业维度的深度规律。
-                5. 🏗️ 架构先知视界：全局审阅表结构设计局限，提出抗数据膨胀级别的架构演进方案。
-
-                互动守则：
-                - 永远使用专业、具有合作感且充满信心的中文与用户探讨问题。
-                - 当被要求提供任何数据库代码时，需结合相关数据库引擎的最佳实践。如果不清楚当前方言版本，请以标准实现为主基调并好心指出版别差异（如 MySQL 8 窗口函数 等）。
-                - 绝不轻易拒绝：如果用户要求写 SQL 但并未显式挂载任何表的详细 DDL，请尽最大努力根据对话上下文中带入的【纯表名列表】去推测他要查询哪个表。如果实在无法推断，请温柔且专业地向用户解释目前已知的表有哪些，并询问到底想查哪张表。
-                """.strip();
     }
 
     public synchronized Map<String, Object> listModels() {
@@ -371,7 +197,7 @@ public class AiCompatibilityService {
         if (!"claude_cli".equals(type) && isBlank(apiKey) && !hasStoredSecret) {
             return orderedMap(
                     "success", false,
-                    "message", "AI provider API key is required or must already be stored.",
+                    "message", messages.message("ai.provider.apiKeyRequired"),
                     "providerId", providerId.isBlank() ? "preview" : providerId,
                     "networkTested", false,
                     "transportEnabled", false,
@@ -397,7 +223,7 @@ public class AiCompatibilityService {
                 };
                 return orderedMap(
                         "success", true,
-                        "message", "AI provider transport test succeeded via JavaNavi Web HTTP check.",
+                        "message", messages.message("ai.provider.transportSucceeded"),
                         "providerId", providerId.isBlank() ? "preview" : providerId,
                         "networkTested", true,
                         "transportEnabled", true,
@@ -415,7 +241,7 @@ public class AiCompatibilityService {
                 }
                 return orderedMap(
                         "success", false,
-                        "message", "AI provider transport test failed: " + SecretRedactor.redact(error.getMessage()),
+                        "message", messages.message("ai.provider.transportFailed", "message", SecretRedactor.redact(error.getMessage())),
                         "providerId", providerId.isBlank() ? "preview" : providerId,
                         "networkTested", true,
                         "transportEnabled", true,
@@ -429,7 +255,7 @@ public class AiCompatibilityService {
         if (isBlank(model)) {
             return orderedMap(
                     "success", false,
-                    "message", "AI model is required.",
+                    "message", messages.message("ai.provider.modelRequired"),
                     "providerId", providerId.isBlank() ? "preview" : providerId,
                     "networkTested", false,
                     "transportEnabled", false,
@@ -441,7 +267,7 @@ public class AiCompatibilityService {
         }
         return orderedMap(
                 "success", true,
-                "message", "AI provider configuration is valid for JavaNavi Web local storage; enable transportEnabled for outbound HTTP model calls.",
+                "message", messages.message("ai.provider.configurationValid"),
                 "providerId", providerId.isBlank() ? "preview" : providerId,
                 "networkTested", false,
                 "transportEnabled", false,
@@ -501,7 +327,7 @@ public class AiCompatibilityService {
                 .findFirst();
         if (provider.isEmpty()) {
             return orderedMap(
-                    "content", "JavaNavi AI provider is not configured. Save a provider before sending model requests.",
+                    "content", messages.message("ai.chat.providerNotConfigured"),
                     "choices", List.of(),
                     "providerId", "",
                     "transport", "java-web-local-state"
@@ -513,7 +339,7 @@ public class AiCompatibilityService {
             Optional<String> apiKey = secretStore.get(secretKey(active));
             if (apiKey.isEmpty()) {
                 return orderedMap(
-                        "content", "JavaNavi AI provider transport failed: provider '" + firstText(text(selected.get("name")), active) + "' has transport enabled but no stored API key.",
+                        "content", messages.message("ai.chat.transportNoApiKey", "provider", firstText(text(selected.get("name")), active)),
                         "choices", List.of(),
                         "providerId", active,
                         "model", selected.get("model"),
@@ -533,7 +359,7 @@ public class AiCompatibilityService {
                     Thread.currentThread().interrupt();
                 }
                 return orderedMap(
-                        "content", "JavaNavi AI provider transport failed: " + SecretRedactor.redact(error.getMessage()),
+                        "content", messages.message("ai.chat.transportFailed", "message", SecretRedactor.redact(error.getMessage())),
                         "choices", List.of(),
                         "providerId", active,
                         "model", selected.get("model"),
@@ -543,7 +369,7 @@ public class AiCompatibilityService {
             }
         }
         return orderedMap(
-                "content", "JavaNavi AI provider '" + firstText(text(selected.get("name")), active) + "' is configured with outbound model transport disabled; enable transportEnabled to use JavaNavi Web HTTP model calls.",
+                "content", messages.message("ai.chat.transportDisabled", "provider", firstText(text(selected.get("name")), active)),
                 "choices", List.of(),
                 "providerId", active,
                 "model", selected.get("model"),
@@ -567,7 +393,7 @@ public class AiCompatibilityService {
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+            throw new IllegalArgumentException(messages.message("ai.provider.httpError", "status", response.statusCode(), "message", providerErrorMessage(payload)));
         }
         return orderedMap(
                 "content", assistantContent(payload),
@@ -594,7 +420,7 @@ public class AiCompatibilityService {
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+            throw new IllegalArgumentException(messages.message("ai.provider.httpError", "status", response.statusCode(), "message", providerErrorMessage(payload)));
         }
         return orderedMap(
                 "content", assistantContentFromAnthropic(payload),
@@ -620,7 +446,7 @@ public class AiCompatibilityService {
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+            throw new IllegalArgumentException(messages.message("ai.provider.httpError", "status", response.statusCode(), "message", providerErrorMessage(payload)));
         }
         return orderedMap(
                 "content", assistantContentFromGemini(payload),
@@ -643,7 +469,7 @@ public class AiCompatibilityService {
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+            throw new IllegalArgumentException(messages.message("ai.provider.httpError", "status", response.statusCode(), "message", providerErrorMessage(payload)));
         }
         List<String> models = openAiCompatibleModelIds(payload);
         return orderedMap(
@@ -665,7 +491,7 @@ public class AiCompatibilityService {
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+            throw new IllegalArgumentException(messages.message("ai.provider.httpError", "status", response.statusCode(), "message", providerErrorMessage(payload)));
         }
         List<String> models = anthropicModelIds(payload);
         return orderedMap(
@@ -686,7 +512,7 @@ public class AiCompatibilityService {
         HttpResponse<String> response = httpClient.send(builder.build(), HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         Map<String, Object> payload = parseResponseMap(response.body());
         if (response.statusCode() < 200 || response.statusCode() >= 300) {
-            throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + providerErrorMessage(payload));
+            throw new IllegalArgumentException(messages.message("ai.provider.httpError", "status", response.statusCode(), "message", providerErrorMessage(payload)));
         }
         List<String> models = geminiModelIds(payload);
         return orderedMap(
@@ -856,7 +682,7 @@ public class AiCompatibilityService {
         try (Stream<String> lines = response.body()) {
             if (response.statusCode() < 200 || response.statusCode() >= 300) {
                 String body = String.join("\n", lines.toList());
-                throw new IllegalArgumentException("Provider returned HTTP " + response.statusCode() + ": " + SecretRedactor.redact(body));
+                throw new IllegalArgumentException(messages.message("ai.provider.httpError", "status", response.statusCode(), "message", SecretRedactor.redact(body)));
             }
             for (String line : (Iterable<String>) lines::iterator) {
                 if (cancelledChatStreams.contains(sessionId)) {
@@ -1226,19 +1052,18 @@ public class AiCompatibilityService {
 
     private static URI validatedProviderUri(URI uri) {
         if (uri == null) {
-            throw new IllegalArgumentException("AI provider endpoint is required.");
+            throw new LocalizedException("ai.providerEndpointRequired");
         }
         String scheme = text(uri.getScheme()).toLowerCase(Locale.ROOT);
         if (!"https".equals(scheme) && !"http".equals(scheme)) {
-            throw new IllegalArgumentException("AI provider endpoint must use http or https.");
+            throw new LocalizedException("ai.providerEndpointHttpRequired");
         }
         String host = text(uri.getHost());
         if (host.isBlank()) {
-            throw new IllegalArgumentException("AI provider endpoint host is required.");
+            throw new LocalizedException("ai.providerEndpointHostRequired");
         }
         if (!allowPrivateProviderEndpoints() && isPrivateProviderHost(host)) {
-            throw new IllegalArgumentException("AI provider endpoint targets a local or private network host; set "
-                    + ALLOW_PRIVATE_AI_ENDPOINTS_ENV + "=true only for trusted local testing.");
+            throw new LocalizedException("ai.providerEndpointPrivateBlocked", "env", ALLOW_PRIVATE_AI_ENDPOINTS_ENV);
         }
         return uri;
     }
@@ -1402,7 +1227,7 @@ public class AiCompatibilityService {
     private static String sanitizeId(String value) {
         String sanitized = value == null ? "" : value.trim().replaceAll("[^A-Za-z0-9_.:@-]", "-");
         if (sanitized.isBlank()) {
-            throw new IllegalArgumentException("AI provider/session id is required.");
+            throw new LocalizedException("ai.providerSessionIdRequired");
         }
         return sanitized.length() > 96 ? sanitized.substring(0, 96) : sanitized;
     }
@@ -1642,15 +1467,15 @@ public class AiCompatibilityService {
         return "";
     }
 
-    private static String sqlSafetyWarning(SqlOperationType operationType, String safetyLevel, boolean allowed, boolean requiresConfirm) {
+    private String sqlSafetyWarning(SqlOperationType operationType, String safetyLevel, boolean allowed, boolean requiresConfirm) {
         if (!allowed) {
             if ("readonly".equals(safetyLevel)) {
-                return "Read-only AI safety mode allows query statements only.";
+                return messages.message("ai.sqlSafety.readOnlyOnly");
             }
             if ("readwrite".equals(safetyLevel) && operationType == SqlOperationType.DDL) {
-                return "Read/write AI safety mode blocks DDL statements.";
+                return messages.message("ai.sqlSafety.readWriteBlocksDdl");
             }
-            return "AI SQL safety policy blocks this statement.";
+            return messages.message("ai.sqlSafety.blocked");
         }
         if (requiresConfirm) {
             return operationType == SqlOperationType.DDL

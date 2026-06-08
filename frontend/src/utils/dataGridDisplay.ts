@@ -1,3 +1,5 @@
+import { translate, type AppLanguage } from '../i18n';
+
 export type DataTableColumnWidthMode = 'standard' | 'compact';
 
 export interface DataGridDisplaySettings {
@@ -10,9 +12,9 @@ export const DEFAULT_DATA_GRID_DISPLAY_SETTINGS: DataGridDisplaySettings = {
   dataTableColumnWidthMode: 'standard',
 };
 
-export const getDataGridColumnWidthModeOptions = (language: 'en' | 'zh' = 'en') => [
-  { label: language === 'zh' ? '标准 200px' : 'Standard 200px', value: 'standard' as const },
-  { label: language === 'zh' ? '紧凑 140px' : 'Compact 140px', value: 'compact' as const },
+export const getDataGridColumnWidthModeOptions = (language: AppLanguage = 'en') => [
+  { label: translate(language, 'dataGrid.columnWidth.standard'), value: 'standard' as const },
+  { label: translate(language, 'dataGrid.columnWidth.compact'), value: 'compact' as const },
 ];
 
 export const DATA_GRID_COLUMN_WIDTH_MODE_OPTIONS = getDataGridColumnWidthModeOptions('en');

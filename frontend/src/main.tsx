@@ -2,6 +2,7 @@ import * as compatibilityApp from './compat/javanaviApp'
 import * as compatibilityAI from './compat/aiService'
 import * as compatibilityRuntime from './compat/runtime'
 import { installDesktopContextMenuSuppression } from './utils/desktopContextMenu'
+import { sanitizeLanguage, translate } from './i18n'
 
 installDesktopContextMenuSuppression()
 
@@ -42,7 +43,7 @@ void import('./bootstrap').catch((error) => {
         fallback.style.fontFamily = 'sans-serif';
         fallback.style.padding = '24px';
         fallback.style.color = '#b00020';
-        fallback.textContent = 'JavaNavi UI 启动失败，请查看控制台日志。';
+        fallback.textContent = translate(sanitizeLanguage(navigator.language), 'app.bootstrap.failed');
         root.replaceChildren(fallback);
     }
 });

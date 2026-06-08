@@ -1025,7 +1025,7 @@ const persistConnectionTagsToBackend = (tags: ConnectionTag[]): void => {
   connectionTagsPersistTimer = setTimeout(() => {
     connectionTagsPersistTimer = null;
     SaveConnectionTags(safeTags).catch((error: unknown) => {
-      console.error("[Connection Tags Persist] 保存失败:", error);
+      console.error("[Connection Tags Persist] save failed:", error);
     });
   }, 250);
 };
@@ -1048,7 +1048,7 @@ const persistSavedQueryToBackend = (query: SavedQuery): void => {
     return;
   }
   SaveSavedQuery(safeQuery).catch((error: unknown) => {
-    console.error("[Saved Query Persist] 保存失败:", error);
+    console.error("[Saved Query Persist] save failed:", error);
   });
 };
 
@@ -1061,7 +1061,7 @@ const deleteSavedQueryFromBackend = (id: string): void => {
     return;
   }
   DeleteSavedQuery(queryId).catch((error: unknown) => {
-    console.error("[Saved Query Persist] 删除失败:", error);
+    console.error("[Saved Query Persist] delete failed:", error);
   });
 };
 
@@ -1083,7 +1083,7 @@ const persistSqlLogToBackend = (log: SqlLog): void => {
     return;
   }
   SaveSqlLog(safeLog).catch((error: unknown) => {
-    console.error("[SQL Log Persist] 保存失败:", error);
+    console.error("[SQL Log Persist] save failed:", error);
   });
 };
 
@@ -1098,7 +1098,7 @@ const persistSqlLogsToBackend = (logs: SqlLog[]): void => {
   sqlLogsPersistTimer = setTimeout(() => {
     sqlLogsPersistTimer = null;
     SaveSqlLogs(safeLogs).catch((error: unknown) => {
-      console.error("[SQL Log Persist] 保存失败:", error);
+      console.error("[SQL Log Persist] save failed:", error);
     });
   }, 250);
 };
@@ -1112,7 +1112,7 @@ const clearSqlLogsFromBackend = (): void => {
     sqlLogsPersistTimer = null;
   }
   ClearSqlLogs().catch((error: unknown) => {
-    console.error("[SQL Log Persist] 清空失败:", error);
+    console.error("[SQL Log Persist] clear failed:", error);
   });
 };
 
@@ -1144,7 +1144,7 @@ function _debouncedPersistSession(sessionId: string) {
     const Service = AIService;
     Service?.AISaveSession?.(sessionId, title, updatedAt, messagesJSON).catch(
       (e: unknown) => {
-        console.error("[AI Session Persist] 持久化失败:", sessionId, e);
+        console.error("[AI Session Persist] persist failed:", sessionId, e);
       },
     );
   }, 2000);
@@ -1163,7 +1163,7 @@ export async function loadAISessionsFromBackend(): Promise<
       return sessions;
     }
   } catch (e) {
-    console.error("[AI Session] 加载会话列表失败:", e);
+    console.error("[AI Session] load session list failed:", e);
   }
   return [];
 }
@@ -1198,7 +1198,7 @@ export async function loadAISessionFromBackend(
       }
     }
   } catch (e) {
-    console.error("[AI Session] 加载会话消息失败:", sessionId, e);
+    console.error("[AI Session] load session messages failed:", sessionId, e);
   }
   return false;
 }
@@ -1544,7 +1544,7 @@ export const useStore = create<AppState>()(
           const savedQueries = sanitizeSavedQueries(queries);
           if (!savedQueriesHydratingFromBackend) {
             SaveSavedQueries(savedQueries).catch((error: unknown) => {
-              console.error("[Saved Query Persist] 保存失败:", error);
+              console.error("[Saved Query Persist] save failed:", error);
             });
           }
           return { savedQueries };

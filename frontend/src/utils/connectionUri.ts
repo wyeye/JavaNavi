@@ -799,7 +799,7 @@ export const getUriPlaceholder = (dbType: string) => {
   if (dbType === "oracle") {
     return "oracle://user:pass@127.0.0.1:1521/ORCLPDB1";
   }
-  return "例如: postgres://user:pass@127.0.0.1:5432/db_name";
+  return "postgres://user:pass@127.0.0.1:5432/db_name";
 };
 
 export const buildUriFromValues = (values: ConnectionUriValues) => {

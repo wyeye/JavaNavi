@@ -15,6 +15,7 @@ import com.javanavi.security.SecretStore;
 import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.QueryRequestDto;
 import com.javanavi.security.SecretStoreStatus;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -32,6 +33,11 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class AiCompatibilityServiceTest {
     @TempDir
     Path tempDir;
+
+    @AfterEach
+    void clearLanguageContext() {
+        I18nContext.clear();
+    }
 
     @Test
     void builtinPromptsMatchGoNaviPromptSetWithJavaNaviBranding() {

@@ -632,7 +632,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                         <div style={fieldLabelStyle}>
                             <KeyOutlined style={{ fontSize: 14 }} /> {t('ai.settings.form.authConnection')}
                         </div>
-                        <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>API Key</span>} name="apiKey" rules={[{ validator: (_, value) => { const apiKey = String(value || '').trim(); if (apiKey || clearProviderSecret || editingProvider?.hasSecret) { return Promise.resolve(); } return Promise.reject(new Error(t('ai.settings.validation.apiKeyRequired'))); } }]} style={{ marginBottom: editingProvider?.hasSecret ? 8 : 16 }}>
+                        <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>{t('ai.settings.form.apiKeyLabel')}</span>} name="apiKey" rules={[{ validator: (_, value) => { const apiKey = String(value || '').trim(); if (apiKey || clearProviderSecret || editingProvider?.hasSecret) { return Promise.resolve(); } return Promise.reject(new Error(t('ai.settings.validation.apiKeyRequired'))); } }]} style={{ marginBottom: editingProvider?.hasSecret ? 8 : 16 }}>
                             <Input.Password placeholder={editingProvider?.hasSecret ? t('ai.settings.form.apiKeyPlaceholderStored') : t('ai.settings.form.apiKeyPlaceholderNew')}
                                 size="middle"
                                 style={{ borderRadius: 8, background: inputBg, border: `1px solid ${cardBorder}` }} />
@@ -653,7 +653,7 @@ const AISettingsModal: React.FC<AISettingsModalProps> = ({ open, onClose, darkMo
                         )}
 
                         {(presetKeyFromForm === 'custom' || presetKeyFromForm === 'ollama') && (
-                            <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>API Endpoint (URL)</span>} name="baseUrl" rules={[{ required: true, message: t('ai.settings.validation.endpointRequired') }]} style={{ marginBottom: 0 }}>
+                            <Form.Item label={<span style={{ fontWeight: 500, color: overlayTheme.titleText }}>{t('ai.settings.form.apiEndpointLabel')}</span>} name="baseUrl" rules={[{ required: true, message: t('ai.settings.validation.endpointRequired') }]} style={{ marginBottom: 0 }}>
                                 <Input placeholder={findPreset(presetKeyFromForm).defaultBaseUrl || 'https://...'}
                                     size="middle"
                                     suffix={<LinkOutlined style={{ color: overlayTheme.mutedText }} />}

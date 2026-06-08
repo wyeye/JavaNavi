@@ -1,8 +1,15 @@
+import { translate, type AppLanguage, type I18nKey } from '../i18n';
+
 export type ColumnTypeOption = { value: string };
 
 export type SqlFunctionCompletion = {
   name: string;
   detail: string;
+};
+
+type SqlFunctionCompletionDefinition = {
+  name: string;
+  detailKey: I18nKey;
 };
 
 export type SqlDialect =
@@ -490,226 +497,226 @@ export const resolveSqlKeywords = (dbType: string): string[] => {
   return COMMON_KEYWORDS;
 };
 
-const fn = (name: string, detail: string): SqlFunctionCompletion => ({ name, detail });
+const fn = (name: string, detailKey: I18nKey): SqlFunctionCompletionDefinition => ({ name, detailKey });
 
 const COMMON_FUNCTIONS = [
-  fn('COUNT', '聚合 - 计数'),
-  fn('SUM', '聚合 - 求和'),
-  fn('AVG', '聚合 - 平均值'),
-  fn('MAX', '聚合 - 最大值'),
-  fn('MIN', '聚合 - 最小值'),
-  fn('CONCAT', '字符串 - 拼接'),
-  fn('SUBSTRING', '字符串 - 截取子串'),
-  fn('SUBSTR', '字符串 - 截取子串'),
-  fn('LENGTH', '字符串 - 长度'),
-  fn('UPPER', '字符串 - 转大写'),
-  fn('LOWER', '字符串 - 转小写'),
-  fn('TRIM', '字符串 - 去空格'),
-  fn('LTRIM', '字符串 - 去左空格'),
-  fn('RTRIM', '字符串 - 去右空格'),
-  fn('REPLACE', '字符串 - 替换'),
-  fn('ABS', '数学 - 绝对值'),
-  fn('CEIL', '数学 - 向上取整'),
-  fn('CEILING', '数学 - 向上取整'),
-  fn('FLOOR', '数学 - 向下取整'),
-  fn('ROUND', '数学 - 四舍五入'),
-  fn('MOD', '数学 - 取模'),
-  fn('POWER', '数学 - 幂运算'),
-  fn('SQRT', '数学 - 平方根'),
-  fn('LOG', '数学 - 对数'),
-  fn('EXP', '数学 - e 的次方'),
-  fn('COALESCE', '条件 - 返回第一个非 NULL'),
-  fn('NULLIF', '条件 - 相等返回 NULL'),
-  fn('CAST', '转换 - 类型转换'),
-  fn('CONVERT', '转换 - 类型转换'),
-  fn('ROW_NUMBER', '窗口 - 行号'),
-  fn('RANK', '窗口 - 排名'),
-  fn('DENSE_RANK', '窗口 - 连续排名'),
-  fn('LAG', '窗口 - 前一行'),
-  fn('LEAD', '窗口 - 后一行'),
-  fn('FIRST_VALUE', '窗口 - 第一个值'),
-  fn('LAST_VALUE', '窗口 - 最后一个值'),
+  fn('COUNT', 'sqlFunction.common.count.detail'),
+  fn('SUM', 'sqlFunction.common.sum.detail'),
+  fn('AVG', 'sqlFunction.common.avg.detail'),
+  fn('MAX', 'sqlFunction.common.max.detail'),
+  fn('MIN', 'sqlFunction.common.min.detail'),
+  fn('CONCAT', 'sqlFunction.common.concat.detail'),
+  fn('SUBSTRING', 'sqlFunction.common.substring.detail'),
+  fn('SUBSTR', 'sqlFunction.common.substr.detail'),
+  fn('LENGTH', 'sqlFunction.common.length.detail'),
+  fn('UPPER', 'sqlFunction.common.upper.detail'),
+  fn('LOWER', 'sqlFunction.common.lower.detail'),
+  fn('TRIM', 'sqlFunction.common.trim.detail'),
+  fn('LTRIM', 'sqlFunction.common.ltrim.detail'),
+  fn('RTRIM', 'sqlFunction.common.rtrim.detail'),
+  fn('REPLACE', 'sqlFunction.common.replace.detail'),
+  fn('ABS', 'sqlFunction.common.abs.detail'),
+  fn('CEIL', 'sqlFunction.common.ceil.detail'),
+  fn('CEILING', 'sqlFunction.common.ceiling.detail'),
+  fn('FLOOR', 'sqlFunction.common.floor.detail'),
+  fn('ROUND', 'sqlFunction.common.round.detail'),
+  fn('MOD', 'sqlFunction.common.mod.detail'),
+  fn('POWER', 'sqlFunction.common.power.detail'),
+  fn('SQRT', 'sqlFunction.common.sqrt.detail'),
+  fn('LOG', 'sqlFunction.common.log.detail'),
+  fn('EXP', 'sqlFunction.common.exp.detail'),
+  fn('COALESCE', 'sqlFunction.common.coalesce.detail'),
+  fn('NULLIF', 'sqlFunction.common.nullif.detail'),
+  fn('CAST', 'sqlFunction.common.cast.detail'),
+  fn('CONVERT', 'sqlFunction.common.convert.detail'),
+  fn('ROW_NUMBER', 'sqlFunction.common.row_number.detail'),
+  fn('RANK', 'sqlFunction.common.rank.detail'),
+  fn('DENSE_RANK', 'sqlFunction.common.dense_rank.detail'),
+  fn('LAG', 'sqlFunction.common.lag.detail'),
+  fn('LEAD', 'sqlFunction.common.lead.detail'),
+  fn('FIRST_VALUE', 'sqlFunction.common.first_value.detail'),
+  fn('LAST_VALUE', 'sqlFunction.common.last_value.detail'),
 ];
 
 const MYSQL_FUNCTIONS = [
-  fn('GROUP_CONCAT', 'MySQL - 分组拼接'),
-  fn('CONCAT_WS', 'MySQL - 带分隔符拼接'),
-  fn('LEFT', 'MySQL - 从左截取'),
-  fn('RIGHT', 'MySQL - 从右截取'),
-  fn('CHAR_LENGTH', 'MySQL - 字符长度'),
-  fn('REVERSE', 'MySQL - 字符串反转'),
-  fn('REPEAT', 'MySQL - 重复字符串'),
-  fn('LPAD', 'MySQL - 左填充'),
-  fn('RPAD', 'MySQL - 右填充'),
-  fn('INSTR', 'MySQL - 查找位置'),
-  fn('LOCATE', 'MySQL - 查找位置'),
-  fn('FIND_IN_SET', 'MySQL - 集合查找'),
-  fn('FORMAT', 'MySQL - 数字格式化'),
-  fn('TRUNCATE', 'MySQL - 截断小数'),
-  fn('RAND', 'MySQL - 随机数'),
-  fn('POW', 'MySQL - 幂运算'),
-  fn('LOG2', 'MySQL - 以 2 为底对数'),
-  fn('LOG10', 'MySQL - 以 10 为底对数'),
-  fn('NOW', 'MySQL - 当前日期时间'),
-  fn('CURDATE', 'MySQL - 当前日期'),
-  fn('CURTIME', 'MySQL - 当前时间'),
-  fn('DATE_FORMAT', 'MySQL - 日期格式化'),
-  fn('DATE_ADD', 'MySQL - 日期加法'),
-  fn('DATE_SUB', 'MySQL - 日期减法'),
-  fn('DATEDIFF', 'MySQL - 日期差'),
-  fn('TIMESTAMPDIFF', 'MySQL - 时间戳差'),
-  fn('STR_TO_DATE', 'MySQL - 字符串转日期'),
-  fn('UNIX_TIMESTAMP', 'MySQL - Unix 时间戳'),
-  fn('IF', 'MySQL - 条件判断'),
-  fn('IFNULL', 'MySQL - NULL 替换'),
-  fn('JSON_EXTRACT', 'MySQL - JSON 提取'),
-  fn('JSON_UNQUOTE', 'MySQL - JSON 去引号'),
-  fn('JSON_SET', 'MySQL - JSON 设置'),
-  fn('MD5', 'MySQL - MD5 哈希'),
-  fn('SHA1', 'MySQL - SHA1 哈希'),
-  fn('SHA2', 'MySQL - SHA2 哈希'),
-  fn('UUID', 'MySQL - 生成 UUID'),
-  fn('DATABASE', 'MySQL - 当前数据库'),
-  fn('VERSION', 'MySQL - 版本'),
-  fn('LAST_INSERT_ID', 'MySQL - 最后插入 ID'),
+  fn('GROUP_CONCAT', 'sqlFunction.mysql.group_concat.detail'),
+  fn('CONCAT_WS', 'sqlFunction.mysql.concat_ws.detail'),
+  fn('LEFT', 'sqlFunction.mysql.left.detail'),
+  fn('RIGHT', 'sqlFunction.mysql.right.detail'),
+  fn('CHAR_LENGTH', 'sqlFunction.mysql.char_length.detail'),
+  fn('REVERSE', 'sqlFunction.mysql.reverse.detail'),
+  fn('REPEAT', 'sqlFunction.mysql.repeat.detail'),
+  fn('LPAD', 'sqlFunction.mysql.lpad.detail'),
+  fn('RPAD', 'sqlFunction.mysql.rpad.detail'),
+  fn('INSTR', 'sqlFunction.mysql.instr.detail'),
+  fn('LOCATE', 'sqlFunction.mysql.locate.detail'),
+  fn('FIND_IN_SET', 'sqlFunction.mysql.find_in_set.detail'),
+  fn('FORMAT', 'sqlFunction.mysql.format.detail'),
+  fn('TRUNCATE', 'sqlFunction.mysql.truncate.detail'),
+  fn('RAND', 'sqlFunction.mysql.rand.detail'),
+  fn('POW', 'sqlFunction.mysql.pow.detail'),
+  fn('LOG2', 'sqlFunction.mysql.log2.detail'),
+  fn('LOG10', 'sqlFunction.mysql.log10.detail'),
+  fn('NOW', 'sqlFunction.mysql.now.detail'),
+  fn('CURDATE', 'sqlFunction.mysql.curdate.detail'),
+  fn('CURTIME', 'sqlFunction.mysql.curtime.detail'),
+  fn('DATE_FORMAT', 'sqlFunction.mysql.date_format.detail'),
+  fn('DATE_ADD', 'sqlFunction.mysql.date_add.detail'),
+  fn('DATE_SUB', 'sqlFunction.mysql.date_sub.detail'),
+  fn('DATEDIFF', 'sqlFunction.mysql.datediff.detail'),
+  fn('TIMESTAMPDIFF', 'sqlFunction.mysql.timestampdiff.detail'),
+  fn('STR_TO_DATE', 'sqlFunction.mysql.str_to_date.detail'),
+  fn('UNIX_TIMESTAMP', 'sqlFunction.mysql.unix_timestamp.detail'),
+  fn('IF', 'sqlFunction.mysql.if.detail'),
+  fn('IFNULL', 'sqlFunction.mysql.ifnull.detail'),
+  fn('JSON_EXTRACT', 'sqlFunction.mysql.json_extract.detail'),
+  fn('JSON_UNQUOTE', 'sqlFunction.mysql.json_unquote.detail'),
+  fn('JSON_SET', 'sqlFunction.mysql.json_set.detail'),
+  fn('MD5', 'sqlFunction.mysql.md5.detail'),
+  fn('SHA1', 'sqlFunction.mysql.sha1.detail'),
+  fn('SHA2', 'sqlFunction.mysql.sha2.detail'),
+  fn('UUID', 'sqlFunction.mysql.uuid.detail'),
+  fn('DATABASE', 'sqlFunction.mysql.database.detail'),
+  fn('VERSION', 'sqlFunction.mysql.version.detail'),
+  fn('LAST_INSERT_ID', 'sqlFunction.mysql.last_insert_id.detail'),
 ];
 
 const PG_FUNCTIONS = [
-  fn('STRING_AGG', 'PostgreSQL - 字符串聚合'),
-  fn('ARRAY_AGG', 'PostgreSQL - 数组聚合'),
-  fn('BOOL_AND', 'PostgreSQL - 布尔与聚合'),
-  fn('BOOL_OR', 'PostgreSQL - 布尔或聚合'),
-  fn('POSITION', 'PostgreSQL - 查找位置'),
-  fn('EXTRACT', 'PostgreSQL - 日期字段提取'),
-  fn('DATE_TRUNC', 'PostgreSQL - 日期截断'),
-  fn('NOW', 'PostgreSQL - 当前时间'),
-  fn('TO_CHAR', 'PostgreSQL - 格式化为文本'),
-  fn('TO_DATE', 'PostgreSQL - 文本转日期'),
-  fn('TO_TIMESTAMP', 'PostgreSQL - 文本转时间戳'),
-  fn('AGE', 'PostgreSQL - 时间差'),
-  fn('RANDOM', 'PostgreSQL - 随机数'),
-  fn('CURRENT_DATABASE', 'PostgreSQL - 当前数据库'),
-  fn('JSONB_EXTRACT_PATH', 'PostgreSQL - JSONB 路径提取'),
+  fn('STRING_AGG', 'sqlFunction.postgres.string_agg.detail'),
+  fn('ARRAY_AGG', 'sqlFunction.postgres.array_agg.detail'),
+  fn('BOOL_AND', 'sqlFunction.postgres.bool_and.detail'),
+  fn('BOOL_OR', 'sqlFunction.postgres.bool_or.detail'),
+  fn('POSITION', 'sqlFunction.postgres.position.detail'),
+  fn('EXTRACT', 'sqlFunction.postgres.extract.detail'),
+  fn('DATE_TRUNC', 'sqlFunction.postgres.date_trunc.detail'),
+  fn('NOW', 'sqlFunction.postgres.now.detail'),
+  fn('TO_CHAR', 'sqlFunction.postgres.to_char.detail'),
+  fn('TO_DATE', 'sqlFunction.postgres.to_date.detail'),
+  fn('TO_TIMESTAMP', 'sqlFunction.postgres.to_timestamp.detail'),
+  fn('AGE', 'sqlFunction.postgres.age.detail'),
+  fn('RANDOM', 'sqlFunction.postgres.random.detail'),
+  fn('CURRENT_DATABASE', 'sqlFunction.postgres.current_database.detail'),
+  fn('JSONB_EXTRACT_PATH', 'sqlFunction.postgres.jsonb_extract_path.detail'),
 ];
 
 const ORACLE_FUNCTIONS = [
-  fn('LISTAGG', 'Oracle - 字符串聚合'),
-  fn('NVL', 'Oracle - NULL 替换'),
-  fn('NVL2', 'Oracle - NULL 分支'),
-  fn('DECODE', 'Oracle - 条件映射'),
-  fn('TO_DATE', 'Oracle - 文本转日期'),
-  fn('TO_TIMESTAMP', 'Oracle - 文本转时间戳'),
-  fn('TO_CHAR', 'Oracle - 格式化为文本'),
-  fn('TO_NUMBER', 'Oracle - 转数字'),
-  fn('TRUNC', 'Oracle - 截断日期或数字'),
-  fn('ADD_MONTHS', 'Oracle - 增加月份'),
-  fn('MONTHS_BETWEEN', 'Oracle - 月份差'),
-  fn('LAST_DAY', 'Oracle - 月末日期'),
-  fn('SYSDATE', 'Oracle - 数据库当前时间'),
-  fn('SYSTIMESTAMP', 'Oracle - 当前时间戳'),
-  fn('INSTR', 'Oracle - 查找位置'),
-  fn('REGEXP_LIKE', 'Oracle - 正则匹配'),
-  fn('REGEXP_REPLACE', 'Oracle - 正则替换'),
-  fn('USER', 'Oracle - 当前用户'),
+  fn('LISTAGG', 'sqlFunction.oracle.listagg.detail'),
+  fn('NVL', 'sqlFunction.oracle.nvl.detail'),
+  fn('NVL2', 'sqlFunction.oracle.nvl2.detail'),
+  fn('DECODE', 'sqlFunction.oracle.decode.detail'),
+  fn('TO_DATE', 'sqlFunction.oracle.to_date.detail'),
+  fn('TO_TIMESTAMP', 'sqlFunction.oracle.to_timestamp.detail'),
+  fn('TO_CHAR', 'sqlFunction.oracle.to_char.detail'),
+  fn('TO_NUMBER', 'sqlFunction.oracle.to_number.detail'),
+  fn('TRUNC', 'sqlFunction.oracle.trunc.detail'),
+  fn('ADD_MONTHS', 'sqlFunction.oracle.add_months.detail'),
+  fn('MONTHS_BETWEEN', 'sqlFunction.oracle.months_between.detail'),
+  fn('LAST_DAY', 'sqlFunction.oracle.last_day.detail'),
+  fn('SYSDATE', 'sqlFunction.oracle.sysdate.detail'),
+  fn('SYSTIMESTAMP', 'sqlFunction.oracle.systimestamp.detail'),
+  fn('INSTR', 'sqlFunction.oracle.instr.detail'),
+  fn('REGEXP_LIKE', 'sqlFunction.oracle.regexp_like.detail'),
+  fn('REGEXP_REPLACE', 'sqlFunction.oracle.regexp_replace.detail'),
+  fn('USER', 'sqlFunction.oracle.user.detail'),
 ];
 
 const SQLSERVER_FUNCTIONS = [
-  fn('GETDATE', 'SQL Server - 当前日期时间'),
-  fn('SYSDATETIME', 'SQL Server - 高精度当前时间'),
-  fn('DATEADD', 'SQL Server - 日期加法'),
-  fn('DATEDIFF', 'SQL Server - 日期差'),
-  fn('FORMAT', 'SQL Server - 格式化'),
-  fn('ISNULL', 'SQL Server - NULL 替换'),
-  fn('IIF', 'SQL Server - 条件判断'),
-  fn('NEWID', 'SQL Server - 生成 GUID'),
-  fn('STRING_AGG', 'SQL Server - 字符串聚合'),
-  fn('LEFT', 'SQL Server - 从左截取'),
-  fn('RIGHT', 'SQL Server - 从右截取'),
-  fn('LEN', 'SQL Server - 字符长度'),
-  fn('CHARINDEX', 'SQL Server - 查找位置'),
-  fn('TRY_CAST', 'SQL Server - 尝试转换'),
-  fn('TRY_CONVERT', 'SQL Server - 尝试转换'),
-  fn('DB_NAME', 'SQL Server - 当前数据库'),
+  fn('GETDATE', 'sqlFunction.sqlserver.getdate.detail'),
+  fn('SYSDATETIME', 'sqlFunction.sqlserver.sysdatetime.detail'),
+  fn('DATEADD', 'sqlFunction.sqlserver.dateadd.detail'),
+  fn('DATEDIFF', 'sqlFunction.sqlserver.datediff.detail'),
+  fn('FORMAT', 'sqlFunction.sqlserver.format.detail'),
+  fn('ISNULL', 'sqlFunction.sqlserver.isnull.detail'),
+  fn('IIF', 'sqlFunction.sqlserver.iif.detail'),
+  fn('NEWID', 'sqlFunction.sqlserver.newid.detail'),
+  fn('STRING_AGG', 'sqlFunction.sqlserver.string_agg.detail'),
+  fn('LEFT', 'sqlFunction.sqlserver.left.detail'),
+  fn('RIGHT', 'sqlFunction.sqlserver.right.detail'),
+  fn('LEN', 'sqlFunction.sqlserver.len.detail'),
+  fn('CHARINDEX', 'sqlFunction.sqlserver.charindex.detail'),
+  fn('TRY_CAST', 'sqlFunction.sqlserver.try_cast.detail'),
+  fn('TRY_CONVERT', 'sqlFunction.sqlserver.try_convert.detail'),
+  fn('DB_NAME', 'sqlFunction.sqlserver.db_name.detail'),
 ];
 
 const SQLITE_FUNCTIONS = [
-  fn('DATE', 'SQLite - 日期'),
-  fn('TIME', 'SQLite - 时间'),
-  fn('DATETIME', 'SQLite - 日期时间'),
-  fn('JULIANDAY', 'SQLite - 儒略日'),
-  fn('STRFTIME', 'SQLite - 日期格式化'),
-  fn('IFNULL', 'SQLite - NULL 替换'),
-  fn('RANDOM', 'SQLite - 随机数'),
-  fn('PRINTF', 'SQLite - 格式化'),
-  fn('HEX', 'SQLite - 十六进制'),
-  fn('QUOTE', 'SQLite - SQL 字面量'),
-  fn('JSON_EXTRACT', 'SQLite - JSON 提取'),
+  fn('DATE', 'sqlFunction.sqlite.date.detail'),
+  fn('TIME', 'sqlFunction.sqlite.time.detail'),
+  fn('DATETIME', 'sqlFunction.sqlite.datetime.detail'),
+  fn('JULIANDAY', 'sqlFunction.sqlite.julianday.detail'),
+  fn('STRFTIME', 'sqlFunction.sqlite.strftime.detail'),
+  fn('IFNULL', 'sqlFunction.sqlite.ifnull.detail'),
+  fn('RANDOM', 'sqlFunction.sqlite.random.detail'),
+  fn('PRINTF', 'sqlFunction.sqlite.printf.detail'),
+  fn('HEX', 'sqlFunction.sqlite.hex.detail'),
+  fn('QUOTE', 'sqlFunction.sqlite.quote.detail'),
+  fn('JSON_EXTRACT', 'sqlFunction.sqlite.json_extract.detail'),
 ];
 
 const DUCKDB_FUNCTIONS = [
-  fn('LIST', 'DuckDB - 列表聚合'),
-  fn('STRUCT_PACK', 'DuckDB - 构造结构体'),
-  fn('UNNEST', 'DuckDB - 展开列表'),
-  fn('STRFTIME', 'DuckDB - 日期格式化'),
-  fn('EPOCH', 'DuckDB - 时间戳秒数'),
-  fn('RANDOM', 'DuckDB - 随机数'),
-  fn('UUID', 'DuckDB - 生成 UUID'),
+  fn('LIST', 'sqlFunction.duckdb.list.detail'),
+  fn('STRUCT_PACK', 'sqlFunction.duckdb.struct_pack.detail'),
+  fn('UNNEST', 'sqlFunction.duckdb.unnest.detail'),
+  fn('STRFTIME', 'sqlFunction.duckdb.strftime.detail'),
+  fn('EPOCH', 'sqlFunction.duckdb.epoch.detail'),
+  fn('RANDOM', 'sqlFunction.duckdb.random.detail'),
+  fn('UUID', 'sqlFunction.duckdb.uuid.detail'),
 ];
 
 const CLICKHOUSE_FUNCTIONS = [
-  fn('now', 'ClickHouse - 当前时间'),
-  fn('today', 'ClickHouse - 当前日期'),
-  fn('toDate', 'ClickHouse - 转日期'),
-  fn('toDateTime', 'ClickHouse - 转日期时间'),
-  fn('formatDateTime', 'ClickHouse - 日期格式化'),
-  fn('groupArray', 'ClickHouse - 数组聚合'),
-  fn('groupUniqArray', 'ClickHouse - 去重数组聚合'),
-  fn('uniq', 'ClickHouse - 近似去重'),
-  fn('uniqExact', 'ClickHouse - 精确去重'),
-  fn('quantile', 'ClickHouse - 分位数'),
-  fn('JSONExtractString', 'ClickHouse - JSON 字符串提取'),
-  fn('toString', 'ClickHouse - 转字符串'),
-  fn('toInt64', 'ClickHouse - 转 Int64'),
+  fn('now', 'sqlFunction.clickhouse.now.detail'),
+  fn('today', 'sqlFunction.clickhouse.today.detail'),
+  fn('toDate', 'sqlFunction.clickhouse.todate.detail'),
+  fn('toDateTime', 'sqlFunction.clickhouse.todatetime.detail'),
+  fn('formatDateTime', 'sqlFunction.clickhouse.formatdatetime.detail'),
+  fn('groupArray', 'sqlFunction.clickhouse.grouparray.detail'),
+  fn('groupUniqArray', 'sqlFunction.clickhouse.groupuniqarray.detail'),
+  fn('uniq', 'sqlFunction.clickhouse.uniq.detail'),
+  fn('uniqExact', 'sqlFunction.clickhouse.uniqexact.detail'),
+  fn('quantile', 'sqlFunction.clickhouse.quantile.detail'),
+  fn('JSONExtractString', 'sqlFunction.clickhouse.jsonextractstring.detail'),
+  fn('toString', 'sqlFunction.clickhouse.tostring.detail'),
+  fn('toInt64', 'sqlFunction.clickhouse.toint64.detail'),
 ];
 
 const TDENGINE_FUNCTIONS = [
-  fn('NOW', 'TDengine - 当前时间'),
-  fn('TODAY', 'TDengine - 当前日期'),
-  fn('TIMEDIFF', 'TDengine - 时间差'),
-  fn('ELAPSED', 'TDengine - 经过时间'),
-  fn('SPREAD', 'TDengine - 最大最小差'),
-  fn('TWA', 'TDengine - 时间加权平均'),
-  fn('LEASTSQUARES', 'TDengine - 最小二乘'),
-  fn('APERCENTILE', 'TDengine - 近似百分位'),
-  fn('FIRST', 'TDengine - 首值'),
-  fn('LAST', 'TDengine - 末值'),
-  fn('LAST_ROW', 'TDengine - 最后一行'),
-  fn('INTERP', 'TDengine - 插值'),
-  fn('RATE', 'TDengine - 变化率'),
-  fn('IRATE', 'TDengine - 瞬时变化率'),
+  fn('NOW', 'sqlFunction.tdengine.now.detail'),
+  fn('TODAY', 'sqlFunction.tdengine.today.detail'),
+  fn('TIMEDIFF', 'sqlFunction.tdengine.timediff.detail'),
+  fn('ELAPSED', 'sqlFunction.tdengine.elapsed.detail'),
+  fn('SPREAD', 'sqlFunction.tdengine.spread.detail'),
+  fn('TWA', 'sqlFunction.tdengine.twa.detail'),
+  fn('LEASTSQUARES', 'sqlFunction.tdengine.leastsquares.detail'),
+  fn('APERCENTILE', 'sqlFunction.tdengine.apercentile.detail'),
+  fn('FIRST', 'sqlFunction.tdengine.first.detail'),
+  fn('LAST', 'sqlFunction.tdengine.last.detail'),
+  fn('LAST_ROW', 'sqlFunction.tdengine.last_row.detail'),
+  fn('INTERP', 'sqlFunction.tdengine.interp.detail'),
+  fn('RATE', 'sqlFunction.tdengine.rate.detail'),
+  fn('IRATE', 'sqlFunction.tdengine.irate.detail'),
 ];
 
-const mergeFunctions = (items: SqlFunctionCompletion[]): SqlFunctionCompletion[] => {
+const mergeFunctions = (items: SqlFunctionCompletionDefinition[], language: AppLanguage): SqlFunctionCompletion[] => {
   const seen = new Set<string>();
   const result: SqlFunctionCompletion[] = [];
   for (const item of items) {
     const key = item.name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
-    result.push(item);
+    result.push({ name: item.name, detail: translate(language, item.detailKey) });
   }
   return result;
 };
 
-export const resolveSqlFunctions = (dbType: string): SqlFunctionCompletion[] => {
+export const resolveSqlFunctions = (dbType: string, language: AppLanguage = 'en'): SqlFunctionCompletion[] => {
   const dialect = resolveSqlDialect(dbType);
-  if (isMysqlFamilyDialect(dialect)) return mergeFunctions([...COMMON_FUNCTIONS, ...MYSQL_FUNCTIONS]);
-  if (isPgLikeDialect(dialect)) return mergeFunctions([...COMMON_FUNCTIONS, ...PG_FUNCTIONS]);
-  if (isOracleLikeDialect(dialect)) return mergeFunctions([...COMMON_FUNCTIONS, ...ORACLE_FUNCTIONS]);
-  if (dialect === 'sqlserver') return mergeFunctions([...COMMON_FUNCTIONS, ...SQLSERVER_FUNCTIONS]);
-  if (dialect === 'sqlite') return mergeFunctions([...COMMON_FUNCTIONS, ...SQLITE_FUNCTIONS]);
-  if (dialect === 'duckdb') return mergeFunctions([...COMMON_FUNCTIONS, ...DUCKDB_FUNCTIONS]);
-  if (dialect === 'clickhouse') return mergeFunctions([...COMMON_FUNCTIONS, ...CLICKHOUSE_FUNCTIONS]);
-  if (dialect === 'tdengine') return mergeFunctions([...COMMON_FUNCTIONS, ...TDENGINE_FUNCTIONS]);
-  return COMMON_FUNCTIONS;
+  if (isMysqlFamilyDialect(dialect)) return mergeFunctions([...COMMON_FUNCTIONS, ...MYSQL_FUNCTIONS], language);
+  if (isPgLikeDialect(dialect)) return mergeFunctions([...COMMON_FUNCTIONS, ...PG_FUNCTIONS], language);
+  if (isOracleLikeDialect(dialect)) return mergeFunctions([...COMMON_FUNCTIONS, ...ORACLE_FUNCTIONS], language);
+  if (dialect === 'sqlserver') return mergeFunctions([...COMMON_FUNCTIONS, ...SQLSERVER_FUNCTIONS], language);
+  if (dialect === 'sqlite') return mergeFunctions([...COMMON_FUNCTIONS, ...SQLITE_FUNCTIONS], language);
+  if (dialect === 'duckdb') return mergeFunctions([...COMMON_FUNCTIONS, ...DUCKDB_FUNCTIONS], language);
+  if (dialect === 'clickhouse') return mergeFunctions([...COMMON_FUNCTIONS, ...CLICKHOUSE_FUNCTIONS], language);
+  if (dialect === 'tdengine') return mergeFunctions([...COMMON_FUNCTIONS, ...TDENGINE_FUNCTIONS], language);
+  return mergeFunctions(COMMON_FUNCTIONS, language);
 };

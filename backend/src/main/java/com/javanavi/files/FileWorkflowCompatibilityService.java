@@ -229,8 +229,8 @@ public class FileWorkflowCompatibilityService {
                     "duplicateColumns", duplicateFilter.columns(),
                     "duplicateWarning", duplicateFilter.warning(),
                     "duplicateWarningCode", duplicateFilter.warningCode(),
-                    "errorLogs", failed == 0 ? List.of() : List.of("Some rows were not inserted; inspect database constraints."),
-                    "errorSummary", "Imported: " + result.insertedRows() + ", Skipped duplicates: " + duplicateFilter.skippedDuplicates() + ", Failed: " + failed,
+                    "errorLogs", failed == 0 ? List.of() : List.of(messages.message("files.import.insertConstraintWarning")),
+                    "errorSummary", messages.message("files.import.summaryWithSkipped", "imported", result.insertedRows(), "skipped", duplicateFilter.skippedDuplicates(), "failed", failed),
                     "dryRun", false,
                     "appliedToDatabase", true,
                     "insertedRows", result.insertedRows(),
@@ -238,8 +238,8 @@ public class FileWorkflowCompatibilityService {
                     "table", tableName,
                     "filePath", file.toString(),
                     "message", duplicateFilter.skippedDuplicates() > 0
-                            ? "Duplicate rows were skipped and existing data was not overwritten."
-                            : "JavaNavi Web import compatibility inserted parsed rows into the managed JDBC target."
+                            ? messages.message("files.import.duplicatesSkippedNoOverwrite")
+                            : messages.message("files.import.compatInsertedRows")
             );
             deleteQuietly(file);
             return importResult;
@@ -254,13 +254,13 @@ public class FileWorkflowCompatibilityService {
                 "duplicateStrategy", "",
                 "duplicateStrategyCode", "",
                 "duplicateColumns", List.of(),
-                "duplicateWarning", "重复数据将在正式导入时跳过，不会覆盖已有数据。",
+                "duplicateWarning", messages.message("files.import.duplicatesSkippedOnApply"),
                 "duplicateWarningCode", "IMPORT_DUPLICATES_SKIPPED_ON_APPLY",
                 "errorLogs", List.of(),
-                "errorSummary", "Imported: " + total + ", Failed: 0",
+                "errorSummary", messages.message("files.import.summary", "imported", total, "failed", 0),
                 "dryRun", true,
                 "filePath", file.toString(),
-                "message", "JavaNavi Web import compatibility parsed the managed file and emitted progress; database mutation remains disabled for this browser-safe slice."
+                "message", messages.message("files.import.compatParsedDryRun")
         );
     }
 
@@ -357,7 +357,7 @@ public class FileWorkflowCompatibilityService {
             List<Map<String, Object>> rows
     ) {
         if (rows == null || rows.isEmpty()) {
-            return new DuplicateFilterResult(List.of(), 0, List.of(), List.of(), "", "", List.of(), "重复数据将在正式导入时跳过，不会覆盖已有数据。", "IMPORT_DUPLICATES_SKIPPED_ON_APPLY");
+            return new DuplicateFilterResult(List.of(), 0, List.of(), List.of(), "", "", List.of(), messages.message("files.import.duplicatesSkippedOnApply"), "IMPORT_DUPLICATES_SKIPPED_ON_APPLY");
         }
         List<String> duplicateColumns = importDuplicateKeyColumns(connection, database, tableName, rows);
         return duplicateColumns.isEmpty()
@@ -388,13 +388,13 @@ public class FileWorkflowCompatibilityService {
             }
             if (seenKeys.contains(key)) {
                 skipped++;
-                addDuplicateLog(logs, "第 " + (index + 1) + " 行跳过：导入文件内重复，依据 " + key + "。");
+                addDuplicateLog(logs, messages.message("files.import.duplicateLog.fileKey", "row", index + 1, "key", key));
                 addDuplicateLogCode(logCodes, "file-key", index + 1, key);
                 continue;
             }
             if (existingKeys.contains(key)) {
                 skipped++;
-                addDuplicateLog(logs, "第 " + (index + 1) + " 行跳过：数据库中已存在，依据 " + key + "。");
+                addDuplicateLog(logs, messages.message("files.import.duplicateLog.databaseKey", "row", index + 1, "key", key));
                 addDuplicateLogCode(logCodes, "database-key", index + 1, key);
                 continue;
             }
@@ -403,7 +403,7 @@ public class FileWorkflowCompatibilityService {
         }
         addDuplicateOverflowLog(logs, skipped);
         addDuplicateOverflowLogCode(logCodes, skipped);
-        String strategy = "按唯一标识判断重复：" + String.join(", ", duplicateColumns);
+        String strategy = messages.message("files.import.duplicateStrategy.key", "columns", String.join(", ", duplicateColumns));
         return new DuplicateFilterResult(
                 filteredRows,
                 skipped,
@@ -412,7 +412,7 @@ public class FileWorkflowCompatibilityService {
                 strategy,
                 "key",
                 duplicateColumns,
-                "重复数据已跳过，不会覆盖已有数据；" + strategy + "。",
+                messages.message("files.import.duplicateWarning.byKey", "strategy", strategy),
                 "IMPORT_DUPLICATES_SKIPPED_BY_KEY"
         );
     }
@@ -429,7 +429,7 @@ public class FileWorkflowCompatibilityService {
             String signature = importKeySignature(columns, row, false);
             if (seenRows.contains(signature)) {
                 skipped++;
-                addDuplicateLog(logs, "第 " + (index + 1) + " 行跳过：导入文件内完全重复。");
+                addDuplicateLog(logs, messages.message("files.import.duplicateLog.fileFullRow", "row", index + 1));
                 addDuplicateLogCode(logCodes, "file-full-row", index + 1, "");
                 continue;
             }
@@ -443,10 +443,10 @@ public class FileWorkflowCompatibilityService {
                 skipped,
                 logs,
                 logCodes,
-                "仅判断导入文件内部完全重复行",
+                messages.message("files.import.duplicateStrategy.fileFullRow"),
                 "file-full-row",
                 List.of(),
-                "当前表未检测到主键或唯一索引，无法可靠判断数据库已有数据；仅跳过导入文件内部完全重复行。",
+                messages.message("files.import.duplicateWarning.fileOnly"),
                 "IMPORT_DUPLICATES_FILE_ONLY"
         );
     }
@@ -605,9 +605,9 @@ public class FileWorkflowCompatibilityService {
         }
     }
 
-    private static void addDuplicateOverflowLog(List<String> logs, int skipped) {
+    private void addDuplicateOverflowLog(List<String> logs, int skipped) {
         if (skipped > logs.size()) {
-            logs.add("还有 " + (skipped - logs.size()) + " 条重复数据已跳过。");
+            logs.add(messages.message("files.import.duplicateOverflow", "count", skipped - logs.size()));
         }
     }
 

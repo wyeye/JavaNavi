@@ -14,15 +14,15 @@ export interface ConnectionPackagePasswordModalProps {
   password: string;
   error?: string;
   confirmLoading?: boolean;
-  confirmText?: string;
-  cancelText?: string;
-  exportPasswordsText?: string;
-  useFilePasswordText?: string;
-  exportPasswordPlaceholder?: string;
-  importPasswordPlaceholder?: string;
-  exportNoSecretsHelpText?: string;
-  exportPasswordHelpText?: string;
-  exportPasswordRecommendedHelpText?: string;
+  confirmText: string;
+  cancelText: string;
+  exportPasswordsText: string;
+  useFilePasswordText: string;
+  exportPasswordPlaceholder: string;
+  importPasswordPlaceholder: string;
+  exportNoSecretsHelpText: string;
+  exportPasswordHelpText: string;
+  exportPasswordRecommendedHelpText: string;
   onIncludeSecretsChange?: (value: boolean) => void;
   onUseFilePasswordChange?: (value: boolean) => void;
   onPasswordChange: (value: string) => void;
@@ -39,15 +39,15 @@ export default function ConnectionPackagePasswordModal({
   password,
   error,
   confirmLoading,
-  confirmText = '确认',
-  cancelText = '取消',
-  exportPasswordsText = '导出连接密码',
-  useFilePasswordText = '设置文件保护密码',
-  exportPasswordPlaceholder = '请输入文件保护密码（可选）',
-  importPasswordPlaceholder = '请输入恢复包密码',
-  exportNoSecretsHelpText = '将仅导出连接配置，不包含密码。',
-  exportPasswordHelpText = '请通过单独渠道将密码告知接收方，不要和文件一起发送。',
-  exportPasswordRecommendedHelpText = '密码已加密保护。如需通过公网传输，建议设置文件保护密码。',
+  confirmText,
+  cancelText,
+  exportPasswordsText,
+  useFilePasswordText,
+  exportPasswordPlaceholder,
+  importPasswordPlaceholder,
+  exportNoSecretsHelpText,
+  exportPasswordHelpText,
+  exportPasswordRecommendedHelpText,
   onIncludeSecretsChange,
   onUseFilePasswordChange,
   onPasswordChange,

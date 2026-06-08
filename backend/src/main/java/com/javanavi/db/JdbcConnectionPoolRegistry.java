@@ -1,6 +1,8 @@
 package com.javanavi.db;
 
+import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ConnectionConfigDto;
+import org.springframework.beans.factory.annotation.Autowired;
 import com.javanavi.model.ConnectionPoolStatusDto;
 import com.zaxxer.hikari.HikariConfig;
 import com.zaxxer.hikari.HikariDataSource;
@@ -34,10 +36,17 @@ public class JdbcConnectionPoolRegistry {
     private static final long DEFAULT_MAX_LIFETIME_MS = 1_800_000;
 
     private final JdbcConnectionFactory jdbcConnectionFactory;
+    private final I18nMessages messages;
     private final ConcurrentMap<String, ManagedPool> pools = new ConcurrentHashMap<>();
 
     public JdbcConnectionPoolRegistry(JdbcConnectionFactory jdbcConnectionFactory) {
+        this(jdbcConnectionFactory, new I18nMessages());
+    }
+
+    @Autowired
+    public JdbcConnectionPoolRegistry(JdbcConnectionFactory jdbcConnectionFactory, I18nMessages messages) {
         this.jdbcConnectionFactory = jdbcConnectionFactory;
+        this.messages = messages;
     }
 
     public Connection openConnection(ConnectionConfigDto config) throws SQLException {
@@ -79,7 +88,7 @@ public class JdbcConnectionPoolRegistry {
         if (config != null && config.sshEnabled()) {
             try (Connection connection = openSshConnection(config)) {
                 if (!connection.isValid(3)) {
-                    throw new SQLException("JDBC connection is not valid.");
+                    throw new SQLException(messages.message("connection.jdbcConnectionInvalid"));
                 }
             } catch (SQLException error) {
                 throw connectionFailure(config, error);
@@ -102,7 +111,7 @@ public class JdbcConnectionPoolRegistry {
         try (Connection connection = pool.openConnection()) {
             if (!connection.isValid(3)) {
                 discardInvalidPool = true;
-                throw new SQLException("JDBC connection is not valid.");
+                throw new SQLException(messages.message("connection.jdbcConnectionInvalid"));
             }
         } catch (SQLException error) {
             if (discardInvalidPool) {
@@ -267,13 +276,11 @@ public class JdbcConnectionPoolRegistry {
     private SQLException connectionFailure(ConnectionConfigDto config, SQLException error) {
         String cause = conciseCause(error);
         if (cause != null && cause.contains("Connection is not available")) {
-            return new SQLException("当前连接忙，已有 6 个任务在执行，请稍后重试", error.getSQLState(), error.getErrorCode(), error);
+            return new SQLException(messages.message("connection.poolBusy", "max", DEFAULT_MAX_POOL_SIZE), error.getSQLState(), error.getErrorCode(), error);
         }
-        String message = "Unable to connect to " + connectionTarget(config)
-                + " within " + connectionTimeoutMs(config) + "ms. "
-                + "Check that the database service is running, host/port are reachable, and credentials are valid.";
+        String message = messages.message("connection.unableToConnectWithin", "target", connectionTarget(config), "timeout", connectionTimeoutMs(config));
         if (cause != null && !cause.isBlank()) {
-            message += " Cause: " + cause;
+            message += messages.message("connection.failureCauseSuffix", "cause", cause);
         }
         return new SQLException(message, error.getSQLState(), error.getErrorCode(), error);
     }

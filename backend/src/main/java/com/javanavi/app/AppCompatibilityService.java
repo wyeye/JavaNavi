@@ -6,9 +6,11 @@ import com.javanavi.config.SecurityProperties;
 import com.javanavi.connections.ConnectionPackageCompatibilityService;
 import com.javanavi.files.ExportedFileRevealService;
 import com.javanavi.i18n.AppLanguage;
+import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.AppContracts;
 import com.javanavi.model.SavedConnectionViewDto;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -31,6 +33,7 @@ public class AppCompatibilityService {
     private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() {};
     private final ObjectMapper objectMapper;
     private final ConnectionPackageCompatibilityService connectionPackageCompatibilityService;
+    private final I18nMessages messages;
     private final ExportedFileRevealService exportedFileRevealService;
     private final AppPersistenceService appPersistence;
     private final Path dataDirectory;
@@ -43,8 +46,20 @@ public class AppCompatibilityService {
             ConnectionPackageCompatibilityService connectionPackageCompatibilityService,
             ExportedFileRevealService exportedFileRevealService
     ) {
+        this(securityProperties, objectMapper, connectionPackageCompatibilityService, exportedFileRevealService, new I18nMessages());
+    }
+
+    @Autowired
+    public AppCompatibilityService(
+            SecurityProperties securityProperties,
+            ObjectMapper objectMapper,
+            ConnectionPackageCompatibilityService connectionPackageCompatibilityService,
+            ExportedFileRevealService exportedFileRevealService,
+            I18nMessages messages
+    ) {
         this.objectMapper = objectMapper;
         this.connectionPackageCompatibilityService = connectionPackageCompatibilityService;
+        this.messages = messages;
         this.exportedFileRevealService = exportedFileRevealService;
         this.appPersistence = new AppPersistenceService(securityProperties, objectMapper);
         this.dataDirectory = Path.of(securityProperties.getDataDirectory()).toAbsolutePath().normalize();
@@ -60,7 +75,7 @@ public class AppCompatibilityService {
                 "java-web",
                 dataDirectory.toString(),
                 "wyeye",
-                "QQ群",
+                messages.message("app.groupLabel"),
                 "1001949448",
                 "",
                 "https://github.com/wyeye/JavaNavi"
@@ -146,7 +161,7 @@ public class AppCompatibilityService {
                             ? java.nio.file.StandardOpenOption.APPEND
                             : java.nio.file.StandardOpenOption.CREATE);
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi diagnostic log.", error);
+            throw stateError("app.diagnosticLogWriteFailed", error);
         }
     }
 
@@ -172,7 +187,7 @@ public class AppCompatibilityService {
             result.putAll(exportedFileRevealService.revealFields(exportFile));
             return connectionExportPackageResponse(result);
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to export JavaNavi connections package.", error);
+            throw stateError("app.connectionsPackageExportFailed", error);
         }
     }
 
@@ -193,7 +208,7 @@ public class AppCompatibilityService {
                     sqlWorkspaceDirectory.toString()
             );
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to prepare JavaNavi SQL workspace directory.", error);
+            throw stateError("app.sqlWorkspaceDirectoryPrepareFailed", error);
         }
     }
 
@@ -205,17 +220,17 @@ public class AppCompatibilityService {
                 "",
                 kind,
                 true,
-                "Use the JavaNavi desktop native file selector for local files."
+                messages.message("app.localFileDesktopSelector")
         );
     }
 
     public AppContracts.LocalFileReadResponse readLocalFile(String rawPath) {
         Path file = Path.of(textOrDefault(rawPath, "")).toAbsolutePath().normalize();
         if (!Files.isRegularFile(file)) {
-            throw new IllegalArgumentException("Selected local file does not exist.");
+            throw invalidError("app.localFileMissing");
         }
         if (!file.getFileName().toString().toLowerCase(Locale.ROOT).endsWith(".sql")) {
-            throw new IllegalArgumentException("Only SQL files can be opened through this action.");
+            throw invalidError("app.localFileSqlOnly");
         }
         try {
             long size = Files.size(file);
@@ -244,7 +259,7 @@ public class AppCompatibilityService {
                     true
             );
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi local SQL file.", error);
+            throw stateError("app.localSqlFileReadFailed", error);
         }
     }
 
@@ -261,7 +276,7 @@ public class AppCompatibilityService {
                     sqlWorkspaceDirectory.toString()
             );
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to prepare JavaNavi SQL workspace directory.", error);
+            throw stateError("app.sqlWorkspaceDirectoryPrepareFailed", error);
         }
     }
 
@@ -279,20 +294,20 @@ public class AppCompatibilityService {
                         .toList();
             }
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to list JavaNavi SQL workspace directory.", error);
+            throw stateError("app.sqlWorkspaceDirectoryListFailed", error);
         }
     }
 
     public AppContracts.SqlFileInfoResponse uploadSqlFile(String directoryPath, MultipartFile file) {
         if (file == null || file.isEmpty()) {
-            throw new IllegalArgumentException("Please upload a non-empty SQL file.");
+            throw invalidError("app.uploadNonEmptySqlFile");
         }
         try {
             Path directory = resolveSqlWorkspacePath(directoryPath, true);
             Files.createDirectories(directory);
             Path target = directory.resolve(requireSqlFileName(file.getOriginalFilename())).normalize();
             if (!target.startsWith(sqlWorkspaceRoot())) {
-                throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+                throw invalidError("app.sqlWorkspacePathManaged");
             }
             Files.copy(file.getInputStream(), target, StandardCopyOption.REPLACE_EXISTING);
             return new AppContracts.SqlFileInfoResponse(
@@ -303,7 +318,7 @@ public class AppCompatibilityService {
                     true
             );
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to upload JavaNavi SQL workspace file.", error);
+            throw stateError("app.sqlWorkspaceFileUploadFailed", error);
         }
     }
 
@@ -313,12 +328,12 @@ public class AppCompatibilityService {
             Files.createDirectories(parent);
             Path target = parent.resolve(requireWorkspaceName(name)).normalize();
             if (!target.startsWith(sqlWorkspaceRoot())) {
-                throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+                throw invalidError("app.sqlWorkspacePathManaged");
             }
             Files.createDirectories(target);
             return sqlDirectoryEntry(target);
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to create JavaNavi SQL workspace directory.", error);
+            throw stateError("app.sqlWorkspaceDirectoryCreateFailed", error);
         }
     }
 
@@ -326,19 +341,19 @@ public class AppCompatibilityService {
         try {
             Path source = resolveSqlWorkspaceExistingPath(path);
             if (!Files.exists(source)) {
-                throw new IllegalArgumentException("Selected path does not exist in the JavaNavi managed SQL workspace.");
+                throw invalidError("app.sqlWorkspacePathMissing");
             }
             String normalizedName = Files.isDirectory(source)
                     ? requireWorkspaceName(newName)
                     : requireSqlFileName(newName);
             Path target = source.resolveSibling(normalizedName).normalize();
             if (!target.startsWith(sqlWorkspaceRoot())) {
-                throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+                throw invalidError("app.sqlWorkspacePathManaged");
             }
             Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
             return sqlDirectoryEntry(target);
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to rename JavaNavi SQL workspace path.", error);
+            throw stateError("app.sqlWorkspacePathRenameFailed", error);
         }
     }
 
@@ -346,7 +361,7 @@ public class AppCompatibilityService {
         try {
             Path file = resolveSqlWorkspacePath(filePath, false);
             if (!Files.isRegularFile(file)) {
-                throw new IllegalArgumentException("Selected path is not a SQL file in the JavaNavi managed workspace.");
+                throw invalidError("app.sqlWorkspaceFileExpected");
             }
             long size = Files.size(file);
             if (size > 50L * 1024L * 1024L) {
@@ -361,7 +376,7 @@ public class AppCompatibilityService {
             }
             return new AppContracts.SqlFileContentResponse(Files.readString(file, StandardCharsets.UTF_8));
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to read JavaNavi SQL workspace file.", error);
+            throw stateError("app.sqlWorkspaceFileReadFailed", error);
         }
     }
 
@@ -369,7 +384,7 @@ public class AppCompatibilityService {
         try {
             Path file = resolveSqlWorkspacePath(filePath, false);
             if (Files.isDirectory(file)) {
-                throw new IllegalArgumentException("Selected path is a directory, not a SQL file.");
+                throw invalidError("app.sqlWorkspaceDirectoryNotFile");
             }
             Files.createDirectories(file.getParent());
             Files.writeString(file, content == null ? "" : content, StandardCharsets.UTF_8);
@@ -381,7 +396,7 @@ public class AppCompatibilityService {
                     true
             );
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi SQL workspace file.", error);
+            throw stateError("app.sqlWorkspaceFileWriteFailed", error);
         }
     }
 
@@ -409,7 +424,7 @@ public class AppCompatibilityService {
                     children
             );
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to inspect JavaNavi SQL workspace path.", error);
+            throw stateError("app.sqlWorkspacePathInspectFailed", error);
         }
     }
 
@@ -437,7 +452,7 @@ public class AppCompatibilityService {
             candidate = candidate.resolve("untitled-" + Instant.now().toEpochMilli() + ".sql").normalize();
         }
         if (!candidate.startsWith(root)) {
-            throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+            throw invalidError("app.sqlWorkspacePathManaged");
         }
         if (!directoryDefault && !candidate.getFileName().toString().toLowerCase().endsWith(".sql")) {
             candidate = candidate.resolveSibling(candidate.getFileName() + ".sql").normalize();
@@ -449,14 +464,14 @@ public class AppCompatibilityService {
         String raw = rawPath == null ? "" : rawPath.trim();
         Path root = sqlWorkspaceRoot();
         if (raw.isBlank()) {
-            throw new IllegalArgumentException("SQL workspace path must not be empty.");
+            throw invalidError("app.sqlWorkspacePathRequired");
         }
         Path input = Path.of(raw);
         Path candidate = input.isAbsolute()
                 ? input.toAbsolutePath().normalize()
                 : root.resolve(raw.replace('\\', '/')).normalize();
         if (!candidate.startsWith(root)) {
-            throw new IllegalArgumentException("SQL workspace paths must stay inside the JavaNavi managed SQL workspace.");
+            throw invalidError("app.sqlWorkspacePathManaged");
         }
         return candidate;
     }
@@ -479,7 +494,7 @@ public class AppCompatibilityService {
         String normalized = requireWorkspaceName(rawName);
         String withSqlSuffix = normalized.toLowerCase(Locale.ROOT).endsWith(".sql") ? normalized : normalized + ".sql";
         if (withSqlSuffix.contains("/") || withSqlSuffix.contains("\\")) {
-            throw new IllegalArgumentException("SQL file names must not contain path separators.");
+            throw invalidError("app.sqlFileNameNoSeparators");
         }
         return withSqlSuffix;
     }
@@ -487,10 +502,10 @@ public class AppCompatibilityService {
     private String requireWorkspaceName(String rawName) {
         String normalized = textOrDefault(rawName, "").trim();
         if (normalized.isBlank()) {
-            throw new IllegalArgumentException("Workspace name must not be empty.");
+            throw invalidError("app.workspaceNameRequired");
         }
         if (normalized.contains("/") || normalized.contains("\\") || ".".equals(normalized) || "..".equals(normalized)) {
-            throw new IllegalArgumentException("Workspace names must not contain path separators.");
+            throw invalidError("app.workspaceNameNoSeparators");
         }
         return normalized;
     }
@@ -500,7 +515,7 @@ public class AppCompatibilityService {
             Files.createDirectories(file.getParent());
             objectMapper.writerWithDefaultPrettyPrinter().writeValue(file.toFile(), value);
         } catch (IOException error) {
-            throw new IllegalStateException("Unable to write JavaNavi legacy app state mirror.", error);
+            throw stateError("app.legacyStateMirrorWriteFailed", error);
         }
     }
 
@@ -512,12 +527,20 @@ public class AppCompatibilityService {
         Path file = Path.of(normalizedTarget).toAbsolutePath().normalize();
         String name = file.getFileName() == null ? "" : file.getFileName().toString();
         if (name.isBlank()) {
-            throw new IllegalArgumentException("Export target file name is required.");
+            throw invalidError("app.exportTargetFileRequired");
         }
         if (!name.contains(".")) {
             file = file.resolveSibling(name + "." + extension);
         }
         return file;
+    }
+
+    private IllegalArgumentException invalidError(String code, Object... args) {
+        return new IllegalArgumentException(messages.message(code, args));
+    }
+
+    private IllegalStateException stateError(String code, Throwable error, Object... args) {
+        return new IllegalStateException(messages.message(code, args), error);
     }
 
     private static AppContracts.ConnectionExportPackageResponse connectionExportPackageResponse(Map<String, Object> map) {

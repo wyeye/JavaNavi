@@ -49,7 +49,7 @@ public class DataSyncCompatibilityService {
             cancelledJobs.add(normalized);
             databaseCompatibilityService.cancelQuery(normalized + "-source");
             databaseCompatibilityService.cancelQuery(normalized + "-target");
-            publishSyncLog(normalized, "warn", "Data sync cancelled by user.");
+            publishSyncLog(normalized, "warn", messages.message("sync.cancelledByUser"));
         }
         return orderedMap("cancelled", true, "jobId", normalized);
     }
@@ -78,9 +78,9 @@ public class DataSyncCompatibilityService {
             int deleted = 0;
             int tablesSynced = 0;
             List<String> logs = new ArrayList<>();
-            logs.add("DataSync fixture-backed compatibility request accepted");
-            logs.add("Mode: " + request.mode() + "; content: " + request.content());
-            publishSyncLog(request.jobId(), "info", "DataSync fixture-backed compatibility request accepted");
+            logs.add(messages.message("sync.fixtureAccepted"));
+            logs.add(messages.message("sync.fixtureModeContent", "mode", request.mode(), "content", request.content()));
+            publishSyncLog(request.jobId(), "info", messages.message("sync.fixtureAccepted"));
 
             Map<String, Object> targetSnapshots = new LinkedHashMap<>();
             boolean syncSchema = request.syncSchema();
@@ -100,7 +100,7 @@ public class DataSyncCompatibilityService {
                     inserted += stats.inserted();
                     updated += stats.updated();
                     deleted += stats.deleted();
-                    logs.add("Table " + diff.table() + ": inserted=" + stats.inserted() + ", updated=" + stats.updated() + ", deleted=" + stats.deleted());
+                    logs.add(messages.message("sync.tableMutationLog", "table", diff.table(), "inserted", stats.inserted(), "updated", stats.updated(), "deleted", stats.deleted()));
                     publishSyncProgress(request.jobId(), index + 1, total, diff.table(), messages.message("events.writeTarget"));
                 }
                 if (syncSchema || syncData) {
@@ -108,12 +108,12 @@ public class DataSyncCompatibilityService {
                 }
                 targetSnapshots.put(diff.table(), targetAfter);
             }
-            publishSyncLog(request.jobId(), "info", "DataSync fixture-backed compatibility completed.");
+            publishSyncLog(request.jobId(), "info", messages.message("sync.fixtureCompletedLog"));
             publishSyncProgress(request.jobId(), total, total, diffs.isEmpty() ? "" : diffs.get(diffs.size() - 1).table(), messages.message("events.complete"));
 
             return orderedMap(
                     "success", true,
-                    "message", "JavaNavi Web data sync compatibility completed against managed fixture datasets.",
+                    "message", messages.message("sync.completedFixtureDatasets"),
                     "logs", logs,
                     "tablesSynced", tablesSynced,
                     "rowsInserted", inserted,
@@ -128,7 +128,7 @@ public class DataSyncCompatibilityService {
                     "targetSnapshots", targetSnapshots
             );
         } catch (DataSyncCancelledException cancelled) {
-            return cancelledResult(request.jobId(), List.of("Data sync cancelled by user."));
+            return cancelledResult(request.jobId(), List.of(messages.message("sync.cancelledByUser")));
         } finally {
             cancelledJobs.remove(request.jobId());
         }
@@ -163,11 +163,11 @@ public class DataSyncCompatibilityService {
                         "deletes", diff.deletes().size(),
                         "same", diff.same(),
                         "schemaDiffCount", diff.schemaStatements().size(),
-                        "message", diff.summaryMessage(),
+                        "message", fixtureSummaryMessage(diff),
                         "hasSchema", request.syncSchema(),
                         "targetTableExists", true,
-                        "plannedAction", request.syncSchema() ? "Fixture schema will be checked before data mutation" : "Fixture data diff is ready",
-                        "warnings", List.of("Fixture-backed Java Web compatibility path; external cross-database writes still require integration profile evidence."),
+                        "plannedAction", request.syncSchema() ? messages.message("sync.fixturePlanSchemaChecked") : messages.message("sync.fixturePlanDataDiffReady"),
+                        "warnings", List.of(messages.message("sync.fixtureCompatibilityWarning")),
                         "unsupportedObjects", List.of(),
                         "indexesToCreate", 0,
                         "indexesSkipped", 0
@@ -176,8 +176,8 @@ public class DataSyncCompatibilityService {
             }
             return orderedMap(
                     "success", true,
-                    "message", "JavaNavi Web data sync analysis completed against managed fixture datasets.",
-                    "logs", List.of("Analyzed table count: " + request.tables().size(), "Fixture source/target rows were compared without external database side effects"),
+                    "message", messages.message("sync.analysisCompletedFixtureDatasets"),
+                    "logs", List.of(messages.message("sync.analyzedTableCount", "count", request.tables().size()), messages.message("sync.fixtureRowsComparedNoExternalSideEffects")),
                     "tablesSynced", 0,
                     "rowsInserted", tableSummaries.stream().mapToInt(row -> intValue(row.get("inserts"), 0)).sum(),
                     "rowsUpdated", tableSummaries.stream().mapToInt(row -> intValue(row.get("updates"), 0)).sum(),
@@ -187,7 +187,7 @@ public class DataSyncCompatibilityService {
                     "fixtureBacked", true
             );
         } catch (DataSyncCancelledException cancelled) {
-            return cancelledResult(request.jobId(), List.of("Data sync cancelled by user."));
+            return cancelledResult(request.jobId(), List.of(messages.message("sync.cancelledByUser")));
         } finally {
             cancelledJobs.remove(request.jobId());
         }
@@ -220,8 +220,8 @@ public class DataSyncCompatibilityService {
                     "table", diff.table(),
                     "pkColumn", diff.pkColumn(),
                     "columnTypes", diff.columnTypes(),
-                    "schemaSummary", request.syncSchema() ? "Fixture schema statements available" : "Fixture data diff preview",
-                    "schemaWarnings", List.of("External database schema execution is not performed by the fixture path."),
+                    "schemaSummary", request.syncSchema() ? messages.message("sync.fixtureSchemaStatementsAvailable") : messages.message("sync.fixtureDataDiffPreview"),
+                    "schemaWarnings", List.of(messages.message("sync.fixtureNoExternalSchemaExecution")),
                     "schemaStatements", diff.schemaStatements(),
                     "totalInserts", diff.inserts().size(),
                     "totalUpdates", diff.updates().size(),
@@ -236,10 +236,10 @@ public class DataSyncCompatibilityService {
                     "hasMore", diff.inserts().size() > limit || diff.updates().size() > limit || diff.deletes().size() > limit,
                     "dryRun", true,
                     "fixtureBacked", true,
-                    "message", "JavaNavi Web data sync preview computed source/target fixture differences."
+                    "message", messages.message("sync.previewComputedFixtureDiff")
             );
         } catch (DataSyncCancelledException cancelled) {
-            return cancelledResult(request.jobId(), List.of("Data sync cancelled by user."));
+            return cancelledResult(request.jobId(), List.of(messages.message("sync.cancelledByUser")));
         } finally {
             cancelledJobs.remove(request.jobId());
         }
@@ -253,8 +253,8 @@ public class DataSyncCompatibilityService {
         if (!options.insert() && !options.update() && !options.delete()) {
             return orderedMap(
                     "success", true,
-                    "message", "JavaNavi Web data sync source-query path skipped because no table operations were selected.",
-                    "logs", List.of("No insert/update/delete operation was selected for " + context.table()),
+                    "message", messages.message("sync.sourceQuerySkippedNoOps"),
+                    "logs", List.of(messages.message("sync.sourceQuerySkippedNoOpsLog", "table", context.table())),
                     "tablesSynced", 0,
                     "rowsInserted", 0,
                     "rowsUpdated", 0,
@@ -322,7 +322,7 @@ public class DataSyncCompatibilityService {
         int affected = result.affectedRows();
         return orderedMap(
                 "success", true,
-                "message", "JavaNavi Web data sync applied source SQL result rows to the managed JDBC target table.",
+                "message", messages.message("sync.appliedSourceSql"),
                 "logs", List.of(
                         "Source query rows: " + context.sourceRows().size(),
                         "Target table: " + context.table(),
@@ -366,8 +366,8 @@ public class DataSyncCompatibilityService {
         );
         return orderedMap(
                 "success", true,
-                "message", "JavaNavi Web data sync analyzed source SQL rows against the managed JDBC target table.",
-                "logs", List.of("Analyzed source-query target table: " + context.table()),
+                "message", messages.message("sync.analyzedSourceSql"),
+                "logs", List.of(messages.message("sync.analyzedSourceQueryTargetTable", "table", context.table())),
                 "tablesSynced", 0,
                 "rowsInserted", diff.inserts().size(),
                 "rowsUpdated", diff.updates().size(),
@@ -423,7 +423,7 @@ public class DataSyncCompatibilityService {
                 "fixtureBacked", false,
                 "jdbcBacked", true,
                 "sourceQueryBacked", true,
-                "message", "JavaNavi Web data sync preview computed source SQL differences against the managed JDBC target."
+                "message", messages.message("sync.previewComputedSourceSql")
         );
     }
 
@@ -434,13 +434,13 @@ public class DataSyncCompatibilityService {
         int tablesSynced = 0;
         List<String> logs = new ArrayList<>();
         logs.add("DataSync JDBC table-to-table request accepted");
-        logs.add("Mode: " + request.mode() + "; content: " + request.content());
+        logs.add(messages.message("sync.fixtureModeContent", "mode", request.mode(), "content", request.content()));
         publishSyncLog(request.jobId(), "info", "DataSync JDBC table-to-table request accepted.");
 
         if (!request.syncData()) {
             return orderedMap(
                     "success", true,
-                    "message", "JavaNavi Web data sync inspected JDBC table metadata; schema-only mutation is not executed by this existing-table slice.",
+                    "message", messages.message("sync.schemaOnlyInspected"),
                     "logs", logs,
                     "tablesSynced", 0,
                     "rowsInserted", 0,
@@ -464,7 +464,7 @@ public class DataSyncCompatibilityService {
             SourceQueryContext context = loadTableSyncContextPaged(request, table, true, true);
             TableOptions options = request.tableOptions(context.table());
             if (!options.insert() && !options.update() && !options.delete()) {
-                logs.add("Table " + context.table() + ": skipped because no insert/update/delete operation was selected");
+                logs.add(messages.message("sync.tableSkippedNoOps", "table", context.table()));
                 continue;
             }
 
@@ -523,15 +523,14 @@ public class DataSyncCompatibilityService {
             updated += result.updatedRows();
             deleted += result.deletedRows();
             tablesSynced++;
-            logs.add("Table " + context.table() + ": inserted=" + result.insertedRows()
-                    + ", updated=" + result.updatedRows() + ", deleted=" + result.deletedRows());
+            logs.add(messages.message("sync.tableMutationLog", "table", context.table(), "inserted", result.insertedRows(), "updated", result.updatedRows(), "deleted", result.deletedRows()));
         }
-        publishSyncLog(request.jobId(), "info", "DataSync JDBC table-to-table sync completed.");
+        publishSyncLog(request.jobId(), "info", messages.message("sync.jdbcCompletedLog"));
 
         int affected = inserted + updated + deleted;
         return orderedMap(
                 "success", true,
-                "message", "JavaNavi Web data sync applied JDBC table-to-table differences to existing target table(s).",
+                "message", messages.message("sync.appliedJdbcTable"),
                 "logs", logs,
                 "tablesSynced", tablesSynced,
                 "rowsInserted", inserted,
@@ -606,8 +605,8 @@ public class DataSyncCompatibilityService {
         }
         return orderedMap(
                 "success", true,
-                "message", "JavaNavi Web data sync analyzed JDBC source table rows against existing JDBC target table(s).",
-                "logs", List.of("Analyzed JDBC table count: " + request.tables().size()),
+                "message", messages.message("sync.analyzedJdbcTable"),
+                "logs", List.of(messages.message("sync.analyzedJdbcTableCount", "count", request.tables().size())),
                 "tablesSynced", 0,
                 "rowsInserted", inserted,
                 "rowsUpdated", updated,
@@ -670,15 +669,15 @@ public class DataSyncCompatibilityService {
                 "fixtureBacked", false,
                 "jdbcBacked", true,
                 "tableSyncBacked", true,
-                "message", "JavaNavi Web data sync preview computed JDBC table-to-table differences."
+                "message", messages.message("sync.previewComputedJdbc")
         );
     }
 
-    private static Map<String, Object> externalPendingRun(SyncRequest request) {
+    private Map<String, Object> externalPendingRun(SyncRequest request) {
         return orderedMap(
                 "success", true,
-                "message", "JavaNavi Web data sync accepted the request but skipped external database mutation because only managed fixture/demo datasets are verified in this compatibility slice.",
-                "logs", List.of("DataSync compatibility request accepted", "External source/target sync requires a dedicated integration profile", "No external target mutations were executed"),
+                "message", messages.message("sync.externalMutationSkipped"),
+                "logs", List.of(messages.message("sync.externalAcceptedLog"), messages.message("sync.externalRequiresProfileLog"), messages.message("sync.externalNoMutationLog")),
                 "tablesSynced", 0,
                 "rowsInserted", 0,
                 "rowsUpdated", 0,
@@ -692,7 +691,7 @@ public class DataSyncCompatibilityService {
         );
     }
 
-    private static Map<String, Object> externalPendingAnalyze(SyncRequest request) {
+    private Map<String, Object> externalPendingAnalyze(SyncRequest request) {
         List<Map<String, Object>> tableSummaries = request.tables().stream()
                 .map(table -> orderedMap(
                         "table", table,
@@ -703,11 +702,11 @@ public class DataSyncCompatibilityService {
                         "deletes", 0,
                         "same", 0,
                         "schemaDiffCount", 0,
-                        "message", "Source/target diff was not executed because this request did not include a fixture, source-query, or JDBC table profile.",
+                        "message", messages.message("sync.sourceTargetDiffSkippedNoProfile"),
                         "hasSchema", request.syncSchema(),
                         "targetTableExists", false,
                         "plannedAction", "source-target-profile-required",
-                        "warnings", List.of("No database mutation or row scan was executed for the unprofiled request."),
+                        "warnings", List.of(messages.message("sync.noProfileMutationWarning")),
                         "unsupportedObjects", List.of(),
                         "indexesToCreate", 0,
                         "indexesSkipped", 0
@@ -715,8 +714,8 @@ public class DataSyncCompatibilityService {
                 .toList();
         return orderedMap(
                 "success", true,
-                "message", "JavaNavi Web data sync analysis requires a fixture, source-query, or JDBC table profile for row-diff execution.",
-                "logs", List.of("Analyzed table count: " + request.tables().size(), "No source/target rows were scanned because no executable profile was supplied"),
+                "message", messages.message("sync.analysisRequiresProfile"),
+                "logs", List.of(messages.message("sync.analyzedTableCount", "count", request.tables().size()), messages.message("sync.noRowsScannedNoProfile")),
                 "tablesSynced", 0,
                 "rowsInserted", 0,
                 "rowsUpdated", 0,
@@ -727,13 +726,13 @@ public class DataSyncCompatibilityService {
         );
     }
 
-    private static Map<String, Object> externalPendingPreview(String table, int limit) {
+    private Map<String, Object> externalPendingPreview(String table, int limit) {
         return orderedMap(
                 "table", table,
                 "pkColumn", "id",
                 "columnTypes", Map.of(),
-                "schemaSummary", "Preview requires a fixture, source-query, or JDBC table profile",
-                "schemaWarnings", List.of("No database rows were read for the unprofiled request."),
+                "schemaSummary", messages.message("sync.previewRequiresProfileSummary"),
+                "schemaWarnings", List.of(messages.message("sync.noRowsReadNoProfile")),
                 "schemaStatements", List.of(),
                 "totalInserts", 0,
                 "totalUpdates", 0,
@@ -748,7 +747,7 @@ public class DataSyncCompatibilityService {
                 "hasMore", false,
                 "dryRun", true,
                 "fixtureBacked", false,
-                "message", "JavaNavi Web data sync preview requires a fixture, source-query, or JDBC table profile for row-diff execution."
+                "message", messages.message("sync.previewRequiresProfile")
         );
     }
 
@@ -863,7 +862,7 @@ public class DataSyncCompatibilityService {
         return orderedMap(
                 "success", true,
                 "cancelled", true,
-                "message", "已取消",
+                "message", messages.message("sync.cancelled"),
                 "jobId", jobId,
                 "logs", logs,
                 "tablesSynced", 0,
@@ -1958,14 +1957,19 @@ public class DataSyncCompatibilityService {
         }
     }
 
+
+    private String fixtureSummaryMessage(TableDiff diff) {
+        return messages.message("sync.fixtureDiffSummary",
+                "inserts", diff.inserts().size(),
+                "updates", diff.updates().size(),
+                "deletes", diff.deletes().size(),
+                "same", diff.same());
+    }
+
     private record TableFixture(String pkColumn, List<Map<String, Object>> sourceRows, List<Map<String, Object>> targetRows, Map<String, String> columnTypes, List<String> schemaStatements) {
     }
 
     private record TableDiff(String table, String pkColumn, Map<String, String> columnTypes, List<String> schemaStatements, List<PreviewInsert> inserts, List<PreviewUpdate> updates, List<PreviewDelete> deletes, int same, List<Map<String, Object>> sourceRows, List<Map<String, Object>> targetRows) {
-        String summaryMessage() {
-            return "Fixture diff: inserts=" + inserts.size() + ", updates=" + updates.size() + ", deletes=" + deletes.size() + ", same=" + same;
-        }
-
         List<Map<String, Object>> copyTargetRows() {
             return targetRows.stream().map(DataSyncCompatibilityService::copyRow).collect(Collectors.toCollection(ArrayList::new));
         }

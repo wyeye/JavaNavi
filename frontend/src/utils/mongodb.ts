@@ -1,5 +1,6 @@
 import type { FilterCondition } from './sql';
 import { parseListValues } from './sql';
+import { getRuntimeLanguage, translate, type I18nKey, type I18nParams } from '../i18n';
 
 type SortInfoItem = {
   columnKey?: string;
@@ -18,6 +19,8 @@ type ShellConvertResult = {
 const HEX24_RE = /^[0-9a-fA-F]{24}$/;
 const INTEGER_RE = /^[+-]?\d+$/;
 const FLOAT_RE = /^[+-]?(?:\d+\.\d+|\d+\.|\.\d+)$/;
+
+const mongoError = (key: I18nKey, params?: I18nParams): Error => new Error(translate(getRuntimeLanguage(), key, params));
 
 const escapeRegex = (raw: string) => raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -202,7 +205,7 @@ const normalizeSingleQuotedStrings = (raw: string): string => {
   }
 
   if (inSingle) {
-    throw new Error('Mongo literal contains an unterminated single-quoted string');
+    throw mongoError('mongo.error.literalUnterminatedSingle');
   }
   return out;
 };
@@ -274,7 +277,7 @@ const evalMongoLikeLiteral = (raw: string): unknown => {
   if (!expression) return {};
   const syntaxProbe = executableSyntaxProbe(expression);
   if (/[;=]|=>|\b(?:function|this|window|globalThis|document|constructor|prototype|__proto__|import|require|process)\b/.test(syntaxProbe)) {
-    throw new Error('Mongo literal contains unsupported executable syntax');
+    throw mongoError('mongo.error.unsupportedExecutableSyntax');
   }
   return normalizeEvaluatedMongoValue(JSON.parse(normalizeMongoLikeJson(expression)));
 };
@@ -375,7 +378,7 @@ const splitTopLevelComma = (raw: string): string[] => {
 
 const extractBalancedParentheses = (text: string, openPos: number): { args: string; nextPos: number } => {
   if (openPos < 0 || openPos >= text.length || text[openPos] !== '(') {
-    throw new Error('Syntax error: missing "("');
+    throw mongoError('mongo.error.syntaxMissingParen');
   }
 
   let depth = 0;
@@ -424,7 +427,7 @@ const extractBalancedParentheses = (text: string, openPos: number): { args: stri
     }
   }
 
-  throw new Error('Syntax error: unclosed parenthesis');
+  throw mongoError('mongo.error.syntaxUnclosedParenthesis');
 };
 
 const parseCollectionAndMethod = (raw: string): {
@@ -444,26 +447,26 @@ const parseCollectionAndMethod = (raw: string): {
   if (restLower.startsWith('getcollection')) {
     pos += 'getCollection'.length;
     while (pos < input.length && /\s/.test(input[pos])) pos++;
-    if (input[pos] !== '(') throw new Error('Syntax error: getCollection missing arguments');
+    if (input[pos] !== '(') throw mongoError('mongo.error.getCollectionMissingArgs');
     const { args, nextPos } = extractBalancedParentheses(input, pos);
     const arg = String(args || '').trim();
     const m = arg.match(/^["']([^"']+)["']$/);
-    if (!m) throw new Error('Syntax error: getCollection argument must be a string');
+    if (!m) throw mongoError('mongo.error.getCollectionArgString');
     collection = m[1];
     pos = nextPos;
   } else {
     const methodMatch = input.slice(pos).match(/\.(findOne|find|countDocuments|estimatedDocumentCount|count|aggregate|insertOne|insertMany|insert|replaceOne|updateOne|updateMany|update|deleteOne|deleteMany|remove)\s*\(/i);
     if (!methodMatch || typeof methodMatch.index !== 'number') {
-      throw new Error('Syntax error: expected supported Mongo method call after collection');
+      throw mongoError('mongo.error.expectedSupportedMethod');
     }
     collection = input.slice(pos, pos + methodMatch.index).trim();
     pos += methodMatch.index + 1;
     method = methodMatch[1].toLowerCase();
   }
 
-  if (!collection) throw new Error('Syntax error: collection name not found');
+  if (!collection) throw mongoError('mongo.error.collectionMissing');
   if (!method) {
-    if (input[pos] !== '.') throw new Error('Syntax error: expected method call after collection');
+    if (input[pos] !== '.') throw mongoError('mongo.error.expectedMethodAfterCollection');
     pos++;
     let methodEnd = pos;
     while (methodEnd < input.length && /[A-Za-z]/.test(input[methodEnd])) methodEnd++;
@@ -474,7 +477,7 @@ const parseCollectionAndMethod = (raw: string): {
   }
 
   while (pos < input.length && /\s/.test(input[pos])) pos++;
-  if (input[pos] !== '(') throw new Error('Syntax error: missing "(" for method arguments');
+  if (input[pos] !== '(') throw mongoError('mongo.error.missingMethodArgsParen');
   const { args, nextPos } = extractBalancedParentheses(input, pos);
   pos = nextPos;
 
@@ -493,13 +496,13 @@ const parseChainCalls = (rawTail: string): Array<{ method: string; arg: string }
 
   while (tail) {
     if (!tail.startsWith('.')) {
-      throw new Error(`Syntax error: unsupported chain fragment ${tail}`);
+      throw mongoError('mongo.error.unsupportedChainFragment', { fragment: tail });
     }
     let pos = 1;
     while (pos < tail.length && /[A-Za-z]/.test(tail[pos])) pos++;
     const method = tail.slice(1, pos).trim().toLowerCase();
     while (pos < tail.length && /\s/.test(tail[pos])) pos++;
-    if (tail[pos] !== '(') throw new Error(`Syntax error: ${method} missing argument parenthesis`);
+    if (tail[pos] !== '(') throw mongoError('mongo.error.methodMissingArgumentParenthesis', { method });
     const { args, nextPos } = extractBalancedParentheses(tail, pos);
     result.push({ method, arg: String(args || '').trim() });
     tail = tail.slice(nextPos).trim();
@@ -511,11 +514,11 @@ const parseChainCalls = (rawTail: string): Array<{ method: string; arg: string }
 const parsePositiveInt = (raw: string, fieldName: string): number => {
   const text = String(raw || '').trim();
   if (!INTEGER_RE.test(text)) {
-    throw new Error(`${fieldName} must be an integer`);
+    throw mongoError('mongo.error.mustBeInteger', { field: fieldName });
   }
   const n = Number(text);
   if (!Number.isFinite(n) || n < 0) {
-    throw new Error(`${fieldName} must be a non-negative integer`);
+    throw mongoError('mongo.error.mustBeNonNegativeInteger', { field: fieldName });
   }
   return Math.floor(n);
 };
@@ -523,7 +526,7 @@ const parsePositiveInt = (raw: string, fieldName: string): number => {
 const parseMongoSortObject = (raw: string): Record<string, 1 | -1> => {
   const parsedSort = parseMongoJSONValue(raw);
   if (!parsedSort || typeof parsedSort !== 'object' || Array.isArray(parsedSort)) {
-    throw new Error('sort argument must be a JSON object');
+    throw mongoError('mongo.error.sortJsonObject');
   }
   const normalizedSort: Record<string, 1 | -1> = {};
   Object.entries(parsedSort as Record<string, unknown>).forEach(([key, value]) => {
@@ -536,7 +539,7 @@ const parseMongoSortObject = (raw: string): Record<string, 1 | -1> => {
 const parseMongoJSONDoc = (raw: string, fieldName: string): Record<string, unknown> => {
   const parsed = parseMongoJSONValue(raw);
   if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new Error(`${fieldName} must be a JSON object`);
+    throw mongoError('mongo.error.mustBeJsonObject', { field: fieldName });
   }
   return parsed as Record<string, unknown>;
 };
@@ -544,7 +547,7 @@ const parseMongoJSONDoc = (raw: string, fieldName: string): Record<string, unkno
 const parseMongoJSONPipeline = (raw: string): unknown[] => {
   const parsed = parseMongoJSONValue(raw);
   if (!Array.isArray(parsed)) {
-    throw new Error('aggregate first argument must be a JSON array pipeline');
+    throw mongoError('mongo.error.aggregatePipelineArray');
   }
   return parsed;
 };
@@ -552,7 +555,7 @@ const parseMongoJSONPipeline = (raw: string): unknown[] => {
 const parseMongoJSONArray = (raw: string, fieldName: string): unknown[] => {
   const parsed = parseMongoJSONValue(raw);
   if (!Array.isArray(parsed)) {
-    throw new Error(`${fieldName} must be a JSON array`);
+    throw mongoError('mongo.error.mustBeJsonArray', { field: fieldName });
   }
   return parsed;
 };
@@ -561,7 +564,7 @@ const normalizeMongoDocuments = (raw: unknown, fieldName: string): Record<string
   if (Array.isArray(raw)) {
     return raw.map((item, idx) => {
       if (!item || typeof item !== 'object' || Array.isArray(item)) {
-        throw new Error(`${fieldName} document at index ${idx} must be a JSON object`);
+        throw mongoError('mongo.error.arrayDocumentJsonObject', { field: fieldName, index: idx });
       }
       return item as Record<string, unknown>;
     });
@@ -569,7 +572,7 @@ const normalizeMongoDocuments = (raw: unknown, fieldName: string): Record<string
   if (raw && typeof raw === 'object') {
     return [raw as Record<string, unknown>];
   }
-  throw new Error(`${fieldName} must be a JSON object or JSON array`);
+  throw mongoError('mongo.error.objectOrArray', { field: fieldName });
 };
 
 const parseMongoOptionalDoc = (raw: string | undefined): Record<string, unknown> => {
@@ -581,7 +584,7 @@ const parseBooleanArg = (raw: string, fieldName: string): boolean => {
   const text = String(raw || '').trim().toLowerCase();
   if (text === 'true') return true;
   if (text === 'false') return false;
-  throw new Error(`${fieldName} must be true or false`);
+  throw mongoError('mongo.error.trueOrFalse', { field: fieldName });
 };
 
 const isNoopMongoChainMethod = (method: string): boolean => {
@@ -626,7 +629,7 @@ export const buildMongoFilter = (conditions: FilterCondition[]): Record<string, 
       if (!expr) return;
       const parsed = parseMongoJSONValue(expr);
       if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('Mongo custom filter must be a JSON object');
+        throw mongoError('mongo.error.customFilterObject');
       }
       appendPart(parsed as Record<string, unknown>);
       return;
@@ -968,7 +971,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
           if (item.arg) {
             const parsedBool = parseBooleanLiteral(item.arg);
             if (parsedBool === null) {
-              throw new Error('count chain argument must be true or false');
+              throw mongoError('mongo.error.countChainBoolean');
             }
           }
           useCountCommand = true;
@@ -977,7 +980,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
         if (isNoopMongoChainMethod(item.method)) {
           continue;
         }
-        throw new Error(`Unsupported chain method .${item.method}()`);
+        throw mongoError('mongo.error.unsupportedChainMethod', { method: item.method });
       }
 
       if (method === 'findone') {
@@ -1043,7 +1046,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
         if (isNoopMongoChainMethod(item.method)) {
           continue;
         }
-        throw new Error(`Unsupported chain method .${item.method}()`);
+        throw mongoError('mongo.error.unsupportedChainMethod', { method: item.method });
       }
 
       const command: Record<string, unknown> = {
@@ -1062,12 +1065,12 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
     }
 
     if (method === 'insertone' || method === 'insertmany' || method === 'insert') {
-      if (args.length === 0) throw new Error(`${method} first argument is required`);
+      if (args.length === 0) throw mongoError('mongo.error.firstArgumentRequired', { method });
       const firstArg = parseMongoJSONValue(args[0]);
       let documents: Record<string, unknown>[] = [];
       if (method === 'insertone') {
         if (!firstArg || typeof firstArg !== 'object' || Array.isArray(firstArg)) {
-          throw new Error('insertOne first argument must be a JSON object');
+          throw mongoError('mongo.error.insertOneFirstObject');
         }
         documents = [firstArg as Record<string, unknown>];
       } else if (method === 'insertmany') {
@@ -1079,7 +1082,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
       const options = parseMongoOptionalDoc(args[1]);
       for (const item of chain) {
         if (isNoopMongoChainMethod(item.method)) continue;
-        throw new Error(`Unsupported chain method .${item.method}()`);
+        throw mongoError('mongo.error.unsupportedChainMethod', { method: item.method });
       }
       return {
         recognized: true,
@@ -1089,14 +1092,14 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
 
     if (method === 'replaceone') {
       if (args.length < 2) {
-        throw new Error('replaceOne requires filter and replacement arguments');
+        throw mongoError('mongo.error.replaceOneFilterReplacement');
       }
       const filter = parseMongoJSONDoc(args[0], 'replaceOne first argument');
       const replacement = parseMongoJSONDoc(args[1], 'replaceOne second argument');
       const options = parseMongoOptionalDoc(args[2]);
       for (const item of chain) {
         if (isNoopMongoChainMethod(item.method)) continue;
-        throw new Error(`Unsupported chain method .${item.method}()`);
+        throw mongoError('mongo.error.unsupportedChainMethod', { method: item.method });
       }
       return {
         recognized: true,
@@ -1106,7 +1109,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
 
     if (method === 'updateone' || method === 'updatemany' || method === 'update') {
       if (args.length < 2) {
-        throw new Error(`${method} requires at least filter and update arguments`);
+        throw mongoError('mongo.error.requiresFilterUpdate', { method });
       }
       const filter = parseMongoJSONDoc(args[0], `${method} first argument`);
       const updateExpr = parseMongoJSONValue(args[1]);
@@ -1114,7 +1117,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
         !updateExpr ||
         typeof updateExpr !== 'object'
       ) {
-        throw new Error(`${method} second argument must be update document or pipeline`);
+        throw mongoError('mongo.error.updateDocOrPipeline', { method });
       }
       let options: Record<string, unknown> = {};
       if (method === 'update') {
@@ -1127,14 +1130,14 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
           options.upsert = thirdBool;
           if (typeof fourth !== 'undefined' && String(fourth).trim()) {
             const fourthBool = parseBooleanLiteral(String(fourth));
-            if (fourthBool === null) throw new Error('update fourth argument must be true or false');
+            if (fourthBool === null) throw mongoError('mongo.error.updateFourthBoolean');
             options.multi = fourthBool;
           }
         } else {
           options = parseMongoOptionalDoc(third);
           if (typeof fourth !== 'undefined' && String(fourth).trim()) {
             const fourthBool = parseBooleanLiteral(String(fourth));
-            if (fourthBool === null) throw new Error('update fourth argument must be true or false');
+            if (fourthBool === null) throw mongoError('mongo.error.updateFourthBoolean');
             options.multi = fourthBool;
           }
         }
@@ -1144,7 +1147,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
       const multi = method === 'updatemany' || (method === 'update' && options.multi === true);
       for (const item of chain) {
         if (isNoopMongoChainMethod(item.method)) continue;
-        throw new Error(`Unsupported chain method .${item.method}()`);
+        throw mongoError('mongo.error.unsupportedChainMethod', { method: item.method });
       }
       return {
         recognized: true,
@@ -1177,7 +1180,7 @@ export const convertMongoShellToJsonCommand = (raw: string): ShellConvertResult 
 
       for (const item of chain) {
         if (isNoopMongoChainMethod(item.method)) continue;
-        throw new Error(`Unsupported chain method .${item.method}()`);
+        throw mongoError('mongo.error.unsupportedChainMethod', { method: item.method });
       }
       return {
         recognized: true,
