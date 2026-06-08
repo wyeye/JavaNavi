@@ -380,8 +380,8 @@ public class AiCompatibilityService {
 
     private Map<String, Object> invokeOpenAiCompatibleChat(Map<String, Object> provider, Map<String, Object> input, String apiKey, String providerId) throws IOException, InterruptedException {
         String model = firstText(text(input == null ? null : input.get("model")), text(provider.get("model")), defaultModel(text(provider.get("type"))));
-        List<Object> messages = defaultChatMessages(input);
-        Map<String, Object> requestBody = openAiCompatibleChatRequestBody(provider, input, model, messages, false);
+        List<Object> chatMessages = defaultChatMessages(input);
+        Map<String, Object> requestBody = openAiCompatibleChatRequestBody(provider, input, model, chatMessages, false);
 
         HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(chatCompletionsUri(text(provider.get("baseUrl")))))
                 .timeout(Duration.ofSeconds(30))
@@ -408,8 +408,8 @@ public class AiCompatibilityService {
 
     private Map<String, Object> invokeAnthropicChat(Map<String, Object> provider, Map<String, Object> input, String apiKey, String providerId) throws IOException, InterruptedException {
         String model = firstText(text(input == null ? null : input.get("model")), text(provider.get("model")), defaultModel(text(provider.get("type"))));
-        List<Object> messages = defaultChatMessages(input);
-        Map<String, Object> requestBody = anthropicRequestBody(provider, input, model, messages);
+        List<Object> chatMessages = defaultChatMessages(input);
+        Map<String, Object> requestBody = anthropicRequestBody(provider, input, model, chatMessages);
         HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(anthropicMessagesUri(text(provider.get("baseUrl")))))
                 .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "application/json")
@@ -435,8 +435,8 @@ public class AiCompatibilityService {
 
     private Map<String, Object> invokeGeminiChat(Map<String, Object> provider, Map<String, Object> input, String apiKey, String providerId) throws IOException, InterruptedException {
         String model = firstText(text(input == null ? null : input.get("model")), text(provider.get("model")), defaultModel(text(provider.get("type"))));
-        List<Object> messages = defaultChatMessages(input);
-        Map<String, Object> requestBody = geminiRequestBody(provider, input, messages);
+        List<Object> chatMessages = defaultChatMessages(input);
+        Map<String, Object> requestBody = geminiRequestBody(provider, input, chatMessages);
         HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(geminiGenerateContentUri(text(provider.get("baseUrl")), model)))
                 .timeout(Duration.ofSeconds(30))
                 .header("Content-Type", "application/json")
@@ -658,11 +658,11 @@ public class AiCompatibilityService {
             String eventName
     ) throws IOException, InterruptedException {
         String model = firstText(text(input == null ? null : input.get("model")), text(provider.get("model")), defaultModel(text(provider.get("type"))));
-        List<Object> messages = objectList(input == null ? null : input.get("messages"));
-        if (messages.isEmpty()) {
-            messages = List.of(orderedMap("role", "user", "content", firstText(text(input == null ? null : input.get("prompt")), "Hello")));
+        List<Object> chatMessages = objectList(input == null ? null : input.get("messages"));
+        if (chatMessages.isEmpty()) {
+            chatMessages = List.of(orderedMap("role", "user", "content", firstText(text(input == null ? null : input.get("prompt")), "Hello")));
         }
-        Map<String, Object> requestBody = openAiCompatibleChatRequestBody(provider, input, model, messages, true);
+        Map<String, Object> requestBody = openAiCompatibleChatRequestBody(provider, input, model, chatMessages, true);
         HttpRequest.Builder builder = HttpRequest.newBuilder(validatedProviderUri(chatCompletionsUri(text(provider.get("baseUrl")))))
                 .timeout(Duration.ofSeconds(60))
                 .header("Accept", "text/event-stream")
