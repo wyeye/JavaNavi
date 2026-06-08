@@ -2445,9 +2445,9 @@ function App() {
             onCancel={() => setIsErrorLogModalOpen(false)}
             footer={null}
             width={920}
-            styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8 }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10 } }}
+            styles={{ content: utilityModalShellStyle, header: { background: 'transparent', borderBottom: 'none', paddingBottom: 8 }, body: { paddingTop: 8, display: 'flex', flexDirection: 'column', overflow: 'hidden' }, footer: { background: 'transparent', borderTop: 'none', paddingTop: 10 } }}
           >
-            <div style={{ display: 'grid', gap: 12, padding: '12px 0' }}>
+            <div className="error-log-modal-content">
               <div style={utilityPanelStyle}>
                 <Input.Search
                   aria-label={t('settings.errorLogs.searchPlaceholder')}
@@ -2460,9 +2460,9 @@ function App() {
                 />
                 <div style={{ ...utilityMutedTextStyle, marginTop: 8 }}>{t('settings.errorLogs.searchHint')}</div>
               </div>
-              <Spin spinning={errorLogLoading}>
-                <div style={{ display: 'grid', gridTemplateColumns: 'minmax(260px, 330px) 1fr', gap: 12, minHeight: 360 }}>
-                  <div style={{ ...utilityPanelStyle, maxHeight: 520, overflow: 'auto', padding: 10 }}>
+              <Spin className="error-log-modal-spin" spinning={errorLogLoading}>
+                <div className="error-log-modal-grid">
+                  <div className="error-log-list-panel" style={{ ...utilityPanelStyle, padding: 10 }}>
                     {errorLogs.length === 0 ? (
                       <div style={{ ...utilityMutedTextStyle, textAlign: 'center', padding: '32px 8px' }}>{t('settings.errorLogs.empty')}</div>
                     ) : errorLogs.map((log) => {
@@ -2494,7 +2494,7 @@ function App() {
                       );
                     })}
                   </div>
-                  <div style={{ ...utilityPanelStyle, maxHeight: 520, overflow: 'auto' }}>
+                  <div className="error-log-detail-panel" style={utilityPanelStyle}>
                     {selectedErrorLog ? (
                       <div style={{ display: 'grid', gap: 12 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', flexWrap: 'wrap' }}>
