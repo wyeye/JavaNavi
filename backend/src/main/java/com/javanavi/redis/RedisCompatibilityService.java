@@ -1,8 +1,10 @@
 package com.javanavi.redis;
 
+import com.javanavi.connections.SavedConnectionService;
 import com.javanavi.db.NetworkSocketConnector;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ConnectionConfigDto;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import javax.net.ssl.SSLSocketFactory;
@@ -28,9 +30,16 @@ public class RedisCompatibilityService {
     private static final NetworkSocketConnector NETWORK_CONNECTOR = new NetworkSocketConnector();
 
     private final I18nMessages messages;
+    private final SavedConnectionService savedConnectionService;
 
     public RedisCompatibilityService(I18nMessages messages) {
+        this(messages, null);
+    }
+
+    @Autowired
+    public RedisCompatibilityService(I18nMessages messages, SavedConnectionService savedConnectionService) {
         this.messages = messages;
+        this.savedConnectionService = savedConnectionService;
     }
 
     public Map<String, Object> connect(Map<String, Object> input) {
@@ -428,7 +437,7 @@ public class RedisCompatibilityService {
     }
 
     private List<RedisConfig> resolveConfigs(Map<String, Object> input, Integer databaseOverride) {
-        Map<String, Object> connection = map(value(input, "connection"));
+        Map<String, Object> connection = resolveSavedConnectionSecrets(map(value(input, "connection")));
         Map<String, Object> options = map(connection.get("options"));
         RedisConfig fromUri = parseUri(firstText(string(connection.get("uri")), string(options.get("uri"))));
         int defaultPort = positiveInt(firstText(string(connection.get("port")), string(options.get("port")), String.valueOf(fromUri.port())), 6379);
@@ -455,6 +464,52 @@ public class RedisCompatibilityService {
                         networkConfig(connection, endpoint, useSsl, timeoutSeconds)
                 ))
                 .toList();
+    }
+
+    private Map<String, Object> resolveSavedConnectionSecrets(Map<String, Object> connection) {
+        if (savedConnectionService == null || connection == null || connection.isEmpty()) {
+            return connection == null ? Map.of() : connection;
+        }
+        ConnectionConfigDto resolved = savedConnectionService.resolveSavedSecret(connectionConfigForSecrets(connection));
+        Map<String, Object> result = new LinkedHashMap<>(connection);
+        result.putAll(connectionMap(resolved));
+        return result;
+    }
+
+    private static ConnectionConfigDto connectionConfigForSecrets(Map<String, Object> connection) {
+        return new ConnectionConfigDto(
+                firstText(string(connection.get("id")), "redis-runtime"),
+                firstText(string(connection.get("name")), "Redis"),
+                firstText(string(connection.get("driverType")), string(connection.get("type")), "redis"),
+                string(connection.get("driver")),
+                firstText(string(connection.get("host")), "127.0.0.1"),
+                intOrNull(connection.get("port")),
+                string(connection.get("database")),
+                firstText(string(connection.get("username")), string(connection.get("user"))),
+                string(connection.get("password")),
+                mapString(connection.get("options")),
+                intOrNull(connection.get("timeout")),
+                bool(connection.get("useSSL")),
+                string(connection.get("sslMode")),
+                string(connection.get("sslCertPath")),
+                string(connection.get("sslKeyPath")),
+                bool(connection.get("useSSH")),
+                networkCredential(connection.get("ssh")),
+                networkCredential(connection.get("sshConfig")),
+                bool(connection.get("useProxy")),
+                networkProxy(connection.get("proxy")),
+                string(connection.get("uri")),
+                string(connection.get("dsn")),
+                hostEntries(connection.get("hosts")),
+                string(connection.get("topology")),
+                string(connection.get("replicaSet")),
+                string(connection.get("authSource")),
+                string(connection.get("readPreference")),
+                bool(connection.get("mongoSrv")),
+                string(connection.get("mongoAuthMechanism")),
+                string(connection.get("mongoReplicaUser")),
+                string(connection.get("mongoReplicaPassword"))
+        );
     }
 
     private static ConnectionConfigDto networkConfig(Map<String, Object> connection, RedisEndpoint endpoint, boolean useSsl, int timeoutSeconds) {
