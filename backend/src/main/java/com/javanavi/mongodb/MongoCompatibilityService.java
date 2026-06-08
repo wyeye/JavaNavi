@@ -3,6 +3,7 @@ package com.javanavi.mongodb;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.javanavi.connections.SavedConnectionService;
 import com.javanavi.i18n.I18nMessages;
 import com.javanavi.model.ApplyChangesResultDto;
 import com.javanavi.model.ChangeSetDto;
@@ -20,6 +21,7 @@ import com.javanavi.model.TableSummaryDto;
 import com.javanavi.model.TriggerDefinitionDto;
 import com.javanavi.model.UpdateRowDto;
 import com.javanavi.security.SecretRedactor;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.io.ByteArrayOutputStream;
@@ -73,9 +75,16 @@ public class MongoCompatibilityService {
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
 
     private final I18nMessages messages;
+    private final SavedConnectionService savedConnectionService;
 
     public MongoCompatibilityService(I18nMessages messages) {
+        this(messages, null);
+    }
+
+    @Autowired
+    public MongoCompatibilityService(I18nMessages messages, SavedConnectionService savedConnectionService) {
         this.messages = messages;
+        this.savedConnectionService = savedConnectionService;
     }
 
     public boolean isMongo(ConnectionConfigDto config) {
@@ -621,7 +630,7 @@ public class MongoCompatibilityService {
     public MongoContracts.DiscoverMembersResponse discoverMembers(MongoContracts.DiscoverMembersRequest input) {
         Map<String, Object> payload = input == null ? Map.of() : input.toCompatibilityMap();
         Map<String, Object> connection = payload.get("connection") instanceof Map<?, ?> raw ? toStringMap(raw) : Map.of();
-        ConnectionConfigDto config = mongoConfigFrom(connection, payload);
+        ConnectionConfigDto config = resolveSavedConnectionSecret(mongoConfigFrom(connection, payload));
         MongoConnectionProfile profile = MongoConnectionProfile.from(config);
         HostPort seed = profile.seeds().isEmpty() ? new HostPort("localhost", DEFAULT_PORT) : profile.seeds().get(0);
         String replicaSet = firstText(profile.replicaSet(), option(connection, "mongoReplicaSet"));
@@ -648,6 +657,10 @@ public class MongoCompatibilityService {
         } catch (IOException | IllegalArgumentException error) {
             return preview(profile, seed, replicaSet, "JavaNavi MongoDB direct wire probe failed: " + SecretRedactor.redact(error.getMessage()));
         }
+    }
+
+    private ConnectionConfigDto resolveSavedConnectionSecret(ConnectionConfigDto config) {
+        return savedConnectionService == null ? config : savedConnectionService.resolveSavedSecret(config);
     }
 
     private static HelloResult probeHello(ConnectionConfigDto config) throws IOException {
