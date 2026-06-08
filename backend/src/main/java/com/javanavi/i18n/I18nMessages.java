@@ -15,12 +15,12 @@ import java.util.TreeSet;
 public class I18nMessages {
     private final Map<String, String> en = new LinkedHashMap<>();
     private final Map<String, String> zh = new LinkedHashMap<>();
-    private final Map<String, String> legacyMessageCodes = new LinkedHashMap<>();
+    private final Map<String, String> messageAliases = new LinkedHashMap<>();
 
     public I18nMessages() {
         en.putAll(loadMessages("i18n/messages_en.properties"));
         zh.putAll(loadMessages("i18n/messages_zh_CN.properties"));
-        legacyMessageCodes.putAll(loadMessages("i18n/legacy-message-codes.properties"));
+        indexMessageAliases();
     }
 
     public String message(String code, Object... args) {
@@ -40,7 +40,7 @@ public class I18nMessages {
         if (normalized.isBlank()) {
             return message("common.operationSucceeded");
         }
-        String code = legacyMessageCodes.get(normalized);
+        String code = messageAliases.get(normalized);
         if (code != null) {
             return message(code);
         }
@@ -204,6 +204,23 @@ public class I18nMessages {
             return message("backend.untranslatedError");
         }
         return normalized;
+    }
+
+    private void indexMessageAliases() {
+        for (String code : en.keySet()) {
+            messageAliases.putIfAbsent(code, code);
+        }
+        indexMessageAliases(en);
+        indexMessageAliases(zh);
+    }
+
+    private void indexMessageAliases(Map<String, String> messages) {
+        for (Map.Entry<String, String> entry : messages.entrySet()) {
+            String template = entry.getValue() == null ? "" : entry.getValue().trim();
+            if (!template.isBlank() && !template.contains("{")) {
+                messageAliases.putIfAbsent(template, entry.getKey());
+            }
+        }
     }
 
 
