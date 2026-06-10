@@ -16,6 +16,9 @@ import com.javanavi.model.ConnectionConfigDto;
 import com.javanavi.model.DatabaseOperationResultDto;
 import com.javanavi.model.FileWorkflowContracts;
 import com.javanavi.model.LocalSessionDto;
+import com.javanavi.model.QueryRequestDto;
+import com.javanavi.model.QueryStreamEventDto;
+import com.javanavi.model.ResultSetDataDto;
 import com.javanavi.security.LocalSessionService;
 import com.javanavi.security.SecretStore;
 import com.javanavi.security.SecretStoreStatus;
@@ -31,9 +34,12 @@ import org.springframework.jdbc.datasource.DriverManagerDataSource;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.charset.StandardCharsets;
 import java.security.Principal;
+import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Enumeration;
@@ -42,6 +48,7 @@ import java.util.Locale;
 import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBody;
 
 class FileWorkflowCompatibilityControllerTest {
     @TempDir
@@ -104,6 +111,23 @@ class FileWorkflowCompatibilityControllerTest {
     }
 
     @Test
+    void queryMultiStreamSerializesLocalDateTimeCells() throws Exception {
+        CompatibilityController controller = new CompatibilityController(streamingDatabaseCompatibilityService(), null, new I18nMessages());
+        QueryRequestDto request = new QueryRequestDto(demoConfig(), "", "select device_info_report_time", null, null, "stream-test");
+
+        StreamingResponseBody body = controller.queryMultiStream(request, null).getBody();
+
+        assertThat(body).isNotNull();
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+        body.writeTo(output);
+
+        String ndjson = output.toString(StandardCharsets.UTF_8);
+        assertThat(ndjson).contains("\"type\":\"statementResult\"");
+        assertThat(ndjson).contains("\"device_info_report_time\"");
+        assertThat(ndjson).doesNotContain("\"type\":\"error\"");
+    }
+
+    @Test
     void sessionReturnsTypedLocalSessionContract() {
         SecurityProperties properties = new SecurityProperties();
         LocalSessionService localSessionService = new LocalSessionService();
@@ -143,6 +167,26 @@ class FileWorkflowCompatibilityControllerTest {
 
     private static DatabaseCompatibilityService databaseCompatibilityService() {
         return new DatabaseCompatibilityService(new DemoDatabaseService(new JdbcTemplate(dataSource()), new I18nMessages()), new JdbcConnectionFactory());
+    }
+
+    private static DatabaseCompatibilityService streamingDatabaseCompatibilityService() {
+        return new DatabaseCompatibilityService(new DemoDatabaseService(new JdbcTemplate(dataSource()), new I18nMessages()), new JdbcConnectionFactory()) {
+            @Override
+            public void executeMultiStream(QueryRequestDto request, java.util.function.Consumer<QueryStreamEventDto> sink) {
+                ResultSetDataDto resultSet = new ResultSetDataDto(
+                        List.of(Map.of("device_info_report_time", LocalDateTime.of(2026, 6, 10, 9, 30, 15))),
+                        List.of("device_info_report_time"),
+                        1,
+                        1,
+                        1,
+                        "select device_info_report_time",
+                        "success",
+                        "ok",
+                        false
+                );
+                sink.accept(QueryStreamEventDto.statementResult(resultSet, 1, true));
+            }
+        };
     }
 
     private static DriverManagerDataSource dataSource() {

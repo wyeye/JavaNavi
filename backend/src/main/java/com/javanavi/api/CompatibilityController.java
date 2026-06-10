@@ -32,6 +32,7 @@ import com.javanavi.model.TriggerDefinitionDto;
 import com.javanavi.security.SecretRedactor;
 import jakarta.validation.Valid;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -71,11 +72,11 @@ public class CompatibilityController {
             new CapabilityDto("saved-secrets", "Saved secrets compatibility", "ready", "Saved connections and JavaNavi connection packages use SecretStore-backed redaction")
     );
 
-    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
     private static final MediaType NDJSON_MEDIA_TYPE = MediaType.valueOf("application/x-ndjson");
     private static final String REQUEST_SOURCE_HEADER = "X-JavaNavi-Request-Source";
     private static final String AI_TOOL_REQUEST_SOURCE = "ai-tool";
 
+    private final ObjectMapper objectMapper;
     private final DatabaseCompatibilityService databaseCompatibilityService;
     private final AiCompatibilityService aiCompatibilityService;
     private final I18nMessages messages;
@@ -85,6 +86,17 @@ public class CompatibilityController {
             AiCompatibilityService aiCompatibilityService,
             I18nMessages messages
     ) {
+        this(databaseCompatibilityService, aiCompatibilityService, messages, new ObjectMapper().findAndRegisterModules());
+    }
+
+    @Autowired
+    public CompatibilityController(
+            DatabaseCompatibilityService databaseCompatibilityService,
+            AiCompatibilityService aiCompatibilityService,
+            I18nMessages messages,
+            ObjectMapper objectMapper
+    ) {
+        this.objectMapper = objectMapper;
         this.databaseCompatibilityService = databaseCompatibilityService;
         this.aiCompatibilityService = aiCompatibilityService;
         this.messages = messages;
@@ -239,9 +251,9 @@ public class CompatibilityController {
         return ResponseEntity.ok().contentType(NDJSON_MEDIA_TYPE).body(body);
     }
 
-    private static void writeStreamEvent(BufferedWriter writer, QueryStreamEventDto event) {
+    private void writeStreamEvent(BufferedWriter writer, QueryStreamEventDto event) {
         try {
-            writer.write(OBJECT_MAPPER.writeValueAsString(event));
+            writer.write(objectMapper.writeValueAsString(event));
             writer.newLine();
             writer.flush();
         } catch (IOException error) {
